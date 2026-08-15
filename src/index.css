@@ -315,6 +315,23 @@
   animation: bubble-pop 0.25s ease-out;
 }
 
+/* Click-to-move target square pops in at the touched spot. */
+@keyframes marker-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.move-marker {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: marker-pop 0.2s ease-out;
+}
+
 /* Chat button unread badge pulse. */
 @keyframes unread-pulse {
   0%,

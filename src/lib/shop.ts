@@ -253,6 +253,15 @@ export const WORLD_BOUNDS = {
   maxY: 878,
 };
 
+/**
+ * Where the player may walk — the street corridor (road + shop walkway).
+ * Everything outside these zones (buildings, park, top sidewalk, grass edges)
+ * is blocked, so the character stays on the streets.
+ */
+export const WALKABLE_ZONES: Rect[] = [
+  { x: 28, y: 578, w: 1544, h: 274 }, // y 578..852 (road through the shops)
+];
+
 export const PLAYER_SPEED = 265; // world units per second
 export const PLAYER_RADIUS = 20;
 

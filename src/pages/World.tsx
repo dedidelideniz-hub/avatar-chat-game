@@ -2,8 +2,8 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet } from "@/components/world/ShopSheets";
-import { Joystick } from "@/components/world/Joystick";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
+import { MiniMap, type MiniMapHandle } from "@/components/world/MiniMap";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
@@ -19,6 +19,7 @@ import {
   VENDOR_INTERACT_RADIUS,
   VENDOR_INTERACT_X,
   VENDORS,
+  WALKABLE_ZONES,
   WORLD_BOUNDS,
   type Rect,
   type Vendor,
@@ -297,6 +298,18 @@ function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   return dx * dx + dy * dy < r * r;
 }
 
+/** True when the point is on the walkable street (and not inside an obstacle). */
+function inWalkable(x: number, y: number) {
+  return (
+    WALKABLE_ZONES.some(
+      (z) => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h,
+    ) &&
+    !OBSTACLES.some(
+      (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+    )
+  );
+}
+
 export default function World() {
   const navigate = useNavigate();
   const profile = useQuery(api.profiles.getMyProfile);
@@ -311,7 +324,6 @@ export default function World() {
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
   const keysRef = useRef(new Set<string>());
-  const joyRef = useRef({ x: 0, y: 0 });
   const interRef = useRef<Interaction>(null);
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
@@ -331,7 +343,10 @@ export default function World() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [stallsOpen, setStallsOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
+  const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
+  const stuckRef = useRef({ x: 0, y: 0, since: 0 });
+  const mapRef = useRef<MiniMapHandle>(null);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -390,9 +405,12 @@ export default function World() {
       if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
       if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
       if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
-      vx += joyRef.current.x;
-      vy += joyRef.current.y;
-      // Auto-walk target (e.g. picked from the stalls map).
+      // Cancel auto-walk when the player takes over with the keyboard.
+      if (keysRef.current.size > 0 && targetRef.current) {
+        targetRef.current = null;
+        setTargetMarker(null);
+      }
+      // Auto-walk target (click-to-move, stalls map, gift box).
       const target = targetRef.current;
       if (target) {
         const p = posRef.current;
@@ -401,9 +419,22 @@ export default function World() {
         const dist = Math.hypot(dx, dy);
         if (dist < 22) {
           targetRef.current = null;
+          setTargetMarker(null);
         } else {
-          vx = dx / dist;
-          vy = dy / dist;
+          const moved = Math.hypot(
+            p.x - stuckRef.current.x,
+            p.y - stuckRef.current.y,
+          );
+          if (moved > 4) {
+            stuckRef.current = { x: p.x, y: p.y, since: now };
+          } else if (now - stuckRef.current.since > 2500) {
+            // Blocked on the way — give up so the marker doesn't linger.
+            targetRef.current = null;
+            setTargetMarker(null);
+          } else {
+            vx = dx / dist;
+            vy = dy / dist;
+          }
         }
       }
       const len = Math.hypot(vx, vy);
@@ -418,7 +449,7 @@ export default function World() {
         phase += dt * 10;
         const nx = Math.min(Math.max(pos.x + vx * PLAYER_SPEED * dt, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
         const ny = Math.min(Math.max(pos.y + vy * PLAYER_SPEED * dt, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-        // Resolve collisions axis by axis.
+        // Resolve collisions axis by axis (obstacles + walkable street zones).
         let px = nx;
         let py = pos.y;
         for (const r of OBSTACLES) {
@@ -427,6 +458,7 @@ export default function World() {
             break;
           }
         }
+        if (!inWalkable(px, py)) px = pos.x;
         py = Math.min(Math.max(ny, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
         for (const r of OBSTACLES) {
           if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
@@ -434,6 +466,7 @@ export default function World() {
             break;
           }
         }
+        if (!inWalkable(px, py)) py = pos.y;
         pos.x = px;
         pos.y = py;
         if (Math.abs(vx) > 0.05) facingRef.current = vx;
@@ -482,6 +515,16 @@ export default function World() {
           );
         }
       }
+
+      // Keep the minimap in sync.
+      mapRef.current?.setPlayer(pos.x, pos.y);
+      const cam = camRef.current;
+      mapRef.current?.setViewport(
+        Math.max(cam.x, 0),
+        Math.max(cam.y, 0),
+        Math.min(view.vw, WORLD_W),
+        Math.min(view.vh, WORLD_H),
+      );
 
       // What is the player standing next to?
       let next: Interaction = null;
@@ -562,7 +605,10 @@ export default function World() {
 
   /** Auto-walk toward a spot on the street (stalls map / gift box). */
   const goTo = useCallback((x: number, y: number, label: string) => {
+    if (!inWalkable(x, y)) return;
     targetRef.current = { x, y };
+    stuckRef.current = { x, y, since: performance.now() };
+    setTargetMarker({ x, y });
     setStallsOpen(false);
     setProfileOpen(false);
     toast.info(`${label} yoluna çıkıldı 🚶`);
@@ -599,9 +645,33 @@ export default function World() {
     };
   }, [appendMessage]);
 
-  const handleMove = useCallback((x: number, y: number) => {
-    joyRef.current = { x, y };
+  /** Set a move destination on the street and mark it with the target square. */
+  const pickTarget = useCallback((wx: number, wy: number) => {
+    if (!inWalkable(wx, wy)) return;
+    targetRef.current = { x: wx, y: wy };
+    stuckRef.current = { x: wx, y: wy, since: performance.now() };
+    setTargetMarker({ x: wx, y: wy });
   }, []);
+
+  /** Click/tap on the street — the character walks to the touched spot. */
+  const handleWorldClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (shopVendor || bagOpen || chatOpen || profileOpen || stallsOpen) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("button") || target.closest("[data-minimap]")) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const view = viewRef.current;
+      const cam = camRef.current;
+      const wx =
+        Math.max(cam.x, 0) +
+        ((e.clientX - rect.left) / rect.width) * view.vw;
+      const wy =
+        Math.max(cam.y, 0) +
+        ((e.clientY - rect.top) / rect.height) * view.vh;
+      pickTarget(wx, wy);
+    },
+    [shopVendor, bagOpen, chatOpen, profileOpen, stallsOpen, pickTarget],
+  );
 
   const handleClaim = async () => {
     if (giftClaimed || claiming) return;
@@ -662,6 +732,7 @@ export default function World() {
         <main
           ref={containerRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden bg-[#bfe3ff]"
+          onClick={handleWorldClick}
         >
         <svg
           ref={svgRef}
@@ -670,6 +741,28 @@ export default function World() {
           className="absolute inset-0 h-full w-full"
         >
           <StreetScene giftClaimed={giftClaimed} />
+
+          {/* move-target marker — the touched spot, shown as a clear square */}
+          {targetMarker !== null && (
+            <g
+              transform={`translate(${targetMarker.x} ${targetMarker.y})`}
+              className="move-marker"
+            >
+              <rect
+                x={-26}
+                y={-26}
+                width={52}
+                height={52}
+                rx={9}
+                fill="#ffffff"
+                opacity={0.3}
+                stroke="#ff6b4a"
+                strokeWidth={3}
+                strokeDasharray="7 5"
+              />
+              <circle cx="0" cy="0" r="4" fill="#ff6b4a" />
+            </g>
+          )}
 
           {/* vendor speech bubble */}
           {vendorBubble !== null && <VendorBubble x={vendorBubble.x} text={vendorBubble.text} />}
@@ -748,10 +841,11 @@ export default function World() {
           </g>
         </svg>
 
-        {/* joystick — bottom-left inside the street view */}
-        <Joystick
-          onMove={handleMove}
-          className="absolute bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-5 z-20"
+        {/* full-street minimap — tap a spot and the character walks there */}
+        <MiniMap
+          ref={mapRef}
+          onPick={pickTarget}
+          className="pointer-events-auto absolute bottom-4 left-4 z-20 w-36 rounded-2xl border-2 border-white/70 bg-black/25 p-1 shadow-xl backdrop-blur-sm sm:w-44"
         />
 
         {/* interaction prompt */}

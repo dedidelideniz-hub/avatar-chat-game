@@ -374,6 +374,15 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
           <line key={y} x1="0" y1={y} x2="1600" y2={y} />
         ))}
       </g>
+      {/* hedge — the upper sidewalk is off-limits, only the street is walkable */}
+      <g>
+        {Array.from({ length: 14 }).map((_, i) => (
+          <rect key={i} x={i * 118 - 10} y={514} width={128} height={34} rx={16} fill="#3e8e4a" />
+        ))}
+        {Array.from({ length: 14 }).map((_, i) => (
+          <rect key={i} x={i * 118 - 10} y={514} width={128} height={15} rx={8} fill="#57b164" opacity={0.85} />
+        ))}
+      </g>
 
       {/* road */}
       <rect x="0" y="560" width="1600" height="120" fill="#4a4540" />
