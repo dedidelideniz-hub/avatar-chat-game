@@ -83,6 +83,12 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+// The app UI is Turkish. Declaring the language and blocking auto-translate
+// prevents browser translation extensions from wrapping text nodes, which
+// corrupts React's DOM and causes "insertBefore" runtime crashes on re-render.
+document.documentElement.setAttribute("lang", "tr");
+document.documentElement.setAttribute("translate", "no");
+
 
 
 function RouteSyncer() {

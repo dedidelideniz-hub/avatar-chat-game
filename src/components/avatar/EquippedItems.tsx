@@ -38,6 +38,10 @@ export function EquippedItems({
     .map((id) => getProduct(id))
     .filter((p): p is NonNullable<typeof p> => p !== undefined);
 
+  if (worn.length === 0) {
+    return null;
+  }
+
   return (
     <svg
       viewBox="0 0 140 180"

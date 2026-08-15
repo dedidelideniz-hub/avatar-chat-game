@@ -1,8 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr" translate="no">
 
 <head>
   <meta charset="UTF-8" />
+  <!-- The app is Turkish; block browser auto-translate, which rewrites text
+       nodes and breaks React's DOM reconciliation ("insertBefore" crashes). -->
+  <meta name="google" content="notranslate" />
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
