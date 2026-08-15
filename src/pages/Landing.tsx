@@ -42,7 +42,12 @@ function GameLogo({ className }: { className?: string }) {
   return (
     <div className={`flex items-center gap-2.5 ${className ?? ""}`}>
       <LogoMark className="size-9" />
-      <span className="text-xl font-extrabold tracking-tight">Meydan</span>
+      <div className="flex flex-col leading-none">
+        <span className="text-xl font-extrabold tracking-tight">Sanalika</span>
+        <span className="mt-1 text-[9px] font-extrabold uppercase tracking-[0.22em] text-primary">
+          Avatar Chat
+        </span>
+      </div>
     </div>
   );
 }
@@ -54,7 +59,7 @@ function WorldScene({ className }: { className?: string }) {
       viewBox="0 0 420 380"
       className={className}
       role="img"
-      aria-label="Meydan dünyasından bir sahne"
+      aria-label="Sanalika dünyasından bir sahne"
     >
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -175,7 +180,7 @@ const FEATURES = [
     icon: MessageCircle,
     color: "bg-secondary/20 text-secondary-foreground",
     title: "Gerçek Zamanlı Sohbet",
-    desc: "Meydandaki herkesle sohbet et. Konuşma balonları avatarının hemen üstünde belirsin.",
+    desc: "Dünyadaki herkesle sohbet et. Konuşma balonları avatarının hemen üstünde belirsin.",
     badge: "Yakında",
   },
   {
@@ -199,8 +204,7 @@ export default function Landing() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link to="/" aria-label="Meydan ana sayfa">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">            <Link to="/" aria-label="Sanalika ana sayfa">
             <GameLogo />
           </Link>
           <nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex">
@@ -243,12 +247,12 @@ export default function Landing() {
             </span>
             <h1 className="mt-5 text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
               Kendi avatarını yarat,{" "}
-              <span className="text-primary">meydana</span> adım at
+              <span className="text-primary">dünyaya</span> adım at
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              Sanalika tarzı 2D avatar chat oyunu. Karakterini özelleştir, sanal
-              dünyada gez, yeni insanlarla tanış ve sohbet et. Hepsi tarayıcında,
-              tamamen ücretsiz.
+              Sanalika Avatar Chat — tarayıcında oynanan 2D avatar chat oyunu.
+              Karakterini özelleştir, sanal dünyada gez, yeni insanlarla tanış
+              ve sohbet et. Hepsi tamamen ücretsiz.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button asChild size="lg" className="rounded-full px-7 text-base">
@@ -286,7 +290,7 @@ export default function Landing() {
                 <span className="size-2.5 rounded-full bg-[#febc2e]" />
                 <span className="size-2.5 rounded-full bg-[#28c840]" />
                 <span className="ml-3 text-xs font-bold text-background/80">
-                  meydan.world — Meydan Kafe
+                  sanalika.world — Ana Kafe
                 </span>
               </div>
               <div className="animate-float-slow">
@@ -298,7 +302,7 @@ export default function Landing() {
                 Çevrimiçi
               </p>
               <p className="text-sm font-extrabold">
-                <span className="text-primary">✦</span> 12 avatar meydanda
+                <span className="text-primary">✦</span> 12 avatar çevrimiçi
               </p>
             </div>
           </motion.div>
@@ -317,7 +321,7 @@ export default function Landing() {
             Sanal dünyanın kapıları açık
           </h2>
           <p className="mt-4 text-base leading-7 text-muted-foreground">
-            Sohbetten keşfe, arkadaşlıktan kişiselleştirmeye — sanal bir meydanda
+            Sohbetten keşfe, arkadaşlıktan kişiselleştirmeye — sanal bir dünyada
             olması gereken her şey.
           </p>
         </motion.div>
@@ -454,7 +458,7 @@ export default function Landing() {
           </h2>
           <p className="relative mx-auto mt-4 max-w-xl text-base leading-7 text-background/70">
             Bir dakika bile sürmüyor. E-postanı gir veya misafir olarak devam et —
-            meydan seni bekliyor.
+            Sanalika seni bekliyor.
           </p>
           <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button
@@ -487,7 +491,7 @@ export default function Landing() {
             </Link>
           </nav>
           <p className="text-sm text-muted-foreground">
-            © 2026 Meydan · 2D avatar chat dünyası
+            © 2026 Sanalika Avatar Chat
           </p>
         </div>
       </footer>

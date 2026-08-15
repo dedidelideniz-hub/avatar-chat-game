@@ -155,7 +155,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     <GameLogo className="size-16 rounded-2xl shadow-md" />
                   </div>
                   <CardTitle className="mt-3 text-2xl">
-                    Meydana hoş geldin
+                    Sanalika'ya hoş geldin
                   </CardTitle>
                   <CardDescription>
                     Avatar dünyasına giriş için e-postanı gir ya da misafir olarak devam et

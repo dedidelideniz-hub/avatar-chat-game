@@ -41,7 +41,12 @@ function GameLogo() {
           fill="none"
         />
       </svg>
-      <span className="text-xl font-extrabold tracking-tight">Meydan</span>
+      <div className="flex flex-col leading-none">
+        <span className="text-xl font-extrabold tracking-tight">Sanalika</span>
+        <span className="mt-1 text-[9px] font-extrabold uppercase tracking-[0.22em] text-primary">
+          Avatar Chat
+        </span>
+      </div>
     </div>
   );
 }
@@ -182,8 +187,8 @@ export default function Studio() {
           </h1>
           <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
             {hasProfile
-              ? "Görünümünü veya kullanıcı adını değiştir — meydana dilediğin gibi dön."
-              : "Kendine benzeyen ya da tamamen hayal ürünü bir avatar seç. Sonra meydanda herkes seni böyle görecek."}
+              ? "Görünümünü veya kullanıcı adını değiştir — dünyaya dilediğin gibi dön."
+              : "Kendine benzeyen ya da tamamen hayal ürünü bir avatar seç. Sonra dünyada herkes seni böyle görecek."}
           </p>
         </motion.div>
 
@@ -219,7 +224,7 @@ export default function Studio() {
                 </div>
                 <div className="mb-4 flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
                   <span className="size-2 rounded-full bg-[#28c840]" />
-                  Meydana girişe hazır
+                  Dünyaya girişe hazır
                 </div>
               </div>
             </div>
@@ -356,7 +361,7 @@ export default function Studio() {
               </div>
               <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                 <Sparkles className="size-3.5 text-primary" />
-                Profilin meydandaki görünümünü belirler — istediğin zaman değiştirebilirsin.
+                Profilin sanal dünyadaki görünümünü belirler — istediğin zaman değiştirebilirsin.
               </p>
             </div>
           </div>
