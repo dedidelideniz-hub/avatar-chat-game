@@ -152,3 +152,148 @@
     cursor: pointer;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Sanalika street life — CSS keyframe animations for the game world.  */
+/* Applied to SVG groups in StreetScene + the walk cycle in World.tsx. */
+/* ------------------------------------------------------------------ */
+
+/* Road dashes scroll continuously, so the street feels alive. */
+@keyframes street-dash-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-122px);
+  }
+}
+.road-dashes {
+  animation: street-dash-scroll 2.4s linear infinite;
+}
+
+/* Little cars driving along the street lanes. */
+@keyframes street-car-right {
+  from {
+    transform: translateX(-220px);
+  }
+  to {
+    transform: translateX(1820px);
+  }
+}
+@keyframes street-car-left {
+  from {
+    transform: translateX(1820px);
+  }
+  to {
+    transform: translateX(-220px);
+  }
+}
+.car-r {
+  animation: street-car-right 17s linear infinite;
+}
+.car-l {
+  animation: street-car-left 23s linear infinite;
+}
+
+/* Balloons bobbing above the balloon stand. */
+@keyframes balloon-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-12px) rotate(4deg);
+  }
+}
+.balloon {
+  animation: balloon-bob 3.4s ease-in-out infinite;
+}
+
+/* Vendors gently bob behind their counters. */
+@keyframes vendor-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+.vendor-idle {
+  animation: vendor-idle 2.6s ease-in-out infinite;
+}
+
+/* Waving hand (balloon seller). */
+@keyframes wave-swing {
+  0%,
+  100% {
+    transform: rotate(-16deg);
+  }
+  50% {
+    transform: rotate(16deg);
+  }
+}
+.wave-hand {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: wave-swing 0.9s ease-in-out infinite;
+}
+
+/* Clouds drifting slowly across the sky. */
+@keyframes cloud-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-70px);
+  }
+}
+.clouds {
+  animation: cloud-drift 36s ease-in-out infinite alternate;
+}
+
+/* Walk cycle — arms and legs swing while an ancestor has `.walking`. */
+@keyframes arm-swing {
+  from {
+    transform: rotate(-18deg);
+  }
+  50% {
+    transform: rotate(18deg);
+  }
+  to {
+    transform: rotate(-18deg);
+  }
+}
+@keyframes leg-swing {
+  from {
+    transform: rotate(-13deg);
+  }
+  50% {
+    transform: rotate(13deg);
+  }
+  to {
+    transform: rotate(-13deg);
+  }
+}
+.walking .avatar-arm-l {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: arm-swing 0.55s linear infinite;
+}
+.walking .avatar-arm-r {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: arm-swing 0.55s linear infinite;
+  animation-delay: -0.275s;
+}
+.walking .avatar-leg-l {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: leg-swing 0.55s linear infinite;
+}
+.walking .avatar-leg-r {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+  animation: leg-swing 0.55s linear infinite;
+  animation-delay: -0.275s;
+}

@@ -164,7 +164,8 @@ export default function World() {
         if (Math.abs(vx) > 0.05) facingRef.current = vx;
       }
 
-      // Sprite: bob while walking + face movement direction.
+      // Sprite: bob + limb swing while walking, face movement direction.
+      spriteRef.current?.classList.toggle("walking", moving);
       const flip = facingRef.current < 0 ? -1 : 1;
       const bob = moving ? Math.sin(phase) * 3.5 : 0;
       const ty = -PLAYER_H + bob;

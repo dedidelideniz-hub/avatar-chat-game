@@ -1,6 +1,7 @@
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import type { AvatarConfig } from "@/lib/avatar";
 import { GIFT_BOX, VENDORS, type Vendor } from "@/lib/shop";
+import type { CSSProperties } from "react";
 
 /**
  * The Sanalika street, drawn as one static SVG group in a 1600x900 world.
@@ -148,7 +149,59 @@ function Lamp({ x, y }: { x: number; y: number }) {
   );
 }
 
-function Stall({ vendor }: { vendor: Vendor }) {
+const BALLOONS = [
+  { x: -22, y: -186, r: 15, color: "#ef4444" },
+  { x: 6, y: -214, r: 17, color: "#f7c948" },
+  { x: 34, y: -176, r: 14, color: "#a855f7" },
+  { x: 62, y: -208, r: 15, color: "#14b8a6" },
+] as const;
+
+/** A little cartoon car; `left` mirrors it to drive the other way. */
+function Car({
+  className,
+  y,
+  left,
+  style,
+}: {
+  className: string;
+  y: number;
+  left?: boolean;
+  style?: CSSProperties;
+}) {
+  return (
+    <g className={className} style={style}>
+      <g transform={`translate(0 ${y})${left ? " scale(-1 1)" : ""}`}>
+        <ellipse cx="0" cy="34" rx="52" ry="7" fill="#1c1917" opacity="0.16" />
+        <rect
+          x="-52"
+          y="2"
+          width="104"
+          height="28"
+          rx="12"
+          fill="#3b82f6"
+          stroke="#3d2f2a"
+          strokeOpacity="0.25"
+          strokeWidth="2"
+        />
+        <path
+          d="M-24 2 L-12 -16 Q0 -21 12 -16 L24 2 Z"
+          fill="#93c5fd"
+          stroke="#3d2f2a"
+          strokeOpacity="0.25"
+          strokeWidth="2"
+        />
+        <circle cx="-30" cy="30" r="9" fill="#2b2320" />
+        <circle cx="30" cy="30" r="9" fill="#2b2320" />
+        <circle cx="-30" cy="30" r="4" fill="#9ca3af" />
+        <circle cx="30" cy="30" r="4" fill="#9ca3af" />
+        <circle cx="50" cy="17" r="3" fill="#ffe9a8" />
+        <circle cx="-50" cy="17" r="3" fill="#ff6b4a" />
+      </g>
+    </g>
+  );
+}
+
+function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
   const awningW = 176;
   return (
     <g transform={`translate(${vendor.x} ${vendor.y})`}>
@@ -170,10 +223,61 @@ function Stall({ vendor }: { vendor: Vendor }) {
         ))}
         <rect x={-awningW / 2} y={-116} width={awningW} height={44} rx={6} fill="#3d2f2a" opacity={0.08} />
       </g>
-      {/* vendor standing behind the counter (feet at counter top) */}
-      <g transform={`translate(-27 -120)`}>
-        <AvatarPreview width={54} height={70} config={VENDOR_AVATARS[vendor.id]} />
+      {/* vendor standing behind the counter — gently bobbing */}
+      <g
+        className="vendor-idle"
+        style={{ animationDelay: `${((index * 0.7) % 2.6) * -1}s` }}
+      >
+        <g transform={`translate(-27 -120)`}>
+          <AvatarPreview width={54} height={70} config={VENDOR_AVATARS[vendor.id]} />
+        </g>
       </g>
+      {/* the balloon seller waves a hand under her balloons */}
+      {vendor.id === "balon" && (
+        <text x={48} y={-140} fontSize={26} className="wave-hand" aria-hidden="true">
+          👋
+        </text>
+      )}
+      {/* floating balloons above the balloon stand */}
+      {vendor.id === "balon" && (
+        <g>
+          {BALLOONS.map((b, i) => (
+            <g key={i}>
+              <line
+                x1={b.x}
+                y1={-70}
+                x2={b.x}
+                y2={b.y + b.r + 3}
+                stroke="#d9c49e"
+                strokeWidth={2}
+              />
+              <g
+                className="balloon"
+                style={{
+                  animationDuration: `${3 + (i % 3) * 0.7}s`,
+                  animationDelay: `${i * -1.1}s`,
+                }}
+              >
+                <g transform={`translate(${b.x} ${b.y})`}>
+                  <ellipse cx="0" cy="0" rx={b.r} ry={b.r * 1.15} fill={b.color} />
+                  <ellipse
+                    cx={-b.r * 0.3}
+                    cy={-b.r * 0.45}
+                    rx={b.r * 0.3}
+                    ry={b.r * 0.4}
+                    fill="#ffffff"
+                    opacity="0.35"
+                  />
+                  <path
+                    d={`M${-b.r * 0.3} ${b.r * 1.05} L0 ${b.r * 1.4} L${b.r * 0.3} ${b.r * 1.05} Z`}
+                    fill={b.color}
+                  />
+                </g>
+              </g>
+            </g>
+          ))}
+        </g>
+      )}
       {/* counter */}
       <rect x={-80} y={-50} width={160} height={54} rx={9} fill="#5b4636" />
       <rect x={-72} y={-44} width={144} height={12} rx={5} fill="#7a5c3f" />
@@ -247,8 +351,8 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <circle cx="1452" cy="86" r="52" fill="#ffd166" opacity="0.35" />
       <circle cx="1452" cy="86" r="34" fill="#ffd166" />
       <circle cx="1452" cy="86" r="24" fill="#ffe9a8" />
-      {/* clouds */}
-      <g fill="#ffffff" opacity="0.9">
+      {/* clouds — drifting slowly */}
+      <g className="clouds" fill="#ffffff" opacity="0.9">
         <ellipse cx="220" cy="90" rx="46" ry="16" />
         <ellipse cx="258" cy="78" rx="30" ry="13" />
         <ellipse cx="640" cy="120" rx="52" ry="17" />
@@ -275,10 +379,10 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <rect x="0" y="560" width="1600" height="120" fill="#4a4540" />
       <rect x="0" y="560" width="1600" height="6" fill="#8a7f70" />
       <rect x="0" y="674" width="1600" height="6" fill="#8a7f70" />
-      {/* center dashes */}
-      <g fill="#f7c948">
-        {Array.from({ length: 13 }).map((_, i) => (
-          <rect key={i} x={34 + i * 122} y={614} width={64} height={12} rx={6} />
+      {/* center dashes — scrolling to suggest traffic */}
+      <g className="road-dashes" fill="#f7c948">
+        {Array.from({ length: 16 }).map((_, i) => (
+          <rect key={i} x={-122 + i * 122} y={614} width={64} height={12} rx={6} />
         ))}
       </g>
       {/* crosswalks */}
@@ -289,6 +393,11 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
           ))}
         </g>
       ))}
+      {/* traffic on the road */}
+      <Car className="car-r" y={580} style={{ animationDuration: "16s", animationDelay: "-3s" }} />
+      <Car className="car-r" y={602} style={{ animationDuration: "21s", animationDelay: "-11s" }} />
+      <Car className="car-l" y={648} left style={{ animationDuration: "24s", animationDelay: "-8s" }} />
+      <Car className="car-l" y={630} left style={{ animationDuration: "18s", animationDelay: "-16s" }} />
 
       {/* bottom sidewalk */}
       <rect x="0" y="680" width="1600" height="140" fill="#ecdcbc" />
@@ -319,8 +428,8 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <Lamp x={1120} y={510} />
 
       {/* vendor stalls */}
-      {VENDORS.map((vendor) => (
-        <Stall key={vendor.id} vendor={vendor} />
+      {VENDORS.map((vendor, index) => (
+        <Stall key={vendor.id} vendor={vendor} index={index} />
       ))}
 
       {/* daily gift box */}

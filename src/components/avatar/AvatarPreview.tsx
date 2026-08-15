@@ -118,18 +118,25 @@ export function AvatarPreview({
       {/* ground shadow */}
       <ellipse cx="70" cy="165" rx="36" ry="7" fill="#1c1917" opacity="0.12" />
 
-      {/* shoes */}
-      <rect x="50" y="152" width="19" height="13" rx="5" fill={shoes} {...OUTLINE} />
-      <rect x="71" y="152" width="19" height="13" rx="5" fill={shoes} {...OUTLINE} />
+      {/* legs (swing from the hips while walking) */}
+      <g className="avatar-leg-l">
+        <rect x="55" y="127" width="14" height="26" rx="7" fill={pants} {...OUTLINE} />
+        <rect x="52" y="152" width="18" height="13" rx="5" fill={shoes} {...OUTLINE} />
+      </g>
+      <g className="avatar-leg-r">
+        <rect x="71" y="127" width="14" height="26" rx="7" fill={pants} {...OUTLINE} />
+        <rect x="70" y="152" width="18" height="13" rx="5" fill={shoes} {...OUTLINE} />
+      </g>
 
-      {/* pants */}
-      <rect x="53" y="127" width="34" height="27" rx="9" fill={pants} {...OUTLINE} />
-
-      {/* arms + hands */}
-      <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
-      <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
-      <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
-      <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
+      {/* arms + hands (swing from the shoulders while walking) */}
+      <g className="avatar-arm-l">
+        <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
+        <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
+      </g>
+      <g className="avatar-arm-r">
+        <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
+        <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
+      </g>
 
       {/* torso */}
       <rect x="46" y="86" width="48" height="46" rx="14" fill={shirt} {...OUTLINE} />
