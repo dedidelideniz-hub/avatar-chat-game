@@ -297,3 +297,34 @@
   animation: leg-swing 0.55s linear infinite;
   animation-delay: -0.275s;
 }
+
+/* Speech bubbles pop in above characters and stalls. */
+@keyframes bubble-pop {
+  from {
+    transform: translateY(6px) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+.speech-bubble {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: bubble-pop 0.25s ease-out;
+}
+
+/* Chat button unread badge pulse. */
+@keyframes unread-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+.unread-pulse {
+  animation: unread-pulse 1.6s ease-in-out infinite;
+}

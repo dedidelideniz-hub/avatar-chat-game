@@ -3,6 +3,7 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet } from "@/components/world/ShopSheets";
 import { Joystick } from "@/components/world/Joystick";
+import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_AVATAR } from "@/lib/avatar";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/shop";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence } from "framer-motion";
-import { ArrowLeft, Backpack, Keyboard } from "lucide-react";
+import { ArrowLeft, Backpack, Keyboard, MessageCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -34,6 +35,45 @@ const WORLD_H = 900;
 const PLAYER_W = 70;
 const PLAYER_H = 96;
 const SPAWN = { x: 800, y: 760 };
+/** Where vendor speech bubbles appear (above the stalls, world coords). */
+const VENDOR_BUBBLE_Y = 595;
+
+/** Random things the vendors say in the street chat. */
+const VENDOR_PHRASES: Record<string, string[]> = {
+  dondurma: ["Dondurmaaa! 🍦", "Serin serin dondurmalar!", "Bugün çileklisi bol!"],
+  balon: ["Balon alır mısın? 🎈", "Gökkuşağı balonu kalmadı!", "Rengârenk balonlar!"],
+  oyuncak: ["Oyuncaklarım çok tatlı 🧸", "Ayıcık sana sarılmak ister!", "Zıpzıp topu kaçırma!"],
+  moda: ["Yeni sezon burada! 🕶️", "Şapka sana çok yakışır!", "Caddede şıklık önemli!"],
+};
+
+/** A speech bubble floating above a stall. */
+function VendorBubble({ x, text }: { x: number; text: string }) {
+  const w = Math.min(150, 30 + text.length * 6.5);
+  return (
+    <g transform={`translate(${x - w / 2} ${VENDOR_BUBBLE_Y})`} className="speech-bubble">
+      <rect
+        width={w}
+        height={36}
+        rx={18}
+        fill="#ffffff"
+        opacity="0.95"
+        stroke="#3d2f2a"
+        strokeOpacity="0.12"
+      />
+      <path d={`M${w / 2 - 8} 36 L${w / 2} 46 L${w / 2 + 8} 36 Z`} fill="#ffffff" />
+      <text
+        x={w / 2}
+        y={23}
+        textAnchor="middle"
+        fontSize={12}
+        fontWeight={700}
+        fill="#2b2320"
+      >
+        {text}
+      </text>
+    </g>
+  );
+}
 
 type Interaction =
   | { type: "vendor"; vendorId: string }
@@ -71,6 +111,14 @@ export default function World() {
   const [shopVendor, setShopVendor] = useState<Vendor | null>(null);
   const [bagOpen, setBagOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [bubble, setBubble] = useState<string | null>(null);
+  const [vendorBubble, setVendorBubble] = useState<{ x: number; text: string } | null>(null);
+  const nextIdRef = useRef(1);
+  const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chatOpenRef = useRef(false);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -253,6 +301,69 @@ export default function World() {
     }
   }, [username]);
 
+  const appendMessage = useCallback((msg: ChatMessage) => {
+    setMessages((prev) => [...prev.slice(-40), msg]);
+    if (!chatOpenRef.current) setUnread((u) => u + 1);
+  }, []);
+
+  const handleSend = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      appendMessage({
+        id: nextIdRef.current++,
+        from: username,
+        text: trimmed,
+        isMe: true,
+      });
+      setBubble(trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed);
+      if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
+      bubbleTimerRef.current = setTimeout(() => setBubble(null), 4000);
+    },
+    [appendMessage, username],
+  );
+
+  const openChat = () => {
+    chatOpenRef.current = true;
+    setChatOpen(true);
+    setUnread(0);
+  };
+  const closeChat = () => {
+    chatOpenRef.current = false;
+    setChatOpen(false);
+  };
+
+  // Street greeting + vendors occasionally chatting keeps the street alive.
+  useEffect(() => {
+    appendMessage({
+      id: nextIdRef.current++,
+      from: "Cadde",
+      text: "👋 Sanalika Caddesi'ne hoş geldin! Satıcılarla sohbet edebilirsin.",
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      timer = setTimeout(() => {
+        const vendor = VENDORS[Math.floor(Math.random() * VENDORS.length)];
+        const pool = VENDOR_PHRASES[vendor.id];
+        const text = pool[Math.floor(Math.random() * pool.length)];
+        appendMessage({
+          id: nextIdRef.current++,
+          from: vendor.short,
+          text,
+          color: vendor.color,
+        });
+        setVendorBubble({ x: vendor.x, text });
+        setTimeout(() => setVendorBubble(null), 3600);
+        schedule();
+      }, 9000 + Math.random() * 7000);
+    };
+    schedule();
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
+    };
+  }, [appendMessage]);
+
   const handleMove = useCallback((x: number, y: number) => {
     joyRef.current = { x, y };
   }, []);
@@ -292,6 +403,9 @@ export default function World() {
           className="absolute inset-0 h-full w-full"
         >
           <StreetScene giftClaimed={giftClaimed} />
+
+          {/* vendor speech bubble */}
+          {vendorBubble !== null && <VendorBubble x={vendorBubble.x} text={vendorBubble.text} />}
 
           {/* player */}
           <g ref={playerRef}>
@@ -339,10 +453,35 @@ export default function World() {
                 {username}
               </text>
             </g>
+            {/* speech bubble above the player's head */}
+            {bubble !== null && (
+              <g transform="translate(-64 -126)" className="speech-bubble">
+                <rect
+                  width="128"
+                  height="38"
+                  rx="19"
+                  fill="#ffffff"
+                  opacity="0.96"
+                  stroke="#3d2f2a"
+                  strokeOpacity="0.12"
+                />
+                <path d="M60 38 L68 50 L76 38 Z" fill="#ffffff" />
+                <text
+                  x="64"
+                  y="24"
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="700"
+                  fill="#2b2320"
+                >
+                  {bubble}
+                </text>
+              </g>
+            )}
           </g>
         </svg>
 
-        {/* floating HUD — chips sit on top of the game view */}
+        {/* floating HUD — organized top bar + bottom controls */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 p-3 sm:p-4">
           <Button
             variant="outline"
@@ -353,11 +492,17 @@ export default function World() {
             <ArrowLeft className="size-4" />
             <span className="hidden sm:inline">Stüdyo</span>
           </Button>
-          <span className="hidden items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-xs font-extrabold text-foreground/70 shadow backdrop-blur lg:flex">
-            <Keyboard className="size-3.5" />
-            WASD / ok tuşları
+          <span className="hidden items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-sm font-extrabold text-foreground/70 shadow backdrop-blur md:flex">
+            Sanalika Caddesi
           </span>
           <div className="pointer-events-auto flex items-center gap-2">
+            <span
+              className="hidden items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-xs font-bold text-foreground/60 shadow backdrop-blur sm:flex"
+              title="Klavye kontrolü"
+            >
+              <Keyboard className="size-3.5" />
+              WASD / ok tuşları
+            </span>
             <span
               className="flex items-center gap-1.5 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-sm font-extrabold shadow-lg backdrop-blur"
               title="Sanalika Parası"
@@ -385,11 +530,35 @@ export default function World() {
           </div>
         </div>
 
-        <Joystick onMove={handleMove} className="absolute bottom-6 left-5 z-20" />
+        {/* bottom controls: joystick (left) + chat (right) */}
+        {!chatOpen && (
+          <Joystick
+            onMove={handleMove}
+            className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-6 z-20"
+          />
+        )}
+        {!chatOpen && (
+          <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-5 z-20 flex flex-col items-end gap-2">
+            <Button
+              size="icon"
+              className="relative size-13 rounded-full border-2 border-white/70 bg-primary text-primary-foreground shadow-xl backdrop-blur hover:bg-primary/90"
+              onClick={openChat}
+              aria-label="Sohbeti aç"
+            >
+              <MessageCircle className="size-5" />
+              {unread > 0 && (
+                <span className="unread-pulse absolute -right-1 -top-1 flex size-6 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[11px] font-extrabold text-white">
+                  {unread > 9 ? "9+" : unread}
+                </span>
+              )}
+            </Button>
+          </div>
+        )}
 
         {/* interaction prompt */}
         {!shopVendor &&
           !bagOpen &&
+          !chatOpen &&
           interaction !== null &&
           (activeVendor !== null || interaction.type === "gift") && (
             <div className="pointer-events-none absolute inset-x-0 bottom-40 z-20 flex justify-center px-4 sm:bottom-8">
@@ -462,6 +631,15 @@ export default function World() {
             coins={coins}
             onClose={() => setBagOpen(false)}
             onBrowseStalls={() => setBagOpen(false)}
+          />
+        )}
+        {chatOpen && (
+          <ChatPanel
+            key="chat"
+            messages={messages}
+            username={username}
+            onSend={handleSend}
+            onClose={closeChat}
           />
         )}
       </AnimatePresence>

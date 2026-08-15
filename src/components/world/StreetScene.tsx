@@ -379,6 +379,9 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <rect x="0" y="560" width="1600" height="120" fill="#4a4540" />
       <rect x="0" y="560" width="1600" height="6" fill="#8a7f70" />
       <rect x="0" y="674" width="1600" height="6" fill="#8a7f70" />
+      {/* lane dividers — keep the traffic tidy */}
+      <rect x="0" y="588" width="1600" height="3" fill="#8a7f70" opacity="0.4" />
+      <rect x="0" y="646" width="1600" height="3" fill="#8a7f70" opacity="0.4" />
       {/* center dashes — scrolling to suggest traffic */}
       <g className="road-dashes" fill="#f7c948">
         {Array.from({ length: 16 }).map((_, i) => (
@@ -393,11 +396,11 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
           ))}
         </g>
       ))}
-      {/* traffic on the road */}
-      <Car className="car-r" y={580} style={{ animationDuration: "16s", animationDelay: "-3s" }} />
+      {/* traffic on the road — one car per lane */}
+      <Car className="car-r" y={574} style={{ animationDuration: "16s", animationDelay: "-3s" }} />
       <Car className="car-r" y={602} style={{ animationDuration: "21s", animationDelay: "-11s" }} />
-      <Car className="car-l" y={648} left style={{ animationDuration: "24s", animationDelay: "-8s" }} />
-      <Car className="car-l" y={630} left style={{ animationDuration: "18s", animationDelay: "-16s" }} />
+      <Car className="car-l" y={631} left style={{ animationDuration: "24s", animationDelay: "-8s" }} />
+      <Car className="car-l" y={648} left style={{ animationDuration: "18s", animationDelay: "-16s" }} />
 
       {/* bottom sidewalk */}
       <rect x="0" y="680" width="1600" height="140" fill="#ecdcbc" />

@@ -6,13 +6,17 @@ interface JoystickProps {
   className?: string;
 }
 
-const RADIUS = 44; // max knob travel in px
-const KNOB_OFFSET = 36; // (128 - 56) / 2, centers the knob in the base
+const SIZE = 148; // base diameter in px
+const RADIUS = 50; // max knob travel in px
+const KNOB = 64; // knob diameter
+const KNOB_OFFSET = (SIZE - KNOB) / 2;
+/** Ignore tiny drags so the character doesn't jitter. */
+const DEAD_ZONE = 0.14;
 
 /**
  * Touch-friendly virtual joystick. Uses pointer events + pointer capture so it
  * works with finger and mouse alike; `touch-none` stops page scrolling while
- * dragging.
+ * dragging. A dead zone keeps the character still on tiny movements.
  */
 export function Joystick({ onMove, className }: JoystickProps) {
   const knobRef = useRef<HTMLDivElement>(null);
@@ -37,7 +41,13 @@ export function Joystick({ onMove, className }: JoystickProps) {
     if (knobRef.current) {
       knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
     }
-    onMove(dx / RADIUS, dy / RADIUS);
+    let nx = dx / RADIUS;
+    let ny = dy / RADIUS;
+    if (Math.hypot(nx, ny) < DEAD_ZONE) {
+      nx = 0;
+      ny = 0;
+    }
+    onMove(nx, ny);
   };
 
   const handlePointerEnd = () => {
@@ -54,28 +64,40 @@ export function Joystick({ onMove, className }: JoystickProps) {
       onPointerCancel={handlePointerEnd}
       aria-label="Hareket joysticki"
       role="application"
-      className={`relative h-32 w-32 touch-none rounded-full border-2 border-white/50 bg-black/25 shadow-lg backdrop-blur-sm select-none transition-transform ${
+      style={{ width: SIZE, height: SIZE }}
+      className={`relative touch-none rounded-full border-2 border-white/60 bg-black/25 shadow-xl backdrop-blur-sm select-none ${
         active ? "scale-110" : ""
       } ${className ?? ""}`}
     >
-      <span className="pointer-events-none absolute left-1/2 top-1.5 -translate-x-1/2 text-xs leading-none text-white/80">
+      {/* inner guide ring */}
+      <div className="pointer-events-none absolute inset-4 rounded-full border border-white/25" />
+      {/* direction markers */}
+      <span className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 text-xs leading-none text-white/80">
         ▲
       </span>
-      <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 text-xs leading-none text-white/80">
+      <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 text-xs leading-none text-white/80">
         ▼
       </span>
-      <span className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 text-xs leading-none text-white/80">
+      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs leading-none text-white/80">
         ◀
       </span>
-      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-xs leading-none text-white/80">
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs leading-none text-white/80">
         ▶
       </span>
       <div
         ref={knobRef}
-        className={`absolute left-9 top-9 h-14 w-14 rounded-full border-2 border-white/60 bg-primary shadow-lg ${
-          active ? "ring-4 ring-primary/30" : ""
+        style={{
+          width: KNOB,
+          height: KNOB,
+          top: KNOB_OFFSET,
+          left: KNOB_OFFSET,
+          willChange: "transform",
+        }}
+        className={`absolute rounded-full border-2 border-white/70 bg-gradient-to-br from-primary to-primary/80 shadow-lg ${
+          active
+            ? "ring-4 ring-primary/30"
+            : "transition-transform duration-150 ease-out"
         }`}
-        style={{ willChange: "transform" }}
       />
     </div>
   );
