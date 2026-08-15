@@ -6,7 +6,7 @@ import { Joystick } from "@/components/world/Joystick";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
-import { DEFAULT_AVATAR } from "@/lib/avatar";
+import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
 import {
   CURRENCY_EMOJI,
   DAILY_BONUS_MS,
@@ -24,8 +24,21 @@ import {
   type Vendor,
 } from "@/lib/shop";
 import { useMutation, useQuery } from "convex/react";
-import { AnimatePresence } from "framer-motion";
-import { ArrowLeft, Backpack, Keyboard, MessageCircle } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  ArrowLeft,
+  Backpack,
+  Flower2,
+  Footprints,
+  MessageCircle,
+  Puzzle,
+  Send,
+  Smartphone,
+  UserRound,
+  Wand2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -75,6 +88,202 @@ function VendorBubble({ x, text }: { x: number; text: string }) {
   );
 }
 
+const sheetPanel = {
+  initial: { y: 40, opacity: 0 },
+  animate: { y: 0, opacity: 1 },
+  exit: { y: 40, opacity: 0 },
+  transition: { duration: 0.25, ease: "easeOut" as const },
+};
+
+/** Bottom control bar button — gradient circle like the Sanalika client. */
+function BarBtn({
+  icon: Icon,
+  label,
+  badge,
+  tone,
+  onClick,
+  hideMobile,
+}: {
+  icon: LucideIcon;
+  label: string;
+  badge?: number;
+  tone: "sky" | "purple";
+  onClick: () => void;
+  /** Keep the bottom bar uncluttered on small phones. */
+  hideMobile?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-white text-[#2b3a4a] shadow-md transition-transform active:scale-90 sm:size-11 ${
+        hideMobile ? "hidden sm:flex" : ""
+      } ${
+        tone === "sky"
+          ? "bg-gradient-to-br from-sky-200 to-sky-400"
+          : "bg-gradient-to-br from-fuchsia-200 to-purple-400"
+      }`}
+    >
+      <Icon className="size-4" />
+      {badge !== undefined && badge > 0 && (
+        <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-white bg-red-500 text-[10px] font-extrabold text-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** Shared bottom-sheet chrome for in-game panels. */
+function GameSheet({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 z-30 bg-black/45 backdrop-blur-[2px]"
+      />
+      <motion.div
+        {...sheetPanel}
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg rounded-t-3xl border border-b-0 border-border bg-card p-5 shadow-2xl sm:p-6"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-extrabold tracking-tight">{title}</h2>
+            {subtitle && (
+              <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 rounded-full"
+            onClick={onClose}
+            aria-label="Kapat"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+        {children}
+      </motion.div>
+    </>
+  );
+}
+
+/** Player identity card. */
+function ProfileSheet({
+  username,
+  config,
+  equipped,
+  coins,
+  items,
+  onClose,
+  onEdit,
+}: {
+  username: string;
+  config: AvatarConfig;
+  equipped: string[];
+  coins: number;
+  items: string[];
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <GameSheet title={`👤 ${username}`} subtitle="Sanalika Kimliği" onClose={onClose}>
+      <div className="mt-5 flex items-center gap-5">
+        <div className="relative shrink-0">
+          <AvatarPreview config={config} className="block h-32 w-auto" />
+          <EquippedItems
+            equipped={equipped}
+            className="pointer-events-none absolute inset-0 h-32 w-auto"
+          />
+        </div>
+        <div className="space-y-2 text-sm">
+          <p className="flex items-center gap-2 font-extrabold">
+            <span className="text-lg">{CURRENCY_EMOJI}</span> {formatCoins(coins)} SP
+          </p>
+          <p className="flex items-center gap-2 font-extrabold">
+            <span className="text-lg">🎒</span> {items.length} ürün
+          </p>
+          <p className="flex items-center gap-2 font-bold text-muted-foreground">
+            <span className="size-2 rounded-full bg-[#28c840]" /> Çevrimiçi
+          </p>
+        </div>
+      </div>
+      <Button className="mt-6 w-full rounded-full" onClick={onEdit}>
+        Stüdyo'da düzenle
+      </Button>
+    </GameSheet>
+  );
+}
+
+/** Quick-travel list of the street stalls + the daily gift box. */
+function StallsSheet({
+  onClose,
+  onGo,
+}: {
+  onClose: () => void;
+  onGo: (x: number, y: number, label: string) => void;
+}) {
+  return (
+    <GameSheet
+      title="🗺️ Tezgâhlar"
+      subtitle="Bir yer seç — karakterin oraya kadar yürür."
+      onClose={onClose}
+    >
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        {VENDORS.map((v) => (
+          <div
+            key={v.id}
+            className="flex items-center gap-3 rounded-2xl border border-border/70 bg-background p-3"
+          >
+            <span className="text-2xl">{v.emoji}</span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-extrabold">{v.short}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{v.name}</p>
+            </div>
+            <Button
+              size="sm"
+              className="rounded-full"
+              onClick={() => onGo(v.x, v.y - 90, v.short)}
+            >
+              Git
+            </Button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onGo(GIFT_BOX.x, GIFT_BOX.y - 50, "Hediye kutusu")}
+          className="flex items-center gap-3 rounded-2xl border border-dashed border-border bg-background p-3 text-left transition-colors hover:bg-accent"
+        >
+          <span className="text-2xl">🎁</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-extrabold">Hediye kutusu</p>
+            <p className="text-[11px] text-muted-foreground">Günlük +150 SP</p>
+          </div>
+          <span className="text-xs font-extrabold text-primary">Git</span>
+        </button>
+      </div>
+    </GameSheet>
+  );
+}
+
 type Interaction =
   | { type: "vendor"; vendorId: string }
   | { type: "gift" }
@@ -119,6 +328,10 @@ export default function World() {
   const nextIdRef = useRef(1);
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatOpenRef = useRef(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [stallsOpen, setStallsOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState("");
+  const targetRef = useRef<{ x: number; y: number } | null>(null);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -179,6 +392,20 @@ export default function World() {
       if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
       vx += joyRef.current.x;
       vy += joyRef.current.y;
+      // Auto-walk target (e.g. picked from the stalls map).
+      const target = targetRef.current;
+      if (target) {
+        const p = posRef.current;
+        const dx = target.x - p.x;
+        const dy = target.y - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 22) {
+          targetRef.current = null;
+        } else {
+          vx = dx / dist;
+          vy = dy / dist;
+        }
+      }
       const len = Math.hypot(vx, vy);
       const moving = len > 0.05;
       if (len > 1) {
@@ -333,6 +560,14 @@ export default function World() {
     setChatOpen(false);
   };
 
+  /** Auto-walk toward a spot on the street (stalls map / gift box). */
+  const goTo = useCallback((x: number, y: number, label: string) => {
+    targetRef.current = { x, y };
+    setStallsOpen(false);
+    setProfileOpen(false);
+    toast.info(`${label} yoluna çıkıldı 🚶`);
+  }, []);
+
   // Street greeting + vendors occasionally chatting keeps the street alive.
   useEffect(() => {
     appendMessage({
@@ -390,12 +625,44 @@ export default function World() {
       : null;
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#bfe3ff] text-foreground select-none">
-      {/* The street fills the whole screen; HUD floats on top of it. */}
-      <main
-        ref={containerRef}
-        className="absolute inset-0 touch-none overflow-hidden"
-      >
+    <div className="flex h-dvh items-center justify-center bg-[#e9dcc0] text-foreground select-none">
+      {/* Framed game window: dark top bar, the street, beige control bar. */}
+      <div className="relative flex h-full w-full max-w-[1560px] flex-col overflow-hidden border-4 border-[#3d2f2a]/20 bg-[#33324a] shadow-2xl sm:rounded-[30px]">
+        {/* top bar — wallet & player */}
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-white sm:px-3 sm:py-2">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-full bg-white/10 text-white hover:bg-white/20"
+              onClick={() => navigate("/studio")}
+              aria-label="Stüdyo"
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <span className="hidden text-sm font-extrabold tracking-tight sm:block">
+              {username}
+            </span>
+          </div>
+          <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm font-extrabold">
+            {CURRENCY_EMOJI} {formatCoins(coins)}
+            <span className="text-[10px] font-bold text-white/60">SP</span>
+            <button
+              type="button"
+              onClick={() => goTo(GIFT_BOX.x, GIFT_BOX.y - 50, "Hediye kutusu")}
+              className="flex size-6 items-center justify-center rounded-full bg-[#28c840] text-sm font-extrabold leading-none text-white shadow-md transition-transform active:scale-90"
+              aria-label="Hediye kutusuna git"
+              title="Günlük hediye kutusuna git"
+            >
+              +
+            </button>
+          </span>
+        </div>
+
+        <main
+          ref={containerRef}
+          className="relative min-h-0 flex-1 touch-none overflow-hidden bg-[#bfe3ff]"
+        >
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
@@ -481,84 +748,18 @@ export default function World() {
           </g>
         </svg>
 
-        {/* floating HUD — organized top bar + bottom controls */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 p-3 sm:p-4">
-          <Button
-            variant="outline"
-            size="sm"
-            className="pointer-events-auto rounded-full border-white/60 bg-white/80 shadow-lg backdrop-blur"
-            onClick={() => navigate("/studio")}
-          >
-            <ArrowLeft className="size-4" />
-            <span className="hidden sm:inline">Stüdyo</span>
-          </Button>
-          <span className="hidden items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-sm font-extrabold text-foreground/70 shadow backdrop-blur md:flex">
-            Sanalika Caddesi
-          </span>
-          <div className="pointer-events-auto flex items-center gap-2">
-            <span
-              className="hidden items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-xs font-bold text-foreground/60 shadow backdrop-blur sm:flex"
-              title="Klavye kontrolü"
-            >
-              <Keyboard className="size-3.5" />
-              WASD / ok tuşları
-            </span>
-            <span
-              className="flex items-center gap-1.5 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-sm font-extrabold shadow-lg backdrop-blur"
-              title="Sanalika Parası"
-            >
-              {CURRENCY_EMOJI} {formatCoins(coins)}{" "}
-              <span className="text-[10px] font-bold text-foreground/50">
-                SP
-              </span>
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="relative rounded-full border-white/60 bg-white/80 shadow-lg backdrop-blur"
-              onClick={() => setBagOpen(true)}
-              aria-label="Çantam"
-            >
-              <Backpack className="size-4" />
-              <span className="hidden sm:inline">Çanta</span>
-              {items.length > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground">
-                  {items.length}
-                </span>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* bottom controls: joystick (left) + chat (right) */}
-        {!chatOpen && (
-          <Joystick
-            onMove={handleMove}
-            className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-6 z-20"
-          />
-        )}
-        {!chatOpen && (
-          <div className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-5 z-20 flex flex-col items-end gap-2">
-            <Button
-              size="icon"
-              className="relative size-13 rounded-full border-2 border-white/70 bg-primary text-primary-foreground shadow-xl backdrop-blur hover:bg-primary/90"
-              onClick={openChat}
-              aria-label="Sohbeti aç"
-            >
-              <MessageCircle className="size-5" />
-              {unread > 0 && (
-                <span className="unread-pulse absolute -right-1 -top-1 flex size-6 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[11px] font-extrabold text-white">
-                  {unread > 9 ? "9+" : unread}
-                </span>
-              )}
-            </Button>
-          </div>
-        )}
+        {/* joystick — bottom-left inside the street view */}
+        <Joystick
+          onMove={handleMove}
+          className="absolute bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-5 z-20"
+        />
 
         {/* interaction prompt */}
         {!shopVendor &&
           !bagOpen &&
           !chatOpen &&
+          !profileOpen &&
+          !stallsOpen &&
           interaction !== null &&
           (activeVendor !== null || interaction.type === "gift") && (
             <div className="pointer-events-none absolute inset-x-0 bottom-40 z-20 flex justify-center px-4 sm:bottom-8">
@@ -610,7 +811,79 @@ export default function World() {
               </div>
             </div>
           )}
-      </main>
+        </main>
+
+        {/* bottom control bar — chat input in the center, like Sanalika */}
+        <div className="flex items-center gap-1.5 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => navigate("/studio")} />
+            <BarBtn
+              tone="sky"
+              icon={UserRound}
+              label="Profilim"
+              hideMobile
+              onClick={() => setProfileOpen(true)}
+            />
+            <BarBtn tone="sky" icon={Backpack} label="Çanta" badge={items.length} onClick={() => setBagOpen(true)} />
+            <BarBtn
+              tone="sky"
+              icon={Footprints}
+              label="Tezgâhlar"
+              hideMobile
+              onClick={() => setStallsOpen(true)}
+            />
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend(chatDraft);
+              setChatDraft("");
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2"
+          >
+            <input
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              placeholder="Merhaba Sanalika!"
+              maxLength={120}
+              autoComplete="off"
+              aria-label="Sohbet mesajı"
+              className="h-10 min-w-0 flex-1 rounded-full border-2 border-white bg-white px-4 text-sm font-semibold text-foreground shadow-inner outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+            />
+            <button
+              type="submit"
+              className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform active:scale-90 sm:flex"
+              aria-label="Mesajı gönder"
+            >
+              <Send className="size-4" />
+            </button>
+          </form>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <BarBtn tone="purple" icon={MessageCircle} label="Sohbet" badge={unread} onClick={openChat} />
+            <BarBtn
+              tone="purple"
+              icon={Puzzle}
+              label="Yakında"
+              hideMobile
+              onClick={() => toast.info("Bu özellik yakında geliyor! 🔧")}
+            />
+            <BarBtn
+              tone="purple"
+              icon={Wand2}
+              label="Yakında"
+              hideMobile
+              onClick={() => toast.info("Bu özellik yakında geliyor! ✨")}
+            />
+            <BarBtn
+              tone="purple"
+              icon={Flower2}
+              label="Yakında"
+              hideMobile
+              onClick={() => toast.info("Bu özellik yakında geliyor! 🌸")}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* sheets live outside the touch-none game area so their lists scroll */}
       <AnimatePresence>
@@ -640,6 +913,25 @@ export default function World() {
             username={username}
             onSend={handleSend}
             onClose={closeChat}
+          />
+        )}
+        {profileOpen && (
+          <ProfileSheet
+            key="profile"
+            username={username}
+            config={config}
+            equipped={equipped}
+            coins={coins}
+            items={items}
+            onClose={() => setProfileOpen(false)}
+            onEdit={() => navigate("/studio")}
+          />
+        )}
+        {stallsOpen && (
+          <StallsSheet
+            key="stalls"
+            onClose={() => setStallsOpen(false)}
+            onGo={goTo}
           />
         )}
       </AnimatePresence>
