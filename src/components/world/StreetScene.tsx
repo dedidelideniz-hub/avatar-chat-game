@@ -42,6 +42,14 @@ const VENDOR_AVATARS: Record<string, AvatarConfig> = {
     pants: "#1e3a8a",
     shoes: "#ef4444",
   },
+  vip: {
+    skin: "#f5c19a",
+    hair: "short",
+    hairColor: "#f59e0b",
+    shirt: "#1e293b",
+    pants: "#0f172a",
+    shoes: "#92400e",
+  },
 };
 
 const STALL_PRODUCTS: Record<string, string> = {
@@ -49,6 +57,7 @@ const STALL_PRODUCTS: Record<string, string> = {
   balon: "🎈🌈",
   oyuncak: "🧸🚗",
   moda: "🕶️👒",
+  vip: "👑💎",
 };
 
 interface BuildingProps {
@@ -224,8 +233,8 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
         <rect x={-awningW / 2} y={-116} width={awningW} height={44} rx={6} fill="#3d2f2a" opacity={0.08} />
       </g>
       {/* vendor standing behind the counter — gently bobbing. The vendor is
-          the tap target that opens the market page, so a soft pulsing halo
-          (no text) marks it as tappable. */}
+          the tap target that opens the market page (or the VIP page), so a
+          soft pulsing halo (no text) marks it as tappable. */}
       <g className="vendor-sprite">
         <ellipse className="vendor-halo" cx="0" cy="-84" rx="34" ry="40" />
         <g

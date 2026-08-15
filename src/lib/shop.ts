@@ -11,6 +11,116 @@ export const STARTING_COINS = 500;
 export const DAILY_BONUS = 150;
 export const DAILY_BONUS_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Speech-bubble colors. Everyone gets the default (white) bubble; the
+ * colored bubbles are a VIP membership perk (see VIP_VENDOR_ID below).
+ */
+export interface BubbleColor {
+  id: string;
+  name: string;
+  hex: string; // bubble fill
+  text: string; // text drawn on the bubble
+  stroke: string; // outline (white border like the classic comic bubble)
+  strokeOpacity: number;
+  vip: boolean; // true → requires an active VIP membership
+}
+
+export const BUBBLE_COLORS: BubbleColor[] = [
+  {
+    id: "beyaz",
+    name: "Beyaz",
+    hex: "#ffffff",
+    text: "#2b2320",
+    stroke: "#3d2f2a",
+    strokeOpacity: 0.22,
+    vip: false,
+  },
+  {
+    id: "nane",
+    name: "Nane",
+    hex: "#14b8a6",
+    text: "#ffffff",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "sari",
+    name: "Sarı",
+    hex: "#f7c948",
+    text: "#2b2320",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "gri",
+    name: "Gri",
+    hex: "#9ca3af",
+    text: "#1f2937",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "siyah",
+    name: "Siyah",
+    hex: "#1f2937",
+    text: "#ffffff",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "pembe",
+    name: "Pembe",
+    hex: "#ec4899",
+    text: "#ffffff",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "kirmizi",
+    name: "Kırmızı",
+    hex: "#ef4444",
+    text: "#ffffff",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "antrasit",
+    name: "Antrasit",
+    hex: "#4b5563",
+    text: "#ffffff",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+  {
+    id: "turuncu",
+    name: "Turuncu",
+    hex: "#f97316",
+    text: "#ffffff",
+    stroke: "#ffffff",
+    strokeOpacity: 0.95,
+    vip: true,
+  },
+];
+
+export const DEFAULT_BUBBLE_COLOR = "beyaz";
+
+export function bubbleColorOf(id: string): BubbleColor {
+  return BUBBLE_COLORS.find((c) => c.id === id) ?? BUBBLE_COLORS[0];
+}
+
+/** VIP membership — unlocks every speech-bubble color at the VIP stand. */
+export const VIP_VENDOR_ID = "vip";
+export const VIP_PRICE = 1500; // Sanalika Parası
+export const VIP_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
+export const VIP_DURATION_DAYS = 30;
+
 export function formatCoins(amount: number): string {
   return amount.toLocaleString("tr-TR");
 }
@@ -99,6 +209,16 @@ export const VENDORS: Vendor[] = [
     color: "#a855f7",
     accent: "#ffd166",
     x: 1340,
+    y: 745,
+  },
+  {
+    id: VIP_VENDOR_ID,
+    name: "Kraliyet VIP Köşesi",
+    short: "VIP Üyelik",
+    emoji: "👑",
+    color: "#f59e0b",
+    accent: "#ffd166",
+    x: 820,
     y: 745,
   },
 ];
@@ -300,6 +420,7 @@ export const OBSTACLES: Rect[] = [
   // vendor stalls (counter front)
   { x: 200, y: 655, w: 160, h: 105 },
   { x: 540, y: 655, w: 160, h: 105 },
+  { x: 740, y: 655, w: 160, h: 105 },
   { x: 900, y: 655, w: 160, h: 105 },
   { x: 1260, y: 655, w: 160, h: 105 },
   // top sidewalk trees (x 200 / 820 / 1420)

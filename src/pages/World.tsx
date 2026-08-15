@@ -2,14 +2,17 @@
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
-import { BagSheet, ShopSheet } from "@/components/world/ShopSheets";
+import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
 import {
+  bubbleColorOf,
+  BUBBLE_COLORS,
   CURRENCY_EMOJI,
   DAILY_BONUS_MS,
+  DEFAULT_BUBBLE_COLOR,
   formatCoins,
   GIFT_BOX,
   GIFT_CLICK_RADIUS,
@@ -17,6 +20,7 @@ import {
   PLAYER_RADIUS,
   PLAYER_SPEED,
   VENDORS,
+  VIP_VENDOR_ID,
   WALKABLE_ZONES,
   WORLD_BOUNDS,
   vendorAtPoint,
@@ -55,6 +59,7 @@ const VENDOR_PHRASES: Record<string, string[]> = {
   balon: ["Balon alır mısın? 🎈", "Gökkuşağı balonu kalmadı!", "Rengârenk balonlar!"],
   oyuncak: ["Oyuncaklarım çok tatlı 🧸", "Ayıcık sana sarılmak ister!", "Zıpzıp topu kaçırma!"],
   moda: ["Yeni sezon burada! 🕶️", "Şapka sana çok yakışır!", "Caddede şıklık önemli!"],
+  vip: ["Sana özel fırsat! 👑", "Balonun rengârenk olsun!", "VIP üyelikle her renk senin!"],
 };
 
 const sheetPanel = {
@@ -162,6 +167,7 @@ function ProfileSheet({
   equipped,
   coins,
   items,
+  isVip,
   onClose,
   onEdit,
 }: {
@@ -170,6 +176,7 @@ function ProfileSheet({
   equipped: string[];
   coins: number;
   items: string[];
+  isVip: boolean;
   onClose: () => void;
   onEdit: () => void;
 }) {
@@ -184,6 +191,11 @@ function ProfileSheet({
           />
         </div>
         <div className="space-y-2 text-sm">
+          {isVip && (
+            <p className="flex w-fit items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-3 py-1 text-xs font-extrabold text-white shadow-sm">
+              👑 VIP Üye
+            </p>
+          )}
           <p className="flex items-center gap-2 font-extrabold">
             <span className="text-lg">{CURRENCY_EMOJI}</span> {formatCoins(coins)} SP
           </p>
@@ -277,6 +289,7 @@ export default function World() {
   const navigate = useNavigate();
   const profile = useQuery(api.profiles.getMyProfile);
   const claimDaily = useMutation(api.profiles.claimDailyBonus);
+  const setBubbleColor = useMutation(api.profiles.setBubbleColor);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -302,6 +315,7 @@ export default function World() {
   const chatOpenRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [stallsOpen, setStallsOpen] = useState(false);
+  const [vipOpen, setVipOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
@@ -312,6 +326,10 @@ export default function World() {
   const equipped = profile?.equipped ?? [];
   const username = profile?.username ?? "Misafir";
   const config = profile?.avatar ?? DEFAULT_AVATAR;
+  const isVip = profile?.vip ?? false;
+  const vipUntil = profile?.vipUntil ?? 0;
+  const bubbleColorId = profile?.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
+  const bubbleDef = bubbleColorOf(bubbleColorId);
   const giftClaimed =
     profile !== undefined &&
     (profile?.lastDailyClaim ?? 0) > Date.now() - DAILY_BONUS_MS;
@@ -490,12 +508,12 @@ export default function World() {
     };
   }, []);
 
-  // Name tag under the player follows the saved username.
+  // Name tag under the player follows the saved username (crown for VIPs).
   useEffect(() => {
     if (nameTagRef.current) {
-      nameTagRef.current.textContent = username;
+      nameTagRef.current.textContent = `${isVip ? "👑 " : ""}${username}`;
     }
-  }, [username]);
+  }, [username, isVip]);
 
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev.slice(-40), msg]);
@@ -528,6 +546,29 @@ export default function World() {
     chatOpenRef.current = false;
     setChatOpen(false);
   };
+
+  /** Pick a speech-bubble color (VIP colors are enforced server-side). */
+  const handleSelectColor = useCallback(
+    async (colorId: string) => {
+      try {
+        await setBubbleColor({ colorId });
+        const def = BUBBLE_COLORS.find((c) => c.id === colorId);
+        toast.success(`${def?.name ?? "Renk"} balon rengi seçildi! 🎨`);
+      } catch (error) {
+        console.error("Balon rengi hatası:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Renk değiştirilemedi.",
+        );
+      }
+    },
+    [setBubbleColor],
+  );
+
+  /** Close the chat and open the VIP stand page. */
+  const openVipFromChat = useCallback(() => {
+    closeChat();
+    setVipOpen(true);
+  }, []);
 
   /** Auto-walk toward a spot on the street (stalls map / gift box). */
   const goTo = useCallback((x: number, y: number, label: string) => {
@@ -603,7 +644,15 @@ export default function World() {
    */
   const handleWorldClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (shopVendor || bagOpen || chatOpen || profileOpen || stallsOpen) return;
+      if (
+        shopVendor ||
+        bagOpen ||
+        chatOpen ||
+        profileOpen ||
+        stallsOpen ||
+        vipOpen
+      )
+        return;
       const target = e.target as HTMLElement;
       if (target.closest("button")) return;
       const rect = e.currentTarget.getBoundingClientRect();
@@ -615,10 +664,15 @@ export default function World() {
       const wy =
         Math.max(cam.y, 0) +
         ((e.clientY - rect.top) / rect.height) * view.vh;
-      // Tapping the stall itself opens its market page.
+      // Tapping the stall itself opens its market page (VIP stand opens the
+      // membership page instead).
       const vendor = vendorAtPoint(wx, wy);
       if (vendor) {
-        setShopVendor(vendor);
+        if (vendor.id === VIP_VENDOR_ID) {
+          setVipOpen(true);
+        } else {
+          setShopVendor(vendor);
+        }
         return;
       }
       // Tapping the gift box claims the daily bonus.
@@ -634,6 +688,7 @@ export default function World() {
       chatOpen,
       profileOpen,
       stallsOpen,
+      vipOpen,
       pickTarget,
       handleClaim,
     ],
@@ -745,43 +800,48 @@ export default function World() {
                 {username}
               </text>
             </g>
-            {/* speech bubble above the player's head — sender name + message */}
+            {/* speech bubble above the player's head — classic rounded comic
+                bubble with a white border and tail, in the chosen color */}
             {bubble !== null && (
               <g
-                transform={`translate(${-bubbleW / 2} -142)`}
+                transform={`translate(${-bubbleW / 2} -144)`}
                 className="speech-bubble"
               >
                 <rect
                   width={bubbleW}
-                  height={54}
-                  rx={17}
-                  fill="#ffffff"
-                  opacity="0.96"
-                  stroke="#3d2f2a"
-                  strokeOpacity="0.12"
+                  height={58}
+                  rx={22}
+                  fill={bubbleDef.hex}
+                  stroke={bubbleDef.stroke}
+                  strokeOpacity={bubbleDef.strokeOpacity}
+                  strokeWidth={3.5}
                 />
                 <path
-                  d={`M${bubbleW / 2 - 9} 54 L${bubbleW / 2} 66 L${bubbleW / 2 + 9} 54 Z`}
-                  fill="#ffffff"
+                  d={`M${bubbleW / 2 - 11} 58 L${bubbleW / 2} 72 L${bubbleW / 2 + 11} 58 Z`}
+                  fill={bubbleDef.hex}
+                  stroke={bubbleDef.stroke}
+                  strokeOpacity={bubbleDef.strokeOpacity}
+                  strokeWidth={3.5}
+                  strokeLinejoin="round"
                 />
                 <text
                   x={bubbleW / 2}
-                  y={16}
+                  y={19}
                   textAnchor="middle"
-                  fontSize={10}
-                  fontWeight={800}
-                  letterSpacing={0.6}
-                  fill="#7c3aed"
+                  fontSize={10.5}
+                  fontWeight={900}
+                  letterSpacing={0.8}
+                  fill={bubbleDef.text}
                 >
                   {username}
                 </text>
                 <text
                   x={bubbleW / 2}
-                  y={37}
+                  y={41}
                   textAnchor="middle"
-                  fontSize={12}
-                  fontWeight={700}
-                  fill="#2b2320"
+                  fontSize={12.5}
+                  fontWeight={800}
+                  fill={bubbleDef.text}
                 >
                   {bubble}
                 </text>
@@ -890,6 +950,10 @@ export default function World() {
             key="chat"
             messages={messages}
             username={username}
+            bubbleColor={bubbleColorId}
+            isVip={isVip}
+            onSelectColor={handleSelectColor}
+            onOpenVip={openVipFromChat}
             onSend={handleSend}
             onClose={closeChat}
           />
@@ -902,6 +966,7 @@ export default function World() {
             equipped={equipped}
             coins={coins}
             items={items}
+            isVip={isVip}
             onClose={() => setProfileOpen(false)}
             onEdit={() => navigate("/studio")}
           />
@@ -911,6 +976,15 @@ export default function World() {
             key="stalls"
             onClose={() => setStallsOpen(false)}
             onGo={goTo}
+          />
+        )}
+        {vipOpen && (
+          <VipSheet
+            key="vip"
+            coins={coins}
+            isVip={isVip}
+            vipUntil={vipUntil}
+            onClose={() => setVipOpen(false)}
           />
         )}
       </AnimatePresence>

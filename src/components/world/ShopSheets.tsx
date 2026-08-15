@@ -2,14 +2,17 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
-import { Check, Coins, Shirt, X } from "lucide-react";
+import { Check, Coins, Crown as CrownIcon, Shirt, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
+  BUBBLE_COLORS,
   CURRENCY_EMOJI,
   formatCoins,
   getProduct,
   productsOf,
+  VIP_DURATION_DAYS,
+  VIP_PRICE,
   WEAR_SLOT_LABELS,
   type Vendor,
 } from "@/lib/shop";
@@ -305,6 +308,180 @@ export function BagSheet({
               );
             })}
           </div>
+        )}
+      </motion.div>
+    </>
+  );
+}
+
+/** VIP membership — the Kraliyet VIP Köşesi stand. Unlocks every bubble color. */
+export function VipSheet({
+  coins,
+  isVip,
+  vipUntil,
+  onClose,
+}: {
+  coins: number;
+  isVip: boolean;
+  vipUntil: number;
+  onClose: () => void;
+}) {
+  const buyVip = useMutation(api.profiles.buyVip);
+  const [buying, setBuying] = useState(false);
+  const cantAfford = coins < VIP_PRICE;
+
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((vipUntil - Date.now()) / (24 * 60 * 60 * 1000)),
+  );
+
+  const handleBuy = async () => {
+    setBuying(true);
+    try {
+      await buyVip();
+      toast.success(
+        "👑 VIP üyelik aktif! Tüm balon renkleri artık senin — sohbetten seç.",
+      );
+    } catch (error) {
+      console.error("VIP satın alma hatası:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Satın alınamadı. Tekrar dene.",
+      );
+    } finally {
+      setBuying(false);
+    }
+  };
+
+  return (
+    <>
+      <SheetBackdrop onClose={onClose} />
+      <motion.div
+        {...sheetPanel}
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg rounded-t-3xl border border-b-0 border-border bg-card p-5 shadow-2xl sm:p-6"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-extrabold tracking-tight">
+              👑 Kraliyet VIP Köşesi
+            </h2>
+            <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+              Cadderin en ayrıcalıklı üyeliği — tüm balon renkleri kapıda.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-extrabold"
+              title="Sanalika Parası"
+            >
+              {CURRENCY_EMOJI} {formatCoins(coins)} SP
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 rounded-full"
+              onClick={onClose}
+              aria-label="VIP köşesini kapat"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
+        </div>
+
+        {isVip ? (
+          <div className="mt-6 rounded-2xl border border-amber-300/60 bg-amber-50 p-4 text-center dark:bg-amber-950/40">
+            <span className="text-4xl">👑</span>
+            <p className="mt-2 text-base font-extrabold text-amber-700 dark:text-amber-300">
+              VIP üyeliğin aktif!
+            </p>
+            <p className="mt-1 text-sm font-semibold text-amber-700/80 dark:text-amber-300/80">
+              {daysLeft} gün kaldı — tüm balon renklerini sohbetten seçebilirsin.
+            </p>
+            <Button
+              className="mt-4 w-full rounded-full"
+              variant="outline"
+              onClick={handleBuy}
+              disabled={buying || cantAfford}
+            >
+              {buying ? (
+                <span className="size-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+              ) : (
+                <>
+                  <CrownIcon className="size-4" /> Süreyi uzat ({VIP_PRICE} SP)
+                </>
+              )}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="mt-5 space-y-2.5">
+              {[
+                {
+                  emoji: "🎨",
+                  title: "9 balon rengi",
+                  desc: "Kırmızı, turuncu, siyah, pembe... hepsi senin.",
+                },
+                {
+                  emoji: "👑",
+                  title: "Altın VIP rozeti",
+                  desc: "Karakterinin üstünde ve isminin yanında parlar.",
+                },
+                {
+                  emoji: "💎",
+                  title: `${VIP_DURATION_DAYS} gün ayrıcalık`,
+                  desc: "Tek ödeme, bir ay boyunca tüm renkler açık.",
+                },
+              ].map((benefit) => (
+                <div
+                  key={benefit.title}
+                  className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background p-3"
+                >
+                  <span className="text-2xl">{benefit.emoji}</span>
+                  <div>
+                    <p className="text-sm font-extrabold">{benefit.title}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {benefit.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* preview of the VIP colors */}
+            <div className="mt-4 flex items-center justify-between rounded-2xl border border-border/70 bg-background p-3">
+              <span className="text-xs font-extrabold">Renkler</span>
+              <div className="flex gap-1.5">
+                {BUBBLE_COLORS.slice(1).map((c) => (
+                  <span
+                    key={c.id}
+                    className="size-5 rounded-full border border-black/10"
+                    style={{ backgroundColor: c.hex }}
+                    title={c.name}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <Button
+              className="mt-5 w-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg hover:from-amber-600 hover:to-yellow-600"
+              onClick={handleBuy}
+              disabled={buying || cantAfford}
+            >
+              {buying ? (
+                <span className="size-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <>
+                  <CrownIcon className="size-4" />
+                  {VIP_PRICE} SP ile VIP ol
+                </>
+              )}
+            </Button>
+            {cantAfford && (
+              <p className="mt-2 text-center text-[11px] font-bold text-muted-foreground">
+                {formatCoins(coins)} SP'n var — günlük hediye kutusu +150 SP
+                veriyor, tezgâhlara uğramayı unutma.
+              </p>
+            )}
+          </>
         )}
       </motion.div>
     </>

@@ -3,9 +3,13 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
+  BUBBLE_COLORS,
   DAILY_BONUS,
   DAILY_BONUS_MS,
+  DEFAULT_BUBBLE_COLOR,
   STARTING_COINS,
+  VIP_DURATION_MS,
+  VIP_PRICE,
   WEAR_SLOT_CAPACITY,
   getProduct,
   type WearSlot,
@@ -27,6 +31,9 @@ function withWallet(profile: Doc<"profiles">) {
     coins: profile.coins ?? STARTING_COINS,
     items: profile.items ?? [],
     equipped: profile.equipped ?? [],
+    bubbleColor: profile.bubbleColor ?? DEFAULT_BUBBLE_COLOR,
+    // VIP is a time-boxed membership — derive the live flag at read time.
+    vip: (profile.vipUntil ?? 0) > Date.now(),
   };
 }
 
@@ -223,6 +230,81 @@ export const setEquipped = mutation({
       updatedAt: Date.now(),
     });
     return next;
+  },
+});
+
+/**
+ * Switch the speech-bubble color. The default color is free for everyone;
+ * colored bubbles require an active VIP membership.
+ */
+export const setBubbleColor = mutation({
+  args: { colorId: v.string() },
+  handler: async (ctx, { colorId }) => {
+    const color = BUBBLE_COLORS.find((c) => c.id === colorId);
+    if (color === undefined) {
+      throw new Error("Bu balon rengi yok.");
+    }
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    if (color.vip && (profile.vipUntil ?? 0) <= Date.now()) {
+      throw new Error(
+        "Bu renk VIP üyeliğe özel. VIP üyeliği satın almak için caddedeki Kraliyet VIP Köşesi'ne uğra.",
+      );
+    }
+    await ctx.db.patch(profile._id, {
+      bubbleColor: colorId,
+      updatedAt: Date.now(),
+    });
+    return colorId;
+  },
+});
+
+/**
+ * Buy VIP membership at the VIP stand. Grants every bubble color + the VIP
+ * crown badge for VIP_DURATION_MS (30 days); renewing extends the timer.
+ */
+export const buyVip = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    const coins = profile.coins ?? STARTING_COINS;
+    if (coins < VIP_PRICE) {
+      throw new Error(
+        `VIP üyelik ${VIP_PRICE} SP. Şu an ${coins} SP'n var — hediye kutusu ve tezgâhlardan toplamaya devam et.`,
+      );
+    }
+    const now = Date.now();
+    const base = Math.max(profile.vipUntil ?? 0, now);
+    const vipUntil = base + VIP_DURATION_MS;
+    await ctx.db.patch(profile._id, {
+      coins: coins - VIP_PRICE,
+      vipUntil,
+      updatedAt: now,
+    });
+    return withWallet({
+      ...profile,
+      coins: coins - VIP_PRICE,
+      vipUntil,
+    });
   },
 });
 

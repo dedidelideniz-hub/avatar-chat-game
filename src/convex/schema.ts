@@ -51,6 +51,8 @@ const schema = defineSchema(
       items: v.optional(v.array(v.string())), // owned product ids (bag)
       equipped: v.optional(v.array(v.string())), // product ids currently worn
       lastDailyClaim: v.optional(v.number()), // epoch ms of last gift-box claim
+      bubbleColor: v.optional(v.string()), // selected speech-bubble color id
+      vipUntil: v.optional(v.number()), // epoch ms the VIP membership expires
       createdAt: v.number(),
       updatedAt: v.number(),
     })
