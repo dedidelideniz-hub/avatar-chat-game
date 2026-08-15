@@ -223,13 +223,18 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
         ))}
         <rect x={-awningW / 2} y={-116} width={awningW} height={44} rx={6} fill="#3d2f2a" opacity={0.08} />
       </g>
-      {/* vendor standing behind the counter — gently bobbing */}
-      <g
-        className="vendor-idle"
-        style={{ animationDelay: `${((index * 0.7) % 2.6) * -1}s` }}
-      >
-        <g transform={`translate(-27 -120)`}>
-          <AvatarPreview width={54} height={70} config={VENDOR_AVATARS[vendor.id]} />
+      {/* vendor standing behind the counter — gently bobbing. The vendor is
+          the tap target that opens the market page, so a soft pulsing halo
+          (no text) marks it as tappable. */}
+      <g className="vendor-sprite">
+        <ellipse className="vendor-halo" cx="0" cy="-84" rx="34" ry="40" />
+        <g
+          className="vendor-idle"
+          style={{ animationDelay: `${((index * 0.7) % 2.6) * -1}s` }}
+        >
+          <g transform={`translate(-27 -120)`}>
+            <AvatarPreview width={54} height={70} config={VENDOR_AVATARS[vendor.id]} />
+          </g>
         </g>
       </g>
       {/* the balloon seller waves a hand under her balloons */}

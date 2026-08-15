@@ -223,6 +223,35 @@
   animation: vendor-idle 2.6s ease-in-out infinite;
 }
 
+/* Vendors are tappable — a soft halo pulses behind them (no text). */
+@keyframes vendor-halo-pulse {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(1.06);
+  }
+}
+.vendor-sprite {
+  cursor: pointer;
+}
+.vendor-halo {
+  fill: #fff7e0;
+  stroke: #ffffff;
+  stroke-width: 2.5;
+  stroke-dasharray: 5 8;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: vendor-halo-pulse 2.6s ease-in-out infinite;
+  transition: opacity 0.2s ease;
+}
+.vendor-sprite:hover .vendor-halo {
+  opacity: 0.85;
+}
+
 /* Waving hand (balloon seller). */
 @keyframes wave-swing {
   0%,

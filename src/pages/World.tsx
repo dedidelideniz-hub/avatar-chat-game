@@ -49,8 +49,6 @@ const WORLD_H = 900;
 const PLAYER_W = 70;
 const PLAYER_H = 96;
 const SPAWN = { x: 800, y: 760 };
-/** Where vendor speech bubbles appear (above the stalls, world coords). */
-const VENDOR_BUBBLE_Y = 595;
 
 /** Random things the vendors say in the street chat. */
 const VENDOR_PHRASES: Record<string, string[]> = {
@@ -59,35 +57,6 @@ const VENDOR_PHRASES: Record<string, string[]> = {
   oyuncak: ["Oyuncaklarım çok tatlı 🧸", "Ayıcık sana sarılmak ister!", "Zıpzıp topu kaçırma!"],
   moda: ["Yeni sezon burada! 🕶️", "Şapka sana çok yakışır!", "Caddede şıklık önemli!"],
 };
-
-/** A speech bubble floating above a stall. */
-function VendorBubble({ x, text }: { x: number; text: string }) {
-  const w = Math.min(150, 30 + text.length * 6.5);
-  return (
-    <g transform={`translate(${x - w / 2} ${VENDOR_BUBBLE_Y})`} className="speech-bubble">
-      <rect
-        width={w}
-        height={36}
-        rx={18}
-        fill="#ffffff"
-        opacity="0.95"
-        stroke="#3d2f2a"
-        strokeOpacity="0.12"
-      />
-      <path d={`M${w / 2 - 8} 36 L${w / 2} 46 L${w / 2 + 8} 36 Z`} fill="#ffffff" />
-      <text
-        x={w / 2}
-        y={23}
-        textAnchor="middle"
-        fontSize={12}
-        fontWeight={700}
-        fill="#2b2320"
-      >
-        {text}
-      </text>
-    </g>
-  );
-}
 
 const sheetPanel = {
   initial: { y: 40, opacity: 0 },
@@ -329,7 +298,6 @@ export default function World() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [unread, setUnread] = useState(0);
   const [bubble, setBubble] = useState<string | null>(null);
-  const [vendorBubble, setVendorBubble] = useState<{ x: number; text: string } | null>(null);
   const nextIdRef = useRef(1);
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatOpenRef = useRef(false);
@@ -581,11 +549,13 @@ export default function World() {
   }, []);
 
   // Street greeting + vendors occasionally chatting keeps the street alive.
+  // Their chat only lands in the chat panel — no speech bubbles float above
+  // the stalls, so no text pops up while walking around the market.
   useEffect(() => {
     appendMessage({
       id: nextIdRef.current++,
       from: "Cadde",
-      text: "👋 Sanalika Caddesi'ne hoş geldin! Satıcılarla sohbet edebilirsin.",
+      text: "👋 Sanalika Caddesi'ne hoş geldin! Satıcıya dokunup market sayfasını açabilirsin.",
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
@@ -599,8 +569,6 @@ export default function World() {
           text,
           color: vendor.color,
         });
-        setVendorBubble({ x: vendor.x, text });
-        setTimeout(() => setVendorBubble(null), 3600);
         schedule();
       }, 9000 + Math.random() * 7000);
     };
@@ -636,8 +604,10 @@ export default function World() {
   };
 
   /**
-   * Click/tap on the street: a stall opens its market page directly, the gift
-   * box claims the daily bonus, anywhere else walks the character there.
+   * Click/tap on the street: tapping the vendor character opens its market
+   * page (animated bottom sheet), the gift box claims the daily bonus, and
+   * anywhere else walks the character there. Approaching stalls shows no
+   * labels or popup text — the stalls only respond to a tap on the vendor.
    */
   const handleWorldClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -746,9 +716,6 @@ export default function World() {
               <circle cx="0" cy="0" r="4" fill="#ff6b4a" />
             </g>
           )}
-
-          {/* vendor speech bubble */}
-          {vendorBubble !== null && <VendorBubble x={vendorBubble.x} text={vendorBubble.text} />}
 
           {/* player */}
           <g ref={playerRef}>

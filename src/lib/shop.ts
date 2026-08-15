@@ -60,10 +60,6 @@ export interface Vendor {
   y: number; // ground line of the stall
 }
 
-/** Where the player can stand to interact with a stall. */
-export const VENDOR_INTERACT_X = 735;
-export const VENDOR_INTERACT_RADIUS = 150;
-
 export const VENDORS: Vendor[] = [
   {
     id: "dondurma",
@@ -248,17 +244,23 @@ export const GIFT_BOX = {
 /** Click radius on the gift box itself (world coordinates). */
 export const GIFT_CLICK_RADIUS = 70;
 
-/** Bounding box of a stall drawing (awning + vendor + counter). */
-const STALL_CLICK_BOX = { halfW: 95, top: 555, bottom: 765 };
+/**
+ * Where the vendor person stands behind each counter. The market page opens
+ * only when tapping the vendor character itself — the rest of the stall
+ * (awning, counter, wares) is scenery. The sprite is drawn at
+ * translate(vendor.x - 27, vendor.y - 120) at 54x70 world units; the box
+ * adds a small tap margin so the target stays comfortable on phones.
+ */
+const VENDOR_CLICK_BOX = { halfW: 34, top: -124, bottom: -48 };
 
-/** The stall whose drawing contains this point, if any. */
+/** The vendor whose character contains this point, if any. */
 export function vendorAtPoint(x: number, y: number): Vendor | undefined {
   return VENDORS.find(
     (v) =>
-      x >= v.x - STALL_CLICK_BOX.halfW &&
-      x <= v.x + STALL_CLICK_BOX.halfW &&
-      y >= STALL_CLICK_BOX.top &&
-      y <= STALL_CLICK_BOX.bottom,
+      x >= v.x - VENDOR_CLICK_BOX.halfW &&
+      x <= v.x + VENDOR_CLICK_BOX.halfW &&
+      y >= v.y + VENDOR_CLICK_BOX.top &&
+      y <= v.y + VENDOR_CLICK_BOX.bottom,
   );
 }
 
