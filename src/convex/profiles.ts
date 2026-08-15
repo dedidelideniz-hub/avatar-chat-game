@@ -1,6 +1,13 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import {
+  DAILY_BONUS,
+  DAILY_BONUS_MS,
+  STARTING_COINS,
+  getProduct,
+} from "../lib/shop";
 
 export const avatarValidator = v.object({
   skin: v.string(),
@@ -11,9 +18,18 @@ export const avatarValidator = v.object({
   shoes: v.string(),
 });
 
+/** Older profiles predate the wallet fields; fill sensible defaults. */
+function withWallet(profile: Doc<"profiles">) {
+  return {
+    ...profile,
+    coins: profile.coins ?? STARTING_COINS,
+    items: profile.items ?? [],
+  };
+}
+
 /**
- * The current user's profile (username + avatar). Returns null if the user
- * has not created one yet.
+ * The current user's profile (username + avatar + wallet). Returns null if
+ * the user has not created one yet.
  */
 export const getMyProfile = query({
   args: {},
@@ -22,10 +38,11 @@ export const getMyProfile = query({
     if (userId === null) {
       return null;
     }
-    return await ctx.db
+    const profile = await ctx.db
       .query("profiles")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .first();
+    return profile === null ? null : withWallet(profile);
   },
 });
 
@@ -42,7 +59,7 @@ export const getByUsername = query({
     if (profile === null) {
       return null;
     }
-    return profile;
+    return withWallet(profile);
   },
 });
 
@@ -98,9 +115,88 @@ export const saveProfile = mutation({
       userId,
       username: trimmed,
       avatar,
+      coins: STARTING_COINS,
+      items: [],
       createdAt: now,
       updatedAt: now,
     });
-    return { _id: id, userId, username: trimmed, avatar, createdAt: now, updatedAt: now };
+    return { _id: id, userId, username: trimmed, avatar, coins: STARTING_COINS, items: [], createdAt: now, updatedAt: now };
+  },
+});
+
+/**
+ * Buy a product from a street vendor. Deducts Sanalika Parası and adds the
+ * item to the player's bag (each product can be owned once).
+ */
+export const buyItem = mutation({
+  args: { productId: v.string() },
+  handler: async (ctx, { productId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const product = getProduct(productId);
+    if (product === undefined) {
+      throw new Error("Bu ürün caddede yok.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    const coins = profile.coins ?? STARTING_COINS;
+    const items = profile.items ?? [];
+    if (items.includes(productId)) {
+      throw new Error("Bu ürün zaten çantanda!");
+    }
+    if (coins < product.price) {
+      throw new Error(
+        `Yeterli Sanalika Paran yok — ${product.price} SP gerekiyor.`,
+      );
+    }
+    await ctx.db.patch(profile._id, {
+      coins: coins - product.price,
+      items: [...items, productId],
+      updatedAt: Date.now(),
+    });
+    return withWallet({
+      ...profile,
+      coins: coins - product.price,
+      items: [...items, productId],
+    });
+  },
+});
+
+/**
+ * Claim the daily gift box on the street. Grants DAILY_BONUS coins, once per
+ * 24 hours.
+ */
+export const claimDailyBonus = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    const last = profile.lastDailyClaim ?? 0;
+    if (Date.now() - last < DAILY_BONUS_MS) {
+      throw new Error("Bugünkü hediye kutusu çoktan toplandı. Yarın tekrar uğra!");
+    }
+    const coins = (profile.coins ?? STARTING_COINS) + DAILY_BONUS;
+    await ctx.db.patch(profile._id, {
+      coins,
+      lastDailyClaim: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return coins;
   },
 });

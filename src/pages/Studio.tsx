@@ -17,7 +17,7 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
-import { Check, LogOut, Shuffle, Sparkles, UserRound } from "lucide-react";
+import { Check, Gamepad2, LogOut, Shuffle, Sparkles, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -328,6 +328,17 @@ export default function Studio() {
                 selected={config.shoes}
                 onSelect={(shoes) => setConfig((c) => ({ ...c, shoes }))}
               />
+
+              {hasProfile && (
+                <Button
+                  type="button"
+                  className="w-full rounded-full text-base"
+                  onClick={() => navigate("/world")}
+                >
+                  <Gamepad2 className="size-4" />
+                  Dünyaya gir — caddeye adım at
+                </Button>
+              )}
 
               <div className="flex flex-col gap-3 border-t border-border/70 pt-6 sm:flex-row">
                 <Button

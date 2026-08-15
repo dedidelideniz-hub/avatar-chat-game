@@ -186,9 +186,9 @@ const FEATURES = [
   {
     icon: Map,
     color: "bg-accent text-accent-foreground",
-    title: "Dünyalar & Odalar",
-    desc: "Kafe, plaj, şehir meydanı... Kapılardan geçerek yeni mekanlar keşfet, her odada başka bir atmosfer.",
-    badge: "Yakında",
+    title: "Sanal Cadde",
+    desc: "Cadde boyunca yürü, tezgâhların önünde dur, satıcılardan alışveriş yap. Çantan ve Sanalika Paran cebinde.",
+    badge: "Canlı",
   },
   {
     icon: Users2,
@@ -262,11 +262,14 @@ export default function Landing() {
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="rounded-full px-7 text-base">
-                <a href="#features">Nasıl çalışır?</a>
+                <Link to="/world">
+                  <Map className="size-5" />
+                  Dünyayı keşfet
+                </Link>
               </Button>
             </div>
             <div className="mt-8 flex flex-wrap gap-2">
-              {["Ücretsiz", "Tarayıcıda oyna", "E-posta bile gerekmez"].map((chip) => (
+              {["Ücretsiz", "Mobil uyumlu", "Joystick ile oyna"].map((chip) => (
                 <span
                   key={chip}
                   className="rounded-full bg-accent px-3.5 py-1.5 text-xs font-bold text-accent-foreground"
