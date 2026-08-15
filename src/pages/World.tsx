@@ -4,7 +4,6 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet } from "@/components/world/ShopSheets";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
-import { MiniMap, type MiniMapHandle } from "@/components/world/MiniMap";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
@@ -307,7 +306,6 @@ export default function World() {
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
-  const mapRef = useRef<MiniMapHandle>(null);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -317,6 +315,10 @@ export default function World() {
   const giftClaimed =
     profile !== undefined &&
     (profile?.lastDailyClaim ?? 0) > Date.now() - DAILY_BONUS_MS;
+  // Speech bubble width adapts to the message and the sender's name.
+  const bubbleW = bubble
+    ? Math.min(190, Math.max(150, bubble.length * 7 + 26, username.length * 7.5 + 28))
+    : 0;
 
   // Track the container size → visible world window for the camera.
   useEffect(() => {
@@ -436,7 +438,7 @@ export default function World() {
       // Sprite: bob + limb swing while walking, face movement direction.
       spriteRef.current?.classList.toggle("walking", moving);
       const flip = facingRef.current < 0 ? -1 : 1;
-      const bob = moving ? Math.sin(phase) * 3.5 : 0;
+      const bob = moving ? Math.sin(phase) * 5 : 0;
       const ty = -PLAYER_H + bob;
       if (spriteRef.current) {
         spriteRef.current.setAttribute(
@@ -476,16 +478,6 @@ export default function World() {
           );
         }
       }
-
-      // Keep the minimap in sync.
-      mapRef.current?.setPlayer(pos.x, pos.y);
-      const cam = camRef.current;
-      mapRef.current?.setViewport(
-        Math.max(cam.x, 0),
-        Math.max(cam.y, 0),
-        Math.min(view.vw, WORLD_W),
-        Math.min(view.vh, WORLD_H),
-      );
 
       raf = requestAnimationFrame(loop);
     };
@@ -613,7 +605,7 @@ export default function World() {
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (shopVendor || bagOpen || chatOpen || profileOpen || stallsOpen) return;
       const target = e.target as HTMLElement;
-      if (target.closest("button") || target.closest("[data-minimap]")) return;
+      if (target.closest("button")) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const view = viewRef.current;
       const cam = camRef.current;
@@ -753,25 +745,42 @@ export default function World() {
                 {username}
               </text>
             </g>
-            {/* speech bubble above the player's head */}
+            {/* speech bubble above the player's head — sender name + message */}
             {bubble !== null && (
-              <g transform="translate(-64 -126)" className="speech-bubble">
+              <g
+                transform={`translate(${-bubbleW / 2} -142)`}
+                className="speech-bubble"
+              >
                 <rect
-                  width="128"
-                  height="38"
-                  rx="19"
+                  width={bubbleW}
+                  height={54}
+                  rx={17}
                   fill="#ffffff"
                   opacity="0.96"
                   stroke="#3d2f2a"
                   strokeOpacity="0.12"
                 />
-                <path d="M60 38 L68 50 L76 38 Z" fill="#ffffff" />
+                <path
+                  d={`M${bubbleW / 2 - 9} 54 L${bubbleW / 2} 66 L${bubbleW / 2 + 9} 54 Z`}
+                  fill="#ffffff"
+                />
                 <text
-                  x="64"
-                  y="24"
+                  x={bubbleW / 2}
+                  y={16}
                   textAnchor="middle"
-                  fontSize="12"
-                  fontWeight="700"
+                  fontSize={10}
+                  fontWeight={800}
+                  letterSpacing={0.6}
+                  fill="#7c3aed"
+                >
+                  {username}
+                </text>
+                <text
+                  x={bubbleW / 2}
+                  y={37}
+                  textAnchor="middle"
+                  fontSize={12}
+                  fontWeight={700}
                   fill="#2b2320"
                 >
                   {bubble}
@@ -780,13 +789,6 @@ export default function World() {
             )}
           </g>
         </svg>
-
-        {/* full-street minimap — tap a spot and the character walks there */}
-        <MiniMap
-          ref={mapRef}
-          onPick={pickTarget}
-          className="pointer-events-auto absolute bottom-4 left-4 z-20 w-36 rounded-2xl border-2 border-white/70 bg-black/25 p-1 shadow-xl backdrop-blur-sm sm:w-44"
-        />
 
         </main>
 
