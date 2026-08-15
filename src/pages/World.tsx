@@ -13,15 +13,14 @@ import {
   DAILY_BONUS_MS,
   formatCoins,
   GIFT_BOX,
-  getVendor,
+  GIFT_CLICK_RADIUS,
   OBSTACLES,
   PLAYER_RADIUS,
   PLAYER_SPEED,
-  VENDOR_INTERACT_RADIUS,
-  VENDOR_INTERACT_X,
   VENDORS,
   WALKABLE_ZONES,
   WORLD_BOUNDS,
+  vendorAtPoint,
   type Rect,
   type Vendor,
 } from "@/lib/shop";
@@ -286,11 +285,6 @@ function StallsSheet({
   );
 }
 
-type Interaction =
-  | { type: "vendor"; vendorId: string }
-  | { type: "gift" }
-  | null;
-
 function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
   const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
@@ -325,11 +319,9 @@ export default function World() {
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
   const keysRef = useRef(new Set<string>());
-  const interRef = useRef<Interaction>(null);
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
 
-  const [interaction, setInteraction] = useState<Interaction>(null);
   const [shopVendor, setShopVendor] = useState<Vendor | null>(null);
   const [bagOpen, setBagOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -527,33 +519,6 @@ export default function World() {
         Math.min(view.vh, WORLD_H),
       );
 
-      // What is the player standing next to?
-      let next: Interaction = null;
-      for (const vendor of VENDORS) {
-        const d = Math.hypot(
-          pos.x - vendor.x,
-          pos.y - VENDOR_INTERACT_X,
-        );
-        if (d < VENDOR_INTERACT_RADIUS) {
-          next = { type: "vendor", vendorId: vendor.id };
-          break;
-        }
-      }
-      if (next === null) {
-        const d = Math.hypot(pos.x - GIFT_BOX.x, pos.y - GIFT_BOX.y);
-        if (d < GIFT_BOX.radius) next = { type: "gift" };
-      }
-      const prevInter = interRef.current;
-      const changed =
-        next?.type !== prevInter?.type ||
-        (next?.type === "vendor" &&
-          next.vendorId !==
-            (prevInter?.type === "vendor" ? prevInter.vendorId : ""));
-      if (changed) {
-        interRef.current = next;
-        setInteraction(next);
-      }
-
       raf = requestAnimationFrame(loop);
     };
 
@@ -654,26 +619,6 @@ export default function World() {
     setTargetMarker({ x: wx, y: wy });
   }, []);
 
-  /** Click/tap on the street — the character walks to the touched spot. */
-  const handleWorldClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (shopVendor || bagOpen || chatOpen || profileOpen || stallsOpen) return;
-      const target = e.target as HTMLElement;
-      if (target.closest("button") || target.closest("[data-minimap]")) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const view = viewRef.current;
-      const cam = camRef.current;
-      const wx =
-        Math.max(cam.x, 0) +
-        ((e.clientX - rect.left) / rect.width) * view.vw;
-      const wy =
-        Math.max(cam.y, 0) +
-        ((e.clientY - rect.top) / rect.height) * view.vh;
-      pickTarget(wx, wy);
-    },
-    [shopVendor, bagOpen, chatOpen, profileOpen, stallsOpen, pickTarget],
-  );
-
   const handleClaim = async () => {
     if (giftClaimed || claiming) return;
     setClaiming(true);
@@ -690,10 +635,47 @@ export default function World() {
     }
   };
 
-  const activeVendor =
-    interaction?.type === "vendor"
-      ? (getVendor(interaction.vendorId) ?? null)
-      : null;
+  /**
+   * Click/tap on the street: a stall opens its market page directly, the gift
+   * box claims the daily bonus, anywhere else walks the character there.
+   */
+  const handleWorldClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (shopVendor || bagOpen || chatOpen || profileOpen || stallsOpen) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("button") || target.closest("[data-minimap]")) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const view = viewRef.current;
+      const cam = camRef.current;
+      const wx =
+        Math.max(cam.x, 0) +
+        ((e.clientX - rect.left) / rect.width) * view.vw;
+      const wy =
+        Math.max(cam.y, 0) +
+        ((e.clientY - rect.top) / rect.height) * view.vh;
+      // Tapping the stall itself opens its market page.
+      const vendor = vendorAtPoint(wx, wy);
+      if (vendor) {
+        setShopVendor(vendor);
+        return;
+      }
+      // Tapping the gift box claims the daily bonus.
+      if (Math.hypot(wx - GIFT_BOX.x, wy - GIFT_BOX.y) <= GIFT_CLICK_RADIUS) {
+        handleClaim();
+        return;
+      }
+      pickTarget(wx, wy);
+    },
+    [
+      shopVendor,
+      bagOpen,
+      chatOpen,
+      profileOpen,
+      stallsOpen,
+      pickTarget,
+      handleClaim,
+    ],
+  );
 
   return (
     <div className="flex h-dvh items-center justify-center bg-[#e9dcc0] text-foreground select-none">
@@ -770,16 +752,6 @@ export default function World() {
 
           {/* player */}
           <g ref={playerRef}>
-            {interaction !== null && (
-              <ellipse
-                cx="0"
-                cy="8"
-                rx="32"
-                ry="9"
-                fill="#ff6b4a"
-                opacity="0.35"
-              />
-            )}
             <g ref={spriteRef}>
               <AvatarPreview
                 width={PLAYER_W}
@@ -849,63 +821,6 @@ export default function World() {
           className="pointer-events-auto absolute bottom-4 left-4 z-20 w-36 rounded-2xl border-2 border-white/70 bg-black/25 p-1 shadow-xl backdrop-blur-sm sm:w-44"
         />
 
-        {/* interaction prompt */}
-        {!shopVendor &&
-          !bagOpen &&
-          !chatOpen &&
-          !profileOpen &&
-          !stallsOpen &&
-          interaction !== null &&
-          (activeVendor !== null || interaction.type === "gift") && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-40 z-20 flex justify-center px-4 sm:bottom-8">
-              <div className="pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-xl backdrop-blur">
-                {activeVendor ? (
-                  <>
-                    <span className="text-3xl">{activeVendor.emoji}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-extrabold">
-                        {activeVendor.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Tezgâha göz atmak ister misin?
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="shrink-0 rounded-full"
-                      onClick={() => setShopVendor(activeVendor)}
-                    >
-                      Tezgâhı aç
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-3xl">🎁</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-extrabold">Hediye kutusu</p>
-                      <p className="text-xs text-muted-foreground">
-                        {giftClaimed
-                          ? "Bugün toplandı, yarın tekrar uğra!"
-                          : "Bugünlük +150 SP kazan!"}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      className="shrink-0 rounded-full"
-                      onClick={handleClaim}
-                      disabled={giftClaimed || claiming}
-                    >
-                      {giftClaimed
-                        ? "Toplandı ✓"
-                        : claiming
-                          ? "Açılıyor..."
-                          : "Kutuyu aç"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
         </main>
 
         {/* bottom control bar — chat input in the center, like Sanalika */}

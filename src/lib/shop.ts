@@ -245,6 +245,23 @@ export const GIFT_BOX = {
   radius: 115,
 };
 
+/** Click radius on the gift box itself (world coordinates). */
+export const GIFT_CLICK_RADIUS = 70;
+
+/** Bounding box of a stall drawing (awning + vendor + counter). */
+const STALL_CLICK_BOX = { halfW: 95, top: 555, bottom: 765 };
+
+/** The stall whose drawing contains this point, if any. */
+export function vendorAtPoint(x: number, y: number): Vendor | undefined {
+  return VENDORS.find(
+    (v) =>
+      x >= v.x - STALL_CLICK_BOX.halfW &&
+      x <= v.x + STALL_CLICK_BOX.halfW &&
+      y >= STALL_CLICK_BOX.top &&
+      y <= STALL_CLICK_BOX.bottom,
+  );
+}
+
 /** World bounds the player can walk in. */
 export const WORLD_BOUNDS = {
   minX: 28,

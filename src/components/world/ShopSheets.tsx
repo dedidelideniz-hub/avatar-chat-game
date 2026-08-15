@@ -26,11 +26,12 @@ function SheetBackdrop({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** Market sheets pop up quickly with a soft spring — opens in a moment. */
 const sheetPanel = {
-  initial: { y: 40, opacity: 0 },
-  animate: { y: 0, opacity: 1 },
-  exit: { y: 40, opacity: 0 },
-  transition: { duration: 0.25, ease: "easeOut" as const },
+  initial: { y: 70, opacity: 0, scale: 0.96 },
+  animate: { y: 0, opacity: 1, scale: 1 },
+  exit: { y: 70, opacity: 0, scale: 0.96 },
+  transition: { type: "spring" as const, stiffness: 380, damping: 27, mass: 0.85 },
 };
 
 /** Vendor stall — browse & buy products with Sanalika Parası. */
