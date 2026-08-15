@@ -376,6 +376,7 @@ export default function World() {
     let phase = 0;
 
     const loop = (now: number) => {
+      try {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
 
@@ -502,6 +503,10 @@ export default function World() {
         }
       }
 
+      } catch (err) {
+        // A single bad frame must never kill the game loop.
+        console.error("Oyun döngüsü hatası:", err);
+      }
       raf = requestAnimationFrame(loop);
     };
 
@@ -618,13 +623,19 @@ export default function World() {
     };
   }, [appendMessage]);
 
-  /** Set a move destination on the street and mark it with the target square. */
+  /**
+   * Set a move destination on the street and mark it with the target square.
+   * The tap is clamped into the walkable street corridor, so tapping near the
+   * curb (or slightly off due to rendering rounding) always results in a walk.
+   */
   const pickTarget = useCallback((wx: number, wy: number) => {
-    if (!inWalkable(wx, wy)) return;
-    targetRef.current = { x: wx, y: wy };
+    const zone = WALKABLE_ZONES[0];
+    const x = Math.min(Math.max(wx, zone.x), zone.x + zone.w);
+    const y = Math.min(Math.max(wy, zone.y), zone.y + zone.h);
+    targetRef.current = { x, y };
     const p = posRef.current;
     stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
-    setTargetMarker({ x: wx, y: wy });
+    setTargetMarker({ x, y });
   }, []);
 
   const handleClaim = async () => {
@@ -662,15 +673,18 @@ export default function World() {
         return;
       const target = e.target as HTMLElement;
       if (target.closest("button")) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const view = viewRef.current;
-      const cam = camRef.current;
-      const wx =
-        Math.max(cam.x, 0) +
-        ((e.clientX - rect.left) / rect.width) * view.vw;
-      const wy =
-        Math.max(cam.y, 0) +
-        ((e.clientY - rect.top) / rect.height) * view.vh;
+      // Map the tap to world coordinates through the SVG's own screen CTM.
+      // This is exact even when the world is letterboxed or the camera has
+      // moved — it never depends on viewport bookkeeping that could be stale.
+      const svg = svgRef.current;
+      if (!svg) return;
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return;
+      const svgPt = new DOMPoint(e.clientX, e.clientY).matrixTransform(
+        ctm.inverse(),
+      );
+      const wx = svgPt.x;
+      const wy = svgPt.y;
       // Tapping the stall itself opens its market page (VIP stand opens the
       // membership page instead).
       const vendor = vendorAtPoint(wx, wy);
