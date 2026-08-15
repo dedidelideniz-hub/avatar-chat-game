@@ -6,7 +6,9 @@ import {
   DAILY_BONUS,
   DAILY_BONUS_MS,
   STARTING_COINS,
+  WEAR_SLOT_CAPACITY,
   getProduct,
+  type WearSlot,
 } from "../lib/shop";
 
 export const avatarValidator = v.object({
@@ -18,12 +20,13 @@ export const avatarValidator = v.object({
   shoes: v.string(),
 });
 
-/** Older profiles predate the wallet fields; fill sensible defaults. */
+/** Older profiles predate the wallet/equipped fields; fill sensible defaults. */
 function withWallet(profile: Doc<"profiles">) {
   return {
     ...profile,
     coins: profile.coins ?? STARTING_COINS,
     items: profile.items ?? [],
+    equipped: profile.equipped ?? [],
   };
 }
 
@@ -107,9 +110,8 @@ export const saveProfile = mutation({
         username: trimmed,
         avatar,
         updatedAt: now,
-      });
-      return { _id: existing._id, userId, username: trimmed, avatar, createdAt: existing.createdAt, updatedAt: now };
-    }
+      });    return { _id: existing._id, userId, username: trimmed, avatar, createdAt: existing.createdAt, updatedAt: now };
+  }
 
     const id = await ctx.db.insert("profiles", {
       userId,
@@ -117,10 +119,11 @@ export const saveProfile = mutation({
       avatar,
       coins: STARTING_COINS,
       items: [],
+      equipped: [],
       createdAt: now,
       updatedAt: now,
     });
-    return { _id: id, userId, username: trimmed, avatar, coins: STARTING_COINS, items: [], createdAt: now, updatedAt: now };
+    return { _id: id, userId, username: trimmed, avatar, coins: STARTING_COINS, items: [], equipped: [], createdAt: now, updatedAt: now };
   },
 });
 
@@ -166,6 +169,60 @@ export const buyItem = mutation({
       coins: coins - product.price,
       items: [...items, productId],
     });
+  },
+});
+
+/**
+ * Wear or take off an owned product. Equipping respects per-slot capacity
+ * (e.g. one hat, up to two hand-held items): a new item replaces older ones
+ * in the same slot. Returns the new equipped list.
+ */
+export const setEquipped = mutation({
+  args: {
+    productId: v.string(),
+    equip: v.boolean(),
+  },
+  handler: async (ctx, { productId, equip }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const product = getProduct(productId);
+    if (product === undefined) {
+      throw new Error("Bu ürün caddede yok.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    const items = profile.items ?? [];
+    if (!items.includes(productId)) {
+      throw new Error("Bu ürün çantanda yok — önce satın al.");
+    }
+
+    const equipped = profile.equipped ?? [];
+    if (!equip) {
+      const next = equipped.filter((id) => id !== productId);
+      await ctx.db.patch(profile._id, {
+        equipped: next,
+        updatedAt: Date.now(),
+      });
+      return next;
+    }
+
+    const slot = product.slot as WearSlot;
+    const capacity = WEAR_SLOT_CAPACITY[slot];
+    const others = equipped.filter((id) => getProduct(id)?.slot !== slot);
+    const sameSlot = equipped.filter((id) => getProduct(id)?.slot === slot);
+    const next = [...others, ...sameSlot.slice(-(capacity - 1)), productId];
+    await ctx.db.patch(profile._id, {
+      equipped: next,
+      updatedAt: Date.now(),
+    });
+    return next;
   },
 });
 

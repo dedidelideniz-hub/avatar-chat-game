@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useMutation } from "convex/react";
 import { motion } from "framer-motion";
-import { Check, Coins, X } from "lucide-react";
+import { Check, Coins, Shirt, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -10,6 +10,7 @@ import {
   formatCoins,
   getProduct,
   productsOf,
+  WEAR_SLOT_LABELS,
   type Vendor,
 } from "@/lib/shop";
 
@@ -53,7 +54,9 @@ export function ShopSheet({
     try {
       await buyItem({ productId });
       const product = getProduct(productId);
-      toast.success(`${product?.emoji ?? ""} ${product?.name ?? "Ürün"} çantana eklendi!`);
+      toast.success(
+        `${product?.emoji ?? ""} ${product?.name ?? "Ürün"} çantana eklendi! Çantandan giyebilirsin.`,
+      );
     } catch (error) {
       console.error("Satın alma hatası:", error);
       toast.error(
@@ -147,21 +150,45 @@ export function ShopSheet({
   );
 }
 
-/** The player's bag — every owned product. */
+/** The player's bag — every owned product, with wear/take-off controls. */
 export function BagSheet({
   items,
+  equipped,
   coins,
   onClose,
   onBrowseStalls,
 }: {
   items: string[];
+  equipped: string[];
   coins: number;
   onClose: () => void;
   onBrowseStalls: () => void;
 }) {
+  const setEquipped = useMutation(api.profiles.setEquipped);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const owned = items
     .map((id) => getProduct(id))
     .filter((p): p is NonNullable<typeof p> => p !== undefined);
+
+  const handleToggle = async (productId: string, equip: boolean) => {
+    setTogglingId(productId);
+    try {
+      await setEquipped({ productId, equip });
+      const product = getProduct(productId);
+      toast.success(
+        equip
+          ? `${product?.wearEmoji ?? product?.emoji ?? ""} ${product?.name ?? "Ürün"} giyildi! Avatarda görünüyor.`
+          : `${product?.emoji ?? ""} ${product?.name ?? "Ürün"} çıkarıldı.`,
+      );
+    } catch (error) {
+      console.error("Giy/çıkar hatası:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Değiştirilemedi. Tekrar dene.",
+      );
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   return (
     <>
@@ -215,23 +242,67 @@ export function BagSheet({
           </div>
         ) : (
           <div className="mt-5 grid max-h-[46vh] grid-cols-2 gap-3 overflow-y-auto pb-1 sm:grid-cols-3">
-            {owned.map((product) => (
-              <div
-                key={product.id}
-                className="flex flex-col rounded-2xl border border-border/70 bg-background p-3"
-              >
-                <span className="text-3xl leading-none">{product.emoji}</span>
-                <p className="mt-2 text-sm font-extrabold leading-tight">
-                  {product.name}
-                </p>
-                <p className="mt-1 line-clamp-2 flex-1 text-[11px] leading-4 text-muted-foreground">
-                  {product.description}
-                </p>
-                <span className="mt-2.5 inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-extrabold text-primary">
-                  {CURRENCY_EMOJI} {product.price} SP
-                </span>
-              </div>
-            ))}
+            {owned.map((product) => {
+              const isEquipped = equipped.includes(product.id);
+              const isToggling = togglingId === product.id;
+              return (
+                <div
+                  key={product.id}
+                  className={`flex flex-col rounded-2xl border p-3 ${
+                    isEquipped
+                      ? "border-primary/40 bg-primary/5"
+                      : "border-border/70 bg-background"
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <span className="text-3xl leading-none">
+                      {product.emoji}
+                    </span>
+                    {isEquipped && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-extrabold text-primary-foreground">
+                        <Check className="size-2.5" /> Giyili
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm font-extrabold leading-tight">
+                    {product.name}
+                  </p>
+                  <p className="mt-1 line-clamp-2 flex-1 text-[11px] leading-4 text-muted-foreground">
+                    {product.description}
+                  </p>
+                  <div className="mt-2.5 flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-extrabold text-primary">
+                      {CURRENCY_EMOJI} {product.price} SP
+                    </span>
+                    <span className="text-[10px] font-bold text-muted-foreground">
+                      {WEAR_SLOT_LABELS[product.slot]}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className={`mt-2.5 w-full rounded-full ${
+                      isEquipped ? "" : "bg-primary/10 text-primary hover:bg-primary/20"
+                    }`}
+                    variant={isEquipped ? "outline" : "ghost"}
+                    disabled={isToggling}
+                    onClick={() => handleToggle(product.id, !isEquipped)}
+                  >
+                    {isToggling ? (
+                      <span className="size-3.5 animate-spin rounded-full border-2 border-current/30 border-t-current" />
+                    ) : isEquipped ? (
+                      <>
+                        <X className="size-3.5" /> Çıkar
+                      </>
+                    ) : (
+                      <>
+                        <Shirt className="size-3.5" /> Kullan
+                      </>
+                    )}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
       </motion.div>

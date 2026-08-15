@@ -15,6 +15,23 @@ export function formatCoins(amount: number): string {
   return amount.toLocaleString("tr-TR");
 }
 
+export type WearSlot = "head" | "face" | "neck" | "hand";
+
+/** How many items can be worn at once in each slot. */
+export const WEAR_SLOT_CAPACITY: Record<WearSlot, number> = {
+  head: 1,
+  face: 1,
+  neck: 1,
+  hand: 2, // both hands
+};
+
+export const WEAR_SLOT_LABELS: Record<WearSlot, string> = {
+  head: "Baş",
+  face: "Yüz",
+  neck: "Boyun",
+  hand: "El",
+};
+
 export interface Product {
   id: string;
   name: string;
@@ -22,6 +39,14 @@ export interface Product {
   price: number; // in Sanalika Parası
   description: string;
   vendorId: string;
+  /** Body slot where the item is shown while equipped. */
+  slot: WearSlot;
+  /** Emoji used on the avatar when equipped (defaults to `emoji`). */
+  wearEmoji?: string;
+}
+
+export function wearEmojiOf(product: Product): string {
+  return product.wearEmoji ?? product.emoji;
 }
 
 export interface Vendor {
@@ -91,6 +116,8 @@ export const PRODUCTS: Product[] = [
     price: 40,
     description: "Taze çilekli, külah dolusu yaz klasiği.",
     vendorId: "dondurma",
+    slot: "hand",
+    wearEmoji: "🍦",
   },
   {
     id: "dondurma-cikolata",
@@ -99,6 +126,8 @@ export const PRODUCTS: Product[] = [
     price: 40,
     description: "Bol çikolata soslu, kaçamaklı bir tat.",
     vendorId: "dondurma",
+    slot: "hand",
+    wearEmoji: "🍦",
   },
   {
     id: "dondurma-mix",
@@ -107,6 +136,8 @@ export const PRODUCTS: Product[] = [
     price: 55,
     description: "Üç top, üç lezzet — hangisini seçeceksin?",
     vendorId: "dondurma",
+    slot: "hand",
+    wearEmoji: "🍨",
   },
   // Balon standı
   {
@@ -116,6 +147,7 @@ export const PRODUCTS: Product[] = [
     price: 60,
     description: "En klasik, en parlak balon.",
     vendorId: "balon",
+    slot: "hand",
   },
   {
     id: "balon-gokkusagi",
@@ -124,6 +156,7 @@ export const PRODUCTS: Product[] = [
     price: 90,
     description: "Rengârenk, rüzgârda dans eder.",
     vendorId: "balon",
+    slot: "hand",
   },
   {
     id: "balon-yildiz",
@@ -132,6 +165,7 @@ export const PRODUCTS: Product[] = [
     price: 120,
     description: "Akşam oldu mu bile ışıl ışıl parlar.",
     vendorId: "balon",
+    slot: "hand",
   },
   // Oyuncakçı
   {
@@ -141,6 +175,7 @@ export const PRODUCTS: Product[] = [
     price: 150,
     description: "Yumuşacık, sarılmaya her an hazır.",
     vendorId: "oyuncak",
+    slot: "hand",
   },
   {
     id: "oyuncak-araba",
@@ -149,6 +184,7 @@ export const PRODUCTS: Product[] = [
     price: 110,
     description: "Vınn! Caddede hız rekoru kırmaya hazır.",
     vendorId: "oyuncak",
+    slot: "hand",
   },
   {
     id: "oyuncak-top",
@@ -157,6 +193,7 @@ export const PRODUCTS: Product[] = [
     price: 70,
     description: "Kaldırımda zıplat, eğlenceyi yakala.",
     vendorId: "oyuncak",
+    slot: "hand",
   },
   // Moda standı
   {
@@ -166,6 +203,7 @@ export const PRODUCTS: Product[] = [
     price: 180,
     description: "Caddede şıklığın tamamlayıcısı.",
     vendorId: "moda",
+    slot: "face",
   },
   {
     id: "moda-sapka",
@@ -174,6 +212,7 @@ export const PRODUCTS: Product[] = [
     price: 140,
     description: "Güneşten korur, havalı durur.",
     vendorId: "moda",
+    slot: "head",
   },
   {
     id: "moda-atki",
@@ -182,6 +221,7 @@ export const PRODUCTS: Product[] = [
     price: 100,
     description: "Serin akşam yürüyüşlerine merhaba.",
     vendorId: "moda",
+    slot: "neck",
   },
 ];
 

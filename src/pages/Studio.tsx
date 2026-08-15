@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HairThumb, AvatarPreview } from "@/components/avatar/AvatarPreview";
+import { EquippedItems } from "@/components/avatar/EquippedItems";
 import {
   DEFAULT_AVATAR,
   HAIR_STYLE_LABELS,
@@ -210,10 +211,14 @@ export default function Studio() {
                     <div className="size-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
                   </div>
                 ) : (
-                  <div className="animate-float">
+                  <div className="relative animate-float">
                     <AvatarPreview
                       config={config}
                       className="block h-auto w-full max-w-[240px]"
+                    />
+                    <EquippedItems
+                      equipped={profile?.equipped ?? []}
+                      className="pointer-events-none absolute inset-0 h-auto w-full max-w-[240px]"
                     />
                   </div>
                 )}

@@ -48,7 +48,8 @@ const schema = defineSchema(
       // Optional so pre-existing profiles keep working; defaults are applied
       // when reading/writing (see src/convex/profiles.ts).
       coins: v.optional(v.number()),
-      items: v.optional(v.array(v.string())),
+      items: v.optional(v.array(v.string())), // owned product ids (bag)
+      equipped: v.optional(v.array(v.string())), // product ids currently worn
       lastDailyClaim: v.optional(v.number()), // epoch ms of last gift-box claim
       createdAt: v.number(),
       updatedAt: v.number(),

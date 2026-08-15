@@ -1,4 +1,5 @@
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
+import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet } from "@/components/world/ShopSheets";
 import { Joystick } from "@/components/world/Joystick";
@@ -73,6 +74,7 @@ export default function World() {
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
+  const equipped = profile?.equipped ?? [];
   const username = profile?.username ?? "Misafir";
   const config = profile?.avatar ?? DEFAULT_AVATAR;
   const giftClaimed =
@@ -276,58 +278,11 @@ export default function World() {
       : null;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      {/* HUD */}
-      <header className="z-40 flex items-center justify-between gap-3 border-b border-border/60 bg-background/85 px-3 py-2.5 backdrop-blur sm:px-5">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full"
-            onClick={() => navigate("/studio")}
-          >
-            <ArrowLeft className="size-4" />
-            <span className="hidden sm:inline">Stüdyo</span>
-          </Button>
-          <span className="hidden text-sm font-extrabold tracking-tight md:block">
-            Sanalika Caddesi
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground lg:flex">
-            <Keyboard className="size-3.5" />
-            WASD / ok tuşları
-          </span>
-          <span
-            className="flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-extrabold"
-            title="Sanalika Parası"
-          >
-            {CURRENCY_EMOJI} {formatCoins(coins)}{" "}
-            <span className="text-[10px] font-bold text-muted-foreground">
-              SP
-            </span>
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="relative rounded-full"
-            onClick={() => setBagOpen(true)}
-            aria-label="Çantam"
-          >
-            <Backpack className="size-4" />
-            <span className="hidden sm:inline">Çanta</span>
-            {items.length > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground">
-                {items.length}
-              </span>
-            )}
-          </Button>
-        </div>
-      </header>
-
+    <div className="fixed inset-0 overflow-hidden bg-[#bfe3ff] text-foreground select-none">
+      {/* The street fills the whole screen; HUD floats on top of it. */}
       <main
         ref={containerRef}
-        className="relative flex-1 touch-none overflow-hidden bg-[#bfe3ff] select-none"
+        className="absolute inset-0 touch-none overflow-hidden"
       >
         <svg
           ref={svgRef}
@@ -355,6 +310,11 @@ export default function World() {
                 height={PLAYER_H}
                 config={config}
               />
+              <EquippedItems
+                equipped={equipped}
+                width={PLAYER_W}
+                height={PLAYER_H}
+              />
             </g>
             <g transform="translate(-44 16)">
               <rect
@@ -381,7 +341,50 @@ export default function World() {
           </g>
         </svg>
 
-        <Joystick onMove={handleMove} className="absolute bottom-5 left-4 z-20" />
+        {/* floating HUD — chips sit on top of the game view */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 p-3 sm:p-4">
+          <Button
+            variant="outline"
+            size="sm"
+            className="pointer-events-auto rounded-full border-white/60 bg-white/80 shadow-lg backdrop-blur"
+            onClick={() => navigate("/studio")}
+          >
+            <ArrowLeft className="size-4" />
+            <span className="hidden sm:inline">Stüdyo</span>
+          </Button>
+          <span className="hidden items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-3 py-1.5 text-xs font-extrabold text-foreground/70 shadow backdrop-blur lg:flex">
+            <Keyboard className="size-3.5" />
+            WASD / ok tuşları
+          </span>
+          <div className="pointer-events-auto flex items-center gap-2">
+            <span
+              className="flex items-center gap-1.5 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-sm font-extrabold shadow-lg backdrop-blur"
+              title="Sanalika Parası"
+            >
+              {CURRENCY_EMOJI} {formatCoins(coins)}{" "}
+              <span className="text-[10px] font-bold text-foreground/50">
+                SP
+              </span>
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="relative rounded-full border-white/60 bg-white/80 shadow-lg backdrop-blur"
+              onClick={() => setBagOpen(true)}
+              aria-label="Çantam"
+            >
+              <Backpack className="size-4" />
+              <span className="hidden sm:inline">Çanta</span>
+              {items.length > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground">
+                  {items.length}
+                </span>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        <Joystick onMove={handleMove} className="absolute bottom-6 left-5 z-20" />
 
         {/* interaction prompt */}
         {!shopVendor &&
@@ -454,6 +457,7 @@ export default function World() {
           <BagSheet
             key="bag"
             items={items}
+            equipped={equipped}
             coins={coins}
             onClose={() => setBagOpen(false)}
             onBrowseStalls={() => setBagOpen(false)}
