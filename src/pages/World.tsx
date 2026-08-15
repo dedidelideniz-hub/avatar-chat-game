@@ -398,21 +398,26 @@ export default function World() {
         const dx = target.x - p.x;
         const dy = target.y - p.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < 22) {
+        if (dist < 24) {
           targetRef.current = null;
           setTargetMarker(null);
         } else {
-          const moved = Math.hypot(
+          // Track whether the player is actually making progress. If they
+          // stay pinned (wall/stall) for a moment, cancel the walk so the
+          // marker doesn't linger — but keep heading toward the target every
+          // single frame while it is active.
+          const movedSince = Math.hypot(
             p.x - stuckRef.current.x,
             p.y - stuckRef.current.y,
           );
-          if (moved > 4) {
+          if (movedSince > 2) {
             stuckRef.current = { x: p.x, y: p.y, since: now };
-          } else if (now - stuckRef.current.since > 2500) {
+          } else if (now - stuckRef.current.since > 2000) {
             // Blocked on the way — give up so the marker doesn't linger.
             targetRef.current = null;
             setTargetMarker(null);
-          } else {
+          }
+          if (targetRef.current) {
             vx = dx / dist;
             vy = dy / dist;
           }
@@ -463,7 +468,7 @@ export default function World() {
           "transform",
           flip === 1
             ? `translate(${-PLAYER_W / 2} ${ty})`
-            : `translate(${-PLAYER_W / 2} 0) scale(-1 1) translate(0 ${ty})`,
+            : `scale(-1 1) translate(${-PLAYER_W / 2} ${ty})`,
         );
       }
       if (playerRef.current) {
@@ -574,7 +579,8 @@ export default function World() {
   const goTo = useCallback((x: number, y: number, label: string) => {
     if (!inWalkable(x, y)) return;
     targetRef.current = { x, y };
-    stuckRef.current = { x, y, since: performance.now() };
+    const p = posRef.current;
+    stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
     setTargetMarker({ x, y });
     setStallsOpen(false);
     setProfileOpen(false);
@@ -616,7 +622,8 @@ export default function World() {
   const pickTarget = useCallback((wx: number, wy: number) => {
     if (!inWalkable(wx, wy)) return;
     targetRef.current = { x: wx, y: wy };
-    stuckRef.current = { x: wx, y: wy, since: performance.now() };
+    const p = posRef.current;
+    stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
     setTargetMarker({ x: wx, y: wy });
   }, []);
 
