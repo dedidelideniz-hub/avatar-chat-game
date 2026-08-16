@@ -270,6 +270,66 @@ function GameSheet({
   );
 }
 
+/**
+ * Compact profile card shown in the top-right corner when tapping a
+ * character (the player or one of the bots). No names float under feet
+ * anymore — this is where you learn who somebody is.
+ */
+function CharacterCard({
+  avatar,
+  name,
+  subtitle,
+  badge,
+  stats,
+  action,
+  onClose,
+}: {
+  avatar: React.ReactNode;
+  name: string;
+  subtitle: string;
+  badge?: React.ReactNode;
+  stats: React.ReactNode;
+  action?: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
+      data-profile-card
+      className="pointer-events-auto absolute top-2 right-2 z-20 w-64 rounded-3xl border-2 border-white bg-[#fffaf0] p-4 shadow-2xl"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Kapat"
+        className="absolute top-2.5 right-2.5 flex size-7 items-center justify-center rounded-full bg-[#3d2f2a]/10 text-[#3d2f2a] transition-colors hover:bg-[#3d2f2a]/20"
+      >
+        <X className="size-4" />
+      </button>
+      <div className="flex items-center gap-3 pr-7">
+        <div className="relative shrink-0">{avatar}</div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 font-extrabold text-[#2b2320]">
+            <span className="truncate">{name}</span>
+            {badge}
+          </div>
+          <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+            {subtitle}
+          </p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-bold text-[#28c840]">
+            <span className="size-2 rounded-full bg-[#28c840]" /> Çevrimiçi
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">{stats}</div>
+      {action && <div className="mt-3">{action}</div>}
+    </motion.div>
+  );
+}
+
 /** Player identity card. */
 function ProfileSheet({
   username,
@@ -406,7 +466,6 @@ export default function World() {
   const worldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
   const spriteRef = useRef<SVGGElement>(null);
-  const nameTagRef = useRef<SVGTextElement>(null);
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
@@ -448,6 +507,12 @@ export default function World() {
   const [botBubbles, setBotBubbles] = useState<Record<string, string | null>>(
     {},
   );
+  // Which character profile is open in the top-right card ("me" or a bot id).
+  const [viewing, setViewing] = useState<string | null>(null);
+  const viewedBot =
+    viewing !== null && viewing !== "me"
+      ? BOT_DEFS.find((b) => b.id === viewing) ?? null
+      : null;
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -746,13 +811,6 @@ export default function World() {
     };
   }, []);
 
-  // Name tag under the player follows the saved username (crown for VIPs).
-  useEffect(() => {
-    if (nameTagRef.current) {
-      nameTagRef.current.textContent = `${isVip ? "👑 " : ""}${username}`;
-    }
-  }, [username, isVip]);
-
   const appendMessage = useCallback((msg: ChatMessage) => {
     setMessages((prev) => [...prev.slice(-40), msg]);
     if (!chatOpenRef.current) setUnread((u) => u + 1);
@@ -917,7 +975,8 @@ export default function World() {
       )
         return;
       const target = e.target as HTMLElement;
-      if (target.closest("button")) return;
+      if (target.closest("button") || target.closest("[data-profile-card]"))
+        return;
       // Map the tap to world coordinates through the SVG's own screen CTM.
       // This is exact even when the world is letterboxed or the camera has
       // moved — it never depends on viewport bookkeeping that could be stale.
@@ -930,6 +989,30 @@ export default function World() {
       );
       const wx = svgPt.x;
       const wy = svgPt.y;
+      // Tapping a character (player or bot) opens their profile card.
+      const p = posRef.current;
+      if (
+        wx >= p.x - 34 &&
+        wx <= p.x + 34 &&
+        wy >= p.y - 100 &&
+        wy <= p.y + 10
+      ) {
+        setViewing("me");
+        return;
+      }
+      for (const bot of botsRef.current) {
+        if (
+          wx >= bot.pos.x - 34 &&
+          wx <= bot.pos.x + 34 &&
+          wy >= bot.pos.y - 100 &&
+          wy <= bot.pos.y + 10
+        ) {
+          setViewing(bot.def.id);
+          return;
+        }
+      }
+      // Tapping anywhere else closes the profile card.
+      setViewing(null);
       // Tapping the stall itself opens its market page (VIP stand opens the
       // membership page instead).
       const vendor = vendorAtPoint(wx, wy);
@@ -1053,29 +1136,6 @@ export default function World() {
                 height={PLAYER_H}
               />
             </g>
-            {/* name tag — pill under the feet, readable in every orientation */}
-            <g transform="translate(-44 16)">
-              <rect
-                width="88"
-                height="22"
-                rx="11"
-                fill="#ffffff"
-                opacity="0.92"
-                stroke="#3d2f2a"
-                strokeOpacity="0.12"
-              />
-              <text
-                ref={nameTagRef}
-                x="44"
-                y="15"
-                textAnchor="middle"
-                fontSize="12"
-                fontWeight="800"
-                fill="#2b2320"
-              >
-                {username}
-              </text>
-            </g>
             {/* speech bubble above the player's head — classic rounded comic
                 bubble with a white border and tail, in the chosen color */}
             {bubble !== null && (
@@ -1149,28 +1209,6 @@ export default function World() {
                     height={PLAYER_H}
                   />
                 </g>
-                {/* name tag — pill under the feet */}
-                <g transform="translate(-40 16)">
-                  <rect
-                    width="80"
-                    height="20"
-                    rx="10"
-                    fill="#ffffff"
-                    opacity="0.92"
-                    stroke="#3d2f2a"
-                    strokeOpacity="0.12"
-                  />
-                  <text
-                    x="40"
-                    y="14"
-                    textAnchor="middle"
-                    fontSize="11"
-                    fontWeight="800"
-                    fill="#2b2320"
-                  >
-                    {bot.def.name}
-                  </text>
-                </g>
                 {/* occasional speech bubble */}
                 {bubbleText !== null && (
                   <g
@@ -1222,6 +1260,86 @@ export default function World() {
           })}
           </g>
         </svg>
+
+        {/* character profile card — tapping a character opens it here */}
+        <AnimatePresence>
+          {viewing !== null &&
+            (viewing === "me" ? (
+              <CharacterCard
+                key="me"
+                name={username}
+                subtitle="Sanalika Caddesi sakini"
+                badge={
+                  isVip ? (
+                    <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
+                      👑 VIP
+                    </span>
+                  ) : null
+                }
+                avatar={
+                  <>
+                    <AvatarPreview
+                      config={config}
+                      className="block h-24 w-auto"
+                    />
+                    <EquippedItems
+                      equipped={equipped}
+                      className="pointer-events-none absolute inset-0 h-24 w-auto"
+                    />
+                  </>
+                }
+                stats={
+                  <>
+                    <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                      {CURRENCY_EMOJI} {formatCoins(coins)} SP
+                    </span>
+                    <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
+                      🎒 {items.length} ürün
+                    </span>
+                  </>
+                }
+                action={
+                  <Button
+                    size="sm"
+                    className="w-full rounded-full"
+                    onClick={() => navigate("/studio")}
+                  >
+                    Stüdyo'da düzenle
+                  </Button>
+                }
+                onClose={() => setViewing(null)}
+              />
+            ) : viewedBot ? (
+              <CharacterCard
+                key={viewedBot.id}
+                name={viewedBot.name}
+                subtitle="Sanalika Caddesi sakini"
+                avatar={
+                  <>
+                    <AvatarPreview
+                      config={viewedBot.config}
+                      className="block h-24 w-auto"
+                    />
+                    <EquippedItems
+                      equipped={viewedBot.equipped}
+                      className="pointer-events-none absolute inset-0 h-24 w-auto"
+                    />
+                  </>
+                }
+                stats={
+                  <>
+                    <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
+                      🎒 {viewedBot.equipped.length} ürün
+                    </span>
+                    <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
+                      🚶 Caddede geziyor
+                    </span>
+                  </>
+                }
+                onClose={() => setViewing(null)}
+              />
+            ) : null)}
+        </AnimatePresence>
 
         </main>
 
