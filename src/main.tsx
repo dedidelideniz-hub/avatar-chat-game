@@ -14,6 +14,7 @@ const Landing = lazy(() => import("./pages/Landing.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Studio = lazy(() => import("./pages/Studio.tsx"));
 const World = lazy(() => import("./pages/World.tsx"));
+const Admin = lazy(() => import("./pages/Admin.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
@@ -147,6 +148,8 @@ createRoot(document.getElementById("root")!).render(
                   </RequireAuth>
                 }
               />
+              {/* Standalone admin panel (own admin/admin login) */}
+              <Route path="/admin" element={<Admin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
