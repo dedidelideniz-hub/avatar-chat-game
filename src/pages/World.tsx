@@ -349,8 +349,19 @@ export default function World() {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w === 0 || h === 0) return;
-      const scale = Math.max(w / WORLD_W, h / WORLD_H);
-      viewRef.current = { vw: w / scale, vh: h / scale };
+      // Portrait phones: fit the whole street into view so every graphic
+      // stays on screen. Wide screens keep the follow camera, which pans to
+      // keep the player in view instead of letterboxing the world.
+      const portrait = h / w > WORLD_H / WORLD_W;
+      if (portrait) {
+        viewRef.current = { vw: WORLD_W, vh: WORLD_H };
+      } else {
+        const scale = Math.max(w / WORLD_W, h / WORLD_H);
+        viewRef.current = {
+          vw: Math.min(w / scale, WORLD_W),
+          vh: Math.min(h / scale, WORLD_H),
+        };
+      }
     };
     update();
     const observer = new ResizeObserver(update);
@@ -753,9 +764,15 @@ export default function World() {
           </span>
         </div>
 
+        {/* Portrait letterbox bands blend into the world: sky blue above,
+            grass green below, so the upright phone view looks intentional. */}
         <main
           ref={containerRef}
-          className="relative min-h-0 flex-1 touch-none overflow-hidden bg-[#bfe3ff]"
+          className="relative min-h-0 flex-1 touch-none overflow-hidden"
+          style={{
+            background:
+              "linear-gradient(180deg, #bfe3ff 0%, #bfe3ff 36%, #d9eee5 50%, #aee571 74%, #aee571 100%)",
+          }}
           onClick={handleWorldClick}
         >
         <svg
