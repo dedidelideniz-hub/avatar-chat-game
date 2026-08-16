@@ -7,6 +7,7 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
+import { playSound } from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
 import { Swords, Trophy, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -108,6 +109,7 @@ export default function BattleScene({
   const bBarRef = useRef<SVGRectElement>(null);
   const pChargeRef = useRef<SVGRectElement>(null);
   const bChargeRef = useRef<SVGRectElement>(null);
+  const arenaRef = useRef<HTMLElement>(null);
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
@@ -157,6 +159,13 @@ export default function BattleScene({
   });
 
   const [result, setResult] = useState<"win" | "lose" | null>(null);
+  const [vsShow, setVsShow] = useState(true);
+
+  // Animated VS banner plays once on entry, then disappears.
+  useEffect(() => {
+    const t = window.setTimeout(() => setVsShow(false), 1700);
+    return () => window.clearTimeout(t);
+  }, []);
   const [hud, setHud] = useState({
     ph: HP,
     ohp: HP,
@@ -259,7 +268,12 @@ export default function BattleScene({
     const dy = ty - owner.y;
     const d = Math.hypot(dx, dy) || 1;
     const speed = opts.speed ?? PROJ_SPEED;
+    playSound("shoot", { volume: 0.6 });
     const g = document.createElementNS(SVG_NS, "g");
+    // Inner group spins like an animated GIF sprite while the outer group
+    // follows the projectile's position each frame.
+    const spin = document.createElementNS(SVG_NS, "g");
+    spin.setAttribute("class", "battle-proj-spin");
     const glow = document.createElementNS(SVG_NS, "circle");
     glow.setAttribute("r", `${(opts.r ?? 14) + 7}`);
     glow.setAttribute("fill", "#ffffff");
@@ -269,8 +283,20 @@ export default function BattleScene({
     body.setAttribute("fill", ownerKey === "player" ? "#38bdf8" : "#fb7185");
     body.setAttribute("stroke", "#ffffff");
     body.setAttribute("stroke-width", "3");
-    g.appendChild(glow);
-    g.appendChild(body);
+    spin.appendChild(glow);
+    spin.appendChild(body);
+    // Twin flames on opposite sides make the spin clearly visible.
+    const rad = opts.r ?? 14;
+    for (const sign of [1, -1]) {
+      const flame = document.createElementNS(SVG_NS, "ellipse");
+      flame.setAttribute("cx", `${sign * (rad + 9)}`);
+      flame.setAttribute("cy", "0");
+      flame.setAttribute("rx", "8");
+      flame.setAttribute("ry", "5");
+      flame.setAttribute("fill", ownerKey === "player" ? "#bae6fd" : "#fecdd3");
+      spin.appendChild(flame);
+    }
+    g.appendChild(spin);
     g.setAttribute("transform", `translate(${owner.x} ${owner.y})`);
     fxRef.current?.appendChild(g);
     projs.current.push({
@@ -294,6 +320,21 @@ export default function BattleScene({
     floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
     chargeGain(attacker, 0.26);
     chargeGain(target, 0.12);
+    playSound("hit", { volume: 0.85 });
+    // GIF-style feedback: white flash on the hurt fighter + arena shake.
+    const hurtSprite =
+      target === player.current ? pSpriteRef.current : bSpriteRef.current;
+    if (hurtSprite) {
+      hurtSprite.classList.remove("battle-hit-flash");
+      void hurtSprite.getBoundingClientRect();
+      hurtSprite.classList.add("battle-hit-flash");
+    }
+    const arenaEl = arenaRef.current;
+    if (arenaEl) {
+      arenaEl.classList.remove("battle-shake");
+      void arenaEl.getBoundingClientRect();
+      arenaEl.classList.add("battle-shake");
+    }
     if (target.hp <= 0) {
       circleFx(target.x, target.y - 40, 20, "#ffffff", 0.5, 90);
       endBattle(attacker === player.current ? "win" : "lose");
@@ -302,6 +343,7 @@ export default function BattleScene({
 
   const explodeAt = (pr: Proj) => {
     const r = pr.explodeR ?? 130;
+    playSound("explode", { volume: 0.9 });
     circleFx(pr.x, pr.y, 18, "#fdba74", 0.45, 120);
     const target = pr.owner === "player" ? bot.current : player.current;
     const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
@@ -350,11 +392,13 @@ export default function BattleScene({
 
   const useSuper = (f: Fighter, enemy: Fighter) => {
     f.superCharge = 0;
+    playSound("super", { volume: 0.9 });
     switch (f.ability.id) {
       case "isik":
         beamAttack(f, enemy);
         break;
       case "simsek":
+        playSound("dash");
         startDash(f, enemy);
         break;
       case "sifa": {
@@ -407,10 +451,12 @@ export default function BattleScene({
     if (resultRef.current) return;
     resultRef.current = win;
     setResult(win);
+    playSound(win === "win" ? "win" : "lose");
   };
 
   // ---- main loop ----
   useEffect(() => {
+    playSound("vs");
     const onKeyDown = (e: KeyboardEvent) => {
       if (
         [
@@ -740,6 +786,7 @@ export default function BattleScene({
 
         {/* arena */}
         <main
+          ref={arenaRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
           onClick={handleArenaClick}
         >
@@ -756,6 +803,59 @@ export default function BattleScene({
               </radialGradient>
             </defs>
             <rect width={ARENA_W} height={ARENA_H} fill="url(#arena-grass)" />
+            {/* animated sky effects — GIF-style life: rotating sun, drifting
+                clouds and twinkling sparkles over the grass */}
+            <g transform="translate(120 120)">
+              <g className="sun-rays">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <line
+                    key={i}
+                    x1="0"
+                    y1="0"
+                    x2={Math.cos((i / 10) * Math.PI * 2) * 150}
+                    y2={Math.sin((i / 10) * Math.PI * 2) * 150}
+                    stroke="#ffe066"
+                    strokeOpacity="0.45"
+                    strokeWidth="15"
+                    strokeLinecap="round"
+                  />
+                ))}
+                <circle r="60" fill="#ffe066" opacity="0.9" />
+                <circle r="44" fill="#fff7cc" />
+              </g>
+            </g>
+            <g className="arena-cloud" style={{ animationDuration: "26s" }}>
+              <ellipse cx="120" cy="112" rx="70" ry="22" fill="#ffffff" opacity="0.5" />
+              <ellipse cx="80" cy="104" rx="38" ry="16" fill="#ffffff" opacity="0.45" />
+            </g>
+            <g
+              className="arena-cloud"
+              style={{ animationDuration: "34s", animationDelay: "-14s" }}
+            >
+              <ellipse cx="1150" cy="82" rx="80" ry="20" fill="#ffffff" opacity="0.4" />
+              <ellipse cx="1190" cy="92" rx="40" ry="14" fill="#ffffff" opacity="0.35" />
+            </g>
+            {[
+              [240, 210],
+              [420, 620],
+              [700, 130],
+              [900, 700],
+              [1100, 260],
+              [1300, 560],
+              [520, 380],
+              [760, 520],
+            ].map(([x, y], i) => (
+              <g
+                key={i}
+                className="arena-twinkle"
+                style={{ animationDelay: `${i * 0.35}s` }}
+              >
+                <path
+                  d={`M ${x} ${y - 9} L ${x + 3} ${y - 3} L ${x + 9} ${y} L ${x + 3} ${y + 3} L ${x} ${y + 9} L ${x - 3} ${y + 3} L ${x - 9} ${y} L ${x - 3} ${y - 3} Z`}
+                  fill="#fffbe6"
+                />
+              </g>
+            ))}
             {/* boundary wall */}
             <rect
               x="20"
@@ -811,8 +911,10 @@ export default function BattleScene({
             {/* fighters */}
             <g ref={pRef}>
               <g ref={pSpriteRef}>
-                <AvatarPreview width={CHAR_W} height={CHAR_H} config={playerConfig} />
-                <EquippedItems equipped={playerEquipped} width={CHAR_W} height={CHAR_H} />
+                <g className="fighter-idle">
+                  <AvatarPreview width={CHAR_W} height={CHAR_H} config={playerConfig} />
+                  <EquippedItems equipped={playerEquipped} width={CHAR_W} height={CHAR_H} />
+                </g>
               </g>
               {/* HP + super bars */}
               <g transform="translate(-45 -118)">
@@ -824,8 +926,10 @@ export default function BattleScene({
             </g>
             <g ref={bRef}>
               <g ref={bSpriteRef}>
-                <AvatarPreview width={CHAR_W} height={CHAR_H} config={opponentConfig} />
-                <EquippedItems equipped={opponentEquipped} width={CHAR_W} height={CHAR_H} />
+                <g className="fighter-idle" style={{ animationDelay: "-0.55s" }}>
+                  <AvatarPreview width={CHAR_W} height={CHAR_H} config={opponentConfig} />
+                  <EquippedItems equipped={opponentEquipped} width={CHAR_W} height={CHAR_H} />
+                </g>
               </g>
               <g transform="translate(-45 -118)">
                 <rect width="90" height="9" rx="4.5" fill="#1f2937" />
@@ -839,6 +943,20 @@ export default function BattleScene({
             <g ref={fxRef} />
           </svg>
 
+          {/* animated VS intro banner — GIF-style entrance */}
+          {vsShow && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+              <div className="vs-banner flex flex-col items-center gap-2 rounded-3xl border-4 border-yellow-300/80 bg-[#151b2e]/85 px-10 py-6 text-center text-white shadow-2xl">
+                <span className="text-5xl font-black tracking-widest text-yellow-300">
+                  ⚔️ VS ⚔️
+                </span>
+                <span className="text-sm font-extrabold">
+                  {playerName} vs {opponentName}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* controls */}
           <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2 z-10">
             <button
@@ -847,7 +965,7 @@ export default function BattleScene({
               aria-label="Süper yetenek"
               className={`pointer-events-auto flex size-16 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
                 hud.pc >= 1
-                  ? "border-yellow-300 bg-gradient-to-br from-yellow-400 to-amber-500 text-amber-950"
+                  ? "super-ready border-yellow-300 bg-gradient-to-br from-yellow-400 to-amber-500 text-amber-950"
                   : "border-white/30 bg-white/10 text-white/70"
               }`}
             >
@@ -875,6 +993,23 @@ export default function BattleScene({
               exit={{ opacity: 0 }}
               className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
             >
+              {result === "win" && (
+                <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                  {["🎉", "⭐", "✨", "🎊", "💛", "🌟"].map((e, i) => (
+                    <span
+                      key={i}
+                      className="confetti text-2xl"
+                      style={{
+                        left: `${6 + i * 15}%`,
+                        animationDuration: `${2.4 + (i % 3) * 0.7}s`,
+                        animationDelay: `${i * 0.22}s`,
+                      }}
+                    >
+                      {e}
+                    </span>
+                  ))}
+                </div>
+              )}
               <motion.div
                 initial={{ scale: 0.85, opacity: 0, y: 16 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}

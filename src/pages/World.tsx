@@ -32,6 +32,7 @@ import {
   type Rect,
   type Vendor,
 } from "@/lib/shop";
+import { isMuted, playSound, toggleMuted, unlockAudio } from "@/lib/sounds";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -45,6 +46,8 @@ import {
   Smartphone,
   Swords,
   UserRound,
+  Volume2,
+  VolumeX,
   Wand2,
   X,
   type LucideIcon,
@@ -636,6 +639,19 @@ export default function World() {
   const battleRef = useRef(battle);
   battleRef.current = battle;
 
+  const [soundOn, setSoundOn] = useState(() => !isMuted());
+
+  // Unlock audio on the first user gesture (mobile browsers require it).
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
   const equipped = profile?.equipped ?? [];
@@ -957,6 +973,7 @@ export default function World() {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      playSound("chat");
       appendMessage({
         id: nextIdRef.current++,
         from: username,
@@ -971,6 +988,7 @@ export default function World() {
   );
 
   const openChat = () => {
+    playSound("click");
     chatOpenRef.current = true;
     setChatOpen(true);
     setUnread(0);
@@ -986,6 +1004,7 @@ export default function World() {
       try {
         await setBubbleColor({ colorId });
         const def = BUBBLE_COLORS.find((c) => c.id === colorId);
+        playSound("buy");
         toast.success(`${def?.name ?? "Renk"} balon rengi seçildi! 🎨`);
       } catch (error) {
         console.error("Balon rengi hatası:", error);
@@ -1001,6 +1020,7 @@ export default function World() {
   const handleInvite = useCallback(
     (bot: BotDef) => {
       if (invite || battle) return;
+      playSound("invite");
       setInvite({ botId: bot.id, status: "waiting" });
       appendMessage({
         id: nextIdRef.current++,
@@ -1009,6 +1029,7 @@ export default function World() {
       });
       window.setTimeout(() => {
         if (Math.random() < 0.25) {
+          playSound("decline");
           setInvite({ botId: bot.id, status: "rejected" });
           appendMessage({
             id: nextIdRef.current++,
@@ -1018,6 +1039,7 @@ export default function World() {
           });
           window.setTimeout(() => setInvite(null), 2600);
         } else {
+          playSound("accept");
           setInvite({ botId: bot.id, status: "accepted" });
           appendMessage({
             id: nextIdRef.current++,
@@ -1026,6 +1048,7 @@ export default function World() {
             color: bot.color,
           });
           window.setTimeout(() => {
+            playSound("vs");
             setBattle({
               opponent: bot,
               playerAbility: equippedAbility,
@@ -1069,6 +1092,7 @@ export default function World() {
       try {
         await buyAbility({ abilityId });
         const def = ABILITIES.find((a) => a.id === abilityId);
+        playSound("buy");
         toast.success(
           `${def?.emoji ?? ""} ${def?.name ?? "Yetenek"} satın alındı ve kuşanıldı!`,
         );
@@ -1086,6 +1110,7 @@ export default function World() {
       try {
         await equipAbility({ abilityId });
         const def = ABILITIES.find((a) => a.id === abilityId);
+        playSound("click");
         toast.success(
           `${def?.emoji ?? ""} ${def?.name ?? "Yetenek"} kuşanıldı!`,
         );
@@ -1107,6 +1132,7 @@ export default function World() {
   /** Auto-walk toward a spot on the street (stalls map / gift box). */
   const goTo = useCallback((x: number, y: number, label: string) => {
     if (!inWalkable(x, y)) return;
+    playSound("click");
     targetRef.current = { x, y };
     const p = posRef.current;
     stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
@@ -1184,6 +1210,7 @@ export default function World() {
     setClaiming(true);
     try {
       await claimDaily();
+      playSound("coin");
       toast.success("🎁 +150 SP kazandın! Tezgâhlara bakmaya ne dersin?");
     } catch (error) {
       console.error("Hediye kutusu hatası:", error);
@@ -1256,6 +1283,7 @@ export default function World() {
       // membership page instead).
       const vendor = vendorAtPoint(wx, wy);
       if (vendor) {
+        playSound("click");
         if (vendor.id === VIP_VENDOR_ID) {
           setVipOpen(true);
         } else {
@@ -1301,6 +1329,23 @@ export default function World() {
             <span className="hidden text-sm font-extrabold tracking-tight sm:block">
               {username}
             </span>
+            <button
+              type="button"
+              onClick={() => {
+                const m = toggleMuted();
+                setSoundOn(!m);
+                if (!m) playSound("click");
+              }}
+              className="flex size-8 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+              aria-label={soundOn ? "Sesi kapat" : "Sesi aç"}
+              title={soundOn ? "Sesi kapat" : "Sesi aç"}
+            >
+              {soundOn ? (
+                <Volume2 className="size-4" />
+              ) : (
+                <VolumeX className="size-4" />
+              )}
+            </button>
           </div>
           <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-sm font-extrabold">
             {CURRENCY_EMOJI} {formatCoins(coins)}
@@ -1625,19 +1670,19 @@ export default function World() {
         <div className="shrink-0 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] pb-[max(env(safe-area-inset-bottom),0.5rem)]">
           <div className="flex min-w-0 items-center overflow-x-auto px-2 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="mx-auto flex w-max items-center gap-1 sm:gap-2.5">
-              <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => navigate("/studio")} />
+              <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => { playSound("click"); navigate("/studio"); }} />
               <BarBtn
                 tone="sky"
                 icon={UserRound}
                 label="Profilim"
-                onClick={() => setProfileOpen(true)}
+                onClick={() => { playSound("click"); setProfileOpen(true); }}
               />
-              <BarBtn tone="sky" icon={Backpack} label="Çanta" badge={items.length} onClick={() => setBagOpen(true)} />
+              <BarBtn tone="sky" icon={Backpack} label="Çanta" badge={items.length} onClick={() => { playSound("click"); setBagOpen(true); }} />
               <BarBtn
                 tone="sky"
                 icon={Footprints}
                 label="Tezgâhlar"
-                onClick={() => setStallsOpen(true)}
+                onClick={() => { playSound("click"); setStallsOpen(true); }}
               />
               <span
                 className="h-8 w-px shrink-0 bg-[#3d2f2a]/15"
@@ -1648,19 +1693,19 @@ export default function World() {
                 tone="purple"
                 icon={Puzzle}
                 label="Yakında"
-                onClick={() => toast.info("Bu özellik yakında geliyor! 🔧")}
+                onClick={() => { playSound("click"); toast.info("Bu özellik yakında geliyor! 🔧"); }}
               />
               <BarBtn
                 tone="purple"
                 icon={Wand2}
                 label="Yetenekler"
-                onClick={() => setAbilitiesOpen(true)}
+                onClick={() => { playSound("click"); setAbilitiesOpen(true); }}
               />
               <BarBtn
                 tone="purple"
                 icon={Flower2}
                 label="Yakında"
-                onClick={() => toast.info("Bu özellik yakında geliyor! 🌸")}
+                onClick={() => { playSound("click"); toast.info("Bu özellik yakında geliyor! 🌸"); }}
               />
             </div>
           </div>

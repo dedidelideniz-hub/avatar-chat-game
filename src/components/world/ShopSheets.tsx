@@ -16,6 +16,7 @@ import {
   WEAR_SLOT_LABELS,
   type Vendor,
 } from "@/lib/shop";
+import { playSound } from "@/lib/sounds";
 
 function SheetBackdrop({ onClose }: { onClose: () => void }) {
   return (
@@ -58,11 +59,13 @@ export function ShopSheet({
     try {
       await buyItem({ productId });
       const product = getProduct(productId);
+      playSound("buy");
       toast.success(
         `${product?.emoji ?? ""} ${product?.name ?? "Ürün"} çantana eklendi! Çantandan giyebilirsin.`,
       );
     } catch (error) {
       console.error("Satın alma hatası:", error);
+      playSound("error");
       toast.error(
         error instanceof Error ? error.message : "Satın alınamadı. Tekrar dene.",
       );
@@ -339,11 +342,13 @@ export function VipSheet({
     setBuying(true);
     try {
       await buyVip();
+      playSound("vip");
       toast.success(
         "👑 VIP üyelik aktif! Tüm balon renkleri artık senin — sohbetten seç.",
       );
     } catch (error) {
       console.error("VIP satın alma hatası:", error);
+      playSound("error");
       toast.error(
         error instanceof Error ? error.message : "Satın alınamadı. Tekrar dene.",
       );
