@@ -6,7 +6,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Arena3D,
-  BATTLE_CRATES,
+  BATTLE_OBSTACLES,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -15,7 +15,11 @@ import {
 import { FallbackArena2D } from "@/components/world/FallbackArena2D";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
-import { playSound } from "@/lib/sounds";
+import {
+  playSound,
+  startBattleAmbience,
+  stopBattleAmbience,
+} from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
 import { Swords, Trophy, X, Zap, ZoomIn, ZoomOut } from "lucide-react";
 import {
@@ -29,8 +33,8 @@ import {
   useState,
 } from "react";
 
-const ARENA_W = 1400;
-const ARENA_H = 800;
+const ARENA_W = 1700;
+const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
 const ATK_CD = 0.85;
@@ -174,7 +178,7 @@ export default function BattleScene({
   const arenaRef = useRef<HTMLElement>(null);
   // Camera zoom (3D follow-cam + 2D fallback both read this) and the
   // joystick's live direction vector.
-  const zoomRef = useRef(6.2);
+  const zoomRef = useRef(9.5);
   const joystickRef = useRef({ x: 0, y: 0 });
 
   const keysRef = useRef(new Set<string>());
@@ -186,10 +190,10 @@ export default function BattleScene({
   onExitRef.current = onExit;
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 250, 400, 1),
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 420, 180, 1),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1150, 400, -1),
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1),
   );
   bot.current.atkCd = 1;
 
@@ -226,8 +230,8 @@ export default function BattleScene({
   const clamp = (v: number, a: number, b: number) =>
     Math.min(Math.max(v, a), b);
 
-  const hitsCrate = (cx: number, cy: number, r: number) =>
-    BATTLE_CRATES.some((c) => {
+  const hitsObstacle = (cx: number, cy: number, r: number) =>
+    BATTLE_OBSTACLES.some((c) => {
       const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
       const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
       const dx = cx - nx;
@@ -317,7 +321,13 @@ export default function BattleScene({
     floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
     chargeGain(attacker, 0.26);
     chargeGain(target, 0.12);
-    playSound("hit", { volume: 0.85 });
+    // Distinct audio for getting hurt vs. dealing damage.
+    if (target === player.current) {
+      playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
+      playSound("hit", { volume: 0.35, rate: 1.5 });
+    } else {
+      playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
+    }
     // GIF-style feedback: arena shake on every hit.
     const arenaEl = arenaRef.current;
     if (arenaEl) {
@@ -334,7 +344,7 @@ export default function BattleScene({
 
   const explodeAt = (pr: BattleProj) => {
     const r = pr.explodeR ?? 130;
-    playSound("explode", { volume: 0.9 });
+    playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
     burstFx(pr.x, pr.y, r, "#fdba74", 0.45);
     smokeFx(pr.x, pr.y, 7, 120);
     const target = pr.owner === "player" ? bot.current : player.current;
@@ -431,9 +441,9 @@ export default function BattleScene({
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
     let nx = clamp(f.x + dx, 40, ARENA_W - 40);
-    if (!hitsCrate(nx, f.y, FIGHTER_R)) f.x = nx;
+    if (!hitsObstacle(nx, f.y, FIGHTER_R)) f.x = nx;
     let ny = clamp(f.y + dy, 40, ARENA_H - 40);
-    if (!hitsCrate(f.x, ny, FIGHTER_R)) f.y = ny;
+    if (!hitsObstacle(f.x, ny, FIGHTER_R)) f.y = ny;
     if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
     f.moving = Math.hypot(dx, dy) > 0.5;
     if (f.moving) f.phase += dt * 10;
@@ -443,12 +453,17 @@ export default function BattleScene({
     if (resultRef.current) return;
     resultRef.current = win;
     setResult(win);
+    stopBattleAmbience();
     playSound(win === "win" ? "win" : "lose");
   };
 
   // ---- main loop ----
   useEffect(() => {
     playSound("vs");
+    startBattleAmbience();
+    let superReadyPlayed = false;
+    let stepAcc = 0;
+    let botStepAcc = 0;
     const onKeyDown = (e: KeyboardEvent) => {
       if (
         [
@@ -538,6 +553,29 @@ export default function BattleScene({
         moveFighter(p, vx * 300 * dt, vy * 300 * dt, dt);
       }
 
+      // --- footstep ticks while walking (continuous battle audio) ---
+      if (p.moving && p.dashT <= 0) {
+        stepAcc += dt;
+        if (stepAcc > 0.3) {
+          stepAcc = 0;
+          playSound("step", {
+            volume: 0.16,
+            rate: 0.8 + Math.random() * 0.5,
+          });
+        }
+      } else {
+        stepAcc = 0;
+      }
+      if (b.moving && b.dashT <= 0) {
+        botStepAcc += dt;
+        if (botStepAcc > 0.34) {
+          botStepAcc = 0;
+          playSound("step", { volume: 0.08, rate: 0.7 + Math.random() * 0.4 });
+        }
+      } else {
+        botStepAcc = 0;
+      }
+
       // --- bot AI ---
       if (b.dashT > 0) {
         b.dashT -= dt;
@@ -553,10 +591,10 @@ export default function BattleScene({
         const dist = Math.hypot(dx, dy) || 1;
         let mx = 0;
         let my = 0;
-        if (dist > 310) {
+        if (dist > 340) {
           mx = dx / dist;
           my = dy / dist;
-        } else if (dist < 180) {
+        } else if (dist < 200) {
           mx = -dx / dist;
           my = -dy / dist;
         } else {
@@ -565,7 +603,7 @@ export default function BattleScene({
         }
         moveFighter(b, mx * 190 * dt, my * 190 * dt, dt);
         b.facing = dx > 0 ? 1 : -1;
-        if (b.atkCd <= 0 && dist < 580) {
+        if (b.atkCd <= 0 && dist < 640) {
           b.atkCd = 1.05;
           const err = (Math.random() - 0.5) * 0.16;
           spawnProj(
@@ -576,7 +614,7 @@ export default function BattleScene({
             BASE_DMG,
           );
         }
-        if (b.superCharge >= 1 && dist < 620) {
+        if (b.superCharge >= 1 && dist < 680) {
           useSuper(b, p);
         }
       }
@@ -587,7 +625,10 @@ export default function BattleScene({
         pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
         const nx = pr.x + pr.vx * dt;
         const ny = pr.y + pr.vy * dt;
-        if (hitsCrate(nx, ny, pr.r)) {
+        if (hitsObstacle(nx, ny, pr.r)) {
+          // projectiles smack into obstacles — little thud + sparks
+          playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
+          burstFx(nx, ny, 55, "#d9c29a", 0.3);
           projs.current.splice(i, 1);
           continue;
         }
@@ -624,6 +665,14 @@ export default function BattleScene({
         if (fxs.current[i].ttl <= 0) fxs.current.splice(i, 1);
       }
 
+      // --- super ready jingle (fires once when the bar fills) ---
+      if (p.superCharge >= 1 && !superReadyPlayed) {
+        superReadyPlayed = true;
+        playSound("whoosh", { volume: 0.65 });
+      } else if (p.superCharge < 1) {
+        superReadyPlayed = false;
+      }
+
       // --- HUD (React, only when values changed) ---
       const ph = Math.round(p.hp / 5) * 5;
       const ohp = Math.round(b.hp / 5) * 5;
@@ -658,6 +707,7 @@ export default function BattleScene({
       cancelAnimationFrame(raf);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      stopBattleAmbience();
     };
   }, [tryAttack, trySuper]);
 
@@ -787,7 +837,7 @@ export default function BattleScene({
               <button
                 type="button"
                 onClick={() => {
-                  zoomRef.current = Math.min(12, zoomRef.current + 1.2);
+                  zoomRef.current = Math.min(16, zoomRef.current + 1.2);
                   playSound("click");
                 }}
                 aria-label="Yakınlaştır"
@@ -798,7 +848,7 @@ export default function BattleScene({
               <button
                 type="button"
                 onClick={() => {
-                  zoomRef.current = Math.max(3.4, zoomRef.current - 1.2);
+                  zoomRef.current = Math.max(4.5, zoomRef.current - 1.2);
                   playSound("click");
                 }}
                 aria-label="Uzaklaştır"

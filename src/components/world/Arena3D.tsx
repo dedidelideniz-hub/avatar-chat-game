@@ -4,6 +4,10 @@
 // everyone keeps their own look in 3D. The game simulation stays in
 // BattleScene.tsx (plain refs, no React re-renders); this component only
 // reads those refs every frame and draws them with Three.js.
+//
+// The map is a Brawl-Ball-style stadium: checkered grass, goal frames with
+// red/blue banners, spawn circles, crates, fences, bushes and barrels in a
+// symmetric layout, with a golden ball in the center.
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
 import { RoundedBox } from "@react-three/drei";
@@ -13,12 +17,61 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
 /** Game-space (px) obstacle list — shared with the simulation in BattleScene. */
-export const BATTLE_CRATES = [
-  { x: 300, y: 270, w: 120, h: 120 },
-  { x: 980, y: 270, w: 120, h: 120 },
-  { x: 300, y: 560, w: 120, h: 120 },
-  { x: 980, y: 560, w: 120, h: 120 },
-  { x: 640, y: 400, w: 120, h: 120 },
+export type ObstacleKind = "crate" | "fence" | "bush" | "barrel";
+
+export interface BattleObstacle {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  kind: ObstacleKind;
+}
+
+/** Symmetric Brawl-Ball-style layout (mirrored top/bottom around y=550). */
+export const BATTLE_OBSTACLES: BattleObstacle[] = [
+  // corner crate stacks + bushes
+  { x: 120, y: 120, w: 105, h: 105, kind: "crate" },
+  { x: 120, y: 235, w: 105, h: 105, kind: "crate" },
+  { x: 1475, y: 120, w: 105, h: 105, kind: "crate" },
+  { x: 1475, y: 235, w: 105, h: 105, kind: "crate" },
+  { x: 285, y: 80, w: 100, h: 85, kind: "bush" },
+  { x: 1315, y: 80, w: 100, h: 85, kind: "bush" },
+  { x: 285, y: 935, w: 100, h: 85, kind: "bush" },
+  { x: 1315, y: 935, w: 100, h: 85, kind: "bush" },
+  // upper barrier clusters (fence backed by bushes) + mirrored
+  { x: 255, y: 300, w: 230, h: 55, kind: "fence" },
+  { x: 280, y: 370, w: 130, h: 110, kind: "bush" },
+  { x: 1215, y: 300, w: 230, h: 55, kind: "fence" },
+  { x: 1290, y: 370, w: 130, h: 110, kind: "bush" },
+  { x: 255, y: 745, w: 230, h: 55, kind: "fence" },
+  { x: 280, y: 620, w: 130, h: 110, kind: "bush" },
+  { x: 1215, y: 745, w: 230, h: 55, kind: "fence" },
+  { x: 1290, y: 620, w: 130, h: 110, kind: "bush" },
+  // mid rows of three crates above/below the center ball
+  { x: 725, y: 440, w: 90, h: 90, kind: "crate" },
+  { x: 850, y: 440, w: 90, h: 90, kind: "crate" },
+  { x: 975, y: 440, w: 90, h: 90, kind: "crate" },
+  { x: 725, y: 570, w: 90, h: 90, kind: "crate" },
+  { x: 850, y: 570, w: 90, h: 90, kind: "crate" },
+  { x: 975, y: 570, w: 90, h: 90, kind: "crate" },
+  // side fences + barrels
+  { x: 60, y: 480, w: 190, h: 50, kind: "fence" },
+  { x: 1450, y: 480, w: 190, h: 50, kind: "fence" },
+  { x: 60, y: 570, w: 190, h: 50, kind: "fence" },
+  { x: 1450, y: 570, w: 190, h: 50, kind: "fence" },
+  { x: 330, y: 560, w: 80, h: 80, kind: "barrel" },
+  { x: 1290, y: 560, w: 80, h: 80, kind: "barrel" },
+  { x: 330, y: 460, w: 80, h: 80, kind: "barrel" },
+  { x: 1290, y: 460, w: 80, h: 80, kind: "barrel" },
+  // mid fences + bushes near sides
+  { x: 110, y: 450, w: 160, h: 50, kind: "fence" },
+  { x: 140, y: 310, w: 120, h: 100, kind: "bush" },
+  { x: 1430, y: 450, w: 160, h: 50, kind: "fence" },
+  { x: 1440, y: 310, w: 120, h: 100, kind: "bush" },
+  { x: 110, y: 600, w: 160, h: 50, kind: "fence" },
+  { x: 140, y: 690, w: 120, h: 100, kind: "bush" },
+  { x: 1430, y: 600, w: 160, h: 50, kind: "fence" },
+  { x: 1440, y: 690, w: 120, h: 100, kind: "bush" },
 ];
 
 /** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
@@ -38,8 +91,10 @@ export function supportsWebGL(): boolean {
 
 /** World px → 3D units. */
 const S = 100;
-const ARENA_W = 14; // 1400 px
-const ARENA_D = 8; // 800 px
+const ARENA_W = 17; // 1700 px
+const ARENA_D = 11; // 1100 px
+const CX = ARENA_W / 2;
+const CZ = -ARENA_D / 2;
 
 export interface BattleFighter {
   name: string;
@@ -166,7 +221,7 @@ function FighterRig({
   });
 
   return (
-    <group ref={root}>
+    <group ref={root} scale={0.72}>
       <group ref={bob}>
         {/* legs + shoes */}
         <group ref={legL} position={[0, 0.5, 0.1]}>
@@ -607,6 +662,143 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Map props — goal frames with banners, spawn circles, the center     */
+/* ball and the obstacle renderer (crates / fences / bushes / barrels).*/
+/* ------------------------------------------------------------------ */
+
+function GoalFrame({
+  position,
+  color,
+}: {
+  position: [number, number, number];
+  color: string;
+}) {
+  return (
+    <group position={position}>
+      {/* posts */}
+      <RoundedBox args={[0.16, 1.2, 0.16]} radius={0.05} position={[-0.8, 0.62, 0]} castShadow>
+        <meshStandardMaterial color="#8a5a2b" roughness={0.8} />
+      </RoundedBox>
+      <RoundedBox args={[0.16, 1.2, 0.16]} radius={0.05} position={[0.8, 0.62, 0]} castShadow>
+        <meshStandardMaterial color="#8a5a2b" roughness={0.8} />
+      </RoundedBox>
+      {/* crossbar */}
+      <RoundedBox args={[0.16, 1.76, 0.16]} radius={0.05} position={[0, 1.18, 0]} castShadow>
+        <meshStandardMaterial color="#9c6b33" roughness={0.8} />
+      </RoundedBox>
+      {/* banner hanging from the crossbar */}
+      <mesh position={[0, 0.78, 0.02]}>
+        <boxGeometry args={[1.5, 0.72, 0.04]} />
+        <meshStandardMaterial color={color} roughness={0.7} />
+      </mesh>
+      {/* banner emblem */}
+      <mesh position={[0, 0.78, 0.05]}>
+        <circleGeometry args={[0.18, 20]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.6} />
+      </mesh>
+    </group>
+  );
+}
+
+function SpawnCircle({
+  position,
+  color,
+}: {
+  position: [number, number, number];
+  color: string;
+}) {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={position}>
+      <ringGeometry args={[0.95, 1.45, 40]} />
+      <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
+function ObstacleMesh({ o }: { o: BattleObstacle }) {
+  const w = o.w / S;
+  const h = o.h / S;
+  const pos: [number, number, number] = [
+    o.x / S + w / 2,
+    0,
+    -o.y / S - h / 2,
+  ];
+
+  if (o.kind === "crate") {
+    return (
+      <RoundedBox args={[w, 1.0, h]} radius={0.07} position={[pos[0], 0.5, pos[2]]} castShadow receiveShadow>
+        <meshStandardMaterial color="#8a5a2b" roughness={0.85} />
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[w - 0.24, 0.02, h - 0.24]} />
+          <meshStandardMaterial color="#ffffff" transparent opacity={0.22} />
+        </mesh>
+      </RoundedBox>
+    );
+  }
+  if (o.kind === "fence") {
+    // low wooden rail with posts along its length
+    const posts = Math.max(2, Math.round(w / 1.6));
+    return (
+      <group position={[pos[0], 0, pos[2]]}>
+        <RoundedBox args={[w, 0.5, 0.2]} radius={0.06} position={[0, 0.28, 0]} castShadow>
+          <meshStandardMaterial color="#b07a45" roughness={0.85} />
+        </RoundedBox>
+        <RoundedBox args={[w - 0.2, 0.16, 0.24]} radius={0.04} position={[0, 0.5, 0]}>
+          <meshStandardMaterial color="#c98f55" roughness={0.85} />
+        </RoundedBox>
+        {Array.from({ length: posts }).map((_, i) => (
+          <RoundedBox
+            key={i}
+            args={[0.14, 0.72, 0.22]}
+            radius={0.04}
+            position={[-w / 2 + 0.3 + (i * (w - 0.6)) / Math.max(1, posts - 1), 0.36, 0]}
+            castShadow
+          >
+            <meshStandardMaterial color="#7a5230" roughness={0.85} />
+          </RoundedBox>
+        ))}
+      </group>
+    );
+  }
+  if (o.kind === "bush") {
+    // clump of three green spheres
+    return (
+      <group position={[pos[0], 0, pos[2]]}>
+        {[
+          { p: [0, 0.32, 0] as [number, number, number], r: Math.min(w, h) / 2.1, c: "#3e8e41" },
+          { p: [-w / 4, 0.24, h / 4] as [number, number, number], r: Math.min(w, h) / 2.6, c: "#4c9a3a" },
+          { p: [w / 4, 0.26, -h / 4] as [number, number, number], r: Math.min(w, h) / 2.7, c: "#5cb85c" },
+        ].map((b, i) => (
+          <mesh key={i} position={b.p} castShadow>
+            <sphereGeometry args={[b.r, 12, 12]} />
+            <meshStandardMaterial color={b.c} roughness={0.95} />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+  // barrel
+  return (
+    <group position={[pos[0], 0, pos[2]]}>
+      <mesh position={[0, 0.5, 0]} castShadow>
+        <cylinderGeometry args={[0.42, 0.36, 1.0, 18]} />
+        <meshStandardMaterial color="#b98a4e" roughness={0.7} />
+      </mesh>
+      {[0.24, 0.76].map((yy) => (
+        <mesh key={yy} position={[0, yy, 0]}>
+          <torusGeometry args={[0.4, 0.04, 8, 20]} />
+          <meshStandardMaterial color="#6f4a24" roughness={0.6} />
+        </mesh>
+      ))}
+      <mesh position={[0, 1.0, 0]}>
+        <circleGeometry args={[0.4, 18]} />
+        <meshStandardMaterial color="#c99a5f" roughness={0.7} />
+      </mesh>
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Brawl-Stars-style follow camera — zoomed in on the player and        */
 /* smoothly tracking them, clamped to the arena edges. The arena is     */
 /* bigger than the screen, so characters stay big while you fight.      */
@@ -620,12 +812,12 @@ function FollowCamera({
   zoomRef: MutableRefObject<number>;
 }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
-  const cur = useRef(new THREE.Vector3(ARENA_W / 2, 0.6, -ARENA_D / 2));
+  const cur = useRef(new THREE.Vector3(CX, 0.6, CZ));
   const el = 0.5; // elevation (radians)
 
   useFrame((_, dt) => {
     const p = playerRef.current;
-    const zoom = THREE.MathUtils.clamp(zoomRef.current, 3.4, 12);
+    const zoom = THREE.MathUtils.clamp(zoomRef.current, 4.5, 16);
     const vFov = (camera.fov * Math.PI) / 180;
     const aspect = Math.max(0.2, camera.aspect);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
@@ -633,11 +825,7 @@ function FollowCamera({
     const halfW = Math.tan(hFov / 2) * zoom;
     const halfD = Math.tan(vFov / 2) * zoom * Math.cos(el);
     // Clamp the target so the view never leaves the arena walls.
-    const tx = THREE.MathUtils.clamp(
-      p.x / S,
-      halfW + 0.3,
-      ARENA_W - halfW - 0.3,
-    );
+    const tx = THREE.MathUtils.clamp(p.x / S, halfW + 0.3, ARENA_W - halfW - 0.3);
     const tz = THREE.MathUtils.clamp(
       -p.y / S,
       -ARENA_D + halfD + 0.3,
@@ -675,40 +863,62 @@ export function Arena3D({
   zoomRef: MutableRefObject<number>;
   onWorldClick: (x: number, y: number) => void;
 }) {
+  // Checkerboard grass — two alternating greens, tiled across the pitch.
+  const checkerTexture = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext("2d");
+    if (g) {
+      const tile = 64;
+      for (let y = 0; y < 2; y++) {
+        for (let x = 0; x < 2; x++) {
+          g.fillStyle = (x + y) % 2 === 0 ? "#5db04a" : "#539e41";
+          g.fillRect(x * tile, y * tile, tile, tile);
+        }
+      }
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(ARENA_W, ARENA_D); // ~1 unit (100px) per tile
+    return t;
+  }, []);
+
   return (
     <Canvas
       dpr={[1, 2]}
       shadows
-      camera={{ position: [7, 6, 9], fov: 60, near: 0.1, far: 300 }}
+      camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.1, far: 300 }}
       className="absolute inset-0"
     >
       <FollowCamera playerRef={playerRef} zoomRef={zoomRef} />
-      <color attach="background" args={["#8ecae6"]} />
-      <fog attach="fog" args={["#8ecae6", 24, 55]} />
-      <ambientLight intensity={0.7} />
-      <hemisphereLight args={["#cfe9ff", "#4c9a3a", 0.55]} />
+      {/* outer space — dark border around the pitch */}
+      <color attach="background" args={["#0c1220"]} />
+      <fog attach="fog" args={["#0c1220", 30, 60]} />
+      <ambientLight intensity={0.75} />
+      <hemisphereLight args={["#cfe9ff", "#4c9a3a", 0.6]} />
       <directionalLight
         position={[10, 14, 6]}
-        intensity={1.7}
+        intensity={1.8}
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
-        shadow-camera-left={-10}
-        shadow-camera-right={10}
-        shadow-camera-top={10}
-        shadow-camera-bottom={-10}
+        shadow-camera-left={-12}
+        shadow-camera-right={12}
+        shadow-camera-top={12}
+        shadow-camera-bottom={-12}
       />
 
       {/* sun */}
-      <mesh position={[10.5, 11, 2]}>
+      <mesh position={[11.5, 11, 1]}>
         <sphereGeometry args={[0.9, 16, 16]} />
         <meshBasicMaterial color="#ffe066" />
       </mesh>
 
       {/* drifting clouds — plain spheres, no extra dependencies */}
       {[
-        { pos: [2.5, 6.8, -0.5], s: 1 },
-        { pos: [10.5, 6.2, -6], s: 0.8 },
+        { pos: [2.5, 6.8, -1], s: 1 },
+        { pos: [12, 6.2, -8], s: 0.8 },
       ].map((cl, i) => (
         <group key={i} position={cl.pos as [number, number, number]}>
           {[
@@ -735,65 +945,60 @@ export function Arena3D({
         </group>
       ))}
 
-      {/* grass floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[9.4, 48]} />
-        <meshStandardMaterial color="#6bbf4e" roughness={1} />
-      </mesh>
-      {/* striped boundary ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
-        <ringGeometry args={[6.95, 7.3, 48]} />
-        <meshStandardMaterial
-          color="#ffffff"
-          transparent
-          opacity={0.3}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-      {/* center line */}
-      <mesh position={[7, 0.02, -4]} rotation={[0, 0, 0]}>
-        <boxGeometry args={[0.06, 0.02, ARENA_D]} />
-        <meshStandardMaterial color="#ffffff" transparent opacity={0.25} />
+      {/* dark ground plate under the pitch (the "black space" border) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[CX, -0.03, CZ]}>
+        <planeGeometry args={[ARENA_W + 7, ARENA_D + 7]} />
+        <meshStandardMaterial color="#0a0f1d" roughness={1} />
       </mesh>
 
-      {/* boundary walls */}
+      {/* checkered grass pitch */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[CX, 0, CZ]} receiveShadow>
+        <planeGeometry args={[ARENA_W, ARENA_D]} />
+        <meshStandardMaterial map={checkerTexture} roughness={1} />
+      </mesh>
+
+      {/* center line */}
+      <mesh position={[CX, 0.02, CZ]}>
+        <boxGeometry args={[0.06, 0.02, ARENA_D]} />
+        <meshStandardMaterial color="#ffffff" transparent opacity={0.2} />
+      </mesh>
+
+      {/* spawn circles */}
+      <SpawnCircle position={[CX, 0.03, -2.5]} color="#e63946" />
+      <SpawnCircle position={[CX, 0.03, -8.5]} color="#3a86ff" />
+
+      {/* goal frames — red at top, blue at bottom */}
+      <GoalFrame position={[CX, 0, -0.05]} color="#e63946" />
+      <GoalFrame position={[CX, 0, -ARENA_D + 0.05]} color="#3a86ff" />
+
+      {/* center ball */}
+      <mesh position={[CX, 0.26, CZ]} castShadow>
+        <sphereGeometry args={[0.3, 20, 20]} />
+        <meshStandardMaterial
+          color="#f5c542"
+          emissive="#d99a1f"
+          emissiveIntensity={0.35}
+          roughness={0.45}
+          metalness={0.15}
+        />
+      </mesh>
+
+      {/* boundary walls — dark navy so the arena reads as stadium edges */}
       {[
-        { pos: [7, 0.3, 0], size: [ARENA_W + 0.4, 0.6, 0.28] },
-        { pos: [7, 0.3, -ARENA_D], size: [ARENA_W + 0.4, 0.6, 0.28] },
-        { pos: [0, 0.3, -4], size: [0.28, 0.6, ARENA_D] },
-        { pos: [ARENA_W, 0.3, -4], size: [0.28, 0.6, ARENA_D] },
+        { pos: [CX, 0.3, 0], size: [ARENA_W + 0.4, 0.6, 0.3] },
+        { pos: [CX, 0.3, -ARENA_D], size: [ARENA_W + 0.4, 0.6, 0.3] },
+        { pos: [0, 0.3, CZ], size: [0.3, 0.6, ARENA_D] },
+        { pos: [ARENA_W, 0.3, CZ], size: [0.3, 0.6, ARENA_D] },
       ].map((w, i) => (
         <mesh key={i} position={w.pos as [number, number, number]}>
           <boxGeometry args={w.size as [number, number, number]} />
-          <meshStandardMaterial
-            color="#ffffff"
-            transparent
-            opacity={0.55}
-            roughness={0.5}
-          />
+          <meshStandardMaterial color="#1d2740" roughness={0.6} />
         </mesh>
       ))}
 
-      {/* crates */}
-      {BATTLE_CRATES.map((cr, i) => (
-        <RoundedBox
-          key={i}
-          args={[cr.w / S, cr.h / S, cr.w / S]}
-          radius={0.08}
-          position={[cr.x / S + cr.w / S / 2, 0.62, -cr.y / S - cr.h / S / 2]}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial color="#8a5a2b" roughness={0.85} />
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[cr.w / S - 0.24, 0.02, cr.w / S - 0.24]} />
-            <meshStandardMaterial
-              color="#ffffff"
-              transparent
-              opacity={0.22}
-            />
-          </mesh>
-        </RoundedBox>
+      {/* obstacles — crates, fences, bushes, barrels */}
+      {BATTLE_OBSTACLES.map((o, i) => (
+        <ObstacleMesh key={i} o={o} />
       ))}
 
       {/* fighters */}
@@ -806,7 +1011,7 @@ export function Arena3D({
       {/* invisible click plane — converts taps to game coordinates */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[7, 0.02, -4]}
+        position={[CX, 0.02, CZ]}
         onPointerDown={(e) => {
           e.stopPropagation();
           onWorldClick(e.point.x * S, -e.point.z * S);
@@ -818,4 +1023,3 @@ export function Arena3D({
     </Canvas>
   );
 }
-

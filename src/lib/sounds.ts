@@ -22,7 +22,11 @@ export type SoundName =
   | "invite"
   | "accept"
   | "decline"
-  | "vs";
+  | "vs"
+  | "step"
+  | "hurt"
+  | "thud"
+  | "whoosh";
 
 const PRESETS: Record<SoundName, string> = {
   click: "blipSelect",
@@ -42,6 +46,10 @@ const PRESETS: Record<SoundName, string> = {
   accept: "powerUp",
   decline: "hitHurt",
   vs: "blipSelect",
+  step: "blipSelect",
+  hurt: "hitHurt",
+  thud: "hitHurt",
+  whoosh: "jump",
 };
 
 const STORAGE_KEY = "sanalika-ses-kapali";
@@ -132,4 +140,68 @@ export function setMuted(next: boolean): void {
 export function toggleMuted(): boolean {
   setMuted(!muted);
   return muted;
+}
+
+/* ------------------------------------------------------------------ */
+/* Continuous battle ambience — a low, slowly-breathing drone that      */
+/* plays for the whole fight. Pure WebAudio, no samples needed.         */
+/* ------------------------------------------------------------------ */
+
+interface Ambience {
+  oscs: OscillatorNode[];
+  gain: GainNode;
+  lfo: OscillatorNode;
+}
+
+let ambience: Ambience | null = null;
+
+/** Start the low battle drone (idempotent). Must follow a user gesture. */
+export function startBattleAmbience(): void {
+  const ac = ensureCtx();
+  if (!ac || !master || ambience) return;
+  try {
+    const gain = ac.createGain();
+    gain.gain.value = 0.0;
+    const oscs = [55, 82.4, 110.2].map((freq, i) => {
+      const osc = ac.createOscillator();
+      osc.type = i === 1 ? "sawtooth" : "sine";
+      osc.frequency.value = freq;
+      const og = ac.createGain();
+      og.gain.value = i === 1 ? 0.1 : 0.32;
+      const filt = ac.createBiquadFilter();
+      filt.type = "lowpass";
+      filt.frequency.value = 300 + i * 60;
+      osc.connect(og);
+      og.connect(filt);
+      filt.connect(gain);
+      osc.start();
+      return osc;
+    });
+    // Slow breathing LFO (0.09 Hz) that swells the drone in and out.
+    const lfo = ac.createOscillator();
+    lfo.frequency.value = 0.09;
+    const lfoGain = ac.createGain();
+    lfoGain.gain.value = 0.045;
+    lfo.connect(lfoGain);
+    lfoGain.connect(gain.gain);
+    lfo.start();
+    gain.gain.value = 0.05;
+    gain.connect(master);
+    ambience = { oscs, gain, lfo };
+  } catch {
+    // Audio is a bonus — never crash the game over it.
+  }
+}
+
+/** Stop the battle drone. */
+export function stopBattleAmbience(): void {
+  if (!ambience) return;
+  try {
+    ambience.oscs.forEach((o) => o.stop());
+    ambience.lfo.stop();
+    ambience.gain.disconnect();
+  } catch {
+    // ignore
+  }
+  ambience = null;
 }

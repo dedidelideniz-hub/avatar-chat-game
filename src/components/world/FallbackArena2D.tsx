@@ -2,10 +2,12 @@
 // Used when the browser can't render the 3D scene. It reads the same battle
 // refs (fighters, projectiles, effects) every frame and draws them as SVG,
 // so the whole game (movement, attacks, supers, HP) keeps working.
+// The map mirrors Arena3D: checkered grass, goals with red/blue banners,
+// spawn circles, a center ball and crates/fences/bushes/barrels.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import {
-  BATTLE_CRATES,
+  BATTLE_OBSTACLES,
   type BattleFighter,
   type BattleFx,
   type BattleProj,
@@ -13,10 +15,10 @@ import {
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 
-const W = 1400;
-const H = 800;
-const CHAR_W = 70;
-const CHAR_H = 96;
+const W = 1700;
+const H = 1100;
+const CHAR_W = 58;
+const CHAR_H = 78;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const PROJ_POOL = 26;
@@ -54,7 +56,7 @@ export function FallbackArena2D({
   const beamEls = useRef<SVGLineElement[]>([]);
   const smokeEls = useRef<SVGCircleElement[]>([]);
   // Smooth follow-camera center (world px).
-  const camRef = useRef({ x: 700, y: 400 });
+  const camRef = useRef({ x: W / 2, y: H / 2 });
 
   useEffect(() => {
     const fx = fxRef.current;
@@ -79,7 +81,7 @@ export function FallbackArena2D({
     };
 
     const projsEls = ensure(projEls.current, "circle", PROJ_POOL, (el) => {
-      el.setAttribute("r", "13");
+      el.setAttribute("r", "12");
       el.setAttribute("stroke", "#ffffff");
       el.setAttribute("stroke-width", "3");
     });
@@ -122,8 +124,8 @@ export function FallbackArena2D({
       const svg = svgRef.current;
       if (svg && svg.clientWidth > 0) {
         const aspect = svg.clientWidth / Math.max(1, svg.clientHeight);
-        const zoom = Math.min(12, Math.max(3.4, zoomRef.current));
-        let viewW = Math.min(W, 780 * (6.2 / zoom));
+        const zoom = Math.min(16, Math.max(4.5, zoomRef.current));
+        let viewW = Math.min(W, 11200 / zoom);
         let viewH = viewW / aspect;
         if (viewH > H) {
           viewH = H;
@@ -280,59 +282,75 @@ export function FallbackArena2D({
         className="h-full w-full"
       >
         <defs>
-          <radialGradient id="arena2d-grass" cx="50%" cy="42%" r="75%">
-            <stop offset="0%" stopColor="#7ec850" />
-            <stop offset="100%" stopColor="#4c9a3a" />
+          <pattern
+            id="arena2d-checker"
+            width="100"
+            height="100"
+            patternUnits="userSpaceOnUse"
+          >
+            <rect width="100" height="100" fill="#5db04a" />
+            <rect width="50" height="50" fill="#539e41" />
+            <rect x="50" y="50" width="50" height="50" fill="#539e41" />
+          </pattern>
+          <radialGradient id="arena2d-ball-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffe89a" />
+            <stop offset="100%" stopColor="#f5c542" />
           </radialGradient>
         </defs>
-        <rect width={W} height={H} fill="url(#arena2d-grass)" />
-        <rect
-          x="20"
-          y="20"
-          width={W - 40}
-          height={H - 40}
-          rx="40"
-          fill="none"
-          stroke="#ffffff"
-          strokeOpacity="0.35"
-          strokeWidth="10"
-          strokeDasharray="26 18"
-        />
+
+        {/* outer space border */}
+        <rect width={W} height={H} fill="#0c1220" />
+
+        {/* checkered grass pitch */}
+        <rect width={W} height={H} fill="url(#arena2d-checker)" />
+
+        {/* center line */}
         <line
           x1={W / 2}
-          y1="60"
+          y1="0"
           x2={W / 2}
-          y2={H - 60}
+          y2={H}
           stroke="#ffffff"
-          strokeOpacity="0.18"
+          strokeOpacity="0.16"
           strokeWidth="6"
           strokeDasharray="18 14"
         />
-        {BATTLE_CRATES.map((c, i) => (
-          <g key={i}>
-            <rect
-              x={c.x}
-              y={c.y}
-              width={c.w}
-              height={c.h}
-              rx="18"
-              fill="#8a5a2b"
-              stroke="#5f3d1c"
-              strokeWidth="6"
-            />
-            <rect
-              x={c.x + 12}
-              y={c.y + 12}
-              width={c.w - 24}
-              height={c.h - 24}
-              rx="10"
-              fill="none"
-              stroke="#ffffff"
-              strokeOpacity="0.25"
-              strokeWidth="4"
-              strokeDasharray="14 10"
-            />
-          </g>
+
+        {/* spawn circles */}
+        <circle cx={W / 2} cy="250" r="130" fill="#e63946" opacity="0.14" />
+        <circle
+          cx={W / 2}
+          cy="250"
+          r="130"
+          fill="none"
+          stroke="#e63946"
+          strokeOpacity="0.3"
+          strokeWidth="6"
+          strokeDasharray="16 12"
+        />
+        <circle cx={W / 2} cy="850" r="130" fill="#3a86ff" opacity="0.14" />
+        <circle
+          cx={W / 2}
+          cy="850"
+          r="130"
+          fill="none"
+          stroke="#3a86ff"
+          strokeOpacity="0.3"
+          strokeWidth="6"
+          strokeDasharray="16 12"
+        />
+
+        {/* goal frames — red top, blue bottom */}
+        <Goal2D cx={W / 2} y={0} color="#e63946" />
+        <Goal2D cx={W / 2} y={H} color="#3a86ff" />
+
+        {/* center ball */}
+        <circle cx={W / 2} cy={H / 2} r="36" fill="url(#arena2d-ball-glow)" stroke="#c99a2e" strokeWidth="5" />
+        <circle cx={W / 2 - 10} cy={H / 2 - 12} r="9" fill="#ffffff" opacity="0.55" />
+
+        {/* obstacles */}
+        {BATTLE_OBSTACLES.map((o, i) => (
+          <Obstacle2D key={i} o={o} />
         ))}
 
         {/* fighters */}
@@ -361,5 +379,90 @@ export function FallbackArena2D({
         <g ref={fxRef} />
       </svg>
     </div>
+  );
+}
+
+function Goal2D({ cx, y, color }: { cx: number; y: number; color: string }) {
+  const top = y === 0;
+  const postY = top ? 0 : y - 115;
+  const bannerY = top ? 30 : y - 105;
+  return (
+    <g>
+      {/* posts */}
+      <rect x={cx - 80} y={postY} width="16" height="115" rx="6" fill="#8a5a2b" stroke="#5f3d1c" strokeWidth="4" />
+      <rect x={cx + 64} y={postY} width="16" height="115" rx="6" fill="#8a5a2b" stroke="#5f3d1c" strokeWidth="4" />
+      {/* crossbar */}
+      <rect x={cx - 88} y={top ? 10 : y - 28} width="176" height="18" rx="8" fill="#9c6b33" stroke="#5f3d1c" strokeWidth="4" />
+      {/* banner */}
+      <rect x={cx - 76} y={bannerY} width="152" height="72" rx="10" fill={color} stroke="#ffffff" strokeOpacity="0.35" strokeWidth="4" />
+      <circle cx={cx} cy={bannerY + 36} r="18" fill="#ffffff" opacity="0.85" />
+    </g>
+  );
+}
+
+function Obstacle2D({ o }: { o: (typeof BATTLE_OBSTACLES)[number] }) {
+  const { x, y, w, h, kind } = o;
+  if (kind === "crate") {
+    return (
+      <g>
+        <rect x={x} y={y} width={w} height={h} rx="16" fill="#8a5a2b" stroke="#5f3d1c" strokeWidth="6" />
+        <rect
+          x={x + 12}
+          y={y + 12}
+          width={w - 24}
+          height={h - 24}
+          rx="10"
+          fill="none"
+          stroke="#ffffff"
+          strokeOpacity="0.25"
+          strokeWidth="4"
+          strokeDasharray="14 10"
+        />
+      </g>
+    );
+  }
+  if (kind === "fence") {
+    return (
+      <g>
+        <rect x={x} y={y} width={w} height={h} rx="14" fill="#b07a45" stroke="#7a5230" strokeWidth="6" />
+        <rect x={x + 8} y={y + 8} width={w - 16} height={Math.max(6, h / 2.6)} rx="5" fill="#c98f55" opacity="0.9" />
+        <rect
+          x={x + 8}
+          y={y + h - 8 - Math.max(6, h / 2.6)}
+          width={w - 16}
+          height={Math.max(6, h / 2.6)}
+          rx="5"
+          fill="#c98f55"
+          opacity="0.9"
+        />
+      </g>
+    );
+  }
+  if (kind === "bush") {
+    const r = Math.min(w, h) / 2;
+    return (
+      <g>
+        <circle cx={x + w / 2} cy={y + h / 2} r={r} fill="#3e8e41" stroke="#2d6b30" strokeWidth="5" />
+        <circle cx={x + w * 0.28} cy={y + h * 0.65} r={r * 0.62} fill="#4c9a3a" />
+        <circle cx={x + w * 0.72} cy={y + h * 0.62} r={r * 0.6} fill="#5cb85c" />
+        <circle cx={x + w * 0.5} cy={y + h * 0.38} r={r * 0.45} fill="#5cb85c" opacity="0.8" />
+      </g>
+    );
+  }
+  // barrel
+  return (
+    <g>
+      <circle cx={x + w / 2} cy={y + h / 2} r={Math.min(w, h) / 2} fill="#b98a4e" stroke="#6f4a24" strokeWidth="6" />
+      <rect
+        x={x + 10}
+        y={y + h / 2 - 7}
+        width={w - 20}
+        height="14"
+        rx="7"
+        fill="#6f4a24"
+        opacity="0.85"
+      />
+      <circle cx={x + w / 2 - 8} cy={y + h / 2 - 10} r="6" fill="#ffffff" opacity="0.35" />
+    </g>
   );
 }
