@@ -65,6 +65,118 @@ const VENDOR_PHRASES: Record<string, string[]> = {
   vip: ["Sana özel fırsat! 👑", "Balonun rengârenk olsun!", "VIP üyelikle her renk senin!"],
 };
 
+/** An autonomous street walker — a bot that wanders the road on its own. */
+interface BotDef {
+  id: string;
+  name: string;
+  color: string; // chat accent for this bot
+  speed: number; // world units / second (slower than the player)
+  x: number; // spawn point (must be on the walkable road)
+  y: number;
+  config: AvatarConfig;
+  equipped: string[]; // small touches so they look lived-in
+}
+
+const BOT_DEFS: BotDef[] = [
+  {
+    id: "bot-ada",
+    name: "Ada",
+    color: "#ec4899",
+    speed: 120,
+    x: 450,
+    y: 690,
+    config: {
+      skin: "#ffd1a3",
+      hair: "long",
+      hairColor: "#6b4423",
+      shirt: "#ec4899",
+      pants: "#1e293b",
+      shoes: "#111827",
+    },
+    equipped: ["moda-sapka"],
+  },
+  {
+    id: "bot-mert",
+    name: "Mert",
+    color: "#0ea5e9",
+    speed: 150,
+    x: 1100,
+    y: 700,
+    config: {
+      skin: "#e8a87c",
+      hair: "spiky",
+      hairColor: "#1c1917",
+      shirt: "#3b82f6",
+      pants: "#334155",
+      shoes: "#374151",
+    },
+    equipped: ["moda-gozluk"],
+  },
+  {
+    id: "bot-elif",
+    name: "Elif",
+    color: "#a855f7",
+    speed: 105,
+    x: 250,
+    y: 820,
+    config: {
+      skin: "#f5c19a",
+      hair: "curly",
+      hairColor: "#b45309",
+      shirt: "#14b8a6",
+      pants: "#14532d",
+      shoes: "#22c55e",
+    },
+    equipped: ["balon-kirmizi"],
+  },
+  {
+    id: "bot-kaan",
+    name: "Kaan",
+    color: "#f59e0b",
+    speed: 135,
+    x: 1350,
+    y: 810,
+    config: {
+      skin: "#b97e4f",
+      hair: "short",
+      hairColor: "#1c1917",
+      shirt: "#f97316",
+      pants: "#111827",
+      shoes: "#ef4444",
+    },
+    equipped: ["oyuncak-top"],
+  },
+];
+
+/** Little things the bots say while wandering the street. */
+const BOT_PHRASES = [
+  "Caddede yürümek çok keyifli! 🚶",
+  "Dondurmacı Emre'nin külahına bayılıyorum!",
+  "Bu günlerde balonlar çok popüler 🎈",
+  "Bugün hava harika, değil mi? ☀️",
+  "Yeni şapkamı nasıl buldun? 👒",
+  "Tezgâhları gezmeyi çok seviyorum!",
+];
+
+/** A random walkable spot on the street for bots to wander to. */
+function randomWalkTarget(): { x: number; y: number } {
+  const zone = WALKABLE_ZONES[0];
+  for (let i = 0; i < 12; i++) {
+    const x = zone.x + 40 + Math.random() * (zone.w - 80);
+    const y = zone.y + 40 + Math.random() * (zone.h - 80);
+    if (inWalkable(x, y)) return { x, y };
+  }
+  return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };
+}
+
+/** Speech-bubble width adapts to the message and the sender's name. */
+function bubbleWidth(text: string, name: string) {
+  return Math.min(
+    190,
+    Math.max(150, text.length * 7 + 26, name.length * 7.5 + 28),
+  );
+}
+
 const sheetPanel = {
   initial: { y: 40, opacity: 0 },
   animate: { y: 0, opacity: 1 },
@@ -319,6 +431,23 @@ export default function World() {
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
+  // Autonomous bots: positions/animations live in refs (mutated every frame
+  // without re-rendering React); only their speech bubbles are React state.
+  const botRefs = useRef(new Map<string, SVGGElement>());
+  const botsRef = useRef(
+    BOT_DEFS.map((def) => ({
+      def,
+      pos: { x: def.x, y: def.y },
+      target: null as { x: number; y: number } | null,
+      facing: 1,
+      phase: Math.random() * 10,
+      moving: false,
+      pauseUntil: 0,
+    })),
+  );
+  const [botBubbles, setBotBubbles] = useState<Record<string, string | null>>(
+    {},
+  );
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -517,6 +646,91 @@ export default function World() {
         }
       }
 
+      // Autonomous bots wander the street — pick waypoints, walk, animate.
+      for (const bot of botsRef.current) {
+        const now = performance.now();
+        if (bot.pauseUntil > now) {
+          bot.moving = false;
+        } else if (bot.target === null) {
+          // Rest a moment, then pick a new spot to stroll to.
+          bot.pauseUntil = now + 1200 + Math.random() * 2200;
+          bot.target = randomWalkTarget();
+        } else {
+          const dx = bot.target.x - bot.pos.x;
+          const dy = bot.target.y - bot.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 20) {
+            bot.target = null;
+          } else {
+            const vx = dx / dist;
+            const vy = dy / dist;
+            const nx = Math.min(
+              Math.max(
+                bot.pos.x + vx * bot.def.speed * dt,
+                WORLD_BOUNDS.minX,
+              ),
+              WORLD_BOUNDS.maxX,
+            );
+            const ny = Math.min(
+              Math.max(
+                bot.pos.y + vy * bot.def.speed * dt,
+                WORLD_BOUNDS.minY,
+              ),
+              WORLD_BOUNDS.maxY,
+            );
+            // Same axis-by-axis collision as the player (stalls + curbs).
+            let px = nx;
+            let py = bot.pos.y;
+            for (const r of OBSTACLES) {
+              if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
+                px = bot.pos.x;
+                break;
+              }
+            }
+            if (!inWalkable(px, py)) px = bot.pos.x;
+            py = Math.min(Math.max(ny, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
+            for (const r of OBSTACLES) {
+              if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
+                py = bot.pos.y;
+                break;
+              }
+            }
+            if (!inWalkable(px, py)) py = bot.pos.y;
+            bot.pos.x = px;
+            bot.pos.y = py;
+            bot.phase += dt * 8;
+            bot.moving = true;
+            if (Math.abs(vx) > 0.05) bot.facing = vx;
+            // Blocked by a stall / curb? Pick a fresh waypoint next frame.
+            if (Math.abs(px - nx) > 0.01 || Math.abs(py - ny) > 0.01) {
+              bot.target = null;
+            }
+          }
+        }
+        // Apply to the DOM imperatively — no React re-render per frame.
+        const botEl = botRefs.current.get(bot.def.id);
+        if (botEl) {
+          botEl.setAttribute(
+            "transform",
+            `translate(${bot.pos.x} ${bot.pos.y})`,
+          );
+          const sprite = botEl.querySelector(
+            ".bot-sprite",
+          ) as SVGGElement | null;
+          const flip = bot.facing < 0 ? -1 : 1;
+          const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
+          if (sprite) {
+            sprite.classList.toggle("walking", bot.moving);
+            sprite.setAttribute(
+              "transform",
+              flip === 1
+                ? `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`
+                : `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
+            );
+          }
+        }
+      }
+
       } catch (err) {
         // A single bad frame must never kill the game loop.
         console.error("Oyun döngüsü hatası:", err);
@@ -618,15 +832,32 @@ export default function World() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
       timer = setTimeout(() => {
-        const vendor = VENDORS[Math.floor(Math.random() * VENDORS.length)];
-        const pool = VENDOR_PHRASES[vendor.id];
-        const text = pool[Math.floor(Math.random() * pool.length)];
-        appendMessage({
-          id: nextIdRef.current++,
-          from: vendor.short,
-          text,
-          color: vendor.color,
-        });
+        if (Math.random() < 0.55 && BOT_DEFS.length > 0) {
+          // A bot says something — a chat line + a brief speech bubble.
+          const bot = BOT_DEFS[Math.floor(Math.random() * BOT_DEFS.length)];
+          const text =
+            BOT_PHRASES[Math.floor(Math.random() * BOT_PHRASES.length)];
+          appendMessage({
+            id: nextIdRef.current++,
+            from: bot.name,
+            text,
+            color: bot.color,
+          });
+          setBotBubbles((prev) => ({ ...prev, [bot.id]: text }));
+          setTimeout(() => {
+            setBotBubbles((prev) => ({ ...prev, [bot.id]: null }));
+          }, 4000);
+        } else {
+          const vendor = VENDORS[Math.floor(Math.random() * VENDORS.length)];
+          const pool = VENDOR_PHRASES[vendor.id];
+          const text = pool[Math.floor(Math.random() * pool.length)];
+          appendMessage({
+            id: nextIdRef.current++,
+            from: vendor.short,
+            text,
+            color: vendor.color,
+          });
+        }
         schedule();
       }, 9000 + Math.random() * 7000);
     };
@@ -893,6 +1124,102 @@ export default function World() {
               </g>
             )}
           </g>
+
+          {/* autonomous bots — wander the street with name tags + bubbles */}
+          {botsRef.current.map((bot) => {
+            const bubbleText = botBubbles[bot.def.id] ?? null;
+            const bw = bubbleText ? bubbleWidth(bubbleText, bot.def.name) : 0;
+            return (
+              <g
+                key={bot.def.id}
+                ref={(el) => {
+                  if (el) botRefs.current.set(bot.def.id, el);
+                  else botRefs.current.delete(bot.def.id);
+                }}
+              >
+                <g className="bot-sprite">
+                  <AvatarPreview
+                    width={PLAYER_W}
+                    height={PLAYER_H}
+                    config={bot.def.config}
+                  />
+                  <EquippedItems
+                    equipped={bot.def.equipped}
+                    width={PLAYER_W}
+                    height={PLAYER_H}
+                  />
+                </g>
+                {/* name tag — pill under the feet */}
+                <g transform="translate(-40 16)">
+                  <rect
+                    width="80"
+                    height="20"
+                    rx="10"
+                    fill="#ffffff"
+                    opacity="0.92"
+                    stroke="#3d2f2a"
+                    strokeOpacity="0.12"
+                  />
+                  <text
+                    x="40"
+                    y="14"
+                    textAnchor="middle"
+                    fontSize="11"
+                    fontWeight="800"
+                    fill="#2b2320"
+                  >
+                    {bot.def.name}
+                  </text>
+                </g>
+                {/* occasional speech bubble */}
+                {bubbleText !== null && (
+                  <g
+                    transform={`translate(${-bw / 2} -144)`}
+                    className="speech-bubble"
+                  >
+                    <rect
+                      width={bw}
+                      height={58}
+                      rx={22}
+                      fill="#ffffff"
+                      stroke="#3d2f2a"
+                      strokeOpacity={0.22}
+                      strokeWidth={3.5}
+                    />
+                    <path
+                      d={`M${bw / 2 - 11} 58 L${bw / 2} 72 L${bw / 2 + 11} 58 Z`}
+                      fill="#ffffff"
+                      stroke="#3d2f2a"
+                      strokeOpacity={0.22}
+                      strokeWidth={3.5}
+                      strokeLinejoin="round"
+                    />
+                    <text
+                      x={bw / 2}
+                      y={19}
+                      textAnchor="middle"
+                      fontSize={10.5}
+                      fontWeight={900}
+                      letterSpacing={0.8}
+                      fill="#2b2320"
+                    >
+                      {bot.def.name}
+                    </text>
+                    <text
+                      x={bw / 2}
+                      y={41}
+                      textAnchor="middle"
+                      fontSize={12.5}
+                      fontWeight={800}
+                      fill="#2b2320"
+                    >
+                      {bubbleText}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
           </g>
         </svg>
 
