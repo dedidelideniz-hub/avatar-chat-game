@@ -7,16 +7,26 @@ import { Button } from "@/components/ui/button";
 import {
   Arena3D,
   BATTLE_CRATES,
+  supportsWebGL,
   type BattleFighter,
   type BattleFx,
   type BattleProj,
 } from "@/components/world/Arena3D";
+import { FallbackArena2D } from "@/components/world/FallbackArena2D";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import { playSound } from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
 import { Swords, Trophy, X, Zap } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Component,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 const ARENA_W = 1400;
 const ARENA_H = 800;
@@ -58,6 +68,24 @@ function newFighter(
   };
 }
 
+/** If the 3D scene crashes for any reason, fall back to the 2D arena so
+ *  the battle never breaks. */
+class ArenaBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error("3D arena hatası — 2D moda geçiliyor:", error);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
 export default function BattleScene({
   playerName,
   playerConfig,
@@ -96,6 +124,8 @@ export default function BattleScene({
     newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1150, 400, -1),
   );
   bot.current.atkCd = 1;
+
+  const webglOk = useMemo(() => supportsWebGL(), []);
 
   const [result, setResult] = useState<"win" | "lose" | null>(null);
   const [vsShow, setVsShow] = useState(true);
@@ -603,13 +633,35 @@ export default function BattleScene({
           ref={arenaRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
         >
-          <Arena3D
-            playerRef={player}
-            botRef={bot}
-            projsRef={projs}
-            fxsRef={fxs}
-            onWorldClick={(x, y) => actionsRef.current.click(x, y)}
-          />
+          {webglOk ? (
+            <ArenaBoundary
+              fallback={
+                <FallbackArena2D
+                  playerRef={player}
+                  botRef={bot}
+                  projsRef={projs}
+                  fxsRef={fxs}
+                  onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+                />
+              }
+            >
+              <Arena3D
+                playerRef={player}
+                botRef={bot}
+                projsRef={projs}
+                fxsRef={fxs}
+                onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+              />
+            </ArenaBoundary>
+          ) : (
+            <FallbackArena2D
+              playerRef={player}
+              botRef={bot}
+              projsRef={projs}
+              fxsRef={fxs}
+              onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+            />
+          )}
 
           {/* animated VS intro banner — GIF-style entrance */}
           {vsShow && (

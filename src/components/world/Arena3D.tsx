@@ -6,7 +6,7 @@
 // reads those refs every frame and draws them with Three.js.
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
-import { Cloud, RoundedBox, Sparkles } from "@react-three/drei";
+import { RoundedBox } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
 import { useLayoutEffect, useMemo, useRef } from "react";
@@ -20,6 +20,21 @@ export const BATTLE_CRATES = [
   { x: 980, y: 560, w: 120, h: 120 },
   { x: 640, y: 400, w: 120, h: 120 },
 ];
+
+/** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
+export function supportsWebGL(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const c = document.createElement("canvas");
+    return !!(
+      c.getContext("webgl2") ||
+      c.getContext("webgl") ||
+      c.getContext("experimental-webgl")
+    );
+  } catch {
+    return false;
+  }
+}
 
 /** World px → 3D units. */
 const S = 100;
@@ -616,20 +631,35 @@ export function Arena3D({
         <meshBasicMaterial color="#ffe066" />
       </mesh>
 
-      {/* drifting clouds */}
-      <Cloud position={[3, 7, -1]} scale={[2.6, 1, 2.6]} speed={0.3} opacity={0.7} />
-      <Cloud position={[10, 6.5, -6]} scale={[2.2, 1, 2.2]} speed={0.22} opacity={0.6} />
-
-      {/* twinkling sparkles above the grass */}
-      <Sparkles
-        count={70}
-        scale={[15, 4, 9]}
-        position={[7, 2.4, -4]}
-        size={2.4}
-        speed={0.35}
-        opacity={0.75}
-        color="#fff8d6"
-      />
+      {/* drifting clouds — plain spheres, no extra dependencies */}
+      {[
+        { pos: [2.5, 6.8, -0.5], s: 1 },
+        { pos: [10.5, 6.2, -6], s: 0.8 },
+      ].map((cl, i) => (
+        <group key={i} position={cl.pos as [number, number, number]}>
+          {[
+            [0, 0, 0],
+            [0.85, 0.12, 0.15],
+            [-0.85, 0.12, -0.1],
+            [0.3, 0.28, 0.05],
+            [-0.35, 0.26, -0.12],
+          ].map((o, j) => (
+            <mesh
+              key={j}
+              position={o as [number, number, number]}
+              scale={[1, 0.62, 0.8]}
+            >
+              <sphereGeometry args={[0.55 * cl.s, 10, 10]} />
+              <meshStandardMaterial
+                color="#ffffff"
+                transparent
+                opacity={0.85}
+                roughness={1}
+              />
+            </mesh>
+          ))}
+        </group>
+      ))}
 
       {/* grass floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
