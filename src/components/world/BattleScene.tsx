@@ -1,10 +1,16 @@
 // ⚔️ Brawl-styled duel arena — two fighters, HP bars, projectiles and supers.
-// The whole simulation runs on a rAF loop mutating SVG directly; React only
-// renders the static arena, the HUD (updated a few times per second) and the
+// The whole simulation runs on a rAF loop mutating plain refs (no React
+// re-renders); the Arena3D component reads those refs every frame and draws
+// the scene in 3D (Three.js). React only renders the HUD, controls and the
 // result screen.
-import { AvatarPreview } from "@/components/avatar/AvatarPreview";
-import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
+import {
+  Arena3D,
+  BATTLE_CRATES,
+  type BattleFighter,
+  type BattleFx,
+  type BattleProj,
+} from "@/components/world/Arena3D";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import { playSound } from "@/lib/sounds";
@@ -20,62 +26,36 @@ const ATK_CD = 0.85;
 const PROJ_SPEED = 620;
 const PROJ_RANGE = 660;
 const FIGHTER_R = 22;
-const CHAR_W = 70;
-const CHAR_H = 96;
 
-/** Arena obstacles — crates that block movement and projectiles. */
-const CRATES = [
-  { x: 300, y: 270, w: 120, h: 120 },
-  { x: 980, y: 270, w: 120, h: 120 },
-  { x: 300, y: 560, w: 120, h: 120 },
-  { x: 980, y: 560, w: 120, h: 120 },
-  { x: 640, y: 400, w: 120, h: 120 },
-];
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-interface Fighter {
-  name: string;
-  config: AvatarConfig;
-  equipped: string[];
-  ability: AbilityDef;
-  hp: number;
-  maxHp: number;
-  x: number;
-  y: number;
-  facing: number;
-  phase: number;
-  moving: boolean;
-  atkCd: number;
-  superCharge: number;
-  dashT: number;
-  dashVX: number;
-  dashVY: number;
-  dashHit: boolean;
-}
-
-interface Proj {
-  el: SVGGElement;
-  owner: "player" | "bot";
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  dmg: number;
-  r: number;
-  travelled: number;
-  pierce: boolean;
-  explodeR?: number; // AoE radius on impact (fireball)
-}
-
-interface Fx {
-  el: SVGElement;
-  ttl: number;
-  maxTtl: number;
-  kind: "text" | "circle" | "rect";
-  x0: number;
-  y0: number;
-  grow: number;
+function newFighter(
+  name: string,
+  config: AvatarConfig,
+  equipped: string[],
+  abilityId: string,
+  x: number,
+  y: number,
+  facing: number,
+): BattleFighter {
+  return {
+    name,
+    config,
+    equipped,
+    ability: abilityOf(abilityId),
+    hp: HP,
+    maxHp: HP,
+    x,
+    y,
+    facing,
+    phase: 0,
+    moving: false,
+    atkCd: 0,
+    superCharge: 0,
+    dashT: 0,
+    dashVX: 0,
+    dashVY: 0,
+    dashHit: false,
+    lastHitAt: -9999,
+  };
 }
 
 export default function BattleScene({
@@ -99,73 +79,26 @@ export default function BattleScene({
   opponentAbility: string;
   onExit: (victory: boolean) => void;
 }) {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const fxRef = useRef<SVGGElement>(null);
-  const pRef = useRef<SVGGElement>(null);
-  const bRef = useRef<SVGGElement>(null);
-  const pSpriteRef = useRef<SVGGElement>(null);
-  const bSpriteRef = useRef<SVGGElement>(null);
-  const pBarRef = useRef<SVGRectElement>(null);
-  const bBarRef = useRef<SVGRectElement>(null);
-  const pChargeRef = useRef<SVGRectElement>(null);
-  const bChargeRef = useRef<SVGRectElement>(null);
   const arenaRef = useRef<HTMLElement>(null);
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
-  const projs = useRef<Proj[]>([]);
-  const fxs = useRef<Fx[]>([]);
+  const projs = useRef<BattleProj[]>([]);
+  const fxs = useRef<BattleFx[]>([]);
   const resultRef = useRef<"win" | "lose" | null>(null);
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
 
-  const player = useRef<Fighter>({
-    name: playerName,
-    config: playerConfig,
-    equipped: playerEquipped,
-    ability: abilityOf(playerAbility),
-    hp: HP,
-    maxHp: HP,
-    x: 250,
-    y: 400,
-    facing: 1,
-    phase: 0,
-    moving: false,
-    atkCd: 0,
-    superCharge: 0,
-    dashT: 0,
-    dashVX: 0,
-    dashVY: 0,
-    dashHit: false,
-  });
-  const bot = useRef<Fighter>({
-    name: opponentName,
-    config: opponentConfig,
-    equipped: opponentEquipped,
-    ability: abilityOf(opponentAbility),
-    hp: HP,
-    maxHp: HP,
-    x: 1150,
-    y: 400,
-    facing: -1,
-    phase: 0,
-    moving: false,
-    atkCd: 1,
-    superCharge: 0,
-    dashT: 0,
-    dashVX: 0,
-    dashVY: 0,
-    dashHit: false,
-  });
+  const player = useRef<BattleFighter>(
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 250, 400, 1),
+  );
+  const bot = useRef<BattleFighter>(
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1150, 400, -1),
+  );
+  bot.current.atkCd = 1;
 
   const [result, setResult] = useState<"win" | "lose" | null>(null);
   const [vsShow, setVsShow] = useState(true);
-
-  // Animated VS banner plays once on entry, then disappears.
-  useEffect(() => {
-    const t = window.setTimeout(() => setVsShow(false), 1700);
-    return () => window.clearTimeout(t);
-  }, []);
   const [hud, setHud] = useState({
     ph: HP,
     ohp: HP,
@@ -186,11 +119,17 @@ export default function BattleScene({
     click: (_x: number, _y: number) => {},
   });
 
+  // Animated VS banner plays once on entry, then disappears.
+  useEffect(() => {
+    const t = window.setTimeout(() => setVsShow(false), 1700);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const clamp = (v: number, a: number, b: number) =>
     Math.min(Math.max(v, a), b);
 
   const hitsCrate = (cx: number, cy: number, r: number) =>
-    CRATES.some((c) => {
+    BATTLE_CRATES.some((c) => {
       const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
       const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
       const dx = cx - nx;
@@ -198,66 +137,40 @@ export default function BattleScene({
       return dx * dx + dy * dy < r * r;
     });
 
-  const chargeGain = (f: Fighter, amt: number) => {
+  const chargeGain = (f: BattleFighter, amt: number) => {
     f.superCharge = Math.min(1, f.superCharge + amt);
   };
 
+  const addFx = (fx: BattleFx) => {
+    fxs.current.push(fx);
+  };
+
   const floatText = (x: number, y: number, text: string, color: string) => {
-    const el = document.createElementNS(SVG_NS, "text");
-    el.setAttribute("x", `${x}`);
-    el.setAttribute("y", `${y}`);
-    el.setAttribute("text-anchor", "middle");
-    el.setAttribute("font-size", "26");
-    el.setAttribute("font-weight", "900");
-    el.setAttribute("fill", color);
-    el.setAttribute("stroke", "#ffffff");
-    el.setAttribute("stroke-width", "3");
-    el.setAttribute("paint-order", "stroke");
-    el.textContent = text;
-    fxRef.current?.appendChild(el);
-    fxs.current.push({ el, ttl: 0.9, maxTtl: 0.9, kind: "text", x0: x, y0: y, grow: 0 });
+    addFx({ kind: "text", x, y, ttl: 0.9, maxTtl: 0.9, text, color });
   };
 
   const circleFx = (
     x: number,
     y: number,
-    r: number,
-    fill: string,
+    grow: number,
+    color: string,
     ttl: number,
-    grow = 0,
   ) => {
-    const el = document.createElementNS(SVG_NS, "circle");
-    el.setAttribute("cx", `${x}`);
-    el.setAttribute("cy", `${y}`);
-    el.setAttribute("r", `${r}`);
-    el.setAttribute("fill", fill);
-    fxRef.current?.appendChild(el);
-    fxs.current.push({ el, ttl, maxTtl: ttl, kind: "circle", x0: x, y0: y, grow });
+    addFx({ kind: "ring", x, y, ttl, maxTtl: ttl, grow, color });
   };
 
-  const lineFx = (
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    stroke: string,
-    width: number,
+  const burstFx = (
+    x: number,
+    y: number,
+    grow: number,
+    color: string,
     ttl: number,
   ) => {
-    const el = document.createElementNS(SVG_NS, "line");
-    el.setAttribute("x1", `${x1}`);
-    el.setAttribute("y1", `${y1}`);
-    el.setAttribute("x2", `${x2}`);
-    el.setAttribute("y2", `${y2}`);
-    el.setAttribute("stroke", stroke);
-    el.setAttribute("stroke-width", `${width}`);
-    el.setAttribute("stroke-linecap", "round");
-    fxRef.current?.appendChild(el);
-    fxs.current.push({ el, ttl, maxTtl: ttl, kind: "rect", x0: x1, y0: y1, grow: 0 });
+    addFx({ kind: "burst", x, y, ttl, maxTtl: ttl, grow, color });
   };
 
   const spawnProj = (
-    owner: Fighter,
+    owner: BattleFighter,
     ownerKey: "player" | "bot",
     tx: number,
     ty: number,
@@ -269,38 +182,7 @@ export default function BattleScene({
     const d = Math.hypot(dx, dy) || 1;
     const speed = opts.speed ?? PROJ_SPEED;
     playSound("shoot", { volume: 0.6 });
-    const g = document.createElementNS(SVG_NS, "g");
-    // Inner group spins like an animated GIF sprite while the outer group
-    // follows the projectile's position each frame.
-    const spin = document.createElementNS(SVG_NS, "g");
-    spin.setAttribute("class", "battle-proj-spin");
-    const glow = document.createElementNS(SVG_NS, "circle");
-    glow.setAttribute("r", `${(opts.r ?? 14) + 7}`);
-    glow.setAttribute("fill", "#ffffff");
-    glow.setAttribute("opacity", "0.35");
-    const body = document.createElementNS(SVG_NS, "circle");
-    body.setAttribute("r", `${opts.r ?? 14}`);
-    body.setAttribute("fill", ownerKey === "player" ? "#38bdf8" : "#fb7185");
-    body.setAttribute("stroke", "#ffffff");
-    body.setAttribute("stroke-width", "3");
-    spin.appendChild(glow);
-    spin.appendChild(body);
-    // Twin flames on opposite sides make the spin clearly visible.
-    const rad = opts.r ?? 14;
-    for (const sign of [1, -1]) {
-      const flame = document.createElementNS(SVG_NS, "ellipse");
-      flame.setAttribute("cx", `${sign * (rad + 9)}`);
-      flame.setAttribute("cy", "0");
-      flame.setAttribute("rx", "8");
-      flame.setAttribute("ry", "5");
-      flame.setAttribute("fill", ownerKey === "player" ? "#bae6fd" : "#fecdd3");
-      spin.appendChild(flame);
-    }
-    g.appendChild(spin);
-    g.setAttribute("transform", `translate(${owner.x} ${owner.y})`);
-    fxRef.current?.appendChild(g);
     projs.current.push({
-      el: g,
       owner: ownerKey,
       x: owner.x,
       y: owner.y,
@@ -314,21 +196,15 @@ export default function BattleScene({
     });
   };
 
-  const damageEnemy = (attacker: Fighter, target: Fighter, dmg: number) => {
+  const damageEnemy = (attacker: BattleFighter, target: BattleFighter, dmg: number) => {
     if (target.hp <= 0 || resultRef.current) return;
     target.hp = Math.max(0, target.hp - dmg);
+    target.lastHitAt = performance.now();
     floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
     chargeGain(attacker, 0.26);
     chargeGain(target, 0.12);
     playSound("hit", { volume: 0.85 });
-    // GIF-style feedback: white flash on the hurt fighter + arena shake.
-    const hurtSprite =
-      target === player.current ? pSpriteRef.current : bSpriteRef.current;
-    if (hurtSprite) {
-      hurtSprite.classList.remove("battle-hit-flash");
-      void hurtSprite.getBoundingClientRect();
-      hurtSprite.classList.add("battle-hit-flash");
-    }
+    // GIF-style feedback: arena shake on every hit.
     const arenaEl = arenaRef.current;
     if (arenaEl) {
       arenaEl.classList.remove("battle-shake");
@@ -336,15 +212,15 @@ export default function BattleScene({
       arenaEl.classList.add("battle-shake");
     }
     if (target.hp <= 0) {
-      circleFx(target.x, target.y - 40, 20, "#ffffff", 0.5, 90);
+      burstFx(target.x, target.y - 40, 120, "#ffffff", 0.5);
       endBattle(attacker === player.current ? "win" : "lose");
     }
   };
 
-  const explodeAt = (pr: Proj) => {
+  const explodeAt = (pr: BattleProj) => {
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9 });
-    circleFx(pr.x, pr.y, 18, "#fdba74", 0.45, 120);
+    burstFx(pr.x, pr.y, r, "#fdba74", 0.45);
     const target = pr.owner === "player" ? bot.current : player.current;
     const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
     if (dist < r) {
@@ -356,13 +232,12 @@ export default function BattleScene({
     }
   };
 
-  const beamAttack = (f: Fighter, enemy: Fighter) => {
+  const beamAttack = (f: BattleFighter, enemy: BattleFighter) => {
     const ang = Math.atan2(enemy.y - f.y, enemy.x - f.x);
     const len = 560;
     const ex = f.x + Math.cos(ang) * len;
     const ey = f.y + Math.sin(ang) * len;
-    lineFx(f.x, f.y - 40, ex, ey - 40, "#ffe066", 46, 0.32);
-    lineFx(f.x, f.y - 40, ex, ey - 40, "#fff7cc", 20, 0.32);
+    addFx({ kind: "beam", x1: f.x, y1: f.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
     const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
     const a1 = Math.atan2(enemy.y - f.y, enemy.x - f.x);
     let da = Math.abs(a1 - ang);
@@ -372,17 +247,17 @@ export default function BattleScene({
     }
   };
 
-  const startDash = (f: Fighter, enemy: Fighter) => {
+  const startDash = (f: BattleFighter, enemy: BattleFighter) => {
     const ang = Math.atan2(enemy.y - f.y, enemy.x - f.x);
     f.dashVX = Math.cos(ang);
     f.dashVY = Math.sin(ang);
     f.dashT = 0.32;
     f.dashHit = false;
-    circleFx(f.x, f.y - 40, 24, "#a5f3fc", 0.35, 40);
-    circleFx(f.x, f.y - 60, 16, "#e0f2fe", 0.3, 30);
+    circleFx(f.x, f.y - 40, 60, "#a5f3fc", 0.35);
+    circleFx(f.x, f.y - 60, 40, "#e0f2fe", 0.3);
   };
 
-  const fireballAttack = (f: Fighter, enemy: Fighter) => {
+  const fireballAttack = (f: BattleFighter, enemy: BattleFighter) => {
     spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 320, {
       r: 17,
       speed: 400,
@@ -390,7 +265,7 @@ export default function BattleScene({
     });
   };
 
-  const useSuper = (f: Fighter, enemy: Fighter) => {
+  const useSuper = (f: BattleFighter, enemy: BattleFighter) => {
     f.superCharge = 0;
     playSound("super", { volume: 0.9 });
     switch (f.ability.id) {
@@ -405,8 +280,8 @@ export default function BattleScene({
         const heal = Math.round(f.maxHp * 0.45);
         f.hp = Math.min(f.maxHp, f.hp + heal);
         floatText(f.x, f.y - 135, `+${heal}`, "#4ade80");
-        circleFx(f.x, f.y - 40, 20, "#86efac", 0.5, 60);
-        circleFx(f.x, f.y - 40, 12, "#bbf7d0", 0.4, 40);
+        circleFx(f.x, f.y - 40, 70, "#86efac", 0.5);
+        circleFx(f.x, f.y - 40, 45, "#bbf7d0", 0.4);
         break;
       }
       case "ates":
@@ -437,7 +312,7 @@ export default function BattleScene({
     useSuper(p, b);
   }, []);
 
-  const moveFighter = (f: Fighter, dx: number, dy: number, dt: number) => {
+  const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
     let nx = clamp(f.x + dx, 40, ARENA_W - 40);
     if (!hitsCrate(nx, f.y, FIGHTER_R)) f.x = nx;
     let ny = clamp(f.y + dy, 40, ARENA_H - 40);
@@ -527,10 +402,7 @@ export default function BattleScene({
       if (p.dashT > 0) {
         p.dashT -= dt;
         moveFighter(p, p.dashVX * 950 * dt, p.dashVY * 950 * dt, dt);
-        if (
-          !p.dashHit &&
-          Math.hypot(b.x - p.x, b.y - p.y) < 90
-        ) {
+        if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < 90) {
           p.dashHit = true;
           damageEnemy(p, b, 200);
         }
@@ -564,7 +436,6 @@ export default function BattleScene({
           mx = dy / dist;
           my = -dx / dist;
         }
-        // nudge away from crates so the bot doesn't hug walls
         moveFighter(b, mx * 190 * dt, my * 190 * dt, dt);
         b.facing = dx > 0 ? 1 : -1;
         if (b.atkCd <= 0 && dist < 580) {
@@ -586,20 +457,16 @@ export default function BattleScene({
       // --- projectiles ---
       for (let i = projs.current.length - 1; i >= 0; i--) {
         const pr = projs.current[i];
-        const distTravelled = Math.hypot(pr.vx, pr.vy) * dt;
-        pr.travelled += distTravelled;
+        pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
         const nx = pr.x + pr.vx * dt;
         const ny = pr.y + pr.vy * dt;
         if (hitsCrate(nx, ny, pr.r)) {
-          fxRef.current?.removeChild(pr.el);
           projs.current.splice(i, 1);
           continue;
         }
         pr.x = nx;
         pr.y = ny;
-        pr.el.setAttribute("transform", `translate(${pr.x} ${pr.y})`);
-        const target =
-          pr.owner === "player" ? bot.current : player.current;
+        const target = pr.owner === "player" ? bot.current : player.current;
         const hitDist = Math.hypot(target.x - pr.x, target.y - pr.y);
         if (hitDist < pr.r + FIGHTER_R) {
           if (pr.explodeR) {
@@ -612,66 +479,23 @@ export default function BattleScene({
             );
           }
           if (!pr.pierce) {
-            fxRef.current?.removeChild(pr.el);
             projs.current.splice(i, 1);
             continue;
           }
         }
         if (pr.explodeR && pr.travelled >= 720) {
           explodeAt(pr);
-          fxRef.current?.removeChild(pr.el);
           projs.current.splice(i, 1);
         } else if (pr.travelled >= PROJ_RANGE && !pr.explodeR) {
-          fxRef.current?.removeChild(pr.el);
           projs.current.splice(i, 1);
         }
       }
 
       // --- one-shot effects ---
       for (let i = fxs.current.length - 1; i >= 0; i--) {
-        const fx = fxs.current[i];
-        fx.ttl -= dt;
-        if (fx.ttl <= 0) {
-          fxRef.current?.removeChild(fx.el);
-          fxs.current.splice(i, 1);
-          continue;
-        }
-        const t = fx.ttl / fx.maxTtl;
-        fx.el.setAttribute("opacity", `${t}`);
-        if (fx.kind === "text") {
-          fx.el.setAttribute("y", `${fx.y0 - (1 - t) * 60}`);
-        } else if (fx.kind === "circle" && fx.grow > 0) {
-          const r = Math.max(2, fx.grow * (1 - t));
-          fx.el.setAttribute("r", `${r}`);
-        }
+        fxs.current[i].ttl -= dt;
+        if (fxs.current[i].ttl <= 0) fxs.current.splice(i, 1);
       }
-
-      // --- sprites + bars (imperative) ---
-      const applyFighter = (
-        f: Fighter,
-        group: SVGGElement | null,
-        sprite: SVGGElement | null,
-        bar: SVGRectElement | null,
-        charge: SVGRectElement | null,
-      ) => {
-        if (!group) return;
-        group.setAttribute("transform", `translate(${f.x} ${f.y})`);
-        if (sprite) {
-          const flip = f.facing < 0 ? -1 : 1;
-          const bob = f.moving ? Math.sin(f.phase) * 5 : 0;
-          sprite.classList.toggle("walking", f.moving);
-          sprite.setAttribute(
-            "transform",
-            flip === 1
-              ? `translate(${-CHAR_W / 2} ${-CHAR_H + bob})`
-              : `scale(-1 1) translate(${-CHAR_W / 2} ${-CHAR_H + bob})`,
-          );
-        }
-        bar?.setAttribute("width", `${(f.hp / f.maxHp) * 90}`);
-        charge?.setAttribute("width", `${f.superCharge * 90}`);
-      };
-      applyFighter(p, pRef.current, pSpriteRef.current, pBarRef.current, pChargeRef.current);
-      applyFighter(b, bRef.current, bSpriteRef.current, bBarRef.current, bChargeRef.current);
 
       // --- HUD (React, only when values changed) ---
       const ph = Math.round(p.hp / 5) * 5;
@@ -709,16 +533,6 @@ export default function BattleScene({
       window.removeEventListener("keyup", onKeyUp);
     };
   }, [tryAttack, trySuper]);
-
-  const handleArenaClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (resultRef.current) return;
-    const svg = svgRef.current;
-    if (!svg) return;
-    const ctm = svg.getScreenCTM();
-    if (!ctm) return;
-    const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-    actionsRef.current.click(pt.x, pt.y);
-  };
 
   const abilityEmoji = abilityOf(playerAbility).emoji;
   const oppAbilityEmoji = abilityOf(opponentAbility).emoji;
@@ -784,164 +598,18 @@ export default function BattleScene({
           </div>
         </div>
 
-        {/* arena */}
+        {/* arena — 3D scene */}
         <main
           ref={arenaRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
-          onClick={handleArenaClick}
         >
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${ARENA_W} ${ARENA_H}`}
-            preserveAspectRatio="xMidYMid meet"
-            className="absolute inset-0 h-full w-full"
-          >
-            <defs>
-              <radialGradient id="arena-grass" cx="50%" cy="42%" r="75%">
-                <stop offset="0%" stopColor="#7ec850" />
-                <stop offset="100%" stopColor="#4c9a3a" />
-              </radialGradient>
-            </defs>
-            <rect width={ARENA_W} height={ARENA_H} fill="url(#arena-grass)" />
-            {/* animated sky effects — GIF-style life: rotating sun, drifting
-                clouds and twinkling sparkles over the grass */}
-            <g transform="translate(120 120)">
-              <g className="sun-rays">
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <line
-                    key={i}
-                    x1="0"
-                    y1="0"
-                    x2={Math.cos((i / 10) * Math.PI * 2) * 150}
-                    y2={Math.sin((i / 10) * Math.PI * 2) * 150}
-                    stroke="#ffe066"
-                    strokeOpacity="0.45"
-                    strokeWidth="15"
-                    strokeLinecap="round"
-                  />
-                ))}
-                <circle r="60" fill="#ffe066" opacity="0.9" />
-                <circle r="44" fill="#fff7cc" />
-              </g>
-            </g>
-            <g className="arena-cloud" style={{ animationDuration: "26s" }}>
-              <ellipse cx="120" cy="112" rx="70" ry="22" fill="#ffffff" opacity="0.5" />
-              <ellipse cx="80" cy="104" rx="38" ry="16" fill="#ffffff" opacity="0.45" />
-            </g>
-            <g
-              className="arena-cloud"
-              style={{ animationDuration: "34s", animationDelay: "-14s" }}
-            >
-              <ellipse cx="1150" cy="82" rx="80" ry="20" fill="#ffffff" opacity="0.4" />
-              <ellipse cx="1190" cy="92" rx="40" ry="14" fill="#ffffff" opacity="0.35" />
-            </g>
-            {[
-              [240, 210],
-              [420, 620],
-              [700, 130],
-              [900, 700],
-              [1100, 260],
-              [1300, 560],
-              [520, 380],
-              [760, 520],
-            ].map(([x, y], i) => (
-              <g
-                key={i}
-                className="arena-twinkle"
-                style={{ animationDelay: `${i * 0.35}s` }}
-              >
-                <path
-                  d={`M ${x} ${y - 9} L ${x + 3} ${y - 3} L ${x + 9} ${y} L ${x + 3} ${y + 3} L ${x} ${y + 9} L ${x - 3} ${y + 3} L ${x - 9} ${y} L ${x - 3} ${y - 3} Z`}
-                  fill="#fffbe6"
-                />
-              </g>
-            ))}
-            {/* boundary wall */}
-            <rect
-              x="20"
-              y="20"
-              width={ARENA_W - 40}
-              height={ARENA_H - 40}
-              rx="40"
-              fill="none"
-              stroke="#ffffff"
-              strokeOpacity="0.35"
-              strokeWidth="10"
-              strokeDasharray="26 18"
-            />
-            {/* center line */}
-            <line
-              x1={ARENA_W / 2}
-              y1="60"
-              x2={ARENA_W / 2}
-              y2={ARENA_H - 60}
-              stroke="#ffffff"
-              strokeOpacity="0.18"
-              strokeWidth="6"
-              strokeDasharray="18 14"
-            />
-            {/* crates */}
-            {CRATES.map((c, i) => (
-              <g key={i}>
-                <rect
-                  x={c.x}
-                  y={c.y}
-                  width={c.w}
-                  height={c.h}
-                  rx="18"
-                  fill="#8a5a2b"
-                  stroke="#5f3d1c"
-                  strokeWidth="6"
-                />
-                <rect
-                  x={c.x + 12}
-                  y={c.y + 12}
-                  width={c.w - 24}
-                  height={c.h - 24}
-                  rx="10"
-                  fill="none"
-                  stroke="#ffffff"
-                  strokeOpacity="0.25"
-                  strokeWidth="4"
-                  strokeDasharray="14 10"
-                />
-              </g>
-            ))}
-
-            {/* fighters */}
-            <g ref={pRef}>
-              <g ref={pSpriteRef}>
-                <g className="fighter-idle">
-                  <AvatarPreview width={CHAR_W} height={CHAR_H} config={playerConfig} />
-                  <EquippedItems equipped={playerEquipped} width={CHAR_W} height={CHAR_H} />
-                </g>
-              </g>
-              {/* HP + super bars */}
-              <g transform="translate(-45 -118)">
-                <rect width="90" height="9" rx="4.5" fill="#1f2937" />
-                <rect ref={pBarRef} width="90" height="9" rx="4.5" fill="#4ade80" />
-                <rect y="11" width="90" height="5" rx="2.5" fill="#334155" />
-                <rect ref={pChargeRef} y="11" width="90" height="5" rx="2.5" fill="#facc15" />
-              </g>
-            </g>
-            <g ref={bRef}>
-              <g ref={bSpriteRef}>
-                <g className="fighter-idle" style={{ animationDelay: "-0.55s" }}>
-                  <AvatarPreview width={CHAR_W} height={CHAR_H} config={opponentConfig} />
-                  <EquippedItems equipped={opponentEquipped} width={CHAR_W} height={CHAR_H} />
-                </g>
-              </g>
-              <g transform="translate(-45 -118)">
-                <rect width="90" height="9" rx="4.5" fill="#1f2937" />
-                <rect ref={bBarRef} width="90" height="9" rx="4.5" fill="#fb7185" />
-                <rect y="11" width="90" height="5" rx="2.5" fill="#334155" />
-                <rect ref={bChargeRef} y="11" width="90" height="5" rx="2.5" fill="#facc15" />
-              </g>
-            </g>
-
-            {/* projectiles + effects */}
-            <g ref={fxRef} />
-          </svg>
+          <Arena3D
+            playerRef={player}
+            botRef={bot}
+            projsRef={projs}
+            fxsRef={fxs}
+            onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+          />
 
           {/* animated VS intro banner — GIF-style entrance */}
           {vsShow && (
@@ -958,7 +626,7 @@ export default function BattleScene({
           )}
 
           {/* controls */}
-          <div className="pointer-events-none absolute right-3 bottom-3 flex flex-col items-end gap-2 z-10">
+          <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
             <button
               type="button"
               onClick={() => actionsRef.current.super()}
