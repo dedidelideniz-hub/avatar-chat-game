@@ -7,9 +7,9 @@
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
 import { Cloud, RoundedBox, Sparkles } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
 /** Game-space (px) obstacle list — shared with the simulation in BattleScene. */
@@ -531,6 +531,45 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Fit-to-screen camera — positions itself so the whole arena is       */
+/* always visible, on any phone orientation or preview frame size.     */
+/* ------------------------------------------------------------------ */
+
+function FitCamera() {
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+
+  useLayoutEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const aspect = size.width / Math.max(1, size.height);
+    const el = 0.5; // elevation angle (radians) — slightly above the action
+    const W = ARENA_W + 1.8; // arena width + margin (walls, fighters)
+    const D = ARENA_D + 1.8; // arena depth + margin
+    const vFov = (cam.fov * Math.PI) / 180;
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    // Depth appears compressed by cos(el); character/wall height adds a bit.
+    const apparentH = D * Math.cos(el) + 2.2 * Math.sin(el);
+    const dist =
+      Math.max(
+        W / 2 / Math.tan(hFov / 2),
+        apparentH / 2 / Math.tan(vFov / 2),
+      ) * 1.06;
+    const target = new THREE.Vector3(ARENA_W / 2, 0.6, -ARENA_D / 2);
+    cam.position.set(
+      target.x,
+      target.y + Math.sin(el) * dist,
+      target.z + Math.cos(el) * dist,
+    );
+    cam.near = 0.1;
+    cam.far = 300;
+    cam.lookAt(target);
+    cam.updateProjectionMatrix();
+  }, [camera, size.width, size.height]);
+
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* The whole 3D scene.                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -551,9 +590,10 @@ export function Arena3D({
     <Canvas
       dpr={[1, 2]}
       shadows
-      camera={{ position: [7, 10.5, 12], fov: 42, near: 0.1, far: 100 }}
+      camera={{ position: [7, 6, 9], fov: 60, near: 0.1, far: 300 }}
       className="absolute inset-0"
     >
+      <FitCamera />
       <color attach="background" args={["#8ecae6"]} />
       <fog attach="fog" args={["#8ecae6", 24, 55]} />
       <ambientLight intensity={0.7} />

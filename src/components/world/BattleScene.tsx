@@ -551,7 +551,7 @@ export default function BattleScene({
                 <span className="truncate">{playerName}</span>
                 <span className="text-[10px]">{abilityEmoji}</span>
               </p>
-              <div className="mt-1 h-2.5 w-36 overflow-hidden rounded-full bg-white/15 sm:w-44">
+              <div className="mt-1 h-2.5 w-16 overflow-hidden rounded-full bg-white/15 min-[420px]:w-28 sm:w-44">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-lime-400 transition-all"
                   style={{ width: `${(hud.ph / HP) * 100}%` }}
@@ -585,7 +585,7 @@ export default function BattleScene({
                 <span className="text-[10px]">{oppAbilityEmoji}</span>
                 <span className="truncate">{opponentName}</span>
               </p>
-              <div className="mt-1 ml-auto h-2.5 w-36 overflow-hidden rounded-full bg-white/15 sm:w-44">
+              <div className="mt-1 ml-auto h-2.5 w-16 overflow-hidden rounded-full bg-white/15 min-[420px]:w-28 sm:w-44">
                 <div
                   className="ml-auto h-full rounded-full bg-gradient-to-r from-rose-400 to-red-500 transition-all"
                   style={{ width: `${(hud.ohp / HP) * 100}%` }}
