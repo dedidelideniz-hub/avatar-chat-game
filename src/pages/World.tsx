@@ -32,8 +32,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Backpack,
-  ChevronLeft,
-  ChevronRight,
   Flower2,
   Footprints,
   MessageCircle,
@@ -94,13 +92,13 @@ function BarBtn({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-white text-[#2b3a4a] shadow-md transition-transform active:scale-90 sm:size-11 ${
+      className={`relative flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-white text-[#2b3a4a] shadow-md transition-transform active:scale-90 sm:size-11 ${
         tone === "sky"
           ? "bg-gradient-to-br from-sky-200 to-sky-400"
           : "bg-gradient-to-br from-fuchsia-200 to-purple-400"
       }`}
     >
-      <Icon className="size-4" />
+      <Icon className="size-4 sm:size-5" />
       {badge !== undefined && badge > 0 && (
         <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border border-white bg-red-500 text-[10px] font-extrabold text-white">
           {badge > 9 ? "9+" : badge}
@@ -321,9 +319,6 @@ export default function World() {
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
-  const bottomBarRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -597,32 +592,6 @@ export default function World() {
   const openVipFromChat = useCallback(() => {
     closeChat();
     setVipOpen(true);
-  }, []);
-
-  /** Keep the bottom-bar scroll arrows in sync with the row's overflow. */
-  const updateBottomScroll = useCallback(() => {
-    const el = bottomBarRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
-  }, []);
-
-  useEffect(() => {
-    updateBottomScroll();
-    const el = bottomBarRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", updateBottomScroll, { passive: true });
-    const observer = new ResizeObserver(updateBottomScroll);
-    observer.observe(el);
-    return () => {
-      el.removeEventListener("scroll", updateBottomScroll);
-      observer.disconnect();
-    };
-  }, [updateBottomScroll]);
-
-  /** Nudge the bottom bar sideways so hidden buttons come into view. */
-  const scrollBottomBar = useCallback((dir: -1 | 1) => {
-    bottomBarRef.current?.scrollBy({ left: dir * 180, behavior: "smooth" });
   }, []);
 
   /** Auto-walk toward a spot on the street (stalls map / gift box). */
@@ -929,27 +898,12 @@ export default function World() {
 
         </main>
 
-        {/* bottom control bar — chat input in the center, like Sanalika.
-            On narrow phones the whole row scrolls sideways with the edge
-            arrows, so every button stays reachable without turning the
-            phone. Pinned clear of the home indicator (safe-area padding). */}
-        <div className="relative flex shrink-0 items-center gap-1 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] px-1.5 pt-1.5 pb-[max(env(safe-area-inset-bottom),0.375rem)] sm:gap-2 sm:px-3 sm:pt-2">
-          <button
-            type="button"
-            onClick={() => scrollBottomBar(-1)}
-            aria-label="Sola kaydır"
-            title="Sola kaydır"
-            className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-[#3d2f2a]/20 bg-white/80 text-[#3d2f2a] shadow-sm transition-all active:scale-90 ${
-              canScrollLeft ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <div
-            ref={bottomBarRef}
-            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-0.5 sm:gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {/* bottom control bar — Sanalika style: all buttons centered in one
+            row (visible at once, no scrolling needed) with a full-width chat
+            input below. Clear of the phone's home indicator (safe-area). */}
+        <div className="shrink-0 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] pb-[max(env(safe-area-inset-bottom),0.5rem)]">
+          <div className="flex min-w-0 items-center overflow-x-auto px-2 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="mx-auto flex w-max items-center gap-1 sm:gap-2.5">
               <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => navigate("/studio")} />
               <BarBtn
                 tone="sky"
@@ -964,33 +918,10 @@ export default function World() {
                 label="Tezgâhlar"
                 onClick={() => setStallsOpen(true)}
               />
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSend(chatDraft);
-                setChatDraft("");
-              }}
-              className="flex min-w-[170px] max-w-full flex-1 items-center gap-2"
-            >
-              <input
-                value={chatDraft}
-                onChange={(e) => setChatDraft(e.target.value)}
-                placeholder="Merhaba Sanalika!"
-                maxLength={120}
-                autoComplete="off"
-                aria-label="Sohbet mesajı"
-                className="h-10 w-full min-w-0 flex-1 rounded-full border-2 border-white bg-white px-4 text-sm font-semibold text-foreground shadow-inner outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+              <span
+                className="h-8 w-px shrink-0 bg-[#3d2f2a]/15"
+                aria-hidden
               />
-              <button
-                type="submit"
-                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform active:scale-90"
-                aria-label="Mesajı gönder"
-              >
-                <Send className="size-4" />
-              </button>
-            </form>
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <BarBtn tone="purple" icon={MessageCircle} label="Sohbet" badge={unread} onClick={openChat} />
               <BarBtn
                 tone="purple"
@@ -1012,17 +943,33 @@ export default function World() {
               />
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => scrollBottomBar(1)}
-            aria-label="Sağa kaydır"
-            title="Sağa kaydır"
-            className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-[#3d2f2a]/20 bg-white/80 text-[#3d2f2a] shadow-sm transition-all active:scale-90 ${
-              canScrollRight ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend(chatDraft);
+              setChatDraft("");
+            }}
+            className="px-2 pt-2"
           >
-            <ChevronRight className="size-4" />
-          </button>
+            <div className="relative mx-auto w-full max-w-2xl">
+              <input
+                value={chatDraft}
+                onChange={(e) => setChatDraft(e.target.value)}
+                placeholder="Merhaba Sanalika! Mesajını yaz…"
+                maxLength={120}
+                autoComplete="off"
+                aria-label="Sohbet mesajı"
+                className="h-11 w-full rounded-full border-2 border-white bg-white pl-5 pr-14 text-sm font-semibold text-foreground shadow-inner outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="absolute top-1.5 right-1.5 flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform active:scale-90"
+                aria-label="Mesajı gönder"
+              >
+                <Send className="size-4" />
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
