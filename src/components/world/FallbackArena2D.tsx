@@ -24,18 +24,21 @@ const RING_POOL = 12;
 const BURST_POOL = 8;
 const TEXT_POOL = 8;
 const BEAM_POOL = 2;
+const SMOKE_POOL = 22;
 
 export function FallbackArena2D({
   playerRef,
   botRef,
   projsRef,
   fxsRef,
+  zoomRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
+  zoomRef: MutableRefObject<number>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -49,6 +52,9 @@ export function FallbackArena2D({
   const burstEls = useRef<SVGCircleElement[]>([]);
   const textEls = useRef<SVGTextElement[]>([]);
   const beamEls = useRef<SVGLineElement[]>([]);
+  const smokeEls = useRef<SVGCircleElement[]>([]);
+  // Smooth follow-camera center (world px).
+  const camRef = useRef({ x: 700, y: 400 });
 
   useEffect(() => {
     const fx = fxRef.current;
@@ -98,6 +104,9 @@ export function FallbackArena2D({
       el.setAttribute("stroke-width", "46");
       el.setAttribute("stroke-linecap", "round");
     });
+    const smokesEls = ensure(smokeEls.current, "circle", SMOKE_POOL, (el) => {
+      el.setAttribute("fill", "#c9c9c9");
+    });
 
     let raf = 0;
     let last = performance.now();
@@ -107,6 +116,30 @@ export function FallbackArena2D({
       last = now;
       const p = playerRef.current;
       const b = botRef.current;
+
+      // Brawl-Stars-style follow camera: zoom into the player, clamped to
+      // the arena edges so the whole map stays reachable.
+      const svg = svgRef.current;
+      if (svg && svg.clientWidth > 0) {
+        const aspect = svg.clientWidth / Math.max(1, svg.clientHeight);
+        const zoom = Math.min(12, Math.max(3.4, zoomRef.current));
+        let viewW = Math.min(W, 780 * (6.2 / zoom));
+        let viewH = viewW / aspect;
+        if (viewH > H) {
+          viewH = H;
+          viewW = viewH * aspect;
+        }
+        const hw = viewW / 2;
+        const hh = viewH / 2;
+        const tx = Math.min(Math.max(p.x, hw), W - hw);
+        const ty = Math.min(Math.max(p.y, hh), H - hh);
+        camRef.current.x += (tx - camRef.current.x) * Math.min(1, dt * 6);
+        camRef.current.y += (ty - camRef.current.y) * Math.min(1, dt * 6);
+        svg.setAttribute(
+          "viewBox",
+          `${camRef.current.x - hw} ${camRef.current.y - hh} ${viewW} ${viewH}`,
+        );
+      }
 
       // fighters
       pRef.current?.setAttribute("transform", `translate(${p.x} ${p.y})`);
@@ -146,6 +179,7 @@ export function FallbackArena2D({
       let bi = 0;
       let ti = 0;
       let mi = 0;
+      let si = 0;
       const fxs = fxsRef.current;
       for (const fx of fxs) {
         if (fx.ttl <= 0) continue;
@@ -187,7 +221,7 @@ export function FallbackArena2D({
             }
           }
           ti++;
-        } else {
+        } else if (fx.kind === "beam") {
           const el = beamsEls[mi];
           if (el) {
             el.setAttribute("visibility", "visible");
@@ -198,6 +232,18 @@ export function FallbackArena2D({
             el.setAttribute("opacity", `${t}`);
           }
           mi++;
+        } else {
+          // smoke — gray puffs rising and spreading
+          const el = smokesEls[si];
+          if (el) {
+            el.setAttribute("visibility", "visible");
+            el.setAttribute("cx", `${fx.x}`);
+            el.setAttribute("cy", `${fx.y - (1 - t) * 140}`);
+            el.setAttribute("r", `${Math.max(10, fx.grow * (0.4 + 0.8 * (1 - t)))}`);
+            el.setAttribute("fill", fx.color);
+            el.setAttribute("opacity", `${t * 0.55}`);
+          }
+          si++;
         }
       }
       const hide = (els: SVGElement[], from: number) => {
@@ -208,6 +254,7 @@ export function FallbackArena2D({
       hide(burstsEls, bi);
       hide(textsEls, ti);
       hide(beamsEls, mi);
+      hide(smokesEls, si);
 
       raf = requestAnimationFrame(loop);
     };

@@ -9,7 +9,7 @@ import type { AbilityDef } from "@/lib/shop";
 import { RoundedBox } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
 /** Game-space (px) obstacle list — shared with the simulation in BattleScene. */
@@ -111,6 +111,15 @@ export type BattleFx =
       y2: number;
       ttl: number;
       maxTtl: number;
+    }
+  | {
+      kind: "smoke";
+      x: number;
+      y: number;
+      ttl: number;
+      maxTtl: number;
+      grow: number;
+      color: string;
     };
 
 const PROJ_POOL = 26;
@@ -118,6 +127,7 @@ const TEXT_POOL = 8;
 const RING_POOL = 12;
 const BURST_POOL = 8;
 const BEAM_POOL = 2;
+const SMOKE_POOL = 22;
 
 /* ------------------------------------------------------------------ */
 /* Fighters — procedural low-poly humanoid built from avatar colors.   */
@@ -389,6 +399,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
   const ringRefs = useRef<(THREE.Mesh | null)[]>([]);
   const burstRefs = useRef<(THREE.Mesh | null)[]>([]);
   const beamRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const smokeRefs = useRef<(THREE.Sprite | null)[]>([]);
   // Canvas textures for the floating damage numbers — created once.
   const textTextures = useMemo(
     () =>
@@ -397,6 +408,22 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
       ),
     [],
   );
+  // Soft procedural smoke puff texture (radial gradient) — no external files.
+  const smokeTexture = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 64;
+    const g = c.getContext("2d");
+    if (g) {
+      const grad = g.createRadialGradient(32, 32, 3, 32, 32, 30);
+      grad.addColorStop(0, "rgba(255,255,255,0.9)");
+      grad.addColorStop(0.55, "rgba(240,240,240,0.5)");
+      grad.addColorStop(1, "rgba(210,210,210,0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+    }
+    return new THREE.CanvasTexture(c);
+  }, []);
 
   useFrame(() => {
     const fxs = fxsRef.current;
@@ -404,6 +431,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
     let ri = 0;
     let bi = 0;
     let mi = 0;
+    let si = 0;
 
     for (const fx of fxs) {
       if (fx.ttl <= 0) continue;
@@ -442,7 +470,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.85;
         }
         bi++;
-      } else {
+      } else if (fx.kind === "beam") {
         // beam — stretched glowing box between the two points
         const m = beamRefs.current[mi];
         if (m) {
@@ -460,6 +488,18 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.95;
         }
         mi++;
+      } else {
+        // smoke — soft puffs that rise, spread and fade
+        const s = smokeRefs.current[si];
+        if (s) {
+          s.visible = true;
+          s.position.set(fx.x / S, 0.6 + (1 - t) * 2.4, -fx.y / S);
+          const sc = Math.max(0.5, ((fx.grow / S) * (1 - t)) / 1 + 0.35);
+          s.scale.setScalar(sc);
+          (s.material as THREE.SpriteMaterial).opacity = t * 0.65;
+          (s.material as THREE.SpriteMaterial).color.set(fx.color);
+        }
+        si++;
       }
     }
 
@@ -478,6 +518,10 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
     for (let i = mi; i < BEAM_POOL; i++) {
       const m = beamRefs.current[i];
       if (m) m.visible = false;
+    }
+    for (let i = si; i < SMOKE_POOL; i++) {
+      const s = smokeRefs.current[i];
+      if (s) s.visible = false;
     }
   });
 
@@ -541,45 +585,73 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           <meshBasicMaterial color="#ffe066" transparent opacity={0} depthWrite={false} />
         </mesh>
       ))}
+      {Array.from({ length: SMOKE_POOL }).map((_, i) => (
+        <sprite
+          key={`s${i}`}
+          ref={(el) => {
+            smokeRefs.current[i] = el;
+          }}
+          visible={false}
+        >
+          <spriteMaterial
+            map={smokeTexture}
+            color="#c9c9c9"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
+        </sprite>
+      ))}
     </group>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Fit-to-screen camera — positions itself so the whole arena is       */
-/* always visible, on any phone orientation or preview frame size.     */
+/* Brawl-Stars-style follow camera — zoomed in on the player and        */
+/* smoothly tracking them, clamped to the arena edges. The arena is     */
+/* bigger than the screen, so characters stay big while you fight.      */
 /* ------------------------------------------------------------------ */
 
-function FitCamera() {
-  const camera = useThree((s) => s.camera);
-  const size = useThree((s) => s.size);
+function FollowCamera({
+  playerRef,
+  zoomRef,
+}: {
+  playerRef: MutableRefObject<BattleFighter>;
+  zoomRef: MutableRefObject<number>;
+}) {
+  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
+  const cur = useRef(new THREE.Vector3(ARENA_W / 2, 0.6, -ARENA_D / 2));
+  const el = 0.5; // elevation (radians)
 
-  useLayoutEffect(() => {
-    const cam = camera as THREE.PerspectiveCamera;
-    const aspect = size.width / Math.max(1, size.height);
-    const el = 0.5; // elevation angle (radians) — slightly above the action
-    const W = ARENA_W + 1.8; // arena width + margin (walls, fighters)
-    const D = ARENA_D + 1.8; // arena depth + margin
-    const vFov = (cam.fov * Math.PI) / 180;
+  useFrame((_, dt) => {
+    const p = playerRef.current;
+    const zoom = THREE.MathUtils.clamp(zoomRef.current, 3.4, 12);
+    const vFov = (camera.fov * Math.PI) / 180;
+    const aspect = Math.max(0.2, camera.aspect);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    // Depth appears compressed by cos(el); character/wall height adds a bit.
-    const apparentH = D * Math.cos(el) + 2.2 * Math.sin(el);
-    const dist =
-      Math.max(
-        W / 2 / Math.tan(hFov / 2),
-        apparentH / 2 / Math.tan(vFov / 2),
-      ) * 1.06;
-    const target = new THREE.Vector3(ARENA_W / 2, 0.6, -ARENA_D / 2);
-    cam.position.set(
-      target.x,
-      target.y + Math.sin(el) * dist,
-      target.z + Math.cos(el) * dist,
+    // Half extents of the visible window at the current zoom.
+    const halfW = Math.tan(hFov / 2) * zoom;
+    const halfD = Math.tan(vFov / 2) * zoom * Math.cos(el);
+    // Clamp the target so the view never leaves the arena walls.
+    const tx = THREE.MathUtils.clamp(
+      p.x / S,
+      halfW + 0.3,
+      ARENA_W - halfW - 0.3,
     );
-    cam.near = 0.1;
-    cam.far = 300;
-    cam.lookAt(target);
-    cam.updateProjectionMatrix();
-  }, [camera, size.width, size.height]);
+    const tz = THREE.MathUtils.clamp(
+      -p.y / S,
+      -ARENA_D + halfD + 0.3,
+      -halfD - 0.3,
+    );
+    const target = new THREE.Vector3(tx, 0.6, tz);
+    cur.current.lerp(target, Math.min(1, dt * 5));
+    camera.position.set(
+      cur.current.x,
+      cur.current.y + Math.sin(el) * zoom,
+      cur.current.z + Math.cos(el) * zoom,
+    );
+    camera.lookAt(cur.current);
+  });
 
   return null;
 }
@@ -593,12 +665,14 @@ export function Arena3D({
   botRef,
   projsRef,
   fxsRef,
+  zoomRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
+  zoomRef: MutableRefObject<number>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   return (
@@ -608,7 +682,7 @@ export function Arena3D({
       camera={{ position: [7, 6, 9], fov: 60, near: 0.1, far: 300 }}
       className="absolute inset-0"
     >
-      <FitCamera />
+      <FollowCamera playerRef={playerRef} zoomRef={zoomRef} />
       <color attach="background" args={["#8ecae6"]} />
       <fog attach="fog" args={["#8ecae6", 24, 55]} />
       <ambientLight intensity={0.7} />

@@ -17,9 +17,10 @@ import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import { playSound } from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
-import { Swords, Trophy, X, Zap } from "lucide-react";
+import { Swords, Trophy, X, Zap, ZoomIn, ZoomOut } from "lucide-react";
 import {
   Component,
+  type MutableRefObject,
   type ReactNode,
   useCallback,
   useEffect,
@@ -68,6 +69,69 @@ function newFighter(
   };
 }
 
+/** Virtual joystick — drag anywhere on it to move (works with mouse + touch). */
+function BattleJoystick({
+  stickRef,
+}: {
+  stickRef: MutableRefObject<{ x: number; y: number }>;
+}) {
+  const knobRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const R = 40;
+
+  const move = (px: number, py: number) => {
+    const base = knobRef.current?.parentElement;
+    if (!base) return;
+    const rect = base.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = px - cx;
+    let dy = py - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > R) {
+      dx = (dx / d) * R;
+      dy = (dy / d) * R;
+    }
+    stickRef.current = { x: dx / R, y: dy / R };
+    if (knobRef.current)
+      knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
+  };
+
+  const reset = () => {
+    stickRef.current = { x: 0, y: 0 };
+    if (knobRef.current) knobRef.current.style.transform = "translate(0px, 0px)";
+  };
+
+  return (
+    <div
+      className="pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
+      onPointerDown={(e) => {
+        draggingRef.current = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        move(e.clientX, e.clientY);
+      }}
+      onPointerMove={(e) => {
+        if (draggingRef.current) move(e.clientX, e.clientY);
+      }}
+      onPointerUp={(e) => {
+        draggingRef.current = false;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+        reset();
+      }}
+      onPointerCancel={() => {
+        draggingRef.current = false;
+        reset();
+      }}
+      aria-label="Hareket joystick"
+    >
+      <div
+        ref={knobRef}
+        className="absolute top-1/2 left-1/2 -ml-6 -mt-6 size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
+      />
+    </div>
+  );
+}
+
 /** If the 3D scene crashes for any reason, fall back to the 2D arena so
  *  the battle never breaks. */
 class ArenaBoundary extends Component<
@@ -108,6 +172,10 @@ export default function BattleScene({
   onExit: (victory: boolean) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
+  // Camera zoom (3D follow-cam + 2D fallback both read this) and the
+  // joystick's live direction vector.
+  const zoomRef = useRef(6.2);
+  const joystickRef = useRef({ x: 0, y: 0 });
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
@@ -199,6 +267,22 @@ export default function BattleScene({
     addFx({ kind: "burst", x, y, ttl, maxTtl: ttl, grow, color });
   };
 
+  /** Spawn a cloud of soft smoke puffs that rise and spread. */
+  const smokeFx = (x: number, y: number, count: number, grow = 100) => {
+    for (let i = 0; i < count; i++) {
+      const life = 0.7 + Math.random() * 0.5;
+      addFx({
+        kind: "smoke",
+        x: x + (Math.random() - 0.5) * 80,
+        y: y + (Math.random() - 0.5) * 80,
+        ttl: life,
+        maxTtl: life,
+        grow: grow + Math.random() * 60,
+        color: i % 2 === 0 ? "#c9c9c9" : "#b3b3b3",
+      });
+    }
+  };
+
   const spawnProj = (
     owner: BattleFighter,
     ownerKey: "player" | "bot",
@@ -243,6 +327,7 @@ export default function BattleScene({
     }
     if (target.hp <= 0) {
       burstFx(target.x, target.y - 40, 120, "#ffffff", 0.5);
+      smokeFx(target.x, target.y - 40, 9, 150);
       endBattle(attacker === player.current ? "win" : "lose");
     }
   };
@@ -251,6 +336,7 @@ export default function BattleScene({
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9 });
     burstFx(pr.x, pr.y, r, "#fdba74", 0.45);
+    smokeFx(pr.x, pr.y, 7, 120);
     const target = pr.owner === "player" ? bot.current : player.current;
     const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
     if (dist < r) {
@@ -298,6 +384,7 @@ export default function BattleScene({
   const useSuper = (f: BattleFighter, enemy: BattleFighter) => {
     f.superCharge = 0;
     playSound("super", { volume: 0.9 });
+    smokeFx(f.x, f.y - 20, 4, 80);
     switch (f.ability.id) {
       case "isik":
         beamAttack(f, enemy);
@@ -419,7 +506,17 @@ export default function BattleScene({
         vx /= l;
         vy /= l;
         clickTargetRef.current = null;
-      } else if (clickTargetRef.current) {
+      } else {
+        // virtual joystick (mobile) — live direction while dragging
+        const jx = joystickRef.current.x;
+        const jy = joystickRef.current.y;
+        if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
+          vx = jx;
+          vy = jy;
+          clickTargetRef.current = null;
+        }
+      }
+      if (vx === 0 && vy === 0 && clickTargetRef.current) {
         const dx = clickTargetRef.current.x - p.x;
         const dy = clickTargetRef.current.y - p.y;
         const d = Math.hypot(dx, dy);
@@ -641,6 +738,7 @@ export default function BattleScene({
                   botRef={bot}
                   projsRef={projs}
                   fxsRef={fxs}
+                  zoomRef={zoomRef}
                   onWorldClick={(x, y) => actionsRef.current.click(x, y)}
                 />
               }
@@ -650,6 +748,7 @@ export default function BattleScene({
                 botRef={bot}
                 projsRef={projs}
                 fxsRef={fxs}
+                zoomRef={zoomRef}
                 onWorldClick={(x, y) => actionsRef.current.click(x, y)}
               />
             </ArenaBoundary>
@@ -659,6 +758,7 @@ export default function BattleScene({
               botRef={bot}
               projsRef={projs}
               fxsRef={fxs}
+              zoomRef={zoomRef}
               onWorldClick={(x, y) => actionsRef.current.click(x, y)}
             />
           )}
@@ -678,7 +778,35 @@ export default function BattleScene({
           )}
 
           {/* controls */}
+          {/* virtual joystick — drag to move (works with mouse + touch) */}
+          <BattleJoystick stickRef={joystickRef} />
+
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
+            {/* camera zoom buttons — Brawl-Stars style camera control */}
+            <div className="pointer-events-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  zoomRef.current = Math.min(12, zoomRef.current + 1.2);
+                  playSound("click");
+                }}
+                aria-label="Yakınlaştır"
+                className="flex size-10 items-center justify-center rounded-full border-2 border-white/40 bg-white/15 text-white shadow-lg transition-transform active:scale-90 backdrop-blur-[2px]"
+              >
+                <ZoomIn className="size-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  zoomRef.current = Math.max(3.4, zoomRef.current - 1.2);
+                  playSound("click");
+                }}
+                aria-label="Uzaklaştır"
+                className="flex size-10 items-center justify-center rounded-full border-2 border-white/40 bg-white/15 text-white shadow-lg transition-transform active:scale-90 backdrop-blur-[2px]"
+              >
+                <ZoomOut className="size-5" />
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => actionsRef.current.super()}
