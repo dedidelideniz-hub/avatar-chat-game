@@ -51,7 +51,10 @@ const WORLD_W = 1600;
 const WORLD_H = 900;
 const PLAYER_W = 70;
 const PLAYER_H = 96;
-const SPAWN = { x: 800, y: 760 };
+// Spawn on the open road, clear of every stall obstacle — the old spawn
+// point (800, 760) sat inside the VIP stand's collision box, which pinned
+// the player and made walking impossible.
+const SPAWN = { x: 800, y: 610 };
 
 /** Random things the vendors say in the street chat. */
 const VENDOR_PHRASES: Record<string, string[]> = {
@@ -242,7 +245,7 @@ function StallsSheet({
             <Button
               size="sm"
               className="rounded-full"
-              onClick={() => onGo(v.x, v.y - 90, v.short)}
+              onClick={() => onGo(v.x, v.y + 35, v.short)}
             >
               Git
             </Button>
