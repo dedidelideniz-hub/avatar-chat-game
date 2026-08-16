@@ -370,15 +370,20 @@ export const GIFT_CLICK_RADIUS = 70;
  * (awning, counter, wares) is scenery. The sprite is drawn at
  * translate(vendor.x - 27, vendor.y - 120) at 54x70 world units; the box
  * adds a small tap margin so the target stays comfortable on phones.
+ *
+ * The box is centered slightly left of the stall (centerX -18) because in
+ * portrait the vendor sprite is counter-rotated about its feet, which moves
+ * its visual center ~35 units left of the stall center — the tap target
+ * follows the sprite in both orientations.
  */
-const VENDOR_CLICK_BOX = { halfW: 34, top: -124, bottom: -48 };
+const VENDOR_CLICK_BOX = { centerX: -18, halfW: 45, top: -124, bottom: -48 };
 
 /** The vendor whose character contains this point, if any. */
 export function vendorAtPoint(x: number, y: number): Vendor | undefined {
   return VENDORS.find(
     (v) =>
-      x >= v.x - VENDOR_CLICK_BOX.halfW &&
-      x <= v.x + VENDOR_CLICK_BOX.halfW &&
+      x >= v.x + VENDOR_CLICK_BOX.centerX - VENDOR_CLICK_BOX.halfW &&
+      x <= v.x + VENDOR_CLICK_BOX.centerX + VENDOR_CLICK_BOX.halfW &&
       y >= v.y + VENDOR_CLICK_BOX.top &&
       y <= v.y + VENDOR_CLICK_BOX.bottom,
   );

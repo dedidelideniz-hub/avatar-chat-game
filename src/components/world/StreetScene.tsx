@@ -235,7 +235,7 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
       {/* vendor standing behind the counter — gently bobbing. The vendor is
           the tap target that opens the market page (or the VIP page), so a
           soft pulsing halo (no text) marks it as tappable. */}
-      <g className="vendor-sprite">
+      <g className="vendor-sprite" transform="rotate(-90 0 -50)">
         <ellipse className="vendor-halo" cx="0" cy="-84" rx="34" ry="40" />
         <g
           className="vendor-idle"
@@ -248,9 +248,11 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
       </g>
       {/* the balloon seller waves a hand under her balloons */}
       {vendor.id === "balon" && (
-        <text x={48} y={-140} fontSize={26} className="wave-hand" aria-hidden="true">
-          👋
-        </text>
+        <g transform="rotate(-90 48 -140)">
+          <text x={48} y={-140} fontSize={26} className="wave-hand" aria-hidden="true">
+            👋
+          </text>
+        </g>
       )}
       {/* floating balloons above the balloon stand */}
       {vendor.id === "balon" && (
@@ -296,7 +298,7 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
       <rect x={-80} y={-50} width={160} height={54} rx={9} fill="#5b4636" />
       <rect x={-72} y={-44} width={144} height={12} rx={5} fill="#7a5c3f" />
       {/* wares on the counter */}
-      <text x={0} y={-57} textAnchor="middle" fontSize={22}>
+      <text x={0} y={-57} textAnchor="middle" fontSize={22} transform="rotate(-90 0 -57)">
         {STALL_PRODUCTS[vendor.id]}
       </text>
       {/* name plate */}
@@ -342,6 +344,7 @@ function GiftBox({ claimed }: { claimed: boolean }) {
         fontSize={15}
         fontWeight={800}
         fill={claimed ? "#6b655b" : "#2b2320"}
+        transform="rotate(-90 0 38)"
       >
         {claimed ? "Bugün toplandı ✓" : "Hediye kutusu +150 SP"}
       </text>

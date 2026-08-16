@@ -296,6 +296,7 @@ export default function World() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const worldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
   const spriteRef = useRef<SVGGElement>(null);
   const nameTagRef = useRef<SVGTextElement>(null);
@@ -305,10 +306,14 @@ export default function World() {
   const keysRef = useRef(new Set<string>());
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
+  // True while the game area is portrait → the street is rotated 90° so it
+  // runs top-to-bottom and the whole map stays on screen.
+  const portraitRef = useRef(false);
 
   const [shopVendor, setShopVendor] = useState<Vendor | null>(null);
   const [bagOpen, setBagOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [portrait, setPortrait] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [unread, setUnread] = useState(0);
@@ -349,12 +354,15 @@ export default function World() {
       const w = el.clientWidth;
       const h = el.clientHeight;
       if (w === 0 || h === 0) return;
-      // Portrait phones: fit the whole street into view so every graphic
-      // stays on screen. Wide screens keep the follow camera, which pans to
-      // keep the player in view instead of letterboxing the world.
+      // Portrait phones: the street is rotated 90° so it runs top-to-bottom
+      // and the whole map (all stalls, buildings, road) fills the screen.
+      // Wide screens keep the follow camera, which pans to keep the player
+      // in view instead of letterboxing the world.
       const portrait = h / w > WORLD_H / WORLD_W;
+      portraitRef.current = portrait;
+      setPortrait(portrait);
       if (portrait) {
-        viewRef.current = { vw: WORLD_W, vh: WORLD_H };
+        viewRef.current = { vw: WORLD_H, vh: WORLD_W };
       } else {
         const scale = Math.max(w / WORLD_W, h / WORLD_H);
         viewRef.current = {
@@ -362,6 +370,14 @@ export default function World() {
           vh: Math.min(h / scale, WORLD_H),
         };
       }
+      // Rotate the world group 90° for portrait: landscape (x, y) maps to
+      // screen (900 - y, x), so the long street runs down the phone.
+      worldGroupRef.current?.setAttribute(
+        "transform",
+        portrait ? "translate(900 0) rotate(90)" : "",
+      );
+      // Force the camera to re-apply the matching viewBox next frame.
+      camRef.current = { x: -1, y: -1 };
     };
     update();
     const observer = new ResizeObserver(update);
@@ -493,27 +509,38 @@ export default function World() {
         );
       }
 
-      // Camera follows the player (whole world visible on wide screens).
+      // Camera: portrait shows the whole rotated street (no panning); wide
+      // screens follow the player inside the world.
       const view = viewRef.current;
       if (view.vw > 0) {
-        const camX = Math.min(
-          Math.max(pos.x - view.vw / 2, 0),
-          Math.max(WORLD_W - view.vw, 0),
-        );
-        const camY = Math.min(
-          Math.max(pos.y - view.vh / 2, 0),
-          Math.max(WORLD_H - view.vh, 0),
-        );
-        const prev = camRef.current;
-        if (
-          Math.abs(camX - prev.x) > 0.01 ||
-          Math.abs(camY - prev.y) > 0.01
-        ) {
-          camRef.current = { x: camX, y: camY };
-          svgRef.current?.setAttribute(
-            "viewBox",
-            `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
+        if (portraitRef.current) {
+          if (camRef.current.x !== 0 || camRef.current.y !== 0) {
+            camRef.current = { x: 0, y: 0 };
+            svgRef.current?.setAttribute(
+              "viewBox",
+              `0 0 ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
+            );
+          }
+        } else {
+          const camX = Math.min(
+            Math.max(pos.x - view.vw / 2, 0),
+            Math.max(WORLD_W - view.vw, 0),
           );
+          const camY = Math.min(
+            Math.max(pos.y - view.vh / 2, 0),
+            Math.max(WORLD_H - view.vh, 0),
+          );
+          const prev = camRef.current;
+          if (
+            Math.abs(camX - prev.x) > 0.01 ||
+            Math.abs(camY - prev.y) > 0.01
+          ) {
+            camRef.current = { x: camX, y: camY };
+            svgRef.current?.setAttribute(
+              "viewBox",
+              `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
+            );
+          }
         }
       }
 
@@ -697,8 +724,10 @@ export default function World() {
       const svgPt = new DOMPoint(e.clientX, e.clientY).matrixTransform(
         ctm.inverse(),
       );
-      const wx = svgPt.x;
-      const wy = svgPt.y;
+      // Portrait rotates the street 90° (landscape (x, y) → screen
+      // (900 - y, x)); invert that mapping so taps hit the right world spot.
+      const wx = portraitRef.current ? svgPt.y : svgPt.x;
+      const wy = portraitRef.current ? 900 - svgPt.x : svgPt.y;
       // Tapping the stall itself opens its market page (VIP stand opens the
       // membership page instead).
       const vendor = vendorAtPoint(wx, wy);
@@ -734,7 +763,7 @@ export default function World() {
       {/* Framed game window: dark top bar, the street, beige control bar. */}
       <div className="relative flex h-full w-full max-w-[1560px] flex-col overflow-hidden border-4 border-[#3d2f2a]/20 bg-[#33324a] shadow-2xl sm:rounded-[30px]">
         {/* top bar — wallet & player */}
-        <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-white sm:px-3 sm:py-2">
+        <div className="flex shrink-0 items-center justify-between gap-2 px-2 py-1.5 text-white sm:px-3 sm:py-2">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -764,14 +793,14 @@ export default function World() {
           </span>
         </div>
 
-        {/* Portrait letterbox bands blend into the world: sky blue above,
-            grass green below, so the upright phone view looks intentional. */}
+        {/* Portrait side bands match the rotated scene (grass on the left,
+            sky on the right) so the upright phone view looks intentional. */}
         <main
           ref={containerRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
           style={{
             background:
-              "linear-gradient(180deg, #bfe3ff 0%, #bfe3ff 36%, #d9eee5 50%, #aee571 74%, #aee571 100%)",
+              "linear-gradient(90deg, #aee571 0%, #d9eee5 45%, #bfe3ff 100%)",
           }}
           onClick={handleWorldClick}
         >
@@ -781,6 +810,9 @@ export default function World() {
           preserveAspectRatio="xMidYMid meet"
           className="absolute inset-0 h-full w-full"
         >
+          {/* The world group is rotated 90° on portrait phones so the street
+              runs top-to-bottom and every graphic stays on screen. */}
+          <g ref={worldGroupRef}>
           <StreetScene giftClaimed={giftClaimed} />
 
           {/* move-target marker — the touched spot, shown as a clear square */}
@@ -807,6 +839,9 @@ export default function World() {
 
           {/* player */}
           <g ref={playerRef}>
+            {/* Portrait counter-rotation about the feet keeps the player
+                upright while the street below is rotated. */}
+            <g transform="rotate(-90 0 0)">
             <g ref={spriteRef}>
               <AvatarPreview
                 width={PLAYER_W}
@@ -819,31 +854,55 @@ export default function World() {
                 height={PLAYER_H}
               />
             </g>
-            <g transform="translate(-44 16)">
-              <rect
-                width="88"
-                height="22"
-                rx="11"
-                fill="#ffffff"
-                opacity="0.92"
-                stroke="#3d2f2a"
-                strokeOpacity="0.12"
-              />
-              <text
-                ref={nameTagRef}
-                x="44"
-                y="15"
-                textAnchor="middle"
-                fontSize="12"
-                fontWeight="800"
-                fill="#2b2320"
-              >
-                {username}
-              </text>
             </g>
+            {/* name tag — pill in landscape, outlined text in portrait so it
+                stays readable when the street is rotated */}
+            {portrait ? (
+              <g transform="rotate(-90 0 27)">
+                <text
+                  ref={nameTagRef}
+                  x="0"
+                  y="33"
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="800"
+                  fill="#2b2320"
+                  paintOrder="stroke"
+                  stroke="#ffffff"
+                  strokeWidth={4}
+                  strokeLinejoin="round"
+                >
+                  {username}
+                </text>
+              </g>
+            ) : (
+              <g transform="translate(-44 16)">
+                <rect
+                  width="88"
+                  height="22"
+                  rx="11"
+                  fill="#ffffff"
+                  opacity="0.92"
+                  stroke="#3d2f2a"
+                  strokeOpacity="0.12"
+                />
+                <text
+                  ref={nameTagRef}
+                  x="44"
+                  y="15"
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="800"
+                  fill="#2b2320"
+                >
+                  {username}
+                </text>
+              </g>
+            )}
             {/* speech bubble above the player's head — classic rounded comic
                 bubble with a white border and tail, in the chosen color */}
             {bubble !== null && (
+              <g transform="rotate(-90 0 -115)">
               <g
                 transform={`translate(${-bubbleW / 2} -144)`}
                 className="speech-bubble"
@@ -887,14 +946,18 @@ export default function World() {
                   {bubble}
                 </text>
               </g>
+              </g>
             )}
+          </g>
           </g>
         </svg>
 
         </main>
 
-        {/* bottom control bar — chat input in the center, like Sanalika */}
-        <div className="flex items-center gap-1.5 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
+        {/* bottom control bar — chat input in the center, like Sanalika.
+            Always pinned to the bottom, clear of the phone's home indicator
+            (safe-area padding). */}
+        <div className="flex shrink-0 items-center gap-1.5 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] px-2 pt-1.5 pb-[max(env(safe-area-inset-bottom),0.375rem)] sm:gap-2 sm:px-3 sm:pt-2">
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => navigate("/studio")} />
             <BarBtn
