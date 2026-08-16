@@ -43,6 +43,7 @@ export const listPlayers = query({
           coins: p.coins ?? 500,
           items: (p.items ?? []).length,
           vip: (p.vipUntil ?? 0) > Date.now(),
+          banned: p.banned ?? false,
           createdAt: p.createdAt,
         };
       })
@@ -103,5 +104,32 @@ export const addCoins = mutation({
       updatedAt: Date.now(),
     });
     return coins;
+  },
+});
+
+/**
+ * Ban or unban a player (admin only). Banned players are blocked from the
+ * game on both the client (World overlay) and the server (mutations throw).
+ * Returns the player's username and new ban state.
+ */
+export const setBanned = mutation({
+  args: {
+    ...adminCredentials.fields,
+    profileId: v.id("profiles"),
+    banned: v.boolean(),
+  },
+  handler: async (ctx, { adminUser, adminPass, profileId, banned }) => {
+    if (!isAdmin(adminUser, adminPass)) {
+      throw new Error("Yetkisiz erişim.");
+    }
+    const profile = await ctx.db.get(profileId);
+    if (profile === null) {
+      throw new Error("Oyuncu bulunamadı.");
+    }
+    await ctx.db.patch(profileId, {
+      banned,
+      updatedAt: Date.now(),
+    });
+    return { username: profile.username, banned };
   },
 });

@@ -50,6 +50,7 @@ export default function Admin() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [banningId, setBanningId] = useState<string | null>(null);
 
   const players = useQuery(
     api.admin.listPlayers,
@@ -57,6 +58,7 @@ export default function Admin() {
   );
   const guests = useQuery(api.admin.listGuests, authed ? ADMIN_CREDS : "skip");
   const addCoins = useMutation(api.admin.addCoins);
+  const setBanned = useMutation(api.admin.setBanned);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,6 +105,28 @@ export default function Admin() {
       toast.error(error instanceof Error ? error.message : "Yükleme başarısız.");
     } finally {
       setLoadingId(null);
+    }
+  };
+
+  const handleSetBanned = async (
+    profileId: Id<"profiles">,
+    username: string,
+    banned: boolean,
+  ) => {
+    setBanningId(profileId);
+    try {
+      await setBanned({ ...ADMIN_CREDS, profileId, banned });
+      toast.success(
+        banned
+          ? `${username} oyundan yasaklandı 🚫`
+          : `${username} yasağı kaldırıldı ✅`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "İşlem başarısız.",
+      );
+    } finally {
+      setBanningId(null);
     }
   };
 
@@ -287,13 +311,16 @@ export default function Admin() {
                     <th className="px-3 py-3">Bakiye</th>
                     <th className="px-3 py-3">Çanta</th>
                     <th className="px-5 py-3 text-right">SP Yükle</th>
+                    <th className="px-3 py-3 text-center">Yasak</th>
                   </tr>
                 </thead>
                 <tbody>
                   {players!.map((p) => (
                     <tr
                       key={p.profileId}
-                      className="border-b border-white/5 transition-colors last:border-0 hover:bg-white/[0.03]"
+                      className={`border-b border-white/5 transition-colors last:border-0 hover:bg-white/[0.03] ${
+                        p.banned ? "bg-red-500/[0.07]" : ""
+                      }`}
                     >
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
@@ -309,6 +336,14 @@ export default function Admin() {
                                   title="VIP üye"
                                 >
                                   <Crown className="size-3" /> VIP
+                                </span>
+                              )}
+                              {p.banned && (
+                                <span
+                                  className="flex shrink-0 items-center gap-0.5 rounded-full bg-red-500/20 px-1.5 py-0.5 text-[10px] font-extrabold text-red-300"
+                                  title="Yasaklı oyuncu"
+                                >
+                                  🚫 Yasak
                                 </span>
                               )}
                             </div>
@@ -362,12 +397,36 @@ export default function Admin() {
                           </Button>
                         </div>
                       </td>
+                      <td className="px-3 py-3.5 text-center">
+                        <Button
+                          size="sm"
+                          disabled={banningId === p.profileId}
+                          onClick={() =>
+                            handleSetBanned(
+                              p.profileId,
+                              p.username,
+                              !p.banned,
+                            )
+                          }
+                          className={`h-9 rounded-xl px-3 font-extrabold shadow ${
+                            p.banned
+                              ? "bg-emerald-500 text-emerald-950 hover:bg-emerald-400"
+                              : "bg-red-500/15 text-red-300 hover:bg-red-500/30"
+                          }`}
+                        >
+                          {banningId === p.profileId
+                            ? "…"
+                            : p.banned
+                              ? "Kaldır"
+                              : "Yasakla"}
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                   {players!.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-5 py-14 text-center text-sm font-semibold text-slate-500"
                       >
                         Henüz kayıtlı oyuncu yok.

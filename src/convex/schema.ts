@@ -53,6 +53,7 @@ const schema = defineSchema(
       lastDailyClaim: v.optional(v.number()), // epoch ms of last gift-box claim
       bubbleColor: v.optional(v.string()), // selected speech-bubble color id
       vipUntil: v.optional(v.number()), // epoch ms the VIP membership expires
+      banned: v.optional(v.boolean()), // admin ban — blocks access to the game
       createdAt: v.number(),
       updatedAt: v.number(),
     })

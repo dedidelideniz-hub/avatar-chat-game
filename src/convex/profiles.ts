@@ -37,6 +37,15 @@ function withWallet(profile: Doc<"profiles">) {
   };
 }
 
+/** Banned players are locked out of the game — enforced server-side too. */
+function assertNotBanned(profile: Doc<"profiles">) {
+  if (profile.banned) {
+    throw new Error(
+      "Hesabın oyundan yasaklandı. Detay için yöneticiye başvurabilirsin.",
+    );
+  }
+}
+
 /**
  * The current user's profile (username + avatar + wallet). Returns null if
  * the user has not created one yet.
@@ -113,6 +122,7 @@ export const saveProfile = mutation({
       .first();
 
     if (existing !== null) {
+      assertNotBanned(existing);
       await ctx.db.patch(existing._id, {
         username: trimmed,
         avatar,
@@ -156,6 +166,7 @@ export const buyItem = mutation({
     if (profile === null) {
       throw new Error("Önce karakterini oluştur.");
     }
+    assertNotBanned(profile);
     const coins = profile.coins ?? STARTING_COINS;
     const items = profile.items ?? [];
     if (items.includes(productId)) {
@@ -205,6 +216,7 @@ export const setEquipped = mutation({
     if (profile === null) {
       throw new Error("Önce karakterini oluştur.");
     }
+    assertNotBanned(profile);
     const items = profile.items ?? [];
     if (!items.includes(productId)) {
       throw new Error("Bu ürün çantanda yok — önce satın al.");
@@ -255,6 +267,7 @@ export const setBubbleColor = mutation({
     if (profile === null) {
       throw new Error("Önce karakterini oluştur.");
     }
+    assertNotBanned(profile);
     if (color.vip && (profile.vipUntil ?? 0) <= Date.now()) {
       throw new Error(
         "Bu renk VIP üyeliğe özel. VIP üyeliği satın almak için caddedeki Kraliyet VIP Köşesi'ne uğra.",
@@ -286,6 +299,7 @@ export const buyVip = mutation({
     if (profile === null) {
       throw new Error("Önce karakterini oluştur.");
     }
+    assertNotBanned(profile);
     const coins = profile.coins ?? STARTING_COINS;
     if (coins < VIP_PRICE) {
       throw new Error(
@@ -326,6 +340,7 @@ export const claimDailyBonus = mutation({
     if (profile === null) {
       throw new Error("Önce karakterini oluştur.");
     }
+    assertNotBanned(profile);
     const last = profile.lastDailyClaim ?? 0;
     if (Date.now() - last < DAILY_BONUS_MS) {
       throw new Error("Bugünkü hediye kutusu çoktan toplandı. Yarın tekrar uğra!");

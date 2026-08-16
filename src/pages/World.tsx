@@ -1044,6 +1044,26 @@ export default function World() {
           <div className="size-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
         </div>
       )}
+      {profile !== undefined && profile !== null && profile.banned && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-red-500/40 bg-card p-6 text-center shadow-2xl">
+            <span className="text-5xl">🚫</span>
+            <h2 className="mt-3 text-xl font-extrabold">
+              Hesabın oyundan yasaklandı
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Yönetici tarafından engellendin. Sanalika Caddesi'ne girişin şu
+              an kapalı — detay için yöneticiye başvurabilirsin.
+            </p>
+            <Button
+              className="mt-5 w-full rounded-full"
+              onClick={() => navigate("/")}
+            >
+              Ana sayfaya dön
+            </Button>
+          </div>
+        </div>
+      )}
       {profile === null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 text-center shadow-2xl">
