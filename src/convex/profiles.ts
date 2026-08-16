@@ -3,15 +3,19 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import {
+  ABILITIES,
   BUBBLE_COLORS,
   DAILY_BONUS,
   DAILY_BONUS_MS,
+  DEFAULT_ABILITY,
   DEFAULT_BUBBLE_COLOR,
   STARTING_COINS,
   VIP_DURATION_MS,
   VIP_PRICE,
   WEAR_SLOT_CAPACITY,
+  abilityOf,
   getProduct,
+  isAbilityId,
   type WearSlot,
 } from "../lib/shop";
 
@@ -32,6 +36,8 @@ function withWallet(profile: Doc<"profiles">) {
     items: profile.items ?? [],
     equipped: profile.equipped ?? [],
     bubbleColor: profile.bubbleColor ?? DEFAULT_BUBBLE_COLOR,
+    abilities: profile.abilities ?? [DEFAULT_ABILITY],
+    equippedAbility: profile.equippedAbility ?? DEFAULT_ABILITY,
     // VIP is a time-boxed membership — derive the live flag at read time.
     vip: (profile.vipUntil ?? 0) > Date.now(),
   };
@@ -137,10 +143,12 @@ export const saveProfile = mutation({
       coins: STARTING_COINS,
       items: [],
       equipped: [],
+      abilities: [DEFAULT_ABILITY],
+      equippedAbility: DEFAULT_ABILITY,
       createdAt: now,
       updatedAt: now,
     });
-    return { _id: id, userId, username: trimmed, avatar, coins: STARTING_COINS, items: [], equipped: [], createdAt: now, updatedAt: now };
+    return { _id: id, userId, username: trimmed, avatar, coins: STARTING_COINS, items: [], equipped: [], abilities: [DEFAULT_ABILITY], equippedAbility: DEFAULT_ABILITY, createdAt: now, updatedAt: now };
   },
 });
 
@@ -349,6 +357,99 @@ export const claimDailyBonus = mutation({
     await ctx.db.patch(profile._id, {
       coins,
       lastDailyClaim: Date.now(),
+      updatedAt: Date.now(),
+    });
+    return coins;
+  },
+});
+
+/** Buy a battle super from the ability shop (banned players are blocked). */
+export const buyAbility = mutation({
+  args: { abilityId: v.string() },
+  handler: async (ctx, { abilityId }) => {
+    if (!isAbilityId(abilityId)) {
+      throw new Error("Bu yetenek mağazada yok.");
+    }
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    assertNotBanned(profile);
+    const owned = profile.abilities ?? [DEFAULT_ABILITY];
+    if (owned.includes(abilityId)) {
+      throw new Error("Bu yetenek zaten sende.");
+    }
+    const ability = abilityOf(abilityId);
+    const coins = profile.coins ?? STARTING_COINS;
+    if (coins < ability.price) {
+      throw new Error(
+        `Yeterli Sanalika Paran yok — ${ability.price} SP gerekiyor.`,
+      );
+    }
+    await ctx.db.patch(profile._id, {
+      coins: coins - ability.price,
+      abilities: [...owned, abilityId],
+      equippedAbility: abilityId,
+      updatedAt: Date.now(),
+    });
+    return { coins: coins - ability.price, equippedAbility: abilityId };
+  },
+});
+
+/** Equip an owned battle super (no cost). */
+export const equipAbility = mutation({
+  args: { abilityId: v.string() },
+  handler: async (ctx, { abilityId }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    assertNotBanned(profile);
+    const owned = profile.abilities ?? [DEFAULT_ABILITY];
+    if (!owned.includes(abilityId)) {
+      throw new Error("Önce bu yeteneği satın al.");
+    }
+    await ctx.db.patch(profile._id, {
+      equippedAbility: abilityId,
+      updatedAt: Date.now(),
+    });
+    return abilityId;
+  },
+});
+
+/** Reward for winning a street duel — +150 SP to the winner's wallet. */
+export const battleVictory = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    assertNotBanned(profile);
+    const coins = (profile.coins ?? STARTING_COINS) + DAILY_BONUS;
+    await ctx.db.patch(profile._id, {
+      coins,
       updatedAt: Date.now(),
     });
     return coins;

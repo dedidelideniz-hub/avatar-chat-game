@@ -111,6 +111,74 @@ export const BUBBLE_COLORS: BubbleColor[] = [
 
 export const DEFAULT_BUBBLE_COLOR = "beyaz";
 
+/**
+ * Battle supers (Brawl-styled). Every fighter has a base attack; the super is
+ * a special ability charged by dealing and taking damage. The player buys
+ * supers here (shop), bots each have a fixed one.
+ */
+export type AbilityId =
+  | "temel" // piercing strong shot (free default)
+  | "isik" // long beam
+  | "simsek" // dash through the enemy
+  | "sifa" // heal self
+  | "ates"; // exploding fireball
+
+export interface AbilityDef {
+  id: AbilityId;
+  name: string;
+  emoji: string;
+  description: string;
+  price: number; // SP (0 = free default)
+}
+
+export const ABILITIES: AbilityDef[] = [
+  {
+    id: "temel",
+    name: "Güçlü Vuruş",
+    emoji: "💥",
+    description: "Delip geçen dev bir atış — herkese varsayılan.",
+    price: 0,
+  },
+  {
+    id: "sifa",
+    name: "Can Doldurma",
+    emoji: "💚",
+    description: "Anında canının %45'ini geri kazandırır.",
+    price: 350,
+  },
+  {
+    id: "isik",
+    name: "Işık Huzmesi",
+    emoji: "✨",
+    description: "İleri doğru uzun bir ışık huzmesi fırlatır.",
+    price: 400,
+  },
+  {
+    id: "simsek",
+    name: "Şimşek Adımı",
+    emoji: "⚡",
+    description: "Öne hızla kayar, yoluna çıkanı yaralar.",
+    price: 500,
+  },
+  {
+    id: "ates",
+    name: "Ateş Topu",
+    emoji: "🔥",
+    description: "Hedef noktada patlayan dev bir ateş topu.",
+    price: 600,
+  },
+];
+
+export const DEFAULT_ABILITY = "temel";
+
+export function abilityOf(id: string): AbilityDef {
+  return ABILITIES.find((a) => a.id === id) ?? ABILITIES[0];
+}
+
+export function isAbilityId(id: string): boolean {
+  return ABILITIES.some((a) => a.id === id);
+}
+
 export function bubbleColorOf(id: string): BubbleColor {
   return BUBBLE_COLORS.find((c) => c.id === id) ?? BUBBLE_COLORS[0];
 }

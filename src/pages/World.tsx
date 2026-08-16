@@ -3,15 +3,19 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
+import BattleScene from "@/components/world/BattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
 import {
+  ABILITIES,
+  abilityOf,
   bubbleColorOf,
   BUBBLE_COLORS,
   CURRENCY_EMOJI,
   DAILY_BONUS_MS,
+  DEFAULT_ABILITY,
   DEFAULT_BUBBLE_COLOR,
   formatCoins,
   GIFT_BOX,
@@ -24,6 +28,7 @@ import {
   WALKABLE_ZONES,
   WORLD_BOUNDS,
   vendorAtPoint,
+  type AbilityId,
   type Rect,
   type Vendor,
 } from "@/lib/shop";
@@ -38,6 +43,7 @@ import {
   Puzzle,
   Send,
   Smartphone,
+  Swords,
   UserRound,
   Wand2,
   X,
@@ -75,6 +81,7 @@ interface BotDef {
   y: number;
   config: AvatarConfig;
   equipped: string[]; // small touches so they look lived-in
+  ability: AbilityId; // battle super (Brawl-styled)
 }
 
 const BOT_DEFS: BotDef[] = [
@@ -94,6 +101,7 @@ const BOT_DEFS: BotDef[] = [
       shoes: "#111827",
     },
     equipped: ["moda-sapka"],
+    ability: "isik",
   },
   {
     id: "bot-mert",
@@ -111,6 +119,7 @@ const BOT_DEFS: BotDef[] = [
       shoes: "#374151",
     },
     equipped: ["moda-gozluk"],
+    ability: "simsek",
   },
   {
     id: "bot-elif",
@@ -128,6 +137,7 @@ const BOT_DEFS: BotDef[] = [
       shoes: "#22c55e",
     },
     equipped: ["balon-kirmizi"],
+    ability: "sifa",
   },
   {
     id: "bot-kaan",
@@ -145,6 +155,7 @@ const BOT_DEFS: BotDef[] = [
       shoes: "#ef4444",
     },
     equipped: ["oyuncak-top"],
+    ability: "ates",
   },
 ];
 
@@ -267,6 +278,101 @@ function GameSheet({
         {children}
       </motion.div>
     </>
+  );
+}
+
+/** ✨ Ability shop — buy and equip battle supers with SP. */
+function AbilitiesSheet({
+  coins,
+  abilities,
+  equippedAbility,
+  onBuy,
+  onEquip,
+  onClose,
+}: {
+  coins: number;
+  abilities: string[];
+  equippedAbility: string;
+  onBuy: (id: string) => void;
+  onEquip: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <GameSheet
+      title="✨ Yetenek Mağazası"
+      subtitle="Süper yetenekler — savaş alanında seni zafere taşır."
+      onClose={onClose}
+    >
+      <div className="mt-5 space-y-3">
+        {ABILITIES.map((a) => {
+          const owned = abilities.includes(a.id);
+          const equipped = equippedAbility === a.id;
+          return (
+            <div
+              key={a.id}
+              className="flex items-center gap-3 rounded-2xl border border-border/70 bg-background p-3"
+            >
+              <span className="text-3xl">{a.emoji}</span>
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 text-sm font-extrabold">
+                  {a.name}
+                  {equipped && (
+                    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-extrabold text-primary">
+                      KUŞANILI
+                    </span>
+                  )}
+                </p>
+                <p className="text-[11px] leading-4 text-muted-foreground">
+                  {a.description}
+                </p>
+              </div>
+              {owned ? (
+                equipped ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-full"
+                    disabled
+                  >
+                    Kuşanılı
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => onEquip(a.id)}
+                  >
+                    Kuşan
+                  </Button>
+                )
+              ) : a.price === 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  disabled
+                >
+                  Varsayılan
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="rounded-full"
+                  disabled={coins < a.price}
+                  onClick={() => onBuy(a.id)}
+                >
+                  {CURRENCY_EMOJI} {formatCoins(a.price)}
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-4 text-center text-xs font-semibold text-muted-foreground">
+        Yetenek, savaşta süper güç olarak kullanılır — hasar vererek
+        doldurulur. ⚔️
+      </p>
+    </GameSheet>
   );
 }
 
@@ -460,6 +566,9 @@ export default function World() {
   const profile = useQuery(api.profiles.getMyProfile);
   const claimDaily = useMutation(api.profiles.claimDailyBonus);
   const setBubbleColor = useMutation(api.profiles.setBubbleColor);
+  const buyAbility = useMutation(api.profiles.buyAbility);
+  const equipAbility = useMutation(api.profiles.equipAbility);
+  const battleVictory = useMutation(api.profiles.battleVictory);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -513,10 +622,25 @@ export default function World() {
     viewing !== null && viewing !== "me"
       ? BOT_DEFS.find((b) => b.id === viewing) ?? null
       : null;
+  // Ability shop + duel invites + active battle.
+  const [abilitiesOpen, setAbilitiesOpen] = useState(false);
+  const [invite, setInvite] = useState<{
+    botId: string;
+    status: "waiting" | "accepted" | "rejected";
+  } | null>(null);
+  const [battle, setBattle] = useState<{
+    opponent: BotDef;
+    playerAbility: string;
+    opponentAbility: string;
+  } | null>(null);
+  const battleRef = useRef(battle);
+  battleRef.current = battle;
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
   const equipped = profile?.equipped ?? [];
+  const abilities = profile?.abilities ?? [DEFAULT_ABILITY];
+  const equippedAbility = profile?.equippedAbility ?? DEFAULT_ABILITY;
   const username = profile?.username ?? "Misafir";
   const config = profile?.avatar ?? DEFAULT_AVATAR;
   const isVip = profile?.vip ?? false;
@@ -584,9 +708,15 @@ export default function World() {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
 
+      // While the duel arena is open the street player freezes.
+      const inBattle = battleRef.current !== null;
       const keys = keysRef.current;
       let vx = 0;
       let vy = 0;
+      // `moving` and `pos` are also read by the sprite/camera code below.
+      let moving = false;
+      const pos = posRef.current;
+      if (!inBattle) {
       if (keys.has("ArrowLeft") || keys.has("KeyA")) vx -= 1;
       if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
       if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
@@ -629,13 +759,12 @@ export default function World() {
         }
       }
       const len = Math.hypot(vx, vy);
-      const moving = len > 0.05;
+      moving = len > 0.05;
       if (len > 1) {
         vx /= len;
         vy /= len;
       }
 
-      const pos = posRef.current;
       if (moving) {
         phase += dt * 10;
         const nx = Math.min(Math.max(pos.x + vx * PLAYER_SPEED * dt, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
@@ -661,6 +790,7 @@ export default function World() {
         pos.x = px;
         pos.y = py;
         if (Math.abs(vx) > 0.05) facingRef.current = vx;
+      }
       }
 
       // Sprite: bob + limb swing while walking, face movement direction.
@@ -713,6 +843,13 @@ export default function World() {
 
       // Autonomous bots wander the street — pick waypoints, walk, animate.
       for (const bot of botsRef.current) {
+        const botEl0 = botRefs.current.get(bot.def.id);
+        if (botEl0) botEl0.style.display = "";
+        // The challenged bot teleports to the arena while fighting.
+        if (battleRef.current?.opponent.id === bot.def.id) {
+          if (botEl0) botEl0.style.display = "none";
+          continue;
+        }
         const now = performance.now();
         if (bot.pauseUntil > now) {
           bot.moving = false;
@@ -860,6 +997,107 @@ export default function World() {
     [setBubbleColor],
   );
 
+  /** Invite a character to a duel — they accept or reject after a moment. */
+  const handleInvite = useCallback(
+    (bot: BotDef) => {
+      if (invite || battle) return;
+      setInvite({ botId: bot.id, status: "waiting" });
+      appendMessage({
+        id: nextIdRef.current++,
+        from: "Sistem",
+        text: `${bot.name} savaşa davet edildi… ⚔️`,
+      });
+      window.setTimeout(() => {
+        if (Math.random() < 0.25) {
+          setInvite({ botId: bot.id, status: "rejected" });
+          appendMessage({
+            id: nextIdRef.current++,
+            from: bot.name,
+            text: "Şu an savaşamıyorum, kusura bakma! 🙏",
+            color: bot.color,
+          });
+          window.setTimeout(() => setInvite(null), 2600);
+        } else {
+          setInvite({ botId: bot.id, status: "accepted" });
+          appendMessage({
+            id: nextIdRef.current++,
+            from: bot.name,
+            text: "Kabul! Hadi savaş alanına! ⚔️🔥",
+            color: bot.color,
+          });
+          window.setTimeout(() => {
+            setBattle({
+              opponent: bot,
+              playerAbility: equippedAbility,
+              opponentAbility: bot.ability,
+            });
+            setInvite(null);
+            setViewing(null);
+            setAbilitiesOpen(false);
+          }, 1000);
+        }
+      }, 1400 + Math.random() * 1200);
+    },
+    [invite, battle, appendMessage, equippedAbility],
+  );
+
+  /** Close the arena and (on victory) credit the SP reward. */
+  const endBattle = useCallback(
+    async (victory: boolean) => {
+      if (victory) {
+        try {
+          const newCoins = await battleVictory();
+          toast.success(
+            `🏆 Zafer! +150 SP kazandın — yeni bakiye: ${formatCoins(newCoins)}`,
+          );
+        } catch (error) {
+          console.error("Ödül hatası:", error);
+          toast.error(
+            error instanceof Error ? error.message : "Ödül alınamadı.",
+          );
+        }
+      } else {
+        toast.info("Savaş alanından ayrıldın.");
+      }
+      setBattle(null);
+    },
+    [battleVictory],
+  );
+
+  const handleBuyAbility = useCallback(
+    async (abilityId: string) => {
+      try {
+        await buyAbility({ abilityId });
+        const def = ABILITIES.find((a) => a.id === abilityId);
+        toast.success(
+          `${def?.emoji ?? ""} ${def?.name ?? "Yetenek"} satın alındı ve kuşanıldı!`,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Satın alma başarısız.",
+        );
+      }
+    },
+    [buyAbility],
+  );
+
+  const handleEquipAbility = useCallback(
+    async (abilityId: string) => {
+      try {
+        await equipAbility({ abilityId });
+        const def = ABILITIES.find((a) => a.id === abilityId);
+        toast.success(
+          `${def?.emoji ?? ""} ${def?.name ?? "Yetenek"} kuşanıldı!`,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Kuşanılamadı.",
+        );
+      }
+    },
+    [equipAbility],
+  );
+
   /** Close the chat and open the VIP stand page. */
   const openVipFromChat = useCallback(() => {
     closeChat();
@@ -971,7 +1209,8 @@ export default function World() {
         chatOpen ||
         profileOpen ||
         stallsOpen ||
-        vipOpen
+        vipOpen ||
+        battleRef.current
       )
         return;
       const target = e.target as HTMLElement;
@@ -1332,14 +1571,51 @@ export default function World() {
                       🎒 {viewedBot.equipped.length} ürün
                     </span>
                     <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
-                      🚶 Caddede geziyor
+                      {abilityOf(viewedBot.ability).emoji}{" "}
+                      {abilityOf(viewedBot.ability).name}
                     </span>
                   </>
+                }
+                action={
+                  invite?.botId === viewedBot.id &&
+                  invite.status === "waiting" ? (
+                    <Button size="sm" disabled className="w-full rounded-full">
+                      Davet bekleniyor…
+                    </Button>
+                  ) : invite?.botId === viewedBot.id &&
+                    invite.status === "rejected" ? (
+                    <p className="rounded-full bg-red-500/10 px-3 py-2 text-center text-xs font-extrabold text-red-600">
+                      Savaşı reddetti 😔
+                    </p>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
+                      onClick={() => handleInvite(viewedBot)}
+                    >
+                      <Swords className="size-4" /> Savaşa Davet Et
+                    </Button>
+                  )
                 }
                 onClose={() => setViewing(null)}
               />
             ) : null)}
         </AnimatePresence>
+
+        {/* duel arena — full-screen overlay while fighting */}
+        {battle && (
+          <BattleScene
+            playerName={username}
+            playerConfig={config}
+            playerEquipped={equipped}
+            playerAbility={battle.playerAbility}
+            opponentName={battle.opponent.name}
+            opponentConfig={battle.opponent.config}
+            opponentEquipped={battle.opponent.equipped}
+            opponentAbility={battle.opponentAbility}
+            onExit={endBattle}
+          />
+        )}
 
         </main>
 
@@ -1377,8 +1653,8 @@ export default function World() {
               <BarBtn
                 tone="purple"
                 icon={Wand2}
-                label="Yakında"
-                onClick={() => toast.info("Bu özellik yakında geliyor! ✨")}
+                label="Yetenekler"
+                onClick={() => setAbilitiesOpen(true)}
               />
               <BarBtn
                 tone="purple"
@@ -1479,6 +1755,17 @@ export default function World() {
             isVip={isVip}
             vipUntil={vipUntil}
             onClose={() => setVipOpen(false)}
+          />
+        )}
+        {abilitiesOpen && (
+          <AbilitiesSheet
+            key="abilities"
+            coins={coins}
+            abilities={abilities}
+            equippedAbility={equippedAbility}
+            onBuy={handleBuyAbility}
+            onEquip={handleEquipAbility}
+            onClose={() => setAbilitiesOpen(false)}
           />
         )}
       </AnimatePresence>
