@@ -32,6 +32,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Backpack,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
   Flower2,
   Footprints,
   MessageCircle,
@@ -56,6 +60,14 @@ const PLAYER_H = 96;
 // the player and made walking impossible.
 const SPAWN = { x: 800, y: 610 };
 
+// Holding a scroll arrow glides the camera this fast (world units / second).
+const PAN_SPEED = 420;
+// Bit flags for which scroll arrows are usable right now.
+const PAN_LEFT = 1;
+const PAN_RIGHT = 2;
+const PAN_UP = 4;
+const PAN_DOWN = 8;
+
 /** Random things the vendors say in the street chat. */
 const VENDOR_PHRASES: Record<string, string[]> = {
   dondurma: ["Dondurmaaa! 🍦", "Serin serin dondurmalar!", "Bugün çileklisi bol!"],
@@ -71,6 +83,69 @@ const sheetPanel = {
   exit: { y: 40, opacity: 0 },
   transition: { duration: 0.25, ease: "easeOut" as const },
 };
+
+/** Which way a scroll arrow glides the camera. */
+type PanDir = "left" | "right" | "up" | "down";
+
+const PAN_DIR_VEC: Record<PanDir, { x: number; y: number }> = {
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+};
+
+const PAN_DIR_POS: Record<PanDir, string> = {
+  left: "left-2 top-1/2 -translate-y-1/2",
+  right: "right-2 top-1/2 -translate-y-1/2",
+  up: "top-2 left-1/2 -translate-x-1/2",
+  down: "bottom-2 left-1/2 -translate-x-1/2",
+};
+
+const PAN_DIR_ICON: Record<PanDir, LucideIcon> = {
+  left: ChevronLeft,
+  right: ChevronRight,
+  up: ChevronUp,
+  down: ChevronDown,
+};
+
+const PAN_DIR_LABEL: Record<PanDir, string> = {
+  left: "Sola kaydır",
+  right: "Sağa kaydır",
+  up: "Yukarı kaydır",
+  down: "Aşağı kaydır",
+};
+
+/** Floating scroll arrow — press and hold to glide the camera. */
+function PanArrow({
+  dir,
+  onPanStart,
+  onPanEnd,
+}: {
+  dir: PanDir;
+  onPanStart: (d: { x: number; y: number }) => void;
+  onPanEnd: () => void;
+}) {
+  const Icon = PAN_DIR_ICON[dir];
+  return (
+    <button
+      type="button"
+      aria-label={PAN_DIR_LABEL[dir]}
+      title={PAN_DIR_LABEL[dir]}
+      className={`pointer-events-auto absolute flex size-10 items-center justify-center rounded-full border-2 border-white/70 bg-black/30 text-white shadow-md backdrop-blur-[2px] transition-transform active:scale-90 ${PAN_DIR_POS[dir]}`}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onPanStart(PAN_DIR_VEC[dir]);
+      }}
+      onPointerUp={onPanEnd}
+      onPointerLeave={onPanEnd}
+      onPointerCancel={onPanEnd}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      <Icon className="size-5" />
+    </button>
+  );
+}
 
 /** Bottom control bar button — gradient circle like the Sanalika client. */
 function BarBtn({
@@ -324,6 +399,9 @@ export default function World() {
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
+  const panDirRef = useRef({ x: 0, y: 0 });
+  const panMaskRef = useRef(0);
+  const [canPan, setCanPan] = useState(0);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -497,24 +575,43 @@ export default function World() {
       // Follow camera — the world always fills the screen (cover, no
       // letterboxing): portrait phones show the full street height and pan
       // sideways after the player; wide screens show the full width and pan
-      // vertically. Either way the character stays big and readable.
+      // vertically. While walking the camera tracks the player; when idle it
+      // stays put so the scroll arrows can explore the rest of the street.
       const view = viewRef.current;
       if (view.vw > 0) {
-        const camX = Math.min(
-          Math.max(pos.x - view.vw / 2, 0),
-          Math.max(WORLD_W - view.vw, 0),
-        );
-        const camY = Math.min(
-          Math.max(pos.y - view.vh / 2, 0),
-          Math.max(WORLD_H - view.vh, 0),
-        );
+        const maxX = Math.max(WORLD_W - view.vw, 0);
+        const maxY = Math.max(WORLD_H - view.vh, 0);
+        const followX = Math.min(Math.max(pos.x - view.vw / 2, 0), maxX);
+        const followY = Math.min(Math.max(pos.y - view.vh / 2, 0), maxY);
         const prev = camRef.current;
+        let camX = prev.x >= 0 ? prev.x : followX;
+        let camY = prev.y >= 0 ? prev.y : followY;
+        const pan = panDirRef.current;
+        if (moving || keysRef.current.size > 0 || targetRef.current) {
+          // Walking (keys or tap-to-walk) → follow the player.
+          camX = followX;
+          camY = followY;
+        } else if (pan.x !== 0 || pan.y !== 0) {
+          // Scroll arrow held → glide the camera in that direction.
+          camX = Math.min(Math.max(camX + pan.x * PAN_SPEED * dt, 0), maxX);
+          camY = Math.min(Math.max(camY + pan.y * PAN_SPEED * dt, 0), maxY);
+        }
         if (Math.abs(camX - prev.x) > 0.01 || Math.abs(camY - prev.y) > 0.01) {
           camRef.current = { x: camX, y: camY };
           svgRef.current?.setAttribute(
             "viewBox",
             `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
           );
+        }
+        // Tell React which scroll arrows are usable right now.
+        const panMask =
+          (camX > 0.01 ? PAN_LEFT : 0) |
+          (camX < maxX - 0.01 ? PAN_RIGHT : 0) |
+          (camY > 0.01 ? PAN_UP : 0) |
+          (camY < maxY - 0.01 ? PAN_DOWN : 0);
+        if (panMask !== panMaskRef.current) {
+          panMaskRef.current = panMask;
+          setCanPan(panMask);
         }
       }
 
@@ -593,6 +690,14 @@ export default function World() {
   const openVipFromChat = useCallback(() => {
     closeChat();
     setVipOpen(true);
+  }, []);
+
+  /** Scroll-arrow handlers: glide the camera while held, stop on release. */
+  const startPan = useCallback((dir: { x: number; y: number }) => {
+    panDirRef.current = dir;
+  }, []);
+  const stopPan = useCallback(() => {
+    panDirRef.current = { x: 0, y: 0 };
   }, []);
 
   /** Auto-walk toward a spot on the street (stalls map / gift box). */
@@ -731,7 +836,7 @@ export default function World() {
   );
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#e9dcc0] text-foreground select-none">
+    <div className="fixed inset-x-0 top-0 h-dvh flex items-center justify-center overflow-hidden bg-[#e9dcc0] text-foreground select-none">
       {/* Framed game window: dark top bar, the street, beige control bar. */}
       <div className="relative flex h-full w-full max-w-[1560px] flex-col overflow-hidden border-4 border-[#3d2f2a]/20 bg-[#33324a] shadow-2xl sm:rounded-[30px]">
         {/* top bar — wallet & player */}
@@ -896,6 +1001,24 @@ export default function World() {
           </g>
           </g>
         </svg>
+
+        {/* Scroll arrows — appear wherever there is more street to see
+            (portrait: left/right along the road, wide screens: up/down).
+            Hold one to glide the camera; walking follows the player again. */}
+        <div className="pointer-events-none absolute inset-0 z-10">
+          {canPan & PAN_LEFT ? (
+            <PanArrow dir="left" onPanStart={startPan} onPanEnd={stopPan} />
+          ) : null}
+          {canPan & PAN_RIGHT ? (
+            <PanArrow dir="right" onPanStart={startPan} onPanEnd={stopPan} />
+          ) : null}
+          {canPan & PAN_UP ? (
+            <PanArrow dir="up" onPanStart={startPan} onPanEnd={stopPan} />
+          ) : null}
+          {canPan & PAN_DOWN ? (
+            <PanArrow dir="down" onPanStart={startPan} onPanEnd={stopPan} />
+          ) : null}
+        </div>
 
         </main>
 
