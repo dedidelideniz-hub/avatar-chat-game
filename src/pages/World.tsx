@@ -32,10 +32,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
   Backpack,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Flower2,
   Footprints,
   MessageCircle,
@@ -60,14 +58,6 @@ const PLAYER_H = 96;
 // the player and made walking impossible.
 const SPAWN = { x: 800, y: 610 };
 
-// Holding a scroll arrow glides the camera this fast (world units / second).
-const PAN_SPEED = 420;
-// Bit flags for which scroll arrows are usable right now.
-const PAN_LEFT = 1;
-const PAN_RIGHT = 2;
-const PAN_UP = 4;
-const PAN_DOWN = 8;
-
 /** Random things the vendors say in the street chat. */
 const VENDOR_PHRASES: Record<string, string[]> = {
   dondurma: ["Dondurmaaa! 🍦", "Serin serin dondurmalar!", "Bugün çileklisi bol!"],
@@ -84,69 +74,6 @@ const sheetPanel = {
   transition: { duration: 0.25, ease: "easeOut" as const },
 };
 
-/** Which way a scroll arrow glides the camera. */
-type PanDir = "left" | "right" | "up" | "down";
-
-const PAN_DIR_VEC: Record<PanDir, { x: number; y: number }> = {
-  left: { x: -1, y: 0 },
-  right: { x: 1, y: 0 },
-  up: { x: 0, y: -1 },
-  down: { x: 0, y: 1 },
-};
-
-const PAN_DIR_POS: Record<PanDir, string> = {
-  left: "left-2 top-1/2 -translate-y-1/2",
-  right: "right-2 top-1/2 -translate-y-1/2",
-  up: "top-2 left-1/2 -translate-x-1/2",
-  down: "bottom-2 left-1/2 -translate-x-1/2",
-};
-
-const PAN_DIR_ICON: Record<PanDir, LucideIcon> = {
-  left: ChevronLeft,
-  right: ChevronRight,
-  up: ChevronUp,
-  down: ChevronDown,
-};
-
-const PAN_DIR_LABEL: Record<PanDir, string> = {
-  left: "Sola kaydır",
-  right: "Sağa kaydır",
-  up: "Yukarı kaydır",
-  down: "Aşağı kaydır",
-};
-
-/** Floating scroll arrow — press and hold to glide the camera. */
-function PanArrow({
-  dir,
-  onPanStart,
-  onPanEnd,
-}: {
-  dir: PanDir;
-  onPanStart: (d: { x: number; y: number }) => void;
-  onPanEnd: () => void;
-}) {
-  const Icon = PAN_DIR_ICON[dir];
-  return (
-    <button
-      type="button"
-      aria-label={PAN_DIR_LABEL[dir]}
-      title={PAN_DIR_LABEL[dir]}
-      className={`pointer-events-auto absolute flex size-10 items-center justify-center rounded-full border-2 border-white/70 bg-black/30 text-white shadow-md backdrop-blur-[2px] transition-transform active:scale-90 ${PAN_DIR_POS[dir]}`}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onPanStart(PAN_DIR_VEC[dir]);
-      }}
-      onPointerUp={onPanEnd}
-      onPointerLeave={onPanEnd}
-      onPointerCancel={onPanEnd}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <Icon className="size-5" />
-    </button>
-  );
-}
-
 /** Bottom control bar button — gradient circle like the Sanalika client. */
 function BarBtn({
   icon: Icon,
@@ -154,15 +81,12 @@ function BarBtn({
   badge,
   tone,
   onClick,
-  hideMobile,
 }: {
   icon: LucideIcon;
   label: string;
   badge?: number;
   tone: "sky" | "purple";
   onClick: () => void;
-  /** Keep the bottom bar uncluttered on small phones. */
-  hideMobile?: boolean;
 }) {
   return (
     <button
@@ -171,8 +95,6 @@ function BarBtn({
       aria-label={label}
       title={label}
       className={`relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-white text-[#2b3a4a] shadow-md transition-transform active:scale-90 sm:size-11 ${
-        hideMobile ? "hidden sm:flex" : ""
-      } ${
         tone === "sky"
           ? "bg-gradient-to-br from-sky-200 to-sky-400"
           : "bg-gradient-to-br from-fuchsia-200 to-purple-400"
@@ -399,9 +321,9 @@ export default function World() {
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
-  const panDirRef = useRef({ x: 0, y: 0 });
-  const panMaskRef = useRef(0);
-  const [canPan, setCanPan] = useState(0);
+  const bottomBarRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const coins = profile?.coins ?? 0;
   const items = profile?.items ?? [];
@@ -586,15 +508,10 @@ export default function World() {
         const prev = camRef.current;
         let camX = prev.x >= 0 ? prev.x : followX;
         let camY = prev.y >= 0 ? prev.y : followY;
-        const pan = panDirRef.current;
         if (moving || keysRef.current.size > 0 || targetRef.current) {
           // Walking (keys or tap-to-walk) → follow the player.
           camX = followX;
           camY = followY;
-        } else if (pan.x !== 0 || pan.y !== 0) {
-          // Scroll arrow held → glide the camera in that direction.
-          camX = Math.min(Math.max(camX + pan.x * PAN_SPEED * dt, 0), maxX);
-          camY = Math.min(Math.max(camY + pan.y * PAN_SPEED * dt, 0), maxY);
         }
         if (Math.abs(camX - prev.x) > 0.01 || Math.abs(camY - prev.y) > 0.01) {
           camRef.current = { x: camX, y: camY };
@@ -602,16 +519,6 @@ export default function World() {
             "viewBox",
             `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
           );
-        }
-        // Tell React which scroll arrows are usable right now.
-        const panMask =
-          (camX > 0.01 ? PAN_LEFT : 0) |
-          (camX < maxX - 0.01 ? PAN_RIGHT : 0) |
-          (camY > 0.01 ? PAN_UP : 0) |
-          (camY < maxY - 0.01 ? PAN_DOWN : 0);
-        if (panMask !== panMaskRef.current) {
-          panMaskRef.current = panMask;
-          setCanPan(panMask);
         }
       }
 
@@ -692,12 +599,30 @@ export default function World() {
     setVipOpen(true);
   }, []);
 
-  /** Scroll-arrow handlers: glide the camera while held, stop on release. */
-  const startPan = useCallback((dir: { x: number; y: number }) => {
-    panDirRef.current = dir;
+  /** Keep the bottom-bar scroll arrows in sync with the row's overflow. */
+  const updateBottomScroll = useCallback(() => {
+    const el = bottomBarRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
   }, []);
-  const stopPan = useCallback(() => {
-    panDirRef.current = { x: 0, y: 0 };
+
+  useEffect(() => {
+    updateBottomScroll();
+    const el = bottomBarRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateBottomScroll, { passive: true });
+    const observer = new ResizeObserver(updateBottomScroll);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateBottomScroll);
+      observer.disconnect();
+    };
+  }, [updateBottomScroll]);
+
+  /** Nudge the bottom bar sideways so hidden buttons come into view. */
+  const scrollBottomBar = useCallback((dir: -1 | 1) => {
+    bottomBarRef.current?.scrollBy({ left: dir * 180, behavior: "smooth" });
   }, []);
 
   /** Auto-walk toward a spot on the street (stalls map / gift box). */
@@ -1002,97 +927,102 @@ export default function World() {
           </g>
         </svg>
 
-        {/* Scroll arrows — appear wherever there is more street to see
-            (portrait: left/right along the road, wide screens: up/down).
-            Hold one to glide the camera; walking follows the player again. */}
-        <div className="pointer-events-none absolute inset-0 z-10">
-          {canPan & PAN_LEFT ? (
-            <PanArrow dir="left" onPanStart={startPan} onPanEnd={stopPan} />
-          ) : null}
-          {canPan & PAN_RIGHT ? (
-            <PanArrow dir="right" onPanStart={startPan} onPanEnd={stopPan} />
-          ) : null}
-          {canPan & PAN_UP ? (
-            <PanArrow dir="up" onPanStart={startPan} onPanEnd={stopPan} />
-          ) : null}
-          {canPan & PAN_DOWN ? (
-            <PanArrow dir="down" onPanStart={startPan} onPanEnd={stopPan} />
-          ) : null}
-        </div>
-
         </main>
 
         {/* bottom control bar — chat input in the center, like Sanalika.
-            Always pinned to the bottom, clear of the phone's home indicator
-            (safe-area padding). */}
-        <div className="flex shrink-0 items-center gap-1.5 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] px-2 pt-1.5 pb-[max(env(safe-area-inset-bottom),0.375rem)] sm:gap-2 sm:px-3 sm:pt-2">
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => navigate("/studio")} />
-            <BarBtn
-              tone="sky"
-              icon={UserRound}
-              label="Profilim"
-              hideMobile
-              onClick={() => setProfileOpen(true)}
-            />
-            <BarBtn tone="sky" icon={Backpack} label="Çanta" badge={items.length} onClick={() => setBagOpen(true)} />
-            <BarBtn
-              tone="sky"
-              icon={Footprints}
-              label="Tezgâhlar"
-              hideMobile
-              onClick={() => setStallsOpen(true)}
-            />
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSend(chatDraft);
-              setChatDraft("");
-            }}
-            className="flex min-w-0 flex-1 items-center gap-2"
+            On narrow phones the whole row scrolls sideways with the edge
+            arrows, so every button stays reachable without turning the
+            phone. Pinned clear of the home indicator (safe-area padding). */}
+        <div className="relative flex shrink-0 items-center gap-1 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] px-1.5 pt-1.5 pb-[max(env(safe-area-inset-bottom),0.375rem)] sm:gap-2 sm:px-3 sm:pt-2">
+          <button
+            type="button"
+            onClick={() => scrollBottomBar(-1)}
+            aria-label="Sola kaydır"
+            title="Sola kaydır"
+            className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-[#3d2f2a]/20 bg-white/80 text-[#3d2f2a] shadow-sm transition-all active:scale-90 ${
+              canScrollLeft ? "opacity-100" : "pointer-events-none opacity-0"
+            }`}
           >
-            <input
-              value={chatDraft}
-              onChange={(e) => setChatDraft(e.target.value)}
-              placeholder="Merhaba Sanalika!"
-              maxLength={120}
-              autoComplete="off"
-              aria-label="Sohbet mesajı"
-              className="h-10 min-w-0 flex-1 rounded-full border-2 border-white bg-white px-4 text-sm font-semibold text-foreground shadow-inner outline-none placeholder:text-muted-foreground/60 focus:border-primary"
-            />
-            <button
-              type="submit"
-              className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform active:scale-90 sm:flex"
-              aria-label="Mesajı gönder"
+            <ChevronLeft className="size-4" />
+          </button>
+          <div
+            ref={bottomBarRef}
+            className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-0.5 sm:gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => navigate("/studio")} />
+              <BarBtn
+                tone="sky"
+                icon={UserRound}
+                label="Profilim"
+                onClick={() => setProfileOpen(true)}
+              />
+              <BarBtn tone="sky" icon={Backpack} label="Çanta" badge={items.length} onClick={() => setBagOpen(true)} />
+              <BarBtn
+                tone="sky"
+                icon={Footprints}
+                label="Tezgâhlar"
+                onClick={() => setStallsOpen(true)}
+              />
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend(chatDraft);
+                setChatDraft("");
+              }}
+              className="flex min-w-[170px] max-w-full flex-1 items-center gap-2"
             >
-              <Send className="size-4" />
-            </button>
-          </form>
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <BarBtn tone="purple" icon={MessageCircle} label="Sohbet" badge={unread} onClick={openChat} />
-            <BarBtn
-              tone="purple"
-              icon={Puzzle}
-              label="Yakında"
-              hideMobile
-              onClick={() => toast.info("Bu özellik yakında geliyor! 🔧")}
-            />
-            <BarBtn
-              tone="purple"
-              icon={Wand2}
-              label="Yakında"
-              hideMobile
-              onClick={() => toast.info("Bu özellik yakında geliyor! ✨")}
-            />
-            <BarBtn
-              tone="purple"
-              icon={Flower2}
-              label="Yakında"
-              hideMobile
-              onClick={() => toast.info("Bu özellik yakında geliyor! 🌸")}
-            />
+              <input
+                value={chatDraft}
+                onChange={(e) => setChatDraft(e.target.value)}
+                placeholder="Merhaba Sanalika!"
+                maxLength={120}
+                autoComplete="off"
+                aria-label="Sohbet mesajı"
+                className="h-10 w-full min-w-0 flex-1 rounded-full border-2 border-white bg-white px-4 text-sm font-semibold text-foreground shadow-inner outline-none placeholder:text-muted-foreground/60 focus:border-primary"
+              />
+              <button
+                type="submit"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-transform active:scale-90"
+                aria-label="Mesajı gönder"
+              >
+                <Send className="size-4" />
+              </button>
+            </form>
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <BarBtn tone="purple" icon={MessageCircle} label="Sohbet" badge={unread} onClick={openChat} />
+              <BarBtn
+                tone="purple"
+                icon={Puzzle}
+                label="Yakında"
+                onClick={() => toast.info("Bu özellik yakında geliyor! 🔧")}
+              />
+              <BarBtn
+                tone="purple"
+                icon={Wand2}
+                label="Yakında"
+                onClick={() => toast.info("Bu özellik yakında geliyor! ✨")}
+              />
+              <BarBtn
+                tone="purple"
+                icon={Flower2}
+                label="Yakında"
+                onClick={() => toast.info("Bu özellik yakında geliyor! 🌸")}
+              />
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => scrollBottomBar(1)}
+            aria-label="Sağa kaydır"
+            title="Sağa kaydır"
+            className={`flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-[#3d2f2a]/20 bg-white/80 text-[#3d2f2a] shadow-sm transition-all active:scale-90 ${
+              canScrollRight ? "opacity-100" : "pointer-events-none opacity-0"
+            }`}
+          >
+            <ChevronRight className="size-4" />
+          </button>
         </div>
       </div>
 
