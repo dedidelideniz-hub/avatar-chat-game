@@ -42,6 +42,28 @@ const PROJ_SPEED = 620;
 const PROJ_RANGE = 660;
 const FIGHTER_R = 22;
 
+/** Status lines that cycle under the loading bar while the arena loads. */
+const LOAD_STEPS = [
+  "Arena hazırlanıyor…",
+  "Rakip bulunuyor…",
+  "Silahlar kalibre ediliyor…",
+  "Enerji yükleniyor…",
+];
+
+/** GIF-style emoji FX that float up through the loading screen. */
+const LOAD_FX = [
+  { e: "⚔️", left: "6%", delay: 0, dur: 4.2, size: "text-2xl" },
+  { e: "⚡", left: "16%", delay: 0.9, dur: 3.4, size: "text-xl" },
+  { e: "🗡️", left: "28%", delay: 1.6, dur: 4.8, size: "text-2xl" },
+  { e: "✨", left: "41%", delay: 0.4, dur: 3.8, size: "text-lg" },
+  { e: "💥", left: "55%", delay: 1.1, dur: 4.4, size: "text-2xl" },
+  { e: "⚡", left: "66%", delay: 2.0, dur: 3.2, size: "text-xl" },
+  { e: "🛡️", left: "78%", delay: 0.7, dur: 5.0, size: "text-2xl" },
+  { e: "✨", left: "88%", delay: 1.4, dur: 3.6, size: "text-lg" },
+  { e: "🔥", left: "95%", delay: 2.4, dur: 4.6, size: "text-xl" },
+  { e: "⭐", left: "10%", delay: 2.8, dur: 4.0, size: "text-lg" },
+];
+
 function newFighter(
   name: string,
   config: AvatarConfig,
@@ -154,6 +176,129 @@ class ArenaBoundary extends Component<
   }
 }
 
+/** Gaming-style loading screen shown on arena entry — animated title,
+ *  GIF-style floating FX, fighter cards and a filling progress bar. */
+function BattleLoading({
+  playerName,
+  playerAbility,
+  opponentName,
+  opponentAbility,
+  pct,
+  step,
+}: {
+  playerName: string;
+  playerAbility: string;
+  opponentName: string;
+  opponentAbility: string;
+  pct: number;
+  step: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, scale: 1.08 }}
+      transition={{ duration: 0.28 }}
+      className="absolute inset-0 z-[15] flex flex-col items-center justify-center overflow-hidden bg-[#0b1020] text-white"
+    >
+      {/* animated grid floor + moving scanline (GIF-style) */}
+      <div className="battle-load-grid pointer-events-none absolute inset-0" />
+      <div className="battle-load-scan pointer-events-none absolute inset-x-0 top-0 h-24" />
+
+      {/* floating GIF-style emoji FX */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {LOAD_FX.map((f, i) => (
+          <span
+            key={i}
+            className={`battle-load-float ${f.size}`}
+            style={{
+              left: f.left,
+              animationDuration: `${f.dur}s`,
+              animationDelay: `${f.delay}s`,
+            }}
+          >
+            {f.e}
+          </span>
+        ))}
+      </div>
+
+      {/* title */}
+      <h2
+        className="battle-load-slam relative z-10 flex items-center gap-3 text-4xl font-black tracking-widest sm:text-5xl"
+        style={{
+          textShadow:
+            "0 0 24px rgba(56,189,248,0.8), 0 4px 0 rgba(15,23,42,0.9)",
+        }}
+      >
+        <span className="battle-load-spin">⚔️</span>
+        SAVAŞ ALANI
+        <span className="battle-load-spin" style={{ animationDirection: "reverse" }}>
+          ⚔️
+        </span>
+      </h2>
+      <p className="relative z-10 mt-1 text-xs font-bold tracking-[0.35em] text-sky-300/80">
+        SANALİKA DUEL ARENASI
+      </p>
+
+      {/* fighter cards + VS emblem */}
+      <div className="relative z-10 mt-8 flex items-center gap-3 sm:gap-6">
+        <div className="battle-load-card flex w-32 flex-col items-center gap-2 rounded-2xl border-2 border-white/25 bg-white/5 px-3 py-4 backdrop-blur-sm sm:w-44">
+          <span className="text-4xl sm:text-5xl">{playerAbility}</span>
+          <p className="w-full truncate text-center text-sm font-extrabold sm:text-base">
+            {playerName}
+          </p>
+          <span className="rounded-full bg-sky-500/25 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-sky-300">
+            SEN
+          </span>
+        </div>
+
+        <div className="flex flex-col items-center gap-1">
+          <span
+            className="battle-load-flash text-3xl font-black text-yellow-300 sm:text-4xl"
+            style={{ textShadow: "0 0 18px rgba(250,204,21,0.9)" }}
+          >
+            VS
+          </span>
+          <span className="text-xl">⚡</span>
+        </div>
+
+        <div
+          className="battle-load-card flex w-32 flex-col items-center gap-2 rounded-2xl border-2 border-white/25 bg-white/5 px-3 py-4 backdrop-blur-sm sm:w-44"
+          style={{ animationDelay: "0.65s" }}
+        >
+          <span className="text-4xl sm:text-5xl">{opponentAbility}</span>
+          <p className="w-full truncate text-center text-sm font-extrabold sm:text-base">
+            {opponentName}
+          </p>
+          <span className="rounded-full bg-rose-500/25 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-rose-300">
+            RAKİP
+          </span>
+        </div>
+      </div>
+
+      {/* progress bar */}
+      <div className="relative z-10 mt-8 w-72 sm:w-96">
+        <div className="flex items-center justify-between text-[11px] font-extrabold tracking-wider">
+          <span key={step} className="battle-load-step text-sky-300">
+            {LOAD_STEPS[step]}
+          </span>
+          <span className="tabular-nums text-yellow-300">%{pct}</span>
+        </div>
+        <div className="mt-2 h-4 overflow-hidden rounded-full border-2 border-white/20 bg-white/10">
+          <div
+            className="battle-load-bar h-full rounded-full bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 transition-[width] duration-150 ease-linear"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="mt-2 flex justify-between text-[9px] font-bold text-white/35">
+          <span>⚙️ SANALİKA GAMES</span>
+          <span>v2.0</span>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function BattleScene({
   playerName,
   playerConfig,
@@ -206,6 +351,11 @@ export default function BattleScene({
   const [result, setResult] = useState<"win" | "lose" | null>(null);
   const [attackHeld, setAttackHeld] = useState(false);
   const [vsShow, setVsShow] = useState(true);
+  // Gaming-style loading sequence runs before the fight unlocks.
+  const [phase, setPhase] = useState<"loading" | "fight">("loading");
+  const startedRef = useRef(false);
+  const [loadPct, setLoadPct] = useState(0);
+  const [loadStep, setLoadStep] = useState(0);
   const [hud, setHud] = useState({
     ph: HP,
     ohp: HP,
@@ -226,11 +376,36 @@ export default function BattleScene({
     click: (_x: number, _y: number) => {},
   });
 
-  // Animated VS banner plays once on entry, then disappears.
+  // Animated VS banner plays once the loading sequence finishes.
   useEffect(() => {
-    const t = window.setTimeout(() => setVsShow(false), 1700);
+    if (phase !== "fight") return;
+    const t = window.setTimeout(() => setVsShow(false), 1800);
     return () => window.clearTimeout(t);
-  }, []);
+  }, [phase]);
+
+  // Gaming-style loading on arena entry: animated progress bar with cycling
+  // status lines, then an orchestral "VS" sting as the fight unlocks.
+  useEffect(() => {
+    if (phase !== "loading") return;
+    const start = performance.now();
+    const DURATION = 2600;
+    const STEPS = LOAD_STEPS.length;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / DURATION, 1);
+      setLoadPct(Math.round(t * 100));
+      setLoadStep(Math.min(Math.floor(t * STEPS), STEPS - 1));
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        startedRef.current = true;
+        playSound("vs");
+        setPhase("fight");
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [phase]);
 
   const clamp = (v: number, a: number, b: number) =>
     Math.min(Math.max(v, a), b);
@@ -431,7 +606,14 @@ export default function BattleScene({
   const tryAttack = useCallback((aimX?: number, aimY?: number) => {
     const p = player.current;
     const b = bot.current;
-    if (resultRef.current || p.hp <= 0 || p.dashT > 0 || p.atkCd > 0) return;
+    if (
+      !startedRef.current ||
+      resultRef.current ||
+      p.hp <= 0 ||
+      p.dashT > 0 ||
+      p.atkCd > 0
+    )
+      return;
     p.atkCd = ATK_CD;
     let tx: number;
     let ty: number;
@@ -452,7 +634,14 @@ export default function BattleScene({
   const trySuper = useCallback(() => {
     const p = player.current;
     const b = bot.current;
-    if (resultRef.current || p.hp <= 0 || p.dashT > 0 || p.superCharge < 1) return;
+    if (
+      !startedRef.current ||
+      resultRef.current ||
+      p.hp <= 0 ||
+      p.dashT > 0 ||
+      p.superCharge < 1
+    )
+      return;
     useSuper(p, b);
   }, []);
 
@@ -476,7 +665,6 @@ export default function BattleScene({
 
   // ---- main loop ----
   useEffect(() => {
-    playSound("vs");
     startBattleAmbience();
     let superReadyPlayed = false;
     let stepAcc = 0;
@@ -526,7 +714,8 @@ export default function BattleScene({
     const step = (dt: number) => {
       const p = player.current;
       const b = bot.current;
-      if (resultRef.current) return;
+      // freeze the simulation until the loading sequence finishes
+      if (!startedRef.current || resultRef.current) return;
 
       p.atkCd = Math.max(0, p.atkCd - dt);
       b.atkCd = Math.max(0, b.atkCd - dt);
@@ -849,7 +1038,7 @@ export default function BattleScene({
           <div className="arena-vignette pointer-events-none absolute inset-0 z-[6]" />
 
           {/* animated VS intro banner — GIF-style entrance */}
-          {vsShow && (
+          {vsShow && phase === "fight" && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
               <div className="vs-banner flex flex-col items-center gap-2 rounded-3xl border-4 border-yellow-300/80 bg-[#151b2e]/85 px-10 py-6 text-center text-white shadow-2xl">
                 <span className="text-5xl font-black tracking-widest text-yellow-300">
@@ -861,6 +1050,20 @@ export default function BattleScene({
               </div>
             </div>
           )}
+
+          {/* gaming-style loading screen on entry */}
+          <AnimatePresence>
+            {phase === "loading" && (
+              <BattleLoading
+                playerName={playerName}
+                playerAbility={abilityEmoji}
+                opponentName={opponentName}
+                opponentAbility={oppAbilityEmoji}
+                pct={loadPct}
+                step={loadStep}
+              />
+            )}
+          </AnimatePresence>
 
           {/* controls */}
           {/* virtual joystick — drag to move (works with mouse + touch) */}
