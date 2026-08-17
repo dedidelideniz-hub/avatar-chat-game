@@ -560,6 +560,7 @@ export default function BattleScene({
             volume: 0.16,
             rate: 0.8 + Math.random() * 0.5,
           });
+          smokeFx(p.x, p.y - 6, 2, 20); // footstep dust
         }
       } else {
         stepAcc = 0;
@@ -569,6 +570,7 @@ export default function BattleScene({
         if (botStepAcc > 0.34) {
           botStepAcc = 0;
           playSound("step", { volume: 0.08, rate: 0.7 + Math.random() * 0.4 });
+          smokeFx(b.x, b.y - 6, 2, 20); // footstep dust
         }
       } else {
         botStepAcc = 0;
@@ -807,6 +809,9 @@ export default function BattleScene({
               onWorldClick={(x, y) => actionsRef.current.click(x, y)}
             />
           )}
+
+          {/* cinematic vignette — pulls the eye to the action */}
+          <div className="arena-vignette pointer-events-none absolute inset-0 z-[6]" />
 
           {/* animated VS intro banner — GIF-style entrance */}
           {vsShow && (

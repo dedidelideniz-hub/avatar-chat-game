@@ -53,6 +53,9 @@ export function FallbackArena2D({
   const textEls = useRef<SVGTextElement[]>([]);
   const beamEls = useRef<SVGLineElement[]>([]);
   const smokeEls = useRef<SVGCircleElement[]>([]);
+  // Smooth follow-camera center (world px) — same fixed-zoom behavior as the
+  // 3D arena so both play identically.
+  const camRef = useRef({ x: W / 2, y: H / 2 });
 
   useEffect(() => {
     const fx = fxRef.current;
@@ -115,8 +118,26 @@ export function FallbackArena2D({
       const p = playerRef.current;
       const b = botRef.current;
 
-      // Fixed centered camera: the viewBox stays on the whole map
-      // (`0 0 W H`), so the arena is always fully visible and centered.
+      // Game-simulation follow camera: fixed zoom (matches the 3D arena),
+      // centered on the player and clamped to the arena edges.
+      const svg = svgRef.current;
+      if (svg && svg.clientWidth > 0) {
+        const aspect = svg.clientWidth / Math.max(1, svg.clientHeight);
+        const zoom = 12;
+        // Same visible width as the 3D camera at fov 60° and this zoom.
+        let viewW = Math.min(W, 115.47 * aspect * zoom);
+        let viewH = Math.min(H, viewW / aspect);
+        const hw = viewW / 2;
+        const hh = viewH / 2;
+        const tx = viewW >= W ? W / 2 : Math.min(Math.max(p.x, hw), W - hw);
+        const ty = viewH >= H ? H / 2 : Math.min(Math.max(p.y, hh), H - hh);
+        camRef.current.x += (tx - camRef.current.x) * Math.min(1, dt * 6);
+        camRef.current.y += (ty - camRef.current.y) * Math.min(1, dt * 6);
+        svg.setAttribute(
+          "viewBox",
+          `${camRef.current.x - hw} ${camRef.current.y - hh} ${viewW} ${viewH}`,
+        );
+      }
 
       // fighters
       pRef.current?.setAttribute("transform", `translate(${p.x} ${p.y})`);

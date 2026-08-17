@@ -188,6 +188,24 @@ const SMOKE_POOL = 22;
 /* Fighters — procedural low-poly humanoid built from avatar colors.   */
 /* ------------------------------------------------------------------ */
 
+function drawHpBar(sprite: THREE.Sprite, hp: number, maxHp: number) {
+  const mat = sprite.material as THREE.SpriteMaterial;
+  const tex = mat.map as THREE.CanvasTexture;
+  const canvas = tex.image as HTMLCanvasElement;
+  const g = canvas.getContext("2d");
+  if (!g) return;
+  const pct = Math.max(0, Math.min(1, hp / maxHp));
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = "rgba(8,12,26,0.85)";
+  g.fillRect(0, 0, 128, 16);
+  g.strokeStyle = "rgba(255,255,255,0.9)";
+  g.lineWidth = 2;
+  g.strokeRect(1, 1, 126, 14);
+  g.fillStyle = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#eab308" : "#ef4444";
+  g.fillRect(3, 3, Math.max(2, 122 * pct), 10);
+  tex.needsUpdate = true;
+}
+
 function FighterRig({
   fighter,
 }: {
@@ -200,6 +218,17 @@ function FighterRig({
   const legL = useRef<THREE.Group>(null);
   const legR = useRef<THREE.Group>(null);
   const flashMat = useRef<THREE.MeshStandardMaterial>(null);
+  const hpBg = useRef<THREE.Sprite>(null);
+  const hpFill = useRef<THREE.Sprite>(null);
+  const lastHp = useRef(-1);
+  const hpTex = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 16;
+    const t = new THREE.CanvasTexture(c);
+    t.minFilter = THREE.LinearFilter;
+    return t;
+  }, []);
   const c = fighter.current.config;
 
   useFrame(() => {
@@ -213,10 +242,24 @@ function FighterRig({
     if (armR.current) armR.current.rotation.x = Math.sin(t + Math.PI) * 0.75 * amp;
     if (legL.current) legL.current.rotation.x = Math.sin(t + Math.PI) * 0.6 * amp;
     if (legR.current) legR.current.rotation.x = Math.sin(t) * 0.6 * amp;
-    if (bob.current) bob.current.position.y = Math.abs(Math.sin(t)) * 0.09 * amp;
+    if (bob.current) {
+      // walk bob while moving, gentle breathing while idle
+      bob.current.position.y = amp > 0
+        ? Math.abs(Math.sin(t)) * 0.09
+        : Math.sin(performance.now() / 420) * 0.018;
+    }
     if (flashMat.current) {
       const elapsed = performance.now() - f.lastHitAt;
       flashMat.current.opacity = Math.max(0, 0.85 * (1 - elapsed / 350));
+    }
+    // health bar above the head — redraw only when hp changes
+    if (f.hp !== lastHp.current) {
+      lastHp.current = f.hp;
+      if (hpFill.current && hpBg.current) {
+        drawHpBar(hpFill.current, f.hp, f.maxHp);
+        hpBg.current.visible = f.hp < f.maxHp;
+        hpFill.current.visible = f.hp < f.maxHp;
+      }
     }
   });
 
@@ -353,6 +396,13 @@ function FighterRig({
           />
         </RoundedBox>
       </group>
+      {/* health bar above the head (billboarded, follows the fighter) */}
+      <sprite ref={hpFill} position={[0, 1.78, 0]} scale={[1.1, 0.15, 1]} visible={false}>
+        <spriteMaterial map={hpTex} depthTest={false} />
+      </sprite>
+      <sprite ref={hpBg} position={[0, 1.78, 0]} scale={[1.12, 0.17, 1]} visible={false}>
+        <spriteMaterial color="#0a0f1d" opacity={0.9} depthTest={false} />
+      </sprite>
     </group>
   );
 }
@@ -368,12 +418,14 @@ function ProjectilePool({
 }) {
   const meshes = useRef<(THREE.Mesh | null)[]>([]);
   const halos = useRef<(THREE.Mesh | null)[]>([]);
+  const trails = useRef<(THREE.Mesh | null)[]>([]);
 
   useFrame(() => {
     const list = projsRef.current;
     for (let i = 0; i < PROJ_POOL; i++) {
       const m = meshes.current[i];
       const h = halos.current[i];
+      const tr = trails.current[i];
       const p = list[i];
       if (m) {
         if (p) {
@@ -392,6 +444,26 @@ function ProjectilePool({
       if (h) {
         h.visible = !!p;
         if (p) h.position.set(p.x / S, 0.85, p.y / S);
+      }
+      // glowing energy trail stretched along the flight direction
+      if (tr) {
+        if (p) {
+          tr.visible = true;
+          const sp = Math.hypot(p.vx, p.vy) || 1;
+          const len = Math.min(0.9, sp * 0.055);
+          tr.position.set(
+            (p.x - (p.vx / sp) * len * 0.55) / S,
+            0.85,
+            (p.y - (p.vy / sp) * len * 0.55) / S,
+          );
+          tr.scale.set(len, 0.06, 0.06);
+          tr.rotation.y = Math.atan2(p.vy, p.vx);
+          (tr.material as THREE.MeshBasicMaterial).color.set(
+            p.owner === "player" ? "#7dd3fc" : "#fda4af",
+          );
+        } else {
+          tr.visible = false;
+        }
       }
     }
   });
@@ -416,6 +488,15 @@ function ProjectilePool({
           >
             <sphereGeometry args={[0.28, 10, 10]} />
             <meshBasicMaterial color="#ffffff" transparent opacity={0.25} />
+          </mesh>
+          <mesh
+            ref={(el) => {
+              trails.current[i] = el;
+            }}
+            visible={false}
+          >
+            <boxGeometry args={[1, 1, 1]} />
+            <meshBasicMaterial transparent opacity={0.75} />
           </mesh>
         </group>
       ))}
@@ -799,31 +880,48 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Fixed fit-to-screen camera — the whole arena stays centered and      */
-/* fully visible on every screen (no zooming, no follow). Because the    */
-/* map is rendered with z = +y/S, screen-up = map-up, so the joystick,   */
-/* keys and tap-to-move all behave exactly like the 2D arena.            */
+/* Game-simulation follow camera — fixed zoom (no zoom buttons), the    */
+/* camera glides behind the player like a real battle game and clamps   */
+/* to the arena edges so the whole map stays reachable. The map is      */
+/* rendered with z = +y/S, so screen-up = map-up: the joystick, keys    */
+/* and tap-to-move behave exactly like the 2D arena.                    */
 /* ------------------------------------------------------------------ */
 
-function FixedCamera() {
+function FollowCamera({
+  playerRef,
+}: {
+  playerRef: MutableRefObject<BattleFighter>;
+}) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
-  const el = 0.42; // elevation (radians) — slightly flatter top-down look
+  const cur = useRef(new THREE.Vector3(CX, 0.6, CZ));
+  const el = 0.5; // elevation (radians)
+  const zoom = 12; // fixed — closer than the old full-map view, no controls
 
-  useFrame(() => {
-    const aspect = Math.max(0.2, camera.aspect);
+  useFrame((_, dt) => {
+    const p = playerRef.current;
     const vFov = (camera.fov * Math.PI) / 180;
+    const aspect = Math.max(0.2, camera.aspect);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    // Distance needed so the whole arena (+margin) fits width AND depth.
-    const zoom = Math.max(
-      (ARENA_W / 2 + 0.4) / Math.tan(hFov / 2),
-      (ARENA_D / 2 + 0.4) / (Math.tan(vFov / 2) * Math.cos(el)),
-    );
+    const halfW = Math.tan(hFov / 2) * zoom;
+    const halfD = Math.tan(vFov / 2) * zoom * Math.cos(el);
+    // If the view is wider/taller than the arena, stay centered on that
+    // axis; otherwise follow the player, clamped to the walls.
+    const tx =
+      halfW * 2 >= ARENA_W
+        ? CX
+        : THREE.MathUtils.clamp(p.x / S, halfW + 0.3, ARENA_W - halfW - 0.3);
+    const tz =
+      halfD * 2 >= ARENA_D
+        ? CZ
+        : THREE.MathUtils.clamp(p.y / S, halfD + 0.3, ARENA_D - halfD - 0.3);
+    const target = new THREE.Vector3(tx, 0.6, tz);
+    cur.current.lerp(target, Math.min(1, dt * 5));
     camera.position.set(
-      CX,
-      0.6 + Math.sin(el) * zoom,
-      CZ + Math.cos(el) * zoom,
+      cur.current.x,
+      cur.current.y + Math.sin(el) * zoom,
+      cur.current.z + Math.cos(el) * zoom,
     );
-    camera.lookAt(CX, 0.6, CZ);
+    camera.lookAt(cur.current);
   });
 
   return null;
@@ -874,7 +972,7 @@ export function Arena3D({
       camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.1, far: 300 }}
       className="absolute inset-0"
     >
-      <FixedCamera />
+      <FollowCamera playerRef={playerRef} />
       {/* outer space — dark border around the pitch */}
       <color attach="background" args={["#0c1220"]} />
       <fog attach="fog" args={["#0c1220", 30, 60]} />

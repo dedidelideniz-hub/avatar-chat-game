@@ -391,6 +391,17 @@
   animation: battle-shake 0.38s linear;
 }
 
+/* Cinematic vignette over the battle arena — darkens the edges so the
+   action in the middle reads clearly, game-simulation style. */
+.arena-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 52%,
+    rgba(4, 8, 20, 0.42) 88%,
+    rgba(3, 6, 16, 0.6) 100%
+  );
+}
+
 /* White/red flash over a fighter right after it is hit. */
 @keyframes battle-hit-flash {
   0% { opacity: 0.9; }
