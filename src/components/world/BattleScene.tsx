@@ -388,7 +388,7 @@ export default function BattleScene({
   useEffect(() => {
     if (phase !== "loading") return;
     const start = performance.now();
-    const DURATION = 2600;
+    const DURATION = 4200;
     const STEPS = LOAD_STEPS.length;
     let raf = 0;
     const tick = (now: number) => {
