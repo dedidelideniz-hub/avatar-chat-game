@@ -33,12 +33,14 @@ export function FallbackArena2D({
   botRef,
   projsRef,
   fxsRef,
+  aimingRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
+  aimingRef: MutableRefObject<boolean>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -61,6 +63,17 @@ export function FallbackArena2D({
   const aimEnd = useRef<SVGCircleElement>(null);
   const aimArea = useRef<SVGCircleElement>(null);
   const aimHeal = useRef<SVGCircleElement>(null);
+  // Thin animated HP bars above the fighters (white damage trail).
+  const pBarRef = useRef<SVGGElement>(null);
+  const bBarRef = useRef<SVGGElement>(null);
+  const pBarFill = useRef<SVGRectElement>(null);
+  const pBarGhost = useRef<SVGRectElement>(null);
+  const bBarFill = useRef<SVGRectElement>(null);
+  const bBarGhost = useRef<SVGRectElement>(null);
+  const barState = useRef({
+    p: { disp: -1, ghost: -1 },
+    b: { disp: -1, ghost: -1 },
+  });
 
   useEffect(() => {
     const fx = fxRef.current;
@@ -162,6 +175,42 @@ export function FallbackArena2D({
       applySprite(p, pSpriteRef.current);
       applySprite(b, bSpriteRef.current);
 
+      // thin animated HP bar above each head — fill drops fast, the white
+      // ghost trails behind it like a classic damage bar
+      const syncBar = (
+        f: BattleFighter,
+        st: { disp: number; ghost: number },
+        barG: SVGGElement | null,
+        fill: SVGRectElement | null,
+        ghost: SVGRectElement | null,
+      ) => {
+        if (!barG || !fill || !ghost) return;
+        if (st.disp < 0) {
+          st.disp = f.maxHp;
+          st.ghost = f.maxHp;
+        }
+        st.disp += (f.hp - st.disp) * Math.min(1, dt * 6);
+        if (st.ghost > st.disp + 0.5) {
+          st.ghost += (st.disp - st.ghost) * Math.min(1, dt * 1.8);
+        } else {
+          st.ghost = st.disp;
+        }
+        const pct = Math.max(0, Math.min(1, st.disp / f.maxHp));
+        const gpct = Math.max(0, Math.min(1, st.ghost / f.maxHp));
+        const col = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#eab308" : "#ef4444";
+        const hitPop = performance.now() - f.lastHitAt < 260;
+        fill.setAttribute("width", `${Math.max(2, pct * 92)}`);
+        fill.setAttribute("fill", col);
+        fill.setAttribute("opacity", hitPop ? "0.35" : "1");
+        ghost.setAttribute("width", `${Math.max(2, gpct * 92)}`);
+        barG.setAttribute(
+          "transform",
+          `translate(-48 ${-CHAR_H - 26})${hitPop ? " scale(1.1)" : ""}`,
+        );
+      };
+      syncBar(p, barState.current.p, pBarRef.current, pBarFill.current, pBarGhost.current);
+      syncBar(b, barState.current.b, bBarRef.current, bBarFill.current, bBarGhost.current);
+
       // Brawl-Stars-style aim guide — flowing line to the shot's range,
       // pulsing target ring, area ring for explosions, heal ring for self
       const adx = b.x - p.x;
@@ -170,6 +219,7 @@ export function FallbackArena2D({
       const aux = adx / ad;
       const auy = ady / ad;
       const ability = p.ability?.id ?? "temel";
+      const aiming = aimingRef.current;
       let arange = 660;
       let aarea = 0;
       let acolor = "#7dd3fc";
@@ -191,7 +241,7 @@ export function FallbackArena2D({
       const aey = p.y + auy * arange;
       const ln = aimLine.current;
       if (ln) {
-        if (arange > 0) {
+        if (arange > 0 && aiming) {
           ln.setAttribute("visibility", "visible");
           ln.setAttribute("x1", `${p.x}`);
           ln.setAttribute("y1", `${p.y - 30}`);
@@ -204,7 +254,7 @@ export function FallbackArena2D({
       }
       const er = aimEnd.current;
       if (er) {
-        if (arange > 0) {
+        if (arange > 0 && aiming) {
           er.setAttribute("visibility", "visible");
           er.setAttribute("cx", `${aex}`);
           er.setAttribute("cy", `${aey}`);
@@ -215,7 +265,7 @@ export function FallbackArena2D({
       }
       const ar = aimArea.current;
       if (ar) {
-        if (aarea > 0) {
+        if (aarea > 0 && aiming) {
           ar.setAttribute("visibility", "visible");
           ar.setAttribute("cx", `${aex}`);
           ar.setAttribute("cy", `${aey}`);
@@ -225,7 +275,7 @@ export function FallbackArena2D({
       }
       const hr = aimHeal.current;
       if (hr) {
-        if (ability === "sifa") {
+        if (ability === "sifa" && aiming) {
           hr.setAttribute("visibility", "visible");
           hr.setAttribute("cx", `${p.x}`);
           hr.setAttribute("cy", `${p.y}`);
@@ -436,6 +486,19 @@ export function FallbackArena2D({
               height={CHAR_H}
             />
           </g>
+          {/* thin animated HP bar above the head */}
+          <g ref={pBarRef}>
+            <rect
+              width="96"
+              height="10"
+              rx="5"
+              fill="rgba(8,12,26,0.88)"
+              stroke="rgba(255,255,255,0.85)"
+              strokeWidth="1.5"
+            />
+            <rect ref={pBarGhost} x="2" y="2" width="92" height="6" rx="3" fill="#ffffff" />
+            <rect ref={pBarFill} x="2" y="2" width="92" height="6" rx="3" fill="#22c55e" />
+          </g>
         </g>
         <g ref={bRef}>
           <g ref={bSpriteRef}>
@@ -445,6 +508,19 @@ export function FallbackArena2D({
               width={CHAR_W}
               height={CHAR_H}
             />
+          </g>
+          {/* thin animated HP bar above the head */}
+          <g ref={bBarRef}>
+            <rect
+              width="96"
+              height="10"
+              rx="5"
+              fill="rgba(8,12,26,0.88)"
+              stroke="rgba(255,255,255,0.85)"
+              strokeWidth="1.5"
+            />
+            <rect ref={bBarGhost} x="2" y="2" width="92" height="6" rx="3" fill="#ffffff" />
+            <rect ref={bBarFill} x="2" y="2" width="92" height="6" rx="3" fill="#22c55e" />
           </g>
         </g>
 

@@ -178,6 +178,10 @@ export default function BattleScene({
   const arenaRef = useRef<HTMLElement>(null);
   // The joystick's live direction vector.
   const joystickRef = useRef({ x: 0, y: 0 });
+  // True while the attack button is held — enables run-and-gun auto-fire
+  // and drives the Brawl-Stars-style aim guide.
+  const holdingAttackRef = useRef(false);
+  const aimingRef = useRef(false);
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
@@ -198,6 +202,7 @@ export default function BattleScene({
   const webglOk = useMemo(() => supportsWebGL(), []);
 
   const [result, setResult] = useState<"win" | "lose" | null>(null);
+  const [attackHeld, setAttackHeld] = useState(false);
   const [vsShow, setVsShow] = useState(true);
   const [hud, setHud] = useState({
     ph: HP,
@@ -479,11 +484,17 @@ export default function BattleScene({
         e.preventDefault();
       }
       keysRef.current.add(e.code);
-      if (e.code === "Space" || e.code === "Enter") actionsRef.current.attack();
+      if (e.code === "Space" || e.code === "Enter") {
+        aimingRef.current = true;
+        actionsRef.current.attack();
+      }
       if (e.code === "KeyE" || e.code === "ShiftLeft" || e.code === "ShiftRight")
         actionsRef.current.super();
     };
-    const onKeyUp = (e: KeyboardEvent) => keysRef.current.delete(e.code);
+    const onKeyUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.code);
+      if (e.code === "Space" || e.code === "Enter") aimingRef.current = false;
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
@@ -505,6 +516,12 @@ export default function BattleScene({
 
       p.atkCd = Math.max(0, p.atkCd - dt);
       b.atkCd = Math.max(0, b.atkCd - dt);
+
+      // Run-and-gun: keep firing while the attack button is held (or Space
+      // is down) so you can shoot while walking with the joystick.
+      if (holdingAttackRef.current && p.atkCd <= 0) {
+        tryAttack();
+      }
 
       // --- player movement (keys + click target) ---
       let vx = 0;
@@ -788,6 +805,7 @@ export default function BattleScene({
                   botRef={bot}
                   projsRef={projs}
                   fxsRef={fxs}
+                  aimingRef={aimingRef}
                   onWorldClick={(x, y) => actionsRef.current.click(x, y)}
                 />
               }
@@ -797,6 +815,7 @@ export default function BattleScene({
                 botRef={bot}
                 projsRef={projs}
                 fxsRef={fxs}
+                aimingRef={aimingRef}
                 onWorldClick={(x, y) => actionsRef.current.click(x, y)}
               />
             </ArenaBoundary>
@@ -806,6 +825,7 @@ export default function BattleScene({
               botRef={bot}
               projsRef={projs}
               fxsRef={fxs}
+              aimingRef={aimingRef}
               onWorldClick={(x, y) => actionsRef.current.click(x, y)}
             />
           )}
@@ -858,15 +878,43 @@ export default function BattleScene({
               onPointerDown={(e) => {
                 // Fire instantly (even while walking with the joystick) and
                 // never let the tap fall through to the tap-to-move plane.
+                // While held, the fighter keeps firing on cooldown and the
+                // Brawl-styled aim guide stays visible.
                 e.stopPropagation();
                 e.preventDefault();
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                holdingAttackRef.current = true;
+                aimingRef.current = true;
+                setAttackHeld(true);
                 actionsRef.current.attack();
               }}
-              aria-label="Saldır"
-              className="pointer-events-auto flex size-20 touch-none items-center justify-center rounded-full border-4 border-white/70 bg-gradient-to-br from-sky-400 to-blue-600 text-3xl text-white shadow-xl transition-transform active:scale-90"
+              onPointerUp={() => {
+                holdingAttackRef.current = false;
+                aimingRef.current = false;
+                setAttackHeld(false);
+              }}
+              onPointerCancel={() => {
+                holdingAttackRef.current = false;
+                aimingRef.current = false;
+                setAttackHeld(false);
+              }}
+              onLostPointerCapture={() => {
+                holdingAttackRef.current = false;
+                aimingRef.current = false;
+                setAttackHeld(false);
+              }}
+              aria-label="Saldır — basılı tut: otomatik ateş"
+              className={`pointer-events-auto flex size-20 touch-none items-center justify-center rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${
+                attackHeld
+                  ? "scale-90 border-yellow-200 bg-gradient-to-br from-sky-300 to-blue-500 shadow-[0_0_28px_rgba(56,189,248,0.85)]"
+                  : "bg-gradient-to-br from-sky-400 to-blue-600 active:scale-90"
+              }`}
             >
               💥
             </button>
+            <span className="rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-extrabold tracking-wide text-white/85">
+              BASILI TUT → OTOMATİK ATEŞ
+            </span>
           </div>
         </main>
 

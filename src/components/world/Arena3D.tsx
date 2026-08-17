@@ -191,10 +191,44 @@ const SMOKE_POOL = 22;
 function makeBarTex() {
   const c = document.createElement("canvas");
   c.width = 128;
-  c.height = 12;
+  c.height = 10;
   const t = new THREE.CanvasTexture(c);
   t.minFilter = THREE.LinearFilter;
   return t;
+}
+
+/** Rounded-rect path — works even on browsers without ctx.roundRect. */
+function roundedRectPath(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+  g.moveTo(x + rad, y);
+  g.arcTo(x + w, y, x + w, y + h, rad);
+  g.arcTo(x + w, y + h, x, y + h, rad);
+  g.arcTo(x, y + h, x, y, rad);
+  g.arcTo(x, y, x + w, y, rad);
+  g.closePath();
+}
+
+/** Trace a rounded rect using ctx.roundRect when available, else manually. */
+function traceRoundRect(
+  g: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  if (typeof g.roundRect === "function") {
+    g.roundRect(x, y, w, h, r);
+  } else {
+    roundedRectPath(g, x, y, w, h, r);
+  }
 }
 
 /** Draw one health-bar frame (thin, rounded, gradient + shine). */
@@ -204,31 +238,31 @@ function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
   if (!g) return;
   const p = Math.max(0, Math.min(1, pct));
   const w = Math.max(4, 124 * p);
-  g.clearRect(0, 0, 128, 12);
+  g.clearRect(0, 0, 128, 10);
   // rounded dark background
   g.beginPath();
-  g.roundRect(0, 0, 128, 12, 5);
+  traceRoundRect(g, 0, 0, 128, 10, 4);
   g.fillStyle = "rgba(8,12,26,0.88)";
   g.fill();
   // gradient fill with a shine line on top
-  const grad = g.createLinearGradient(0, 0, 0, 12);
+  const grad = g.createLinearGradient(0, 0, 0, 10);
   grad.addColorStop(0, "#ffffff");
-  grad.addColorStop(0.25, color);
+  grad.addColorStop(0.3, color);
   grad.addColorStop(1, color);
   g.save();
   g.beginPath();
-  g.roundRect(2, 2, w, 8, 3.5);
+  traceRoundRect(g, 2, 2, w, 6, 3);
   g.clip();
   g.fillStyle = grad;
-  g.fillRect(2, 2, 124, 8);
-  g.fillStyle = "rgba(255,255,255,0.45)";
-  g.fillRect(2, 2, w, 2.2);
+  g.fillRect(2, 2, 124, 6);
+  g.fillStyle = "rgba(255,255,255,0.5)";
+  g.fillRect(2, 2, w, 1.8);
   g.restore();
   // white border
   g.strokeStyle = "rgba(255,255,255,0.92)";
-  g.lineWidth = 1.5;
+  g.lineWidth = 1.2;
   g.beginPath();
-  g.roundRect(1, 1, 126, 10, 5);
+  traceRoundRect(g, 1, 1, 126, 8, 4);
   g.stroke();
   tex.needsUpdate = true;
 }
@@ -278,6 +312,11 @@ function FighterRig({
       const elapsed = performance.now() - f.lastHitAt;
       flashMat.current.opacity = Math.max(0, 0.85 * (1 - elapsed / 350));
     }
+    // HP bar pops briefly white when the fighter is hit
+    const justHit = performance.now() - f.lastHitAt < 260;
+    if (barGroup.current) {
+      barGroup.current.scale.setScalar(justHit ? 1.14 : 1);
+    }
     // smooth animated health bar + white ghost that trails behind
     const max = f.maxHp;
     if (dispHp.current < 0) {
@@ -290,12 +329,12 @@ function FighterRig({
     } else {
       ghostHp.current = dispHp.current;
     }
-    const key = `${Math.round(dispHp.current)}:${Math.round(ghostHp.current)}`;
+    const key = `${Math.round(dispHp.current)}:${Math.round(ghostHp.current)}:${justHit}`;
     if (key !== lastBarKey.current) {
       lastBarKey.current = key;
       const pct = dispHp.current / max;
       const col = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#eab308" : "#ef4444";
-      drawBarSprite(hpFillTex, pct, col);
+      drawBarSprite(hpFillTex, pct, justHit ? "#ffffff" : col);
       drawBarSprite(hpGhostTex, ghostHp.current / max, "#f8fafc");
     }
   });
@@ -437,10 +476,10 @@ function FighterRig({
     </group>
       {/* health bar above the head — thin, animated, always visible */}
       <group ref={barGroup}>
-        <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[0.98, 0.09, 1]} renderOrder={1}>
+        <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[1.02, 0.075, 1]} renderOrder={1}>
           <spriteMaterial map={hpGhostTex} depthTest={false} />
         </sprite>
-        <sprite ref={hpFill} position={[0, 1.55, 0]} scale={[0.98, 0.09, 1]} renderOrder={2}>
+        <sprite ref={hpFill} position={[0, 1.55, 0]} scale={[1.02, 0.075, 1]} renderOrder={2}>
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>
@@ -930,20 +969,32 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 function AimGuide({
   playerRef,
   botRef,
+  aimingRef,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
+  aimingRef: MutableRefObject<boolean>;
 }) {
-  const lineRef = useRef<THREE.Mesh>(null);
-  const dots = useRef<(THREE.Mesh | null)[]>([]);
-  const endRing = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const dashes = useRef<(THREE.Mesh | null)[]>([]);
+  const tickRing = useRef<THREE.Mesh>(null);
+  const tickRing2 = useRef<THREE.Mesh>(null);
+  const endDot = useRef<THREE.Mesh>(null);
   const areaRing = useRef<THREE.Mesh>(null);
+  const areaFill = useRef<THREE.Mesh>(null);
   const healRing = useRef<THREE.Mesh>(null);
+  const charge = useRef(0); // entrance animation 0 → 1
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     const p = playerRef.current;
     const b = botRef.current;
+    const aiming = aimingRef.current;
+    // Snappy charge-up so the guide "pops" in while aiming, like Brawl Stars.
+    charge.current += ((aiming ? 1 : 0) - charge.current) * Math.min(1, 0.16);
+    const c = charge.current;
+    const show = c > 0.03;
+
     const dx = b.x - p.x;
     const dy = b.y - p.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -974,78 +1025,113 @@ function AimGuide({
     const py = p.y / S;
     const ex = (p.x + ux * range) / S;
     const ey = (p.y + uy * range) / S;
+    const alpha = Math.min(1, c * 1.6);
 
-    const line = lineRef.current;
-    if (line) {
-      if (range > 0) {
-        line.visible = true;
-        line.position.set(
-          (p.x + ux * (range / 2)) / S,
-          0.9,
-          (p.y + uy * (range / 2)) / S,
+    if (groupRef.current) {
+      groupRef.current.visible = show;
+      groupRef.current.scale.setScalar(0.5 + 0.5 * c);
+    }
+
+    // energy dashes flowing along the whole line toward the target (GIF feel)
+    const segs = 6;
+    const segLen = 0.24;
+    const step = 0.28;
+    for (let i = 0; i < segs; i++) {
+      const dash = dashes.current[i];
+      if (!dash) continue;
+      if (range > 0 && show) {
+        dash.visible = true;
+        const base = (t * 1.3 + i * step) % 1;
+        const mid = Math.min(1, base + segLen / 2);
+        dash.position.set(
+          (p.x + ux * range * mid) / S,
+          0.92,
+          (p.y + uy * range * mid) / S,
         );
-        line.scale.set(range / S, 0.045, 0.045);
-        line.rotation.y = Math.atan2(uy, ux);
-        (line.material as THREE.MeshBasicMaterial).color.set(color);
-        (line.material as THREE.MeshBasicMaterial).opacity =
-          0.2 + 0.16 * pulse;
+        const len = Math.max(0.1, (segLen * range) / S);
+        dash.scale.set(len, 0.05, 0.05);
+        dash.rotation.y = Math.atan2(uy, ux);
+        (dash.material as THREE.MeshBasicMaterial).color.set(color);
+        (dash.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.3 + 0.5 * Math.abs(Math.sin(t * 8 + i * 1.9)));
       } else {
-        line.visible = false;
+        dash.visible = false;
       }
     }
-    // energy dots flowing along the line toward the target
-    for (let i = 0; i < 3; i++) {
-      const dot = dots.current[i];
-      if (!dot) continue;
-      if (range > 0) {
-        dot.visible = true;
-        const f = (t * 1.1 + i / 3) % 1;
-        dot.position.set(
-          (p.x + ux * range * f) / S,
-          0.9,
-          (p.y + uy * range * f) / S,
-        );
-        (dot.material as THREE.MeshBasicMaterial).opacity =
-          0.4 + 0.5 * Math.abs(Math.sin(t * 6 + i * 2));
-        (dot.material as THREE.MeshBasicMaterial).color.set(color);
+
+    // target crosshair at the end of the line — two counter-rotating rings
+    if (tickRing.current) {
+      if (range > 0 && show) {
+        tickRing.current.visible = true;
+        tickRing.current.position.set(ex, 0.06, ey);
+        tickRing.current.scale.setScalar(0.62 + 0.08 * Math.sin(t * 6));
+        tickRing.current.rotation.z = t * 2.2;
+        (tickRing.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (tickRing.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * pulse;
       } else {
-        dot.visible = false;
+        tickRing.current.visible = false;
       }
     }
-    // pulsing target ring at the end of the line
-    if (endRing.current) {
-      if (range > 0) {
-        endRing.current.visible = true;
-        endRing.current.position.set(ex, 0.05, ey);
-        endRing.current.scale.setScalar(0.9 + 0.12 * Math.sin(t * 6));
-        (endRing.current.material as THREE.MeshBasicMaterial).opacity =
-          0.5 * pulse;
+    if (tickRing2.current) {
+      if (range > 0 && show) {
+        tickRing2.current.visible = true;
+        tickRing2.current.position.set(ex, 0.065, ey);
+        tickRing2.current.scale.setScalar(0.62 + 0.08 * Math.sin(t * 6));
+        tickRing2.current.rotation.z = -t * 3.1;
+        (tickRing2.current.material as THREE.MeshBasicMaterial).color.set("#ffffff");
+        (tickRing2.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * 0.8 * pulse;
       } else {
-        endRing.current.visible = false;
+        tickRing2.current.visible = false;
       }
     }
-    // area ring showing the explosion radius (fireball)
+    if (endDot.current) {
+      if (range > 0 && show) {
+        endDot.current.visible = true;
+        endDot.current.position.set(ex, 0.07, ey);
+        endDot.current.scale.setScalar(0.16 + 0.05 * Math.sin(t * 9));
+        (endDot.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (endDot.current.material as THREE.MeshBasicMaterial).opacity = alpha;
+      } else {
+        endDot.current.visible = false;
+      }
+    }
+    // explosion area — dashed ring + translucent fill (fireball)
     if (areaRing.current) {
-      if (area > 0) {
+      if (area > 0 && show) {
         areaRing.current.visible = true;
         areaRing.current.position.set(ex, 0.06, ey);
         areaRing.current.scale.setScalar(
-          (area / S) * (0.88 + 0.08 * Math.sin(t * 4)),
+          (area / S) * (0.9 + 0.08 * Math.sin(t * 4)),
         );
         (areaRing.current.material as THREE.MeshBasicMaterial).opacity =
-          0.38 * pulse;
+          alpha * 0.7 * pulse;
       } else {
         areaRing.current.visible = false;
       }
     }
+    if (areaFill.current) {
+      if (area > 0 && show) {
+        areaFill.current.visible = true;
+        areaFill.current.position.set(ex, 0.05, ey);
+        areaFill.current.scale.setScalar(
+          (area / S) * (0.9 + 0.08 * Math.sin(t * 4)),
+        );
+        (areaFill.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * 0.14 * pulse;
+      } else {
+        areaFill.current.visible = false;
+      }
+    }
     // self-heal ring around the player
     if (healRing.current) {
-      if (ability === "sifa") {
+      if (ability === "sifa" && show) {
         healRing.current.visible = true;
         healRing.current.position.set(px, 0.06, py);
         healRing.current.scale.setScalar(0.85 + 0.1 * Math.sin(t * 4));
         (healRing.current.material as THREE.MeshBasicMaterial).opacity =
-          0.45 * pulse;
+          alpha * 0.5 * pulse;
       } else {
         healRing.current.visible = false;
       }
@@ -1053,25 +1139,16 @@ function AimGuide({
   });
 
   return (
-    <group>
-      <mesh ref={lineRef} raycast={() => null}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0.3}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-      {Array.from({ length: 3 }).map((_, i) => (
+    <group ref={groupRef} visible={false}>
+      {Array.from({ length: 6 }).map((_, i) => (
         <mesh
           key={i}
           ref={(el) => {
-            dots.current[i] = el;
+            dashes.current[i] = el;
           }}
           raycast={() => null}
         >
-          <sphereGeometry args={[0.11, 10, 10]} />
+          <boxGeometry args={[1, 1, 1]} />
           <meshBasicMaterial
             transparent
             opacity={0.8}
@@ -1080,21 +1157,52 @@ function AimGuide({
           />
         </mesh>
       ))}
-      <mesh ref={endRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <ringGeometry args={[0.3, 0.42, 28]} />
+      {/* crosshair rings — dashed feel, counter-rotating */}
+      <mesh ref={tickRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.42, 0.5, 12]} />
         <meshBasicMaterial
           transparent
-          opacity={0.5}
+          opacity={0.6}
           blending={THREE.AdditiveBlending}
           side={THREE.DoubleSide}
           depthWrite={false}
         />
       </mesh>
+      <mesh ref={tickRing2} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.32, 0.36, 12]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.7}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={endDot} raycast={() => null}>
+        <sphereGeometry args={[0.12, 12, 12]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.9}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* explosion area — dashed ring + translucent fill */}
       <mesh ref={areaRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <ringGeometry args={[0.88, 1, 40]} />
+        <ringGeometry args={[0.92, 1, 40]} />
         <meshBasicMaterial
           transparent
           opacity={0.4}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={areaFill} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <circleGeometry args={[0.96, 40]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.12}
           blending={THREE.AdditiveBlending}
           side={THREE.DoubleSide}
           depthWrite={false}
@@ -1171,12 +1279,14 @@ export function Arena3D({
   botRef,
   projsRef,
   fxsRef,
+  aimingRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
+  aimingRef: MutableRefObject<boolean>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   // Checkerboard grass — two alternating greens, tiled across the pitch.
@@ -1324,8 +1434,8 @@ export function Arena3D({
       <ProjectilePool projsRef={projsRef} />
       <FxPool fxsRef={fxsRef} />
 
-      {/* Brawl-Stars-style aim guide — shows the next shot's range */}
-      <AimGuide playerRef={playerRef} botRef={botRef} />
+      {/* Brawl-Stars-style aim guide — shows the next shot's range while aiming */}
+      <AimGuide playerRef={playerRef} botRef={botRef} aimingRef={aimingRef} />
 
       {/* invisible click plane — converts taps to game coordinates */}
       <mesh
