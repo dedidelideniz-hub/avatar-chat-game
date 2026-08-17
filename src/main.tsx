@@ -17,7 +17,7 @@ import "./index.css";
  *  preview. Retrying turns that into a momentary pause instead. */
 function lazyRetry<T extends React.ComponentType<any>>(
   loader: () => Promise<{ default: T }>,
-  retries = 3,
+  retries = 5,
 ): React.LazyExoticComponent<T> {
   return lazy(async () => {
     let lastErr: unknown;
@@ -27,7 +27,7 @@ function lazyRetry<T extends React.ComponentType<any>>(
       } catch (err) {
         lastErr = err;
         if (attempt < retries) {
-          await new Promise((r) => setTimeout(r, 600 * attempt));
+          await new Promise((r) => setTimeout(r, 700 * attempt));
         }
       }
     }
