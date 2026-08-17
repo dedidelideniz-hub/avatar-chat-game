@@ -74,6 +74,52 @@ export const BATTLE_OBSTACLES: BattleObstacle[] = [
   { x: 1440, y: 690, w: 120, h: 100, kind: "bush" },
 ];
 
+/** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
+export const ATK_CD = 0.85;
+
+/** Clamp an aim ray to the first obstacle it would hit (inflated by the
+ *  projectile radius), so the aim guide stops exactly where the shot will
+ *  stop — honest, Brawl-Stars-style aiming.
+ */
+export function raycastObstacleRange(
+  px: number,
+  py: number,
+  dx: number,
+  dy: number,
+  range: number,
+): number {
+  let best = range;
+  for (const c of BATTLE_OBSTACLES) {
+    const inflate = 18;
+    const x0 = c.x - inflate;
+    const x1 = c.x + c.w + inflate;
+    const y0 = c.y - inflate;
+    const y1 = c.y + c.h + inflate;
+    let tmin = 0;
+    let tmax = range;
+    if (Math.abs(dx) < 1e-6) {
+      if (px < x0 || px > x1) continue;
+    } else {
+      const t1 = (x0 - px) / dx;
+      const t2 = (x1 - px) / dx;
+      tmin = Math.max(tmin, Math.min(t1, t2));
+      tmax = Math.min(tmax, Math.max(t1, t2));
+    }
+    if (Math.abs(dy) < 1e-6) {
+      if (py < y0 || py > y1) continue;
+    } else {
+      const t1 = (y0 - py) / dy;
+      const t2 = (y1 - py) / dy;
+      tmin = Math.max(tmin, Math.min(t1, t2));
+      tmax = Math.min(tmax, Math.max(t1, t2));
+    }
+    if (tmin <= tmax && tmax > 0 && tmin < best) {
+      best = Math.max(0, tmin);
+    }
+  }
+  return best;
+}
+
 /** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
 export function supportsWebGL(): boolean {
   if (typeof window === "undefined") return false;
@@ -960,11 +1006,11 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Brawl-Stars-style aim guide — a thin laser line shows the exact shot   */
-/* direction and range (capped at the real projectile range), with an     */
-/* arrowhead at the tip, an energy pulse flowing outward, and an area     */
-/* ring for exploding attacks. It follows the attack-joystick drag and    */
-/* auto-aims at the enemy when the player taps without dragging.          */
+/* Brawl-Stars-style aim guide — a wide glow beam + bright core line     */
+/* that stops at the first obstacle, a charge fill that grows toward the */
+/* tip as the next shot loads, flowing energy pulses, an arrowhead and   */
+/* end ring at the impact point, plus a red auto-aim reticle on the      */
+/* enemy when the player taps without dragging.                          */
 /* ------------------------------------------------------------------ */
 
 /* Module-level temp vectors for the aim arrowhead (no per-frame allocs). */
@@ -981,15 +1027,28 @@ function AimGuide({
   aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  // directional aim: thin laser line to max range, bright core, an energy
-  // pulse flowing outward, and an arrowhead at the tip
-  const lineMesh = useRef<THREE.Mesh>(null);
+  // wide soft glow band lying on the grass + thin bright core beam
+  const glowBand = useRef<THREE.Mesh>(null);
   const lineCore = useRef<THREE.Mesh>(null);
-  const comet = useRef<THREE.Mesh>(null);
+  // charge fill — a thick loaded segment that grows toward the tip as the
+  // next shot charges, then snaps back when it fires (readable timing)
+  const chargeFill = useRef<THREE.Mesh>(null);
+  // three flowing energy pulses (marching flow → the shot's direction)
+  const comets = useRef<(THREE.Mesh | null)[]>([null, null, null]);
+  // arrowhead + pulsing end ring at the tip
   const arrow = useRef<THREE.Mesh>(null);
+  const endRing = useRef<THREE.Mesh>(null);
+  // explosion area (fireball) + self-heal ring
   const areaRing = useRef<THREE.Mesh>(null);
   const areaFill = useRef<THREE.Mesh>(null);
   const healRing = useRef<THREE.Mesh>(null);
+  // auto-aim reticle — red target rings + crosshair on the enemy when the
+  // shot is not being dragged (tap-attack lock-on, like Brawl Stars)
+  const reticle = useRef<THREE.Group>(null);
+  const reticleA = useRef<THREE.Mesh>(null);
+  const reticleB = useRef<THREE.Mesh>(null);
+  const reticleH = useRef<THREE.Mesh>(null);
+  const reticleV = useRef<THREE.Mesh>(null);
   const charge = useRef(0); // entrance animation 0 → 1
 
   useFrame(({ clock }) => {
@@ -1006,9 +1065,10 @@ function AimGuide({
     // Aim direction follows the attack-joystick drag; without a drag the
     // guide (and the shot) auto-aim at the enemy, like Brawl Stars.
     const aimMag = Math.hypot(aim.dx, aim.dy);
+    const manual = aimMag > 0.15;
     let ux: number;
     let uy: number;
-    if (aimMag > 0.15) {
+    if (manual) {
       ux = aim.dx / aimMag;
       uy = aim.dy / aimMag;
     } else {
@@ -1039,71 +1099,118 @@ function AimGuide({
       color = "#86efac";
     }
 
+    // Clamp the guide to the first obstacle the shot would actually hit, so
+    // the aim line ends where the projectile will stop (Brawl Stars style).
+    const hitRange =
+      range > 0 ? raycastObstacleRange(p.x, p.y, ux, uy, range) : 0;
     const px = p.x / S;
     const py = p.y / S;
-    const ex = (p.x + ux * range) / S;
-    const ey = (p.y + uy * range) / S;
+    const ex = (p.x + ux * hitRange) / S;
+    const ey = (p.y + uy * hitRange) / S;
     const alpha = Math.min(1, c * 1.6);
+    // Next-shot charge (0 → 1 while the cooldown counts down). While dashing
+    // the attack is locked, so the guide just shows it as ready.
+    const load =
+      p.dashT > 0 ? 1 : Math.max(0, Math.min(1, 1 - p.atkCd / ATK_CD));
+    const ready = load >= 1;
+    const readyPop = ready ? 1 + 0.1 * Math.sin(t * 18) : 1;
 
     if (groupRef.current) {
       groupRef.current.visible = show;
       groupRef.current.scale.setScalar(0.5 + 0.5 * c);
     }
 
-    // Directional laser line — thin, full range, clearly pointing where
-    // the shot will travel. A bright pulse flows from the fighter to the
-    // tip and an arrowhead marks the end (Brawl Stars style).
-    const lineShown = range > 0 && show;
-    const len = range / S;
-    const midX = (p.x + ux * range * 0.5) / S;
-    const midZ = (p.y + uy * range * 0.5) / S;
+    // Directional aim beam — a wide soft glow band on the grass, a thin
+    // bright core, a charge fill that grows toward the tip as the next shot
+    // loads, three flowing energy pulses, and an arrowhead + end ring at the
+    // impact point. Easy to read at a glance, clearly directional.
+    const lineShown = hitRange > 0 && show;
+    const len = hitRange / S;
+    const midX = (p.x + ux * hitRange * 0.5) / S;
+    const midZ = (p.y + uy * hitRange * 0.5) / S;
     const ang = Math.atan2(uy, ux);
     const glow = 0.7 + 0.3 * Math.sin(t * 7);
-    if (lineMesh.current) {
-      lineMesh.current.visible = lineShown;
+    if (glowBand.current) {
+      glowBand.current.visible = lineShown;
       if (lineShown) {
-        lineMesh.current.position.set(midX, 0.16, midZ);
-        lineMesh.current.scale.set(len, 1, 1);
-        lineMesh.current.rotation.y = ang;
-        (lineMesh.current.material as THREE.MeshBasicMaterial).color.set(color);
-        (lineMesh.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * (0.75 + 0.2 * glow);
+        glowBand.current.position.set(midX, 0.08, midZ);
+        glowBand.current.scale.set(len, 1, 1);
+        glowBand.current.rotation.y = ang;
+        (glowBand.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (glowBand.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.15 + 0.06 * glow);
       }
     }
     if (lineCore.current) {
       lineCore.current.visible = lineShown;
       if (lineShown) {
-        lineCore.current.position.set(midX, 0.175, midZ);
+        lineCore.current.position.set(midX, 0.17, midZ);
         lineCore.current.scale.set(len, 0.45, 0.45);
         lineCore.current.rotation.y = ang;
+        (lineCore.current.material as THREE.MeshBasicMaterial).color.set(color);
         (lineCore.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * 0.8 * glow;
+          alpha * (0.65 + 0.35 * glow) * readyPop;
       }
     }
-    if (comet.current) {
-      comet.current.visible = lineShown;
-      if (lineShown) {
-        // one bright pulse traveling player → tip (directional flow)
-        const prog = (t * 0.9) % 1;
-        comet.current.position.set(
-          (p.x + ux * range * prog) / S,
-          0.24,
-          (p.y + uy * range * prog) / S,
+    // Charge fill — the loaded segment grows player → tip, then the shot
+    // fires and it snaps back. The player sees exactly when the next shot
+    // goes off (holds-to-fire timing).
+    const fillLen = Math.max(0, (hitRange / S) * load);
+    if (chargeFill.current) {
+      chargeFill.current.visible = lineShown && fillLen > 0.01;
+      if (lineShown && fillLen > 0.01) {
+        chargeFill.current.position.set(
+          (p.x + ux * hitRange * load * 0.5) / S,
+          0.21,
+          (p.y + uy * hitRange * load * 0.5) / S,
         );
-        comet.current.scale.setScalar(0.5 + 0.35 * Math.sin(t * 12));
-        (comet.current.material as THREE.MeshBasicMaterial).color.set(color);
-        (comet.current.material as THREE.MeshBasicMaterial).opacity = alpha;
+        chargeFill.current.scale.set(fillLen, 0.75, 0.75);
+        chargeFill.current.rotation.y = ang;
+        (chargeFill.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (chargeFill.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.85 + 0.15 * readyPop);
+      }
+    }
+    // Three flowing pulses travel player → tip (directional marching flow).
+    for (let i = 0; i < 3; i++) {
+      const cm = comets.current[i];
+      if (!cm) continue;
+      if (lineShown) {
+        cm.visible = true;
+        const prog = (t * 0.9 + i * 0.33) % 1;
+        cm.position.set(
+          (p.x + ux * hitRange * prog) / S,
+          0.26,
+          (p.y + uy * hitRange * prog) / S,
+        );
+        cm.scale.setScalar((0.6 + 0.3 * Math.sin(t * 12 + i * 2.1)) * readyPop);
+        (cm.material as THREE.MeshBasicMaterial).color.set(color);
+        (cm.material as THREE.MeshBasicMaterial).opacity = alpha;
+      } else {
+        cm.visible = false;
       }
     }
     if (arrow.current) {
       arrow.current.visible = lineShown;
       if (lineShown) {
-        // cone arrowhead at max range, pointing along the aim direction
-        arrow.current.position.set(ex, 0.22, ey);
+        // cone arrowhead at the impact point, pointing along the aim
+        arrow.current.position.set(ex, 0.24, ey);
         arrow.current.quaternion.setFromUnitVectors(UP_VEC, DIR_VEC.set(ux, 0, uy));
-        arrow.current.scale.setScalar(0.9 + 0.12 * Math.sin(t * 7));
+        arrow.current.scale.setScalar((0.95 + 0.12 * Math.sin(t * 7)) * readyPop);
         (arrow.current.material as THREE.MeshBasicMaterial).color.set(color);
         (arrow.current.material as THREE.MeshBasicMaterial).opacity = alpha * 0.95;
+      }
+    }
+    if (endRing.current) {
+      if (lineShown) {
+        endRing.current.visible = true;
+        endRing.current.position.set(ex, 0.13, ey);
+        endRing.current.scale.setScalar((0.9 + 0.14 * Math.sin(t * 6)) * readyPop);
+        (endRing.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (endRing.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.5 + 0.3 * pulse);
+      } else {
+        endRing.current.visible = false;
       }
     }
 
@@ -1146,13 +1253,60 @@ function AimGuide({
         healRing.current.visible = false;
       }
     }
+
+    // Auto-aim reticle — red target rings + crosshair on the enemy while the
+    // shot is auto-aiming (no drag). This is how Brawl Stars telegraphs
+    // where the tap-shot will land.
+    const reticleOn = show && aiming && !manual && range > 0;
+    if (reticle.current) {
+      reticle.current.visible = reticleOn;
+      if (reticleOn) {
+        reticle.current.position.set(b.x / S, 0.2, b.y / S);
+        reticle.current.scale.setScalar(1 + 0.07 * Math.sin(t * 7));
+      }
+    }
+    const rp = 0.55 + 0.45 * Math.sin(t * 7);
+    if (reticleA.current) {
+      reticleA.current.visible = reticleOn;
+      if (reticleOn)
+        (reticleA.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.5 + 0.5 * rp);
+    }
+    if (reticleB.current) {
+      reticleB.current.visible = reticleOn;
+      if (reticleOn)
+        (reticleB.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.4 + 0.4 * rp);
+    }
+    if (reticleH.current) {
+      reticleH.current.visible = reticleOn;
+      if (reticleOn)
+        (reticleH.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.7 + 0.3 * rp);
+    }
+    if (reticleV.current) {
+      reticleV.current.visible = reticleOn;
+      if (reticleOn)
+        (reticleV.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.7 + 0.3 * rp);
+    }
   });
 
   return (
     <group ref={groupRef} visible={false}>
-      {/* thin laser line — full range, clearly directional */}
-      <mesh ref={lineMesh} raycast={() => null}>
-        <boxGeometry args={[1, 0.06, 0.06]} />
+      {/* wide soft glow band lying on the grass — easy to spot */}
+      <mesh ref={glowBand} raycast={() => null}>
+        <boxGeometry args={[1, 0.035, 0.34]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.18}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* bright core beam to the impact point */}
+      <mesh ref={lineCore} raycast={() => null}>
+        <boxGeometry args={[1, 0.05, 0.05]} />
         <meshBasicMaterial
           transparent
           opacity={0.85}
@@ -1160,33 +1314,53 @@ function AimGuide({
           depthWrite={false}
         />
       </mesh>
-      <mesh ref={lineCore} raycast={() => null}>
-        <boxGeometry args={[1, 0.024, 0.024]} />
+      {/* charge fill — thick loaded segment that grows toward the tip */}
+      <mesh ref={chargeFill} raycast={() => null}>
+        <boxGeometry args={[1, 0.085, 0.085]} />
         <meshBasicMaterial
           color="#ffffff"
           transparent
-          opacity={0.85}
+          opacity={0.9}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
       </mesh>
-      {/* energy pulse flowing along the line (directional flow) */}
-      <mesh ref={comet} raycast={() => null}>
-        <sphereGeometry args={[0.1, 12, 12]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0.95}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-      {/* arrowhead at max range — points along the aim direction */}
+      {/* three flowing energy pulses (marching flow) */}
+      {[0, 1, 2].map((i) => (
+        <mesh
+          key={i}
+          ref={(el) => {
+            comets.current[i] = el;
+          }}
+          raycast={() => null}
+        >
+          <sphereGeometry args={[0.11, 12, 12]} />
+          <meshBasicMaterial
+            transparent
+            opacity={0.95}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      {/* arrowhead at the impact point */}
       <mesh ref={arrow} raycast={() => null}>
-        <coneGeometry args={[0.16, 0.5, 12]} />
+        <coneGeometry args={[0.2, 0.55, 12]} />
         <meshBasicMaterial
           transparent
           opacity={0.95}
           blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* pulsing end ring at the impact point */}
+      <mesh ref={endRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.82, 1, 32]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.5}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
           depthWrite={false}
         />
       </mesh>
@@ -1221,6 +1395,51 @@ function AimGuide({
           depthWrite={false}
         />
       </mesh>
+      {/* auto-aim reticle — red target rings + crosshair on the enemy */}
+      <group ref={reticle} visible={false}>
+        <mesh ref={reticleA} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+          <ringGeometry args={[0.78, 1, 32]} />
+          <meshBasicMaterial
+            color="#ff5c7a"
+            transparent
+            opacity={0.8}
+            blending={THREE.AdditiveBlending}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+        <mesh ref={reticleB} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+          <ringGeometry args={[1.12, 1.26, 32]} />
+          <meshBasicMaterial
+            color="#ff5c7a"
+            transparent
+            opacity={0.6}
+            blending={THREE.AdditiveBlending}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+        <mesh ref={reticleH} raycast={() => null}>
+          <boxGeometry args={[1.5, 0.05, 0.05]} />
+          <meshBasicMaterial
+            color="#ff5c7a"
+            transparent
+            opacity={0.8}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+        <mesh ref={reticleV} raycast={() => null}>
+          <boxGeometry args={[0.05, 0.05, 1.5]} />
+          <meshBasicMaterial
+            color="#ff5c7a"
+            transparent
+            opacity={0.8}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      </group>
     </group>
   );
 }

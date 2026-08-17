@@ -6,6 +6,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Arena3D,
+  ATK_CD,
   BATTLE_OBSTACLES,
   supportsWebGL,
   type BattleFighter,
@@ -37,7 +38,6 @@ const ARENA_W = 1700;
 const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
-const ATK_CD = 0.85;
 const PROJ_SPEED = 620;
 const PROJ_RANGE = 660;
 const FIGHTER_R = 22;
@@ -184,6 +184,9 @@ export default function BattleScene({
   // so you can shoot while walking (run-and-gun).
   const aimRef = useRef({ active: false, dx: 0, dy: 0 });
   const attackKnobRef = useRef<HTMLSpanElement>(null);
+  // Conic-gradient ring around the attack button — its arc fills as the
+  // next shot charges (0 → 100%), so hold-to-fire timing is visible.
+  const attackChargeRef = useRef<HTMLDivElement>(null);
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
@@ -705,6 +708,17 @@ export default function BattleScene({
         superReadyPlayed = false;
       }
 
+      // attack button charge ring — the arc fills as the next shot loads
+      const chargeEl = attackChargeRef.current;
+      if (chargeEl) {
+        const chg =
+          p.dashT > 0 ? 1 : Math.max(0, Math.min(1, 1 - p.atkCd / ATK_CD));
+        const deg = Math.round(chg * 360);
+        chargeEl.style.background =
+          `conic-gradient(from 0deg, #ffe066 0deg, #ffe066 ${deg}deg, ` +
+          `rgba(255,255,255,0.16) ${deg}deg, rgba(255,255,255,0.16) 360deg)`;
+      }
+
       // --- HUD (React, only when values changed) ---
       const ph = Math.round(p.hp / 5) * 5;
       const ohp = Math.round(b.hp / 5) * 5;
@@ -888,6 +902,17 @@ export default function BattleScene({
                 {hud.pc >= 1 ? abilityEmoji : Math.round(hud.pc * 100) + "%"}
               </span>
             </button>
+            <div className="relative">
+              {/* charge ring — the arc fills as the next shot loads */}
+              <div
+                ref={attackChargeRef}
+                aria-hidden
+                className="pointer-events-none absolute -inset-2 rounded-full"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg, #ffe066 0deg, #ffe066 0deg, rgba(255,255,255,0.16) 0deg, rgba(255,255,255,0.16) 360deg)",
+                }}
+              />
             <button
               type="button"
               onPointerDown={(e) => {
@@ -962,6 +987,7 @@ export default function BattleScene({
                 🎯
               </span>
             </button>
+            </div>
             <span className="rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-extrabold tracking-wide text-white/85">
               BAS → SÜRÜKLE → NİŞAN AL
             </span>
