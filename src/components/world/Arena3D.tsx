@@ -1207,6 +1207,7 @@ function FollowCamera({
 }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const cur = useRef(new THREE.Vector3(CX, 0.6, CZ));
+  const tmp = useRef(new THREE.Vector3());
   const el = 0.5; // elevation (radians)
   const zoom = 12; // fixed — closer than the old full-map view, no controls
 
@@ -1227,8 +1228,8 @@ function FollowCamera({
       halfD * 2 >= ARENA_D
         ? CZ
         : THREE.MathUtils.clamp(p.y / S, halfD + 0.3, ARENA_D - halfD - 0.3);
-    const target = new THREE.Vector3(tx, 0.6, tz);
-    cur.current.lerp(target, Math.min(1, dt * 5));
+    tmp.current.set(tx, 0.6, tz);
+    cur.current.lerp(tmp.current, Math.min(1, dt * 5));
     camera.position.set(
       cur.current.x,
       cur.current.y + Math.sin(el) * zoom,
@@ -1259,6 +1260,14 @@ export function Arena3D({
   aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
   onWorldClick: (x: number, y: number) => void;
 }) {
+  // Touch phones (coarse pointer) get lighter rendering: capped pixel
+  // ratio + no real-time shadows, so the arena stays smooth on mobile.
+  const coarse = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(pointer: coarse)").matches,
+    [],
+  );
   // Checkerboard grass — two alternating greens, tiled across the pitch.
   const checkerTexture = useMemo(() => {
     const c = document.createElement("canvas");
@@ -1282,8 +1291,8 @@ export function Arena3D({
 
   return (
     <Canvas
-      dpr={[1, 2]}
-      shadows
+      dpr={[1, coarse ? 1.5 : 2]}
+      shadows={!coarse}
       camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.1, far: 300 }}
       className="absolute inset-0"
     >
@@ -1297,8 +1306,8 @@ export function Arena3D({
         position={[10, 14, 6]}
         intensity={1.8}
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={coarse ? 512 : 1024}
+        shadow-mapSize-height={coarse ? 512 : 1024}
         shadow-camera-left={-12}
         shadow-camera-right={12}
         shadow-camera-top={12}
