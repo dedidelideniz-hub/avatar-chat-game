@@ -33,14 +33,14 @@ export function FallbackArena2D({
   botRef,
   projsRef,
   fxsRef,
-  aimingRef,
+  aimRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
-  aimingRef: MutableRefObject<boolean>;
+  aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -212,14 +212,25 @@ export function FallbackArena2D({
       syncBar(b, barState.current.b, bBarRef.current, bBarFill.current, bBarGhost.current);
 
       // Brawl-Stars-style aim guide — flowing line to the shot's range,
-      // pulsing target ring, area ring for explosions, heal ring for self
-      const adx = b.x - p.x;
-      const ady = b.y - p.y;
-      const ad = Math.hypot(adx, ady) || 1;
-      const aux = adx / ad;
-      const auy = ady / ad;
+      // pulsing target ring, area ring for explosions, heal ring for self.
+      // Direction follows the attack-joystick drag; without a drag it
+      // auto-aims at the enemy, like Brawl Stars.
+      const aim = aimRef.current;
+      const aiming = aim.active;
+      const aimMag = Math.hypot(aim.dx, aim.dy);
+      let aux: number;
+      let auy: number;
+      if (aimMag > 0.15) {
+        aux = aim.dx / aimMag;
+        auy = aim.dy / aimMag;
+      } else {
+        const adx = b.x - p.x;
+        const ady = b.y - p.y;
+        const ad = Math.hypot(adx, ady) || 1;
+        aux = adx / ad;
+        auy = ady / ad;
+      }
       const ability = p.ability?.id ?? "temel";
-      const aiming = aimingRef.current;
       let arange = 660;
       let aarea = 0;
       let acolor = "#7dd3fc";
@@ -385,7 +396,7 @@ export function FallbackArena2D({
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [playerRef, botRef, projsRef, fxsRef]);
+  }, [playerRef, botRef, projsRef, fxsRef, aimRef]);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const svg = svgRef.current;

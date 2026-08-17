@@ -178,10 +178,12 @@ export default function BattleScene({
   const arenaRef = useRef<HTMLElement>(null);
   // The joystick's live direction vector.
   const joystickRef = useRef({ x: 0, y: 0 });
-  // True while the attack button is held — enables run-and-gun auto-fire
-  // and drives the Brawl-Stars-style aim guide.
-  const holdingAttackRef = useRef(false);
-  const aimingRef = useRef(false);
+  // Brawl-Stars-style attack joystick: while held, drag to pick the aim
+  // direction (dx/dy normalized to [-1, 1]). The aim guide follows it;
+  // zero means auto-aim at the enemy. Holding keeps firing on cooldown
+  // so you can shoot while walking (run-and-gun).
+  const aimRef = useRef({ active: false, dx: 0, dy: 0 });
+  const attackKnobRef = useRef<HTMLSpanElement>(null);
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
@@ -426,13 +428,25 @@ export default function BattleScene({
     }
   };
 
-  const tryAttack = useCallback(() => {
+  const tryAttack = useCallback((aimX?: number, aimY?: number) => {
     const p = player.current;
     const b = bot.current;
     if (resultRef.current || p.hp <= 0 || p.dashT > 0 || p.atkCd > 0) return;
     p.atkCd = ATK_CD;
-    p.facing = b.x >= p.x ? 1 : -1;
-    spawnProj(p, "player", b.x, b.y - 40, BASE_DMG);
+    let tx: number;
+    let ty: number;
+    const aimMag = Math.hypot(aimX ?? 0, aimY ?? 0);
+    if (aimMag > 0.15) {
+      // aimed shot — fire along the dragged joystick direction
+      tx = p.x + (aimX! / aimMag) * 120;
+      ty = p.y + (aimY! / aimMag) * 120;
+    } else {
+      // no drag (or keyboard) — auto-aim at the enemy
+      tx = b.x;
+      ty = b.y - 40;
+    }
+    p.facing = tx >= p.x ? 1 : -1;
+    spawnProj(p, "player", tx, ty, BASE_DMG);
   }, []);
 
   const trySuper = useCallback(() => {
@@ -485,7 +499,7 @@ export default function BattleScene({
       }
       keysRef.current.add(e.code);
       if (e.code === "Space" || e.code === "Enter") {
-        aimingRef.current = true;
+        aimRef.current.active = true;
         actionsRef.current.attack();
       }
       if (e.code === "KeyE" || e.code === "ShiftLeft" || e.code === "ShiftRight")
@@ -493,7 +507,7 @@ export default function BattleScene({
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.code);
-      if (e.code === "Space" || e.code === "Enter") aimingRef.current = false;
+      if (e.code === "Space" || e.code === "Enter") aimRef.current.active = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -518,9 +532,10 @@ export default function BattleScene({
       b.atkCd = Math.max(0, b.atkCd - dt);
 
       // Run-and-gun: keep firing while the attack button is held (or Space
-      // is down) so you can shoot while walking with the joystick.
-      if (holdingAttackRef.current && p.atkCd <= 0) {
-        tryAttack();
+      // is down) so you can shoot while walking with the joystick. The shot
+      // follows the dragged aim direction; zero means auto-aim.
+      if (aimRef.current.active && p.atkCd <= 0) {
+        tryAttack(aimRef.current.dx, aimRef.current.dy);
       }
 
       // --- player movement (keys + click target) ---
@@ -805,7 +820,7 @@ export default function BattleScene({
                   botRef={bot}
                   projsRef={projs}
                   fxsRef={fxs}
-                  aimingRef={aimingRef}
+                  aimRef={aimRef}
                   onWorldClick={(x, y) => actionsRef.current.click(x, y)}
                 />
               }
@@ -815,7 +830,7 @@ export default function BattleScene({
                 botRef={bot}
                 projsRef={projs}
                 fxsRef={fxs}
-                aimingRef={aimingRef}
+                aimRef={aimRef}
                 onWorldClick={(x, y) => actionsRef.current.click(x, y)}
               />
             </ArenaBoundary>
@@ -825,7 +840,7 @@ export default function BattleScene({
               botRef={bot}
               projsRef={projs}
               fxsRef={fxs}
-              aimingRef={aimingRef}
+              aimRef={aimRef}
               onWorldClick={(x, y) => actionsRef.current.click(x, y)}
             />
           )}
@@ -876,44 +891,74 @@ export default function BattleScene({
             <button
               type="button"
               onPointerDown={(e) => {
-                // Fire instantly (even while walking with the joystick) and
-                // never let the tap fall through to the tap-to-move plane.
-                // While held, the fighter keeps firing on cooldown and the
-                // Brawl-styled aim guide stays visible.
+                // Press the attack button, then drag to aim (Brawl Stars
+                // style): the aim guide follows your finger and releasing
+                // fires in that direction. Holding still keeps firing on
+                // cooldown so you can shoot while walking with the joystick.
                 e.stopPropagation();
                 e.preventDefault();
                 e.currentTarget.setPointerCapture?.(e.pointerId);
-                holdingAttackRef.current = true;
-                aimingRef.current = true;
+                aimRef.current = { active: true, dx: 0, dy: 0 };
                 setAttackHeld(true);
-                actionsRef.current.attack();
+                if (attackKnobRef.current)
+                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
+              }}
+              onPointerMove={(e) => {
+                if (!aimRef.current.active) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                let dx = e.clientX - cx;
+                let dy = e.clientY - cy;
+                const d = Math.hypot(dx, dy);
+                const R = 42;
+                if (d > R) {
+                  dx = (dx / d) * R;
+                  dy = (dy / d) * R;
+                }
+                aimRef.current.dx = dx / R;
+                aimRef.current.dy = dy / R;
+                if (attackKnobRef.current)
+                  attackKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
               }}
               onPointerUp={() => {
-                holdingAttackRef.current = false;
-                aimingRef.current = false;
+                // release — fire the aimed (or auto-aimed) shot
+                tryAttack(aimRef.current.dx, aimRef.current.dy);
+                aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
+                if (attackKnobRef.current)
+                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
               }}
               onPointerCancel={() => {
-                holdingAttackRef.current = false;
-                aimingRef.current = false;
+                aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
+                if (attackKnobRef.current)
+                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
               }}
               onLostPointerCapture={() => {
-                holdingAttackRef.current = false;
-                aimingRef.current = false;
+                aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
+                if (attackKnobRef.current)
+                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
               }}
-              aria-label="Saldır — basılı tut: otomatik ateş"
-              className={`pointer-events-auto flex size-20 touch-none items-center justify-center rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${
+              aria-label="Saldır — basılı tut ve sürükle: nişan al"
+              className={`pointer-events-auto relative flex size-20 touch-none items-center justify-center overflow-visible rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${
                 attackHeld
                   ? "scale-90 border-yellow-200 bg-gradient-to-br from-sky-300 to-blue-500 shadow-[0_0_28px_rgba(56,189,248,0.85)]"
                   : "bg-gradient-to-br from-sky-400 to-blue-600 active:scale-90"
               }`}
             >
               💥
+              {/* aim knob — slides in the dragged direction */}
+              <span
+                ref={attackKnobRef}
+                className="pointer-events-none absolute top-1/2 left-1/2 -ml-3.5 -mt-3.5 flex size-7 items-center justify-center rounded-full border-2 border-white bg-white/85 text-[10px] shadow-lg"
+              >
+                🎯
+              </span>
             </button>
             <span className="rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-extrabold tracking-wide text-white/85">
-              BASILI TUT → OTOMATİK ATEŞ
+              BAS → SÜRÜKLE → NİŞAN AL
             </span>
           </div>
         </main>

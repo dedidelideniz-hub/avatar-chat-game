@@ -962,18 +962,19 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 /* ------------------------------------------------------------------ */
 /* Brawl-Stars-style aim guide — a flowing energy line shows the shot's */
 /* range (capped at the actual projectile range), with a pulsing target */
-/* ring at the end and an area ring for exploding attacks. It auto-aims */
-/* at the enemy and animates every frame (GIF-feel).                    */
+/* ring at the end and an area ring for exploding attacks. It follows   */
+/* the attack-joystick drag direction (auto-aims at the enemy when the  */
+/* player taps without dragging) and animates every frame (GIF-feel).   */
 /* ------------------------------------------------------------------ */
 
 function AimGuide({
   playerRef,
   botRef,
-  aimingRef,
+  aimRef,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
-  aimingRef: MutableRefObject<boolean>;
+  aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const dashes = useRef<(THREE.Mesh | null)[]>([]);
@@ -989,17 +990,28 @@ function AimGuide({
     const t = clock.getElapsedTime();
     const p = playerRef.current;
     const b = botRef.current;
-    const aiming = aimingRef.current;
+    const aim = aimRef.current;
+    const aiming = aim.active;
     // Snappy charge-up so the guide "pops" in while aiming, like Brawl Stars.
     charge.current += ((aiming ? 1 : 0) - charge.current) * Math.min(1, 0.16);
     const c = charge.current;
     const show = c > 0.03;
 
-    const dx = b.x - p.x;
-    const dy = b.y - p.y;
-    const d = Math.hypot(dx, dy) || 1;
-    const ux = dx / d;
-    const uy = dy / d;
+    // Aim direction follows the attack-joystick drag; without a drag the
+    // guide (and the shot) auto-aim at the enemy, like Brawl Stars.
+    const aimMag = Math.hypot(aim.dx, aim.dy);
+    let ux: number;
+    let uy: number;
+    if (aimMag > 0.15) {
+      ux = aim.dx / aimMag;
+      uy = aim.dy / aimMag;
+    } else {
+      const adx = b.x - p.x;
+      const ady = b.y - p.y;
+      const ad = Math.hypot(adx, ady) || 1;
+      ux = adx / ad;
+      uy = ady / ad;
+    }
     const ability = p.ability?.id ?? "temel";
     const pulse = 0.55 + 0.25 * Math.sin(t * 5);
 
@@ -1279,14 +1291,14 @@ export function Arena3D({
   botRef,
   projsRef,
   fxsRef,
-  aimingRef,
+  aimRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
-  aimingRef: MutableRefObject<boolean>;
+  aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   // Checkerboard grass — two alternating greens, tiled across the pitch.
@@ -1435,7 +1447,7 @@ export function Arena3D({
       <FxPool fxsRef={fxsRef} />
 
       {/* Brawl-Stars-style aim guide — shows the next shot's range while aiming */}
-      <AimGuide playerRef={playerRef} botRef={botRef} aimingRef={aimingRef} />
+      <AimGuide playerRef={playerRef} botRef={botRef} aimRef={aimRef} />
 
       {/* invisible click plane — converts taps to game coordinates */}
       <mesh
