@@ -20,6 +20,7 @@ const H = 1100;
 const CHAR_W = 58;
 const CHAR_H = 78;
 const SVG_NS = "http://www.w3.org/2000/svg";
+const ATK_CD = 0.85; // must match BattleScene's attack cooldown
 
 const PROJ_POOL = 26;
 const RING_POOL = 12;
@@ -58,11 +59,15 @@ export function FallbackArena2D({
   // Smooth follow-camera center (world px) — same fixed-zoom behavior as the
   // 3D arena so both play identically.
   const camRef = useRef({ x: W / 2, y: H / 2 });
-  // Brawl-Stars-style aim guide elements
-  const aimLine = useRef<SVGLineElement>(null);
+  // Brawl-Stars-style aim guide elements — solid charge bar that fills as
+  // the attack cooldown finishes, target ring, area ring, heal ring
+  const aimBar = useRef<SVGRectElement>(null);
+  const aimBarCore = useRef<SVGRectElement>(null);
+  const aimHead = useRef<SVGCircleElement>(null);
   const aimEnd = useRef<SVGCircleElement>(null);
   const aimArea = useRef<SVGCircleElement>(null);
   const aimHeal = useRef<SVGCircleElement>(null);
+  const aimFillDisp = useRef(1); // animated fill level 0 → 1
   // Thin animated HP bars above the fighters (white damage trail).
   const pBarRef = useRef<SVGGElement>(null);
   const bBarRef = useRef<SVGGElement>(null);
@@ -129,10 +134,12 @@ export function FallbackArena2D({
 
     let raf = 0;
     let last = performance.now();
+    let elapsed = 0;
 
     const loop = (now: number) => {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
+      elapsed += dt;
       const p = playerRef.current;
       const b = botRef.current;
 
@@ -250,17 +257,50 @@ export function FallbackArena2D({
       }
       const aex = p.x + aux * arange;
       const aey = p.y + auy * arange;
-      const ln = aimLine.current;
-      if (ln) {
-        if (arange > 0 && aiming) {
-          ln.setAttribute("visibility", "visible");
-          ln.setAttribute("x1", `${p.x}`);
-          ln.setAttribute("y1", `${p.y - 30}`);
-          ln.setAttribute("x2", `${aex}`);
-          ln.setAttribute("y2", `${aey - 30}`);
-          ln.setAttribute("stroke", acolor);
+      // Solid charge bar — fills from the fighter toward the aim point as
+      // the attack cooldown finishes (full bar = ready to fire).
+      const fillTarget = Math.max(0, Math.min(1, 1 - p.atkCd / ATK_CD));
+      aimFillDisp.current += (fillTarget - aimFillDisp.current) * Math.min(1, dt * 9);
+      const afill = aimFillDisp.current;
+      const glow = 0.7 + 0.3 * Math.sin(elapsed * 7);
+      const abarShown = arange > 0 && aiming && afill > 0.03;
+      const abarW = Math.max(8, arange * afill);
+      const abarAng = (Math.atan2(auy, aux) * 180) / Math.PI;
+      const barT = `translate(${p.x} ${p.y - 24}) rotate(${abarAng})`;
+      const bar = aimBar.current;
+      if (bar) {
+        if (abarShown) {
+          bar.setAttribute("visibility", "visible");
+          bar.setAttribute("width", `${abarW}`);
+          bar.setAttribute("fill", acolor);
+          bar.setAttribute("opacity", `${(0.85 * glow).toFixed(2)}`);
+          bar.setAttribute("transform", barT);
         } else {
-          ln.setAttribute("visibility", "hidden");
+          bar.setAttribute("visibility", "hidden");
+        }
+      }
+      const core = aimBarCore.current;
+      if (core) {
+        if (abarShown) {
+          core.setAttribute("visibility", "visible");
+          core.setAttribute("width", `${abarW}`);
+          core.setAttribute("opacity", `${(0.55 + 0.35 * glow).toFixed(2)}`);
+          core.setAttribute("transform", barT);
+        } else {
+          core.setAttribute("visibility", "hidden");
+        }
+      }
+      const hd = aimHead.current;
+      if (hd) {
+        if (abarShown) {
+          hd.setAttribute("visibility", "visible");
+          hd.setAttribute("cx", `${p.x + aux * abarW}`);
+          hd.setAttribute("cy", `${p.y - 24 + auy * abarW}`);
+          hd.setAttribute("r", `${10 + 3 * Math.sin(elapsed * 9)}`);
+          hd.setAttribute("fill", acolor);
+          hd.setAttribute("opacity", `${(0.7 + 0.3 * glow).toFixed(2)}`);
+        } else {
+          hd.setAttribute("visibility", "hidden");
         }
       }
       const er = aimEnd.current;
@@ -535,14 +575,33 @@ export function FallbackArena2D({
           </g>
         </g>
 
-        {/* Brawl-Stars-style aim guide — range line + pulsing target */}
+        {/* Brawl-Stars-style aim guide — solid charge bar + pulsing target */}
         <g>
-          <line
-            ref={aimLine}
-            className="aim-flow"
-            stroke="#7dd3fc"
-            strokeWidth="9"
-            strokeLinecap="round"
+          <rect
+            ref={aimBar}
+            x="0"
+            y="-8"
+            height="16"
+            rx="8"
+            fill="#7dd3fc"
+            opacity="0.85"
+            visibility="hidden"
+          />
+          <rect
+            ref={aimBarCore}
+            x="0"
+            y="-3"
+            height="6"
+            rx="3"
+            fill="#ffffff"
+            opacity="0.7"
+            visibility="hidden"
+          />
+          <circle
+            ref={aimHead}
+            r="10"
+            fill="#7dd3fc"
+            opacity="0.9"
             visibility="hidden"
           />
           <circle

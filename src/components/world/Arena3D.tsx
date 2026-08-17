@@ -960,12 +960,16 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Brawl-Stars-style aim guide — a flowing energy line shows the shot's */
-/* range (capped at the actual projectile range), with a pulsing target */
-/* ring at the end and an area ring for exploding attacks. It follows   */
-/* the attack-joystick drag direction (auto-aims at the enemy when the  */
-/* player taps without dragging) and animates every frame (GIF-feel).   */
+/* Brawl-Stars-style aim guide — a solid energy bar shows the shot's    */
+/* range (capped at the actual projectile range) and FILLS UP as the     */
+/* attack cooldown finishes (full bar = ready to fire), with a pulsing   */
+/* target ring at the end and an area ring for exploding attacks. It     */
+/* follows the attack-joystick drag direction (auto-aims at the enemy    */
+/* when the player taps without dragging).                               */
 /* ------------------------------------------------------------------ */
+
+/** Attack cooldown in seconds — must match BattleScene's ATK_CD. */
+const ATK_CD = 0.85;
 
 function AimGuide({
   playerRef,
@@ -977,7 +981,11 @@ function AimGuide({
   aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const dashes = useRef<(THREE.Mesh | null)[]>([]);
+  // solid charge bar — filled rectangle that grows toward the aim point
+  const barBody = useRef<THREE.Mesh>(null);
+  const barCore = useRef<THREE.Mesh>(null);
+  const barHead = useRef<THREE.Mesh>(null);
+  const fillDisp = useRef(1); // animated fill level 0 → 1
   const tickRing = useRef<THREE.Mesh>(null);
   const tickRing2 = useRef<THREE.Mesh>(null);
   const endDot = useRef<THREE.Mesh>(null);
@@ -986,7 +994,7 @@ function AimGuide({
   const healRing = useRef<THREE.Mesh>(null);
   const charge = useRef(0); // entrance animation 0 → 1
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, dt) => {
     const t = clock.getElapsedTime();
     const p = playerRef.current;
     const b = botRef.current;
@@ -1044,30 +1052,51 @@ function AimGuide({
       groupRef.current.scale.setScalar(0.5 + 0.5 * c);
     }
 
-    // energy dashes flowing along the whole line toward the target (GIF feel)
-    const segs = 6;
-    const segLen = 0.24;
-    const step = 0.28;
-    for (let i = 0; i < segs; i++) {
-      const dash = dashes.current[i];
-      if (!dash) continue;
-      if (range > 0 && show) {
-        dash.visible = true;
-        const base = (t * 1.3 + i * step) % 1;
-        const mid = Math.min(1, base + segLen / 2);
-        dash.position.set(
-          (p.x + ux * range * mid) / S,
-          0.92,
-          (p.y + uy * range * mid) / S,
+    // Solid charge bar — a filled rectangle that grows from the fighter
+    // toward the aim point as the attack cooldown finishes (full bar =
+    // ready to fire). The fill is smooth/lerped and pulses with energy.
+    const fillTarget = Math.max(0, Math.min(1, 1 - p.atkCd / ATK_CD));
+    fillDisp.current += (fillTarget - fillDisp.current) * Math.min(1, dt * 9);
+    const fill = fillDisp.current;
+    const glow = 0.7 + 0.3 * Math.sin(t * 7);
+    const barShown = range > 0 && show && fill > 0.03;
+    const barLen = (range * fill) / S;
+    const barMidX = (p.x + ux * range * fill * 0.5) / S;
+    const barMidZ = (p.y + uy * range * fill * 0.5) / S;
+    const barAng = Math.atan2(uy, ux);
+    if (barBody.current) {
+      barBody.current.visible = barShown;
+      if (barShown) {
+        barBody.current.position.set(barMidX, 0.12, barMidZ);
+        barBody.current.scale.set(Math.max(0.25, barLen), 1, 1);
+        barBody.current.rotation.y = barAng;
+        (barBody.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (barBody.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * 0.9 * glow;
+      }
+    }
+    if (barCore.current) {
+      barCore.current.visible = barShown;
+      if (barShown) {
+        barCore.current.position.set(barMidX, 0.135, barMidZ);
+        barCore.current.scale.set(Math.max(0.25, barLen), 0.5, 0.5);
+        barCore.current.rotation.y = barAng;
+        (barCore.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.55 + 0.35 * glow);
+      }
+    }
+    if (barHead.current) {
+      barHead.current.visible = barShown;
+      if (barShown) {
+        barHead.current.position.set(
+          (p.x + ux * range * fill) / S,
+          0.16,
+          (p.y + uy * range * fill) / S,
         );
-        const len = Math.max(0.1, (segLen * range) / S);
-        dash.scale.set(len, 0.05, 0.05);
-        dash.rotation.y = Math.atan2(uy, ux);
-        (dash.material as THREE.MeshBasicMaterial).color.set(color);
-        (dash.material as THREE.MeshBasicMaterial).opacity =
-          alpha * (0.3 + 0.5 * Math.abs(Math.sin(t * 8 + i * 1.9)));
-      } else {
-        dash.visible = false;
+        barHead.current.scale.setScalar(0.7 + 0.3 * Math.sin(t * 9));
+        (barHead.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (barHead.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.65 + 0.35 * glow);
       }
     }
 
@@ -1152,23 +1181,35 @@ function AimGuide({
 
   return (
     <group ref={groupRef} visible={false}>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <mesh
-          key={i}
-          ref={(el) => {
-            dashes.current[i] = el;
-          }}
-          raycast={() => null}
-        >
-          <boxGeometry args={[1, 1, 1]} />
-          <meshBasicMaterial
-            transparent
-            opacity={0.8}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
+      {/* solid charge bar — filled rectangle, bright core + pulsing tip */}
+      <mesh ref={barBody} raycast={() => null}>
+        <boxGeometry args={[1, 0.09, 0.09]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.85}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={barCore} raycast={() => null}>
+        <boxGeometry args={[1, 0.035, 0.035]} />
+        <meshBasicMaterial
+          color="#ffffff"
+          transparent
+          opacity={0.7}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={barHead} raycast={() => null}>
+        <sphereGeometry args={[0.09, 12, 12]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.95}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
       {/* crosshair rings — dashed feel, counter-rotating */}
       <mesh ref={tickRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
         <ringGeometry args={[0.42, 0.5, 12]} />
