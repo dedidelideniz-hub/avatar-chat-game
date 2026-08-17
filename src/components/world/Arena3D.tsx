@@ -921,6 +921,200 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Brawl-Stars-style aim guide — a flowing energy line shows the shot's */
+/* range (capped at the actual projectile range), with a pulsing target */
+/* ring at the end and an area ring for exploding attacks. It auto-aims */
+/* at the enemy and animates every frame (GIF-feel).                    */
+/* ------------------------------------------------------------------ */
+
+function AimGuide({
+  playerRef,
+  botRef,
+}: {
+  playerRef: MutableRefObject<BattleFighter>;
+  botRef: MutableRefObject<BattleFighter>;
+}) {
+  const lineRef = useRef<THREE.Mesh>(null);
+  const dots = useRef<(THREE.Mesh | null)[]>([]);
+  const endRing = useRef<THREE.Mesh>(null);
+  const areaRing = useRef<THREE.Mesh>(null);
+  const healRing = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    const p = playerRef.current;
+    const b = botRef.current;
+    const dx = b.x - p.x;
+    const dy = b.y - p.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ux = dx / d;
+    const uy = dy / d;
+    const ability = p.ability?.id ?? "temel";
+    const pulse = 0.55 + 0.25 * Math.sin(t * 5);
+
+    let range = 660; // default strong shot — its real travel range
+    let area = 0;
+    let color = "#7dd3fc";
+    if (ability === "isik") {
+      range = 560;
+      color = "#ffe066";
+    } else if (ability === "ates") {
+      range = 720; // explodes after ~720px of travel
+      area = 130;
+      color = "#fdba74";
+    } else if (ability === "simsek") {
+      range = 300; // dash distance
+      color = "#a5f3fc";
+    } else if (ability === "sifa") {
+      range = 0; // self heal — ring only
+      color = "#86efac";
+    }
+
+    const px = p.x / S;
+    const py = p.y / S;
+    const ex = (p.x + ux * range) / S;
+    const ey = (p.y + uy * range) / S;
+
+    const line = lineRef.current;
+    if (line) {
+      if (range > 0) {
+        line.visible = true;
+        line.position.set(
+          (p.x + ux * (range / 2)) / S,
+          0.9,
+          (p.y + uy * (range / 2)) / S,
+        );
+        line.scale.set(range / S, 0.045, 0.045);
+        line.rotation.y = Math.atan2(uy, ux);
+        (line.material as THREE.MeshBasicMaterial).color.set(color);
+        (line.material as THREE.MeshBasicMaterial).opacity =
+          0.2 + 0.16 * pulse;
+      } else {
+        line.visible = false;
+      }
+    }
+    // energy dots flowing along the line toward the target
+    for (let i = 0; i < 3; i++) {
+      const dot = dots.current[i];
+      if (!dot) continue;
+      if (range > 0) {
+        dot.visible = true;
+        const f = (t * 1.1 + i / 3) % 1;
+        dot.position.set(
+          (p.x + ux * range * f) / S,
+          0.9,
+          (p.y + uy * range * f) / S,
+        );
+        (dot.material as THREE.MeshBasicMaterial).opacity =
+          0.4 + 0.5 * Math.abs(Math.sin(t * 6 + i * 2));
+        (dot.material as THREE.MeshBasicMaterial).color.set(color);
+      } else {
+        dot.visible = false;
+      }
+    }
+    // pulsing target ring at the end of the line
+    if (endRing.current) {
+      if (range > 0) {
+        endRing.current.visible = true;
+        endRing.current.position.set(ex, 0.05, ey);
+        endRing.current.scale.setScalar(0.9 + 0.12 * Math.sin(t * 6));
+        (endRing.current.material as THREE.MeshBasicMaterial).opacity =
+          0.5 * pulse;
+      } else {
+        endRing.current.visible = false;
+      }
+    }
+    // area ring showing the explosion radius (fireball)
+    if (areaRing.current) {
+      if (area > 0) {
+        areaRing.current.visible = true;
+        areaRing.current.position.set(ex, 0.06, ey);
+        areaRing.current.scale.setScalar(
+          (area / S) * (0.88 + 0.08 * Math.sin(t * 4)),
+        );
+        (areaRing.current.material as THREE.MeshBasicMaterial).opacity =
+          0.38 * pulse;
+      } else {
+        areaRing.current.visible = false;
+      }
+    }
+    // self-heal ring around the player
+    if (healRing.current) {
+      if (ability === "sifa") {
+        healRing.current.visible = true;
+        healRing.current.position.set(px, 0.06, py);
+        healRing.current.scale.setScalar(0.85 + 0.1 * Math.sin(t * 4));
+        (healRing.current.material as THREE.MeshBasicMaterial).opacity =
+          0.45 * pulse;
+      } else {
+        healRing.current.visible = false;
+      }
+    }
+  });
+
+  return (
+    <group>
+      <mesh ref={lineRef} raycast={() => null}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.3}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <mesh
+          key={i}
+          ref={(el) => {
+            dots.current[i] = el;
+          }}
+          raycast={() => null}
+        >
+          <sphereGeometry args={[0.11, 10, 10]} />
+          <meshBasicMaterial
+            transparent
+            opacity={0.8}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      <mesh ref={endRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.3, 0.42, 28]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.5}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={areaRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.88, 1, 40]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.4}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={healRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.8, 1, 32]} />
+        <meshBasicMaterial
+          transparent
+          opacity={0.45}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Game-simulation follow camera — fixed zoom (no zoom buttons), the    */
 /* camera glides behind the player like a real battle game and clamps   */
 /* to the arena edges so the whole map stays reachable. The map is      */
@@ -1129,6 +1323,9 @@ export function Arena3D({
 
       <ProjectilePool projsRef={projsRef} />
       <FxPool fxsRef={fxsRef} />
+
+      {/* Brawl-Stars-style aim guide — shows the next shot's range */}
+      <AimGuide playerRef={playerRef} botRef={botRef} />
 
       {/* invisible click plane — converts taps to game coordinates */}
       <mesh

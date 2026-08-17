@@ -56,6 +56,11 @@ export function FallbackArena2D({
   // Smooth follow-camera center (world px) — same fixed-zoom behavior as the
   // 3D arena so both play identically.
   const camRef = useRef({ x: W / 2, y: H / 2 });
+  // Brawl-Stars-style aim guide elements
+  const aimLine = useRef<SVGLineElement>(null);
+  const aimEnd = useRef<SVGCircleElement>(null);
+  const aimArea = useRef<SVGCircleElement>(null);
+  const aimHeal = useRef<SVGCircleElement>(null);
 
   useEffect(() => {
     const fx = fxRef.current;
@@ -156,6 +161,78 @@ export function FallbackArena2D({
       };
       applySprite(p, pSpriteRef.current);
       applySprite(b, bSpriteRef.current);
+
+      // Brawl-Stars-style aim guide — flowing line to the shot's range,
+      // pulsing target ring, area ring for explosions, heal ring for self
+      const adx = b.x - p.x;
+      const ady = b.y - p.y;
+      const ad = Math.hypot(adx, ady) || 1;
+      const aux = adx / ad;
+      const auy = ady / ad;
+      const ability = p.ability?.id ?? "temel";
+      let arange = 660;
+      let aarea = 0;
+      let acolor = "#7dd3fc";
+      if (ability === "isik") {
+        arange = 560;
+        acolor = "#ffe066";
+      } else if (ability === "ates") {
+        arange = 720;
+        aarea = 130;
+        acolor = "#fdba74";
+      } else if (ability === "simsek") {
+        arange = 300;
+        acolor = "#a5f3fc";
+      } else if (ability === "sifa") {
+        arange = 0;
+        acolor = "#86efac";
+      }
+      const aex = p.x + aux * arange;
+      const aey = p.y + auy * arange;
+      const ln = aimLine.current;
+      if (ln) {
+        if (arange > 0) {
+          ln.setAttribute("visibility", "visible");
+          ln.setAttribute("x1", `${p.x}`);
+          ln.setAttribute("y1", `${p.y - 30}`);
+          ln.setAttribute("x2", `${aex}`);
+          ln.setAttribute("y2", `${aey - 30}`);
+          ln.setAttribute("stroke", acolor);
+        } else {
+          ln.setAttribute("visibility", "hidden");
+        }
+      }
+      const er = aimEnd.current;
+      if (er) {
+        if (arange > 0) {
+          er.setAttribute("visibility", "visible");
+          er.setAttribute("cx", `${aex}`);
+          er.setAttribute("cy", `${aey}`);
+          er.setAttribute("stroke", acolor);
+        } else {
+          er.setAttribute("visibility", "hidden");
+        }
+      }
+      const ar = aimArea.current;
+      if (ar) {
+        if (aarea > 0) {
+          ar.setAttribute("visibility", "visible");
+          ar.setAttribute("cx", `${aex}`);
+          ar.setAttribute("cy", `${aey}`);
+        } else {
+          ar.setAttribute("visibility", "hidden");
+        }
+      }
+      const hr = aimHeal.current;
+      if (hr) {
+        if (ability === "sifa") {
+          hr.setAttribute("visibility", "visible");
+          hr.setAttribute("cx", `${p.x}`);
+          hr.setAttribute("cy", `${p.y}`);
+        } else {
+          hr.setAttribute("visibility", "hidden");
+        }
+      }
 
       // projectiles
       const projs = projsRef.current;
@@ -369,6 +446,45 @@ export function FallbackArena2D({
               height={CHAR_H}
             />
           </g>
+        </g>
+
+        {/* Brawl-Stars-style aim guide — range line + pulsing target */}
+        <g>
+          <line
+            ref={aimLine}
+            className="aim-flow"
+            stroke="#7dd3fc"
+            strokeWidth="9"
+            strokeLinecap="round"
+            visibility="hidden"
+          />
+          <circle
+            ref={aimEnd}
+            className="aim-pulse"
+            r="17"
+            fill="rgba(125,211,252,0.16)"
+            stroke="#7dd3fc"
+            strokeWidth="5"
+            visibility="hidden"
+          />
+          <circle
+            ref={aimArea}
+            className="aim-pulse"
+            r="130"
+            fill="rgba(253,186,116,0.12)"
+            stroke="#fdba74"
+            strokeWidth="6"
+            visibility="hidden"
+          />
+          <circle
+            ref={aimHeal}
+            className="aim-pulse"
+            r="95"
+            fill="rgba(134,239,172,0.14)"
+            stroke="#86efac"
+            strokeWidth="6"
+            visibility="hidden"
+          />
         </g>
 
         {/* projectiles + effects */}

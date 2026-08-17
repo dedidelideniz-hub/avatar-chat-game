@@ -402,6 +402,34 @@
   );
 }
 
+/* Brawl-Stars-style aim guide (2D arena) — flowing energy dashes from
+   the fighter toward the shot's range, plus pulsing target rings. */
+@keyframes aim-flow {
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+.aim-flow {
+  stroke-dasharray: 16 12;
+  animation: aim-flow 0.8s linear infinite;
+}
+@keyframes aim-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+}
+.aim-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: aim-pulse 1s ease-in-out infinite;
+}
+
 /* White/red flash over a fighter right after it is hit. */
 @keyframes battle-hit-flash {
   0% { opacity: 0.9; }
