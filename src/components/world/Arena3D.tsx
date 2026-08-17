@@ -270,6 +270,46 @@ function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
   tex.needsUpdate = true;
 }
 
+/** Lightning-bolt sprite texture (white core + cyan glow) for the player's
+ *  electric-strike effect around the identity ring. */
+function makeBoltTexture() {
+  const c = document.createElement("canvas");
+  c.width = 96;
+  c.height = 192;
+  const g = c.getContext("2d");
+  const t = new THREE.CanvasTexture(c);
+  if (!g) return t;
+  // deterministic jagged bolt — zigzag from top to bottom + one branch
+  const pts: [number, number][] = [];
+  let bx = 48;
+  for (let y = 10; y <= 186; y += 18) {
+    bx += (Math.random() - 0.5) * 46;
+    bx = Math.max(18, Math.min(78, bx));
+    pts.push([bx, y]);
+  }
+  const stroke = (width: number, color: string, blur: number) => {
+    g.beginPath();
+    g.moveTo(48, 2);
+    for (const [px, py] of pts) g.lineTo(px, py);
+    g.lineTo(48, 190);
+    g.lineWidth = width;
+    g.strokeStyle = color;
+    g.shadowColor = blur > 0 ? "#22d3ee" : "transparent";
+    g.shadowBlur = blur;
+    g.stroke();
+    // side branch for a more "lightning" silhouette
+    g.beginPath();
+    g.moveTo(pts[3][0], pts[3][1]);
+    g.lineTo(pts[3][0] + 20, pts[3][1] + 24);
+    g.lineTo(pts[3][0] + 13, pts[3][1] + 42);
+    g.lineWidth = width * 0.7;
+    g.stroke();
+  };
+  stroke(10, "rgba(34,211,238,0.55)", 14);
+  stroke(4, "#e0f2fe", 0);
+  return t;
+}
+
 function FighterRig({
   fighter,
   isPlayer = false,
@@ -296,6 +336,21 @@ function FighterRig({
   // spinning "this is you" ring under the player's feet
   const ringSpin = useRef<THREE.Group>(null);
   const ringDisc = useRef<THREE.Mesh>(null);
+  // electric strikes — lightning bolt sprites + expanding shockwave
+  const boltTex = useMemo(makeBoltTexture, []);
+  const boltPool = useRef<(THREE.Sprite | null)[]>([null, null, null]);
+  const shockRing = useRef<THREE.Mesh>(null);
+  const shockMat = useRef<THREE.MeshBasicMaterial>(null);
+  const strike = useRef({
+    active: false,
+    start: 0,
+    dur: 180,
+    next: performance.now() + 900,
+    n: 2,
+    angles: [0, 0, 0],
+    scales: [1, 1, 1],
+    radii: [0.55, 0.7, 0.85],
+  });
   const c = fighter.current.config;
 
   useFrame((_, dt) => {
@@ -313,6 +368,71 @@ function FighterRig({
       if (ringDisc.current) {
         (ringDisc.current.material as THREE.MeshBasicMaterial).opacity =
           0.15 + 0.07 * Math.sin(performance.now() / 320);
+      }
+      // --- random electric strikes: jagged lightning + expanding shockwave ---
+      const st = strike.current;
+      const nowMs = performance.now();
+      if (!st.active && nowMs >= st.next) {
+        st.active = true;
+        st.start = nowMs;
+        st.dur = 150 + Math.random() * 130;
+        st.n = 2 + (Math.random() < 0.45 ? 1 : 0);
+        for (let i = 0; i < 3; i++) {
+          st.angles[i] = Math.random() * Math.PI * 2;
+          st.scales[i] = 0.8 + Math.random() * 0.7;
+          st.radii[i] = 0.35 + Math.random() * 0.7;
+        }
+        st.next = nowMs + 450 + Math.random() * 900;
+        if (shockRing.current) {
+          shockRing.current.visible = true;
+          shockRing.current.scale.setScalar(0.4);
+        }
+      }
+      if (st.active) {
+        const p = Math.min(1, (nowMs - st.start) / st.dur);
+        const fade = Math.pow(1 - p, 1.3);
+        const flick = 0.6 + 0.4 * Math.sin(nowMs / 26);
+        for (let i = 0; i < 3; i++) {
+          const sp = boltPool.current[i];
+          if (!sp) continue;
+          if (i < st.n) {
+            sp.visible = true;
+            sp.position.set(
+              (f.x + Math.cos(st.angles[i]) * st.radii[i]) / S,
+              0.85 * st.scales[i],
+              (f.y + Math.sin(st.angles[i]) * st.radii[i]) / S,
+            );
+            sp.rotation.z = st.angles[i] * 2.3 + nowMs * 0.0004;
+            sp.scale.set(
+              0.62 * st.scales[i],
+              (1.6 + 0.25 * Math.sin(nowMs / 29)) * st.scales[i],
+              1,
+            );
+            (sp.material as THREE.SpriteMaterial).opacity = Math.min(
+              1,
+              fade * flick * 1.1,
+            );
+          } else {
+            sp.visible = false;
+          }
+        }
+        if (shockRing.current && shockMat.current) {
+          shockRing.current.position.set(f.x / S, 0.04, f.y / S);
+          shockRing.current.scale.setScalar(0.4 + p * 1.1);
+          shockMat.current.opacity = (1 - p) * 0.45;
+        }
+        if (ringDisc.current) {
+          (ringDisc.current.material as THREE.MeshBasicMaterial).opacity =
+            0.15 + 0.07 * Math.sin(nowMs / 320) + 0.45 * (1 - p);
+        }
+        if (p >= 1) {
+          st.active = false;
+          for (let i = 0; i < 3; i++) {
+            const sp = boltPool.current[i];
+            if (sp) sp.visible = false;
+          }
+          if (shockRing.current) shockRing.current.visible = false;
+        }
       }
     }
     const amp = f.moving ? 1 : 0;
@@ -495,6 +615,7 @@ function FighterRig({
     </group>
       {/* spinning "this is you" ring under the player's feet */}
       {isPlayer && (
+        <>
         <group ref={ringSpin} position={[0, 0.035, 0]}>
           {/* soft sky glow disc on the grass */}
           <mesh
@@ -545,6 +666,46 @@ function FighterRig({
             />
           </mesh>
         </group>
+        {/* electric strikes — lightning bolt sprites around the ring */}
+        {[0, 1, 2].map((i) => (
+          <sprite
+            key={i}
+            ref={(el) => {
+              boltPool.current[i] = el;
+            }}
+            position={[0, 0.85, 0]}
+            scale={[0.6, 1.8, 1]}
+            renderOrder={3}
+          >
+            <spriteMaterial
+              map={boltTex}
+              transparent
+              opacity={0}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+        ))}
+        {/* expanding shockwave ring on each strike */}
+        <mesh
+          ref={shockRing}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.04, 0]}
+          visible={false}
+          raycast={() => null}
+        >
+          <ringGeometry args={[0.5, 0.57, 40]} />
+          <meshBasicMaterial
+            ref={shockMat}
+            color="#a5f3fc"
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+        </>
       )}
       {/* health bar above the head — thin, animated, always visible */}
       <group ref={barGroup}>

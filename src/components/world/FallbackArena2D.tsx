@@ -21,6 +21,14 @@ const CHAR_W = 58;
 const CHAR_H = 78;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+/** Lightning bolt paths (vertical, origin at the feet) for the player's
+ *  electric-strike effect around the identity ring. */
+const BOLT_D = [
+  "M0,-76 L-15,-46 L5,-30 L-13,0 L5,14 L-8,36",
+  "M0,-80 L11,-52 L-8,-36 L12,-4 L-5,12 L9,38",
+  "M0,-78 L-17,-42 L3,-26 L-11,8 L7,22 L-4,40",
+];
+
 const PROJ_POOL = 26;
 const RING_POOL = 12;
 const BURST_POOL = 8;
@@ -52,6 +60,18 @@ export function FallbackArena2D({
   // spinning "this is you" ring under the player's feet
   const pRingSpinRef = useRef<SVGGElement>(null);
   const pRingDisc = useRef<SVGCircleElement>(null);
+  // electric strikes — lightning bolt paths + expanding shockwave
+  const boltGRefs = useRef<(SVGGElement | null)[]>([null, null, null]);
+  const shockRef = useRef<SVGCircleElement>(null);
+  const strike2d = useRef({
+    active: false,
+    start: 0,
+    dur: 180,
+    next: performance.now() + 900,
+    n: 2,
+    angles: [0, 0, 0],
+    scales: [1, 1, 1],
+  });
   const projEls = useRef<SVGCircleElement[]>([]);
   const ringEls = useRef<SVGCircleElement[]>([]);
   const burstEls = useRef<SVGCircleElement[]>([]);
@@ -188,6 +208,68 @@ export function FallbackArena2D({
           "opacity",
           `${(0.14 + 0.06 * Math.sin(elapsed * 5)).toFixed(3)}`,
         );
+      }
+
+      // --- random electric strikes: jagged lightning + expanding shockwave ---
+      const st2 = strike2d.current;
+      const nowMs = performance.now();
+      if (!st2.active && nowMs >= st2.next) {
+        st2.active = true;
+        st2.start = nowMs;
+        st2.dur = 150 + Math.random() * 130;
+        st2.n = 2 + (Math.random() < 0.45 ? 1 : 0);
+        for (let i = 0; i < 3; i++) {
+          st2.angles[i] = Math.random() * 360;
+          st2.scales[i] = 0.85 + Math.random() * 0.6;
+        }
+        st2.next = nowMs + 450 + Math.random() * 900;
+        if (shockRef.current)
+          shockRef.current.setAttribute("visibility", "visible");
+      }
+      if (st2.active) {
+        const p = Math.min(1, (nowMs - st2.start) / st2.dur);
+        const fade = Math.pow(1 - p, 1.3);
+        const flick = 0.6 + 0.4 * Math.sin(nowMs / 26);
+        for (let i = 0; i < 3; i++) {
+          const g = boltGRefs.current[i];
+          if (!g) continue;
+          if (i < st2.n) {
+            g.setAttribute("visibility", "visible");
+            g.setAttribute(
+              "transform",
+              `rotate(${st2.angles[i]}) scale(${st2.scales[i].toFixed(3)})`,
+            );
+            g.setAttribute(
+              "opacity",
+              `${Math.min(1, fade * flick * 1.1).toFixed(3)}`,
+            );
+          } else {
+            g.setAttribute("visibility", "hidden");
+          }
+        }
+        if (shockRef.current) {
+          shockRef.current.setAttribute(
+            "r",
+            `${(40 * (0.45 + p * 0.9)).toFixed(1)}`,
+          );
+          shockRef.current.setAttribute(
+            "opacity",
+            `${((1 - p) * 0.5).toFixed(3)}`,
+          );
+        }
+        if (pRingDisc.current) {
+          pRingDisc.current.setAttribute(
+            "opacity",
+            `${(0.14 + 0.06 * Math.sin(elapsed * 5) + 0.4 * (1 - p)).toFixed(3)}`,
+          );
+        }
+        if (p >= 1) {
+          st2.active = false;
+          for (let i = 0; i < 3; i++) {
+            boltGRefs.current[i]?.setAttribute("visibility", "hidden");
+          }
+          shockRef.current?.setAttribute("visibility", "hidden");
+        }
       }
 
       // thin animated HP bar above each head — fill drops fast, the white
@@ -432,6 +514,40 @@ export function FallbackArena2D({
               strokeLinecap="round"
             />
             <circle cx="40" cy="0" r="5" fill="#e0f2fe" />
+            {/* electric strikes — lightning bolts + expanding shockwave */}
+            <circle
+              ref={shockRef}
+              r="40"
+              fill="none"
+              stroke="#a5f3fc"
+              strokeWidth="6"
+              visibility="hidden"
+            />
+            {[0, 1, 2].map((i) => (
+              <g
+                key={i}
+                ref={(el) => {
+                  boltGRefs.current[i] = el;
+                }}
+                visibility="hidden"
+              >
+                <path
+                  d={BOLT_D[i]}
+                  stroke="#22d3ee"
+                  strokeWidth="9"
+                  fill="none"
+                  strokeLinecap="round"
+                  opacity="0.55"
+                />
+                <path
+                  d={BOLT_D[i]}
+                  stroke="#e0f2fe"
+                  strokeWidth="3.5"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+              </g>
+            ))}
           </g>
           <g ref={pSpriteRef}>
             <AvatarPreview width={CHAR_W} height={CHAR_H} config={playerRef.current.config} />
