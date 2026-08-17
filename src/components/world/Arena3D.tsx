@@ -94,7 +94,7 @@ const S = 100;
 const ARENA_W = 17; // 1700 px
 const ARENA_D = 11; // 1100 px
 const CX = ARENA_W / 2;
-const CZ = -ARENA_D / 2;
+const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
 
 export interface BattleFighter {
   name: string;
@@ -205,7 +205,7 @@ function FighterRig({
   useFrame(() => {
     const f = fighter.current;
     if (!root.current) return;
-    root.current.position.set(f.x / S, 0, -f.y / S);
+    root.current.position.set(f.x / S, 0, f.y / S);
     root.current.rotation.y = f.facing >= 0 ? 0 : Math.PI;
     const amp = f.moving ? 1 : 0;
     const t = f.phase;
@@ -378,7 +378,7 @@ function ProjectilePool({
       if (m) {
         if (p) {
           m.visible = true;
-          m.position.set(p.x / S, 0.85, -p.y / S);
+          m.position.set(p.x / S, 0.85, p.y / S);
           (m.material as THREE.MeshStandardMaterial).color.set(
             p.owner === "player" ? "#38bdf8" : "#fb7185",
           );
@@ -391,7 +391,7 @@ function ProjectilePool({
       }
       if (h) {
         h.visible = !!p;
-        if (p) h.position.set(p.x / S, 0.85, -p.y / S);
+        if (p) h.position.set(p.x / S, 0.85, p.y / S);
       }
     }
   });
@@ -501,7 +501,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
             s.userData.key = key;
           }
           s.visible = true;
-          s.position.set(fx.x / S, 1.7 + (1 - t) * 1.5, -fx.y / S);
+          s.position.set(fx.x / S, 1.7 + (1 - t) * 1.5, fx.y / S);
           (s.material as THREE.SpriteMaterial).opacity = t;
         }
         ti++;
@@ -509,7 +509,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         const m = ringRefs.current[ri];
         if (m) {
           m.visible = true;
-          m.position.set(fx.x / S, 0.08, -fx.y / S);
+          m.position.set(fx.x / S, 0.08, fx.y / S);
           const scale = Math.max(0.12, ((fx.grow / S) * (1 - t)) / 1);
           m.scale.setScalar(scale);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.9;
@@ -519,7 +519,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         const m = burstRefs.current[bi];
         if (m) {
           m.visible = true;
-          m.position.set(fx.x / S, 0.55, -fx.y / S);
+          m.position.set(fx.x / S, 0.55, fx.y / S);
           const scale = Math.max(0.2, ((fx.grow / S) * (1 - t)) / 1);
           m.scale.setScalar(scale);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.85;
@@ -531,15 +531,15 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         if (m) {
           m.visible = true;
           const dx = (fx.x2 - fx.x1) / S;
-          const dz = -(fx.y2 - fx.y1) / S;
+          const dz = (fx.y2 - fx.y1) / S;
           const len = Math.hypot(dx, dz) || 1;
           m.position.set(
             (fx.x1 + (fx.x2 - fx.x1) / 2) / S,
             0.9,
-            -(fx.y1 + (fx.y2 - fx.y1) / 2) / S,
+            (fx.y1 + (fx.y2 - fx.y1) / 2) / S,
           );
           m.scale.set(len, 1, 1);
-          m.rotation.y = Math.atan2(-dz, dx);
+          m.rotation.y = Math.atan2(dz, dx);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.95;
         }
         mi++;
@@ -548,7 +548,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         const s = smokeRefs.current[si];
         if (s) {
           s.visible = true;
-          s.position.set(fx.x / S, 0.6 + (1 - t) * 2.4, -fx.y / S);
+          s.position.set(fx.x / S, 0.6 + (1 - t) * 2.4, fx.y / S);
           const sc = Math.max(0.5, ((fx.grow / S) * (1 - t)) / 1 + 0.35);
           s.scale.setScalar(sc);
           (s.material as THREE.SpriteMaterial).opacity = t * 0.65;
@@ -721,7 +721,7 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
   const pos: [number, number, number] = [
     o.x / S + w / 2,
     0,
-    -o.y / S - h / 2,
+    o.y / S + h / 2,
   ];
 
   if (o.kind === "crate") {
@@ -799,46 +799,31 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Brawl-Stars-style follow camera — zoomed in on the player and        */
-/* smoothly tracking them, clamped to the arena edges. The arena is     */
-/* bigger than the screen, so characters stay big while you fight.      */
+/* Fixed fit-to-screen camera — the whole arena stays centered and      */
+/* fully visible on every screen (no zooming, no follow). Because the    */
+/* map is rendered with z = +y/S, screen-up = map-up, so the joystick,   */
+/* keys and tap-to-move all behave exactly like the 2D arena.            */
 /* ------------------------------------------------------------------ */
 
-function FollowCamera({
-  playerRef,
-  zoomRef,
-}: {
-  playerRef: MutableRefObject<BattleFighter>;
-  zoomRef: MutableRefObject<number>;
-}) {
+function FixedCamera() {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
-  const cur = useRef(new THREE.Vector3(CX, 0.6, CZ));
-  const el = 0.5; // elevation (radians)
+  const el = 0.42; // elevation (radians) — slightly flatter top-down look
 
-  useFrame((_, dt) => {
-    const p = playerRef.current;
-    const zoom = THREE.MathUtils.clamp(zoomRef.current, 4.5, 16);
-    const vFov = (camera.fov * Math.PI) / 180;
+  useFrame(() => {
     const aspect = Math.max(0.2, camera.aspect);
+    const vFov = (camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    // Half extents of the visible window at the current zoom.
-    const halfW = Math.tan(hFov / 2) * zoom;
-    const halfD = Math.tan(vFov / 2) * zoom * Math.cos(el);
-    // Clamp the target so the view never leaves the arena walls.
-    const tx = THREE.MathUtils.clamp(p.x / S, halfW + 0.3, ARENA_W - halfW - 0.3);
-    const tz = THREE.MathUtils.clamp(
-      -p.y / S,
-      -ARENA_D + halfD + 0.3,
-      -halfD - 0.3,
+    // Distance needed so the whole arena (+margin) fits width AND depth.
+    const zoom = Math.max(
+      (ARENA_W / 2 + 0.4) / Math.tan(hFov / 2),
+      (ARENA_D / 2 + 0.4) / (Math.tan(vFov / 2) * Math.cos(el)),
     );
-    const target = new THREE.Vector3(tx, 0.6, tz);
-    cur.current.lerp(target, Math.min(1, dt * 5));
     camera.position.set(
-      cur.current.x,
-      cur.current.y + Math.sin(el) * zoom,
-      cur.current.z + Math.cos(el) * zoom,
+      CX,
+      0.6 + Math.sin(el) * zoom,
+      CZ + Math.cos(el) * zoom,
     );
-    camera.lookAt(cur.current);
+    camera.lookAt(CX, 0.6, CZ);
   });
 
   return null;
@@ -853,14 +838,12 @@ export function Arena3D({
   botRef,
   projsRef,
   fxsRef,
-  zoomRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
-  zoomRef: MutableRefObject<number>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   // Checkerboard grass — two alternating greens, tiled across the pitch.
@@ -891,7 +874,7 @@ export function Arena3D({
       camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.1, far: 300 }}
       className="absolute inset-0"
     >
-      <FollowCamera playerRef={playerRef} zoomRef={zoomRef} />
+      <FixedCamera />
       {/* outer space — dark border around the pitch */}
       <color attach="background" args={["#0c1220"]} />
       <fog attach="fog" args={["#0c1220", 30, 60]} />
@@ -964,12 +947,12 @@ export function Arena3D({
       </mesh>
 
       {/* spawn circles */}
-      <SpawnCircle position={[CX, 0.03, -2.5]} color="#e63946" />
-      <SpawnCircle position={[CX, 0.03, -8.5]} color="#3a86ff" />
+      <SpawnCircle position={[CX, 0.03, 1.8]} color="#e63946" />
+      <SpawnCircle position={[CX, 0.03, 9.2]} color="#3a86ff" />
 
       {/* goal frames — red at top, blue at bottom */}
-      <GoalFrame position={[CX, 0, -0.05]} color="#e63946" />
-      <GoalFrame position={[CX, 0, -ARENA_D + 0.05]} color="#3a86ff" />
+      <GoalFrame position={[CX, 0, 0.05]} color="#e63946" />
+      <GoalFrame position={[CX, 0, ARENA_D - 0.05]} color="#3a86ff" />
 
       {/* center ball */}
       <mesh position={[CX, 0.26, CZ]} castShadow>
@@ -1014,7 +997,7 @@ export function Arena3D({
         position={[CX, 0.02, CZ]}
         onPointerDown={(e) => {
           e.stopPropagation();
-          onWorldClick(e.point.x * S, -e.point.z * S);
+          onWorldClick(e.point.x * S, e.point.z * S);
         }}
       >
         <planeGeometry args={[ARENA_W + 1, ARENA_D + 1]} />

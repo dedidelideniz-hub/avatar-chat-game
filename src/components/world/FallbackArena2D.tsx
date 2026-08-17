@@ -33,14 +33,12 @@ export function FallbackArena2D({
   botRef,
   projsRef,
   fxsRef,
-  zoomRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
   botRef: MutableRefObject<BattleFighter>;
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
-  zoomRef: MutableRefObject<number>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -55,8 +53,6 @@ export function FallbackArena2D({
   const textEls = useRef<SVGTextElement[]>([]);
   const beamEls = useRef<SVGLineElement[]>([]);
   const smokeEls = useRef<SVGCircleElement[]>([]);
-  // Smooth follow-camera center (world px).
-  const camRef = useRef({ x: W / 2, y: H / 2 });
 
   useEffect(() => {
     const fx = fxRef.current;
@@ -119,29 +115,8 @@ export function FallbackArena2D({
       const p = playerRef.current;
       const b = botRef.current;
 
-      // Brawl-Stars-style follow camera: zoom into the player, clamped to
-      // the arena edges so the whole map stays reachable.
-      const svg = svgRef.current;
-      if (svg && svg.clientWidth > 0) {
-        const aspect = svg.clientWidth / Math.max(1, svg.clientHeight);
-        const zoom = Math.min(16, Math.max(4.5, zoomRef.current));
-        let viewW = Math.min(W, 11200 / zoom);
-        let viewH = viewW / aspect;
-        if (viewH > H) {
-          viewH = H;
-          viewW = viewH * aspect;
-        }
-        const hw = viewW / 2;
-        const hh = viewH / 2;
-        const tx = Math.min(Math.max(p.x, hw), W - hw);
-        const ty = Math.min(Math.max(p.y, hh), H - hh);
-        camRef.current.x += (tx - camRef.current.x) * Math.min(1, dt * 6);
-        camRef.current.y += (ty - camRef.current.y) * Math.min(1, dt * 6);
-        svg.setAttribute(
-          "viewBox",
-          `${camRef.current.x - hw} ${camRef.current.y - hh} ${viewW} ${viewH}`,
-        );
-      }
+      // Fixed centered camera: the viewBox stays on the whole map
+      // (`0 0 W H`), so the arena is always fully visible and centered.
 
       // fighters
       pRef.current?.setAttribute("transform", `translate(${p.x} ${p.y})`);

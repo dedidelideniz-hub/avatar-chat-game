@@ -21,7 +21,7 @@ import {
   stopBattleAmbience,
 } from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
-import { Swords, Trophy, X, Zap, ZoomIn, ZoomOut } from "lucide-react";
+import { Swords, Trophy, X, Zap } from "lucide-react";
 import {
   Component,
   type MutableRefObject,
@@ -176,9 +176,7 @@ export default function BattleScene({
   onExit: (victory: boolean) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
-  // Camera zoom (3D follow-cam + 2D fallback both read this) and the
-  // joystick's live direction vector.
-  const zoomRef = useRef(9.5);
+  // The joystick's live direction vector.
   const joystickRef = useRef({ x: 0, y: 0 });
 
   const keysRef = useRef(new Set<string>());
@@ -788,7 +786,6 @@ export default function BattleScene({
                   botRef={bot}
                   projsRef={projs}
                   fxsRef={fxs}
-                  zoomRef={zoomRef}
                   onWorldClick={(x, y) => actionsRef.current.click(x, y)}
                 />
               }
@@ -798,7 +795,6 @@ export default function BattleScene({
                 botRef={bot}
                 projsRef={projs}
                 fxsRef={fxs}
-                zoomRef={zoomRef}
                 onWorldClick={(x, y) => actionsRef.current.click(x, y)}
               />
             </ArenaBoundary>
@@ -808,7 +804,6 @@ export default function BattleScene({
               botRef={bot}
               projsRef={projs}
               fxsRef={fxs}
-              zoomRef={zoomRef}
               onWorldClick={(x, y) => actionsRef.current.click(x, y)}
             />
           )}
@@ -832,31 +827,6 @@ export default function BattleScene({
           <BattleJoystick stickRef={joystickRef} />
 
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
-            {/* camera zoom buttons — Brawl-Stars style camera control */}
-            <div className="pointer-events-auto flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  zoomRef.current = Math.min(16, zoomRef.current + 1.2);
-                  playSound("click");
-                }}
-                aria-label="Yakınlaştır"
-                className="flex size-10 items-center justify-center rounded-full border-2 border-white/40 bg-white/15 text-white shadow-lg transition-transform active:scale-90 backdrop-blur-[2px]"
-              >
-                <ZoomIn className="size-5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  zoomRef.current = Math.max(4.5, zoomRef.current - 1.2);
-                  playSound("click");
-                }}
-                aria-label="Uzaklaştır"
-                className="flex size-10 items-center justify-center rounded-full border-2 border-white/40 bg-white/15 text-white shadow-lg transition-transform active:scale-90 backdrop-blur-[2px]"
-              >
-                <ZoomOut className="size-5" />
-              </button>
-            </div>
             <button
               type="button"
               onClick={() => actionsRef.current.super()}
