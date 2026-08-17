@@ -762,14 +762,14 @@ export default function BattleScene({
       }
       if (p.dashT > 0) {
         p.dashT -= dt;
-        moveFighter(p, p.dashVX * 950 * dt, p.dashVY * 950 * dt, dt);
+        moveFighter(p, p.dashVX * 820 * dt, p.dashVY * 820 * dt, dt);
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < 90) {
           p.dashHit = true;
           damageEnemy(p, b, 200);
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
-        moveFighter(p, vx * 300 * dt, vy * 300 * dt, dt);
+        moveFighter(p, vx * 200 * dt, vy * 200 * dt, dt);
       }
 
       // --- footstep ticks while walking (continuous battle audio) ---
@@ -800,7 +800,7 @@ export default function BattleScene({
       // --- bot AI ---
       if (b.dashT > 0) {
         b.dashT -= dt;
-        moveFighter(b, b.dashVX * 950 * dt, b.dashVY * 950 * dt, dt);
+        moveFighter(b, b.dashVX * 820 * dt, b.dashVY * 820 * dt, dt);
         if (!b.dashHit && Math.hypot(p.x - b.x, p.y - b.y) < 90) {
           b.dashHit = true;
           damageEnemy(b, p, 200);
@@ -822,7 +822,7 @@ export default function BattleScene({
           mx = dy / dist;
           my = -dx / dist;
         }
-        moveFighter(b, mx * 190 * dt, my * 190 * dt, dt);
+        moveFighter(b, mx * 140 * dt, my * 140 * dt, dt);
         b.facing = dx > 0 ? 1 : -1;
         if (b.atkCd <= 0 && dist < 640) {
           b.atkCd = 1.05;
