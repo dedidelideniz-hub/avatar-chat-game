@@ -10,12 +10,37 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
 
 // Lazy load route components for better code splitting
-const Landing = lazy(() => import("./pages/Landing.tsx"));
-const AuthPage = lazy(() => import("./pages/Auth.tsx"));
-const Studio = lazy(() => import("./pages/Studio.tsx"));
-const World = lazy(() => import("./pages/World.tsx"));
-const Admin = lazy(() => import("./pages/Admin.tsx"));
-const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+
+/** Lazy-load a route chunk with retry. Vite's dev server can briefly fail a
+ *  module request while it recompiles after a batch of edits, which browsers
+ *  surface as "Failed to fetch dynamically imported module" and blank the
+ *  preview. Retrying turns that into a momentary pause instead. */
+function lazyRetry<T extends React.ComponentType<any>>(
+  loader: () => Promise<{ default: T }>,
+  retries = 3,
+): React.LazyExoticComponent<T> {
+  return lazy(async () => {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        return await loader();
+      } catch (err) {
+        lastErr = err;
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 600 * attempt));
+        }
+      }
+    }
+    throw lastErr;
+  });
+}
+
+const Landing = lazyRetry(() => import("./pages/Landing.tsx"));
+const AuthPage = lazyRetry(() => import("./pages/Auth.tsx"));
+const Studio = lazyRetry(() => import("./pages/Studio.tsx"));
+const World = lazyRetry(() => import("./pages/World.tsx"));
+const Admin = lazyRetry(() => import("./pages/Admin.tsx"));
+const NotFound = lazyRetry(() => import("./pages/NotFound.tsx"));
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
