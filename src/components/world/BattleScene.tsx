@@ -918,6 +918,11 @@ export default function BattleScene({
                 }
                 aimRef.current.dx = dx / R;
                 aimRef.current.dy = dy / R;
+                // turn the fighter toward the aim direction so the
+                // direction is obvious while aiming
+                if (Math.abs(aimRef.current.dx) > 0.2) {
+                  player.current.facing = aimRef.current.dx >= 0 ? 1 : -1;
+                }
                 if (attackKnobRef.current)
                   attackKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
               }}

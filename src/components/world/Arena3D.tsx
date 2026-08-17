@@ -960,16 +960,16 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Brawl-Stars-style aim guide — a solid energy bar shows the shot's    */
-/* range (capped at the actual projectile range) and FILLS UP as the     */
-/* attack cooldown finishes (full bar = ready to fire), with a pulsing   */
-/* target ring at the end and an area ring for exploding attacks. It     */
-/* follows the attack-joystick drag direction (auto-aims at the enemy    */
-/* when the player taps without dragging).                               */
+/* Brawl-Stars-style aim guide — a thin laser line shows the exact shot   */
+/* direction and range (capped at the real projectile range), with an     */
+/* arrowhead at the tip, an energy pulse flowing outward, and an area     */
+/* ring for exploding attacks. It follows the attack-joystick drag and    */
+/* auto-aims at the enemy when the player taps without dragging.          */
 /* ------------------------------------------------------------------ */
 
-/** Attack cooldown in seconds — must match BattleScene's ATK_CD. */
-const ATK_CD = 0.85;
+/* Module-level temp vectors for the aim arrowhead (no per-frame allocs). */
+const UP_VEC = new THREE.Vector3(0, 1, 0);
+const DIR_VEC = new THREE.Vector3();
 
 function AimGuide({
   playerRef,
@@ -981,20 +981,18 @@ function AimGuide({
   aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  // solid charge bar — filled rectangle that grows toward the aim point
-  const barBody = useRef<THREE.Mesh>(null);
-  const barCore = useRef<THREE.Mesh>(null);
-  const barHead = useRef<THREE.Mesh>(null);
-  const fillDisp = useRef(1); // animated fill level 0 → 1
-  const tickRing = useRef<THREE.Mesh>(null);
-  const tickRing2 = useRef<THREE.Mesh>(null);
-  const endDot = useRef<THREE.Mesh>(null);
+  // directional aim: thin laser line to max range, bright core, an energy
+  // pulse flowing outward, and an arrowhead at the tip
+  const lineMesh = useRef<THREE.Mesh>(null);
+  const lineCore = useRef<THREE.Mesh>(null);
+  const comet = useRef<THREE.Mesh>(null);
+  const arrow = useRef<THREE.Mesh>(null);
   const areaRing = useRef<THREE.Mesh>(null);
   const areaFill = useRef<THREE.Mesh>(null);
   const healRing = useRef<THREE.Mesh>(null);
   const charge = useRef(0); // entrance animation 0 → 1
 
-  useFrame(({ clock }, dt) => {
+  useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     const p = playerRef.current;
     const b = botRef.current;
@@ -1052,92 +1050,63 @@ function AimGuide({
       groupRef.current.scale.setScalar(0.5 + 0.5 * c);
     }
 
-    // Solid charge bar — a filled rectangle that grows from the fighter
-    // toward the aim point as the attack cooldown finishes (full bar =
-    // ready to fire). The fill is smooth/lerped and pulses with energy.
-    const fillTarget = Math.max(0, Math.min(1, 1 - p.atkCd / ATK_CD));
-    fillDisp.current += (fillTarget - fillDisp.current) * Math.min(1, dt * 9);
-    const fill = fillDisp.current;
+    // Directional laser line — thin, full range, clearly pointing where
+    // the shot will travel. A bright pulse flows from the fighter to the
+    // tip and an arrowhead marks the end (Brawl Stars style).
+    const lineShown = range > 0 && show;
+    const len = range / S;
+    const midX = (p.x + ux * range * 0.5) / S;
+    const midZ = (p.y + uy * range * 0.5) / S;
+    const ang = Math.atan2(uy, ux);
     const glow = 0.7 + 0.3 * Math.sin(t * 7);
-    const barShown = range > 0 && show && fill > 0.03;
-    const barLen = (range * fill) / S;
-    const barMidX = (p.x + ux * range * fill * 0.5) / S;
-    const barMidZ = (p.y + uy * range * fill * 0.5) / S;
-    const barAng = Math.atan2(uy, ux);
-    if (barBody.current) {
-      barBody.current.visible = barShown;
-      if (barShown) {
-        barBody.current.position.set(barMidX, 0.12, barMidZ);
-        barBody.current.scale.set(Math.max(0.25, barLen), 1, 1);
-        barBody.current.rotation.y = barAng;
-        (barBody.current.material as THREE.MeshBasicMaterial).color.set(color);
-        (barBody.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * 0.9 * glow;
+    if (lineMesh.current) {
+      lineMesh.current.visible = lineShown;
+      if (lineShown) {
+        lineMesh.current.position.set(midX, 0.16, midZ);
+        lineMesh.current.scale.set(len, 1, 1);
+        lineMesh.current.rotation.y = ang;
+        (lineMesh.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (lineMesh.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * (0.75 + 0.2 * glow);
       }
     }
-    if (barCore.current) {
-      barCore.current.visible = barShown;
-      if (barShown) {
-        barCore.current.position.set(barMidX, 0.135, barMidZ);
-        barCore.current.scale.set(Math.max(0.25, barLen), 0.5, 0.5);
-        barCore.current.rotation.y = barAng;
-        (barCore.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * (0.55 + 0.35 * glow);
+    if (lineCore.current) {
+      lineCore.current.visible = lineShown;
+      if (lineShown) {
+        lineCore.current.position.set(midX, 0.175, midZ);
+        lineCore.current.scale.set(len, 0.45, 0.45);
+        lineCore.current.rotation.y = ang;
+        (lineCore.current.material as THREE.MeshBasicMaterial).opacity =
+          alpha * 0.8 * glow;
       }
     }
-    if (barHead.current) {
-      barHead.current.visible = barShown;
-      if (barShown) {
-        barHead.current.position.set(
-          (p.x + ux * range * fill) / S,
-          0.16,
-          (p.y + uy * range * fill) / S,
+    if (comet.current) {
+      comet.current.visible = lineShown;
+      if (lineShown) {
+        // one bright pulse traveling player → tip (directional flow)
+        const prog = (t * 0.9) % 1;
+        comet.current.position.set(
+          (p.x + ux * range * prog) / S,
+          0.24,
+          (p.y + uy * range * prog) / S,
         );
-        barHead.current.scale.setScalar(0.7 + 0.3 * Math.sin(t * 9));
-        (barHead.current.material as THREE.MeshBasicMaterial).color.set(color);
-        (barHead.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * (0.65 + 0.35 * glow);
+        comet.current.scale.setScalar(0.5 + 0.35 * Math.sin(t * 12));
+        (comet.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (comet.current.material as THREE.MeshBasicMaterial).opacity = alpha;
+      }
+    }
+    if (arrow.current) {
+      arrow.current.visible = lineShown;
+      if (lineShown) {
+        // cone arrowhead at max range, pointing along the aim direction
+        arrow.current.position.set(ex, 0.22, ey);
+        arrow.current.quaternion.setFromUnitVectors(UP_VEC, DIR_VEC.set(ux, 0, uy));
+        arrow.current.scale.setScalar(0.9 + 0.12 * Math.sin(t * 7));
+        (arrow.current.material as THREE.MeshBasicMaterial).color.set(color);
+        (arrow.current.material as THREE.MeshBasicMaterial).opacity = alpha * 0.95;
       }
     }
 
-    // target crosshair at the end of the line — two counter-rotating rings
-    if (tickRing.current) {
-      if (range > 0 && show) {
-        tickRing.current.visible = true;
-        tickRing.current.position.set(ex, 0.06, ey);
-        tickRing.current.scale.setScalar(0.62 + 0.08 * Math.sin(t * 6));
-        tickRing.current.rotation.z = t * 2.2;
-        (tickRing.current.material as THREE.MeshBasicMaterial).color.set(color);
-        (tickRing.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * pulse;
-      } else {
-        tickRing.current.visible = false;
-      }
-    }
-    if (tickRing2.current) {
-      if (range > 0 && show) {
-        tickRing2.current.visible = true;
-        tickRing2.current.position.set(ex, 0.065, ey);
-        tickRing2.current.scale.setScalar(0.62 + 0.08 * Math.sin(t * 6));
-        tickRing2.current.rotation.z = -t * 3.1;
-        (tickRing2.current.material as THREE.MeshBasicMaterial).color.set("#ffffff");
-        (tickRing2.current.material as THREE.MeshBasicMaterial).opacity =
-          alpha * 0.8 * pulse;
-      } else {
-        tickRing2.current.visible = false;
-      }
-    }
-    if (endDot.current) {
-      if (range > 0 && show) {
-        endDot.current.visible = true;
-        endDot.current.position.set(ex, 0.07, ey);
-        endDot.current.scale.setScalar(0.16 + 0.05 * Math.sin(t * 9));
-        (endDot.current.material as THREE.MeshBasicMaterial).color.set(color);
-        (endDot.current.material as THREE.MeshBasicMaterial).opacity = alpha;
-      } else {
-        endDot.current.visible = false;
-      }
-    }
     // explosion area — dashed ring + translucent fill (fireball)
     if (areaRing.current) {
       if (area > 0 && show) {
@@ -1181,9 +1150,9 @@ function AimGuide({
 
   return (
     <group ref={groupRef} visible={false}>
-      {/* solid charge bar — filled rectangle, bright core + pulsing tip */}
-      <mesh ref={barBody} raycast={() => null}>
-        <boxGeometry args={[1, 0.09, 0.09]} />
+      {/* thin laser line — full range, clearly directional */}
+      <mesh ref={lineMesh} raycast={() => null}>
+        <boxGeometry args={[1, 0.06, 0.06]} />
         <meshBasicMaterial
           transparent
           opacity={0.85}
@@ -1191,18 +1160,19 @@ function AimGuide({
           depthWrite={false}
         />
       </mesh>
-      <mesh ref={barCore} raycast={() => null}>
-        <boxGeometry args={[1, 0.035, 0.035]} />
+      <mesh ref={lineCore} raycast={() => null}>
+        <boxGeometry args={[1, 0.024, 0.024]} />
         <meshBasicMaterial
           color="#ffffff"
           transparent
-          opacity={0.7}
+          opacity={0.85}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
       </mesh>
-      <mesh ref={barHead} raycast={() => null}>
-        <sphereGeometry args={[0.09, 12, 12]} />
+      {/* energy pulse flowing along the line (directional flow) */}
+      <mesh ref={comet} raycast={() => null}>
+        <sphereGeometry args={[0.1, 12, 12]} />
         <meshBasicMaterial
           transparent
           opacity={0.95}
@@ -1210,32 +1180,12 @@ function AimGuide({
           depthWrite={false}
         />
       </mesh>
-      {/* crosshair rings — dashed feel, counter-rotating */}
-      <mesh ref={tickRing} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <ringGeometry args={[0.42, 0.5, 12]} />
+      {/* arrowhead at max range — points along the aim direction */}
+      <mesh ref={arrow} raycast={() => null}>
+        <coneGeometry args={[0.16, 0.5, 12]} />
         <meshBasicMaterial
           transparent
-          opacity={0.6}
-          blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh ref={tickRing2} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <ringGeometry args={[0.32, 0.36, 12]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0.7}
-          blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh ref={endDot} raycast={() => null}>
-        <sphereGeometry args={[0.12, 12, 12]} />
-        <meshBasicMaterial
-          transparent
-          opacity={0.9}
+          opacity={0.95}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
