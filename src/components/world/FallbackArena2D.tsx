@@ -49,6 +49,9 @@ export function FallbackArena2D({
   const bRef = useRef<SVGGElement>(null);
   const pSpriteRef = useRef<SVGGElement>(null);
   const bSpriteRef = useRef<SVGGElement>(null);
+  // spinning "this is you" ring under the player's feet
+  const pRingSpinRef = useRef<SVGGElement>(null);
+  const pRingDisc = useRef<SVGCircleElement>(null);
   const projEls = useRef<SVGCircleElement[]>([]);
   const ringEls = useRef<SVGCircleElement[]>([]);
   const burstEls = useRef<SVGCircleElement[]>([]);
@@ -171,6 +174,21 @@ export function FallbackArena2D({
       };
       applySprite(p, pSpriteRef.current);
       applySprite(b, bSpriteRef.current);
+
+      // spinning identity ring under the player's feet — dashed ring + dot
+      // rotating around them, with a soft glow disc pulsing underneath
+      if (pRingSpinRef.current) {
+        pRingSpinRef.current.setAttribute(
+          "transform",
+          `rotate(${((elapsed * 100) % 360).toFixed(2)})`,
+        );
+      }
+      if (pRingDisc.current) {
+        pRingDisc.current.setAttribute(
+          "opacity",
+          `${(0.14 + 0.06 * Math.sin(elapsed * 5)).toFixed(3)}`,
+        );
+      }
 
       // thin animated HP bar above each head — fill drops fast, the white
       // ghost trails behind it like a classic damage bar
@@ -402,6 +420,19 @@ export function FallbackArena2D({
 
         {/* fighters */}
         <g ref={pRef}>
+          {/* spinning "this is you" ring under the player's feet */}
+          <g ref={pRingSpinRef}>
+            <circle ref={pRingDisc} r="44" fill="rgba(56,189,248,0.16)" />
+            <circle
+              r="40"
+              fill="none"
+              stroke="#7dd3fc"
+              strokeWidth="6"
+              strokeDasharray="26 37"
+              strokeLinecap="round"
+            />
+            <circle cx="40" cy="0" r="5" fill="#e0f2fe" />
+          </g>
           <g ref={pSpriteRef}>
             <AvatarPreview width={CHAR_W} height={CHAR_H} config={playerRef.current.config} />
             <EquippedItems

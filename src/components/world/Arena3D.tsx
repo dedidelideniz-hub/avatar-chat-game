@@ -272,8 +272,10 @@ function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
 
 function FighterRig({
   fighter,
+  isPlayer = false,
 }: {
   fighter: MutableRefObject<BattleFighter>;
+  isPlayer?: boolean;
 }) {
   const root = useRef<THREE.Group>(null);
   const bob = useRef<THREE.Group>(null);
@@ -291,6 +293,9 @@ function FighterRig({
   const dispHp = useRef(-1);
   const ghostHp = useRef(-1);
   const lastBarKey = useRef("");
+  // spinning "this is you" ring under the player's feet
+  const ringSpin = useRef<THREE.Group>(null);
+  const ringDisc = useRef<THREE.Mesh>(null);
   const c = fighter.current.config;
 
   useFrame((_, dt) => {
@@ -299,6 +304,17 @@ function FighterRig({
     root.current.position.set(f.x / S, 0, f.y / S);
     root.current.rotation.y = f.facing >= 0 ? 0 : Math.PI;
     if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
+    // spinning identity ring under the player's feet — dashed ring + orbit
+    // dot turning around them, with a soft pulsing glow disc
+    if (isPlayer && ringSpin.current) {
+      ringSpin.current.position.set(f.x / S, 0.035, f.y / S);
+      ringSpin.current.rotation.y += dt * 1.7;
+      ringSpin.current.scale.setScalar(1 + 0.05 * Math.sin(performance.now() / 240));
+      if (ringDisc.current) {
+        (ringDisc.current.material as THREE.MeshBasicMaterial).opacity =
+          0.15 + 0.07 * Math.sin(performance.now() / 320);
+      }
+    }
     const amp = f.moving ? 1 : 0;
     const t = f.phase;
     if (armL.current) armL.current.rotation.x = Math.sin(t) * 0.75 * amp;
@@ -477,6 +493,59 @@ function FighterRig({
         </RoundedBox>
       </group>
     </group>
+      {/* spinning "this is you" ring under the player's feet */}
+      {isPlayer && (
+        <group ref={ringSpin} position={[0, 0.035, 0]}>
+          {/* soft sky glow disc on the grass */}
+          <mesh
+            ref={ringDisc}
+            rotation={[-Math.PI / 2, 0, 0]}
+            raycast={() => null}
+          >
+            <circleGeometry args={[0.52, 40]} />
+            <meshBasicMaterial
+              color="#38bdf8"
+              transparent
+              opacity={0.18}
+              blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* four dashed arcs spinning around the character */}
+          {[0, 1, 2, 3].map((i) => (
+            <mesh
+              key={i}
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, 0.012, 0]}
+              raycast={() => null}
+            >
+              <ringGeometry
+                args={[0.44, 0.52, 8, 1, (i * Math.PI) / 2, 1.35]}
+              />
+              <meshBasicMaterial
+                color="#7dd3fc"
+                transparent
+                opacity={0.95}
+                blending={THREE.AdditiveBlending}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+          ))}
+          {/* bright orbiting dot — makes the spin direction obvious */}
+          <mesh position={[0.52, 0.02, 0]} raycast={() => null}>
+            <sphereGeometry args={[0.055, 12, 12]} />
+            <meshBasicMaterial
+              color="#e0f2fe"
+              transparent
+              opacity={1}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      )}
       {/* health bar above the head — thin, animated, always visible */}
       <group ref={barGroup}>
         <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[1.02, 0.075, 1]} renderOrder={1}>
@@ -1168,7 +1237,7 @@ export function Arena3D({
       ))}
 
       {/* fighters */}
-      <FighterRig fighter={playerRef} />
+      <FighterRig fighter={playerRef} isPlayer />
       <FighterRig fighter={botRef} />
 
       <ProjectilePool projsRef={projsRef} />
