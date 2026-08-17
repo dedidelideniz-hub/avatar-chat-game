@@ -188,21 +188,48 @@ const SMOKE_POOL = 22;
 /* Fighters — procedural low-poly humanoid built from avatar colors.   */
 /* ------------------------------------------------------------------ */
 
-function drawHpBar(sprite: THREE.Sprite, hp: number, maxHp: number) {
-  const mat = sprite.material as THREE.SpriteMaterial;
-  const tex = mat.map as THREE.CanvasTexture;
+function makeBarTex() {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 12;
+  const t = new THREE.CanvasTexture(c);
+  t.minFilter = THREE.LinearFilter;
+  return t;
+}
+
+/** Draw one health-bar frame (thin, rounded, gradient + shine). */
+function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
   const canvas = tex.image as HTMLCanvasElement;
   const g = canvas.getContext("2d");
   if (!g) return;
-  const pct = Math.max(0, Math.min(1, hp / maxHp));
-  g.clearRect(0, 0, canvas.width, canvas.height);
-  g.fillStyle = "rgba(8,12,26,0.85)";
-  g.fillRect(0, 0, 128, 16);
-  g.strokeStyle = "rgba(255,255,255,0.9)";
-  g.lineWidth = 2;
-  g.strokeRect(1, 1, 126, 14);
-  g.fillStyle = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#eab308" : "#ef4444";
-  g.fillRect(3, 3, Math.max(2, 122 * pct), 10);
+  const p = Math.max(0, Math.min(1, pct));
+  const w = Math.max(4, 124 * p);
+  g.clearRect(0, 0, 128, 12);
+  // rounded dark background
+  g.beginPath();
+  g.roundRect(0, 0, 128, 12, 5);
+  g.fillStyle = "rgba(8,12,26,0.88)";
+  g.fill();
+  // gradient fill with a shine line on top
+  const grad = g.createLinearGradient(0, 0, 0, 12);
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(0.25, color);
+  grad.addColorStop(1, color);
+  g.save();
+  g.beginPath();
+  g.roundRect(2, 2, w, 8, 3.5);
+  g.clip();
+  g.fillStyle = grad;
+  g.fillRect(2, 2, 124, 8);
+  g.fillStyle = "rgba(255,255,255,0.45)";
+  g.fillRect(2, 2, w, 2.2);
+  g.restore();
+  // white border
+  g.strokeStyle = "rgba(255,255,255,0.92)";
+  g.lineWidth = 1.5;
+  g.beginPath();
+  g.roundRect(1, 1, 126, 10, 5);
+  g.stroke();
   tex.needsUpdate = true;
 }
 
@@ -218,24 +245,23 @@ function FighterRig({
   const legL = useRef<THREE.Group>(null);
   const legR = useRef<THREE.Group>(null);
   const flashMat = useRef<THREE.MeshStandardMaterial>(null);
-  const hpBg = useRef<THREE.Sprite>(null);
   const hpFill = useRef<THREE.Sprite>(null);
-  const lastHp = useRef(-1);
-  const hpTex = useMemo(() => {
-    const c = document.createElement("canvas");
-    c.width = 128;
-    c.height = 16;
-    const t = new THREE.CanvasTexture(c);
-    t.minFilter = THREE.LinearFilter;
-    return t;
-  }, []);
+  const hpGhost = useRef<THREE.Sprite>(null);
+  const barGroup = useRef<THREE.Group>(null);
+  const hpFillTex = useMemo(makeBarTex, []);
+  const hpGhostTex = useMemo(makeBarTex, []);
+  // animated display values — lerp toward the real hp every frame
+  const dispHp = useRef(-1);
+  const ghostHp = useRef(-1);
+  const lastBarKey = useRef("");
   const c = fighter.current.config;
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const f = fighter.current;
     if (!root.current) return;
     root.current.position.set(f.x / S, 0, f.y / S);
     root.current.rotation.y = f.facing >= 0 ? 0 : Math.PI;
+    if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
     const amp = f.moving ? 1 : 0;
     const t = f.phase;
     if (armL.current) armL.current.rotation.x = Math.sin(t) * 0.75 * amp;
@@ -252,18 +278,30 @@ function FighterRig({
       const elapsed = performance.now() - f.lastHitAt;
       flashMat.current.opacity = Math.max(0, 0.85 * (1 - elapsed / 350));
     }
-    // health bar above the head — redraw only when hp changes
-    if (f.hp !== lastHp.current) {
-      lastHp.current = f.hp;
-      if (hpFill.current && hpBg.current) {
-        drawHpBar(hpFill.current, f.hp, f.maxHp);
-        hpBg.current.visible = f.hp < f.maxHp;
-        hpFill.current.visible = f.hp < f.maxHp;
-      }
+    // smooth animated health bar + white ghost that trails behind
+    const max = f.maxHp;
+    if (dispHp.current < 0) {
+      dispHp.current = max;
+      ghostHp.current = max;
+    }
+    dispHp.current += (f.hp - dispHp.current) * Math.min(1, dt * 6);
+    if (ghostHp.current > dispHp.current + 0.5) {
+      ghostHp.current += (dispHp.current - ghostHp.current) * Math.min(1, dt * 1.8);
+    } else {
+      ghostHp.current = dispHp.current;
+    }
+    const key = `${Math.round(dispHp.current)}:${Math.round(ghostHp.current)}`;
+    if (key !== lastBarKey.current) {
+      lastBarKey.current = key;
+      const pct = dispHp.current / max;
+      const col = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#eab308" : "#ef4444";
+      drawBarSprite(hpFillTex, pct, col);
+      drawBarSprite(hpGhostTex, ghostHp.current / max, "#f8fafc");
     }
   });
 
   return (
+    <>
     <group ref={root} scale={0.72}>
       <group ref={bob}>
         {/* legs + shoes */}
@@ -396,14 +434,17 @@ function FighterRig({
           />
         </RoundedBox>
       </group>
-      {/* health bar above the head (billboarded, follows the fighter) */}
-      <sprite ref={hpFill} position={[0, 1.78, 0]} scale={[1.1, 0.15, 1]} visible={false}>
-        <spriteMaterial map={hpTex} depthTest={false} />
-      </sprite>
-      <sprite ref={hpBg} position={[0, 1.78, 0]} scale={[1.12, 0.17, 1]} visible={false}>
-        <spriteMaterial color="#0a0f1d" opacity={0.9} depthTest={false} />
-      </sprite>
     </group>
+      {/* health bar above the head — thin, animated, always visible */}
+      <group ref={barGroup}>
+        <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[0.98, 0.09, 1]} renderOrder={1}>
+          <spriteMaterial map={hpGhostTex} depthTest={false} />
+        </sprite>
+        <sprite ref={hpFill} position={[0, 1.55, 0]} scale={[0.98, 0.09, 1]} renderOrder={2}>
+          <spriteMaterial map={hpFillTex} depthTest={false} />
+        </sprite>
+      </group>
+    </>
   );
 }
 

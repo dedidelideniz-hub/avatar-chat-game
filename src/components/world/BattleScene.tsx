@@ -834,7 +834,14 @@ export default function BattleScene({
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
             <button
               type="button"
-              onClick={() => actionsRef.current.super()}
+              onPointerDown={(e) => {
+                // Fire instantly (even while holding the joystick) instead of
+                // waiting for a click, and never let the tap fall through to
+                // the arena's tap-to-move plane.
+                e.stopPropagation();
+                e.preventDefault();
+                actionsRef.current.super();
+              }}
               aria-label="Süper yetenek"
               className={`pointer-events-auto flex size-16 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
                 hud.pc >= 1
@@ -848,9 +855,15 @@ export default function BattleScene({
             </button>
             <button
               type="button"
-              onClick={() => actionsRef.current.attack()}
+              onPointerDown={(e) => {
+                // Fire instantly (even while walking with the joystick) and
+                // never let the tap fall through to the tap-to-move plane.
+                e.stopPropagation();
+                e.preventDefault();
+                actionsRef.current.attack();
+              }}
               aria-label="Saldır"
-              className="pointer-events-auto flex size-20 items-center justify-center rounded-full border-4 border-white/70 bg-gradient-to-br from-sky-400 to-blue-600 text-3xl text-white shadow-xl transition-transform active:scale-90"
+              className="pointer-events-auto flex size-20 touch-none items-center justify-center rounded-full border-4 border-white/70 bg-gradient-to-br from-sky-400 to-blue-600 text-3xl text-white shadow-xl transition-transform active:scale-90"
             >
               💥
             </button>
