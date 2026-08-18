@@ -1,8 +1,16 @@
-// ⚔️ Brawl-styled duel arena — two fighters, HP bars, projectiles and supers.
-// The whole simulation runs on a rAF loop mutating plain refs (no React
-// re-renders); the Arena3D component reads those refs every frame and draws
-// the scene in 3D (Three.js). React only renders the HUD, controls and the
-// result screen.
+// ⚔️ PvP duel arena — two REAL players fighting in real time.
+//
+// Each phone simulates its OWN fighter locally (zero input lag) and shares
+// live state through a Convex presence room ("battle:<battleId>", ~10 Hz):
+// position, hp, super charge, projectiles and discrete combat events.
+// The OTHER fighter is rendered from those snapshots with lerp, and remote
+// projectiles are extrapolated between snapshots. Damage is shooter-side:
+// the shooter decides when its projectile/beam/dash connects and publishes a
+// one-shot event; the target applies it. Both phones converge on the same
+// HP values (each fighter's HP is published by its own phone).
+//
+// The arena rendering (Arena3D / FallbackArena2D) is reused unchanged —
+// it just reads fighter/projectile/FX refs every frame.
 import { Button } from "@/components/ui/button";
 import {
   Arena3D,
@@ -13,9 +21,11 @@ import {
   type BattleFx,
   type BattleProj,
 } from "@/components/world/Arena3D";
+import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
 import { FallbackArena2D } from "@/components/world/FallbackArena2D";
+import { usePresenceOthers, usePresencePublisher } from "@/hooks/use-presence";
 import type { AvatarConfig } from "@/lib/avatar";
-import { abilityOf, type AbilityDef } from "@/lib/shop";
+import { abilityOf } from "@/lib/shop";
 import {
   playSound,
   startBattleAmbience,
@@ -41,28 +51,70 @@ const BASE_DMG = 120;
 const PROJ_SPEED = 620;
 const PROJ_RANGE = 660;
 const FIGHTER_R = 22;
+const PUBLISH_MS = 100; // presence snapshot cadence
+const EVENT_TTL_MS = 3500; // how long a combat event stays in the publish queue
+const DISCONNECT_MS = 4000; // no remote snapshot for this long → opponent gone
 
-/** Status lines that cycle under the loading bar while the arena loads. */
-const LOAD_STEPS = [
-  "Arena hazırlanıyor…",
-  "Rakip bulunuyor…",
-  "Silahlar kalibre ediliyor…",
-  "Enerji yükleniyor…",
-];
+/** One live projectile on my side (has a stable id for the network). */
+interface PvpProj {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  dmg: number;
+  r: number;
+  travelled: number;
+  pierce: boolean;
+  explodeR?: number;
+}
 
-/** GIF-style emoji FX that float up through the loading screen. */
-const LOAD_FX = [
-  { e: "⚔️", left: "6%", delay: 0, dur: 4.2, size: "text-2xl" },
-  { e: "⚡", left: "16%", delay: 0.9, dur: 3.4, size: "text-xl" },
-  { e: "🗡️", left: "28%", delay: 1.6, dur: 4.8, size: "text-2xl" },
-  { e: "✨", left: "41%", delay: 0.4, dur: 3.8, size: "text-lg" },
-  { e: "💥", left: "55%", delay: 1.1, dur: 4.4, size: "text-2xl" },
-  { e: "⚡", left: "66%", delay: 2.0, dur: 3.2, size: "text-xl" },
-  { e: "🛡️", left: "78%", delay: 0.7, dur: 5.0, size: "text-2xl" },
-  { e: "✨", left: "88%", delay: 1.4, dur: 3.6, size: "text-lg" },
-  { e: "🔥", left: "95%", delay: 2.4, dur: 4.6, size: "text-xl" },
-  { e: "⭐", left: "10%", delay: 2.8, dur: 4.0, size: "text-lg" },
-];
+/** One-shot combat events. Damage is shooter-side: `hit` was decided by the
+ *  shooter against its view of the target; the receiver just applies it. */
+/** Distribute Omit over the PvpEvent union (TS's Omit collapses unions). */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+type PvpEvent =
+  | { id: string; type: "hit"; dmg: number }
+  | {
+      id: string;
+      type: "beam";
+      x1: number;
+      y1: number;
+      angle: number;
+      len: number;
+      dmg: number;
+      hit: boolean;
+    }
+  | { id: string; type: "dashHit"; dmg: number }
+  | {
+      id: string;
+      type: "explode";
+      x: number;
+      y: number;
+      r: number;
+      dmg: number;
+      hit: boolean;
+    };
+
+/** What one phone publishes about its fighter every ~100 ms. */
+interface PvpPayload {
+  x: number;
+  y: number;
+  facing: number;
+  moving: boolean;
+  hp: number;
+  superCharge: number;
+  dashT: number;
+  dashVX: number;
+  dashVY: number;
+  phase: number;
+  projs: PvpProj[];
+  events: PvpEvent[];
+  ts: number;
+}
 
 function newFighter(
   name: string,
@@ -95,71 +147,7 @@ function newFighter(
   };
 }
 
-/** Virtual joystick — drag anywhere on it to move (works with mouse + touch). */
-export function BattleJoystick({
-  stickRef,
-}: {
-  stickRef: MutableRefObject<{ x: number; y: number }>;
-}) {
-  const knobRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-  const R = 40;
-
-  const move = (px: number, py: number) => {
-    const base = knobRef.current?.parentElement;
-    if (!base) return;
-    const rect = base.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    let dx = px - cx;
-    let dy = py - cy;
-    const d = Math.hypot(dx, dy);
-    if (d > R) {
-      dx = (dx / d) * R;
-      dy = (dy / d) * R;
-    }
-    stickRef.current = { x: dx / R, y: dy / R };
-    if (knobRef.current)
-      knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
-  };
-
-  const reset = () => {
-    stickRef.current = { x: 0, y: 0 };
-    if (knobRef.current) knobRef.current.style.transform = "translate(0px, 0px)";
-  };
-
-  return (
-    <div
-      className="pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
-      onPointerDown={(e) => {
-        draggingRef.current = true;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        move(e.clientX, e.clientY);
-      }}
-      onPointerMove={(e) => {
-        if (draggingRef.current) move(e.clientX, e.clientY);
-      }}
-      onPointerUp={(e) => {
-        draggingRef.current = false;
-        e.currentTarget.releasePointerCapture(e.pointerId);
-        reset();
-      }}
-      onPointerCancel={() => {
-        draggingRef.current = false;
-        reset();
-      }}
-      aria-label="Hareket joystick"
-    >
-      <div
-        ref={knobRef}
-        className="absolute top-1/2 left-1/2 -ml-6 -mt-6 size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
-      />
-    </div>
-  );
-}
-
-/** If the 3D scene crashes for any reason, fall back to the 2D arena so
- *  the battle never breaks. */
+/** If the 3D scene crashes for any reason, fall back to the 2D arena. */
 class ArenaBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
   { failed: boolean }
@@ -176,130 +164,9 @@ class ArenaBoundary extends Component<
   }
 }
 
-/** Gaming-style loading screen shown on arena entry — animated title,
- *  GIF-style floating FX, fighter cards and a filling progress bar. */
-export function BattleLoading({
-  playerName,
-  playerAbility,
-  opponentName,
-  opponentAbility,
-  pct,
-  step,
-}: {
-  playerName: string;
-  playerAbility: string;
-  opponentName: string;
-  opponentAbility: string;
-  pct: number;
-  step: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0, scale: 1.08 }}
-      transition={{ duration: 0.28 }}
-      className="absolute inset-0 z-[15] flex flex-col items-center justify-center overflow-hidden bg-[#0b1020] text-white"
-    >
-      {/* animated grid floor + moving scanline (GIF-style) */}
-      <div className="battle-load-grid pointer-events-none absolute inset-0" />
-      <div className="battle-load-scan pointer-events-none absolute inset-x-0 top-0 h-24" />
-
-      {/* floating GIF-style emoji FX */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {LOAD_FX.map((f, i) => (
-          <span
-            key={i}
-            className={`battle-load-float ${f.size}`}
-            style={{
-              left: f.left,
-              animationDuration: `${f.dur}s`,
-              animationDelay: `${f.delay}s`,
-            }}
-          >
-            {f.e}
-          </span>
-        ))}
-      </div>
-
-      {/* title */}
-      <h2
-        className="battle-load-slam relative z-10 flex items-center gap-3 text-4xl font-black tracking-widest sm:text-5xl"
-        style={{
-          textShadow:
-            "0 0 24px rgba(56,189,248,0.8), 0 4px 0 rgba(15,23,42,0.9)",
-        }}
-      >
-        <span className="battle-load-spin">⚔️</span>
-        SAVAŞ ALANI
-        <span className="battle-load-spin" style={{ animationDirection: "reverse" }}>
-          ⚔️
-        </span>
-      </h2>
-      <p className="relative z-10 mt-1 text-xs font-bold tracking-[0.35em] text-sky-300/80">
-        SANALİKA DUEL ARENASI
-      </p>
-
-      {/* fighter cards + VS emblem */}
-      <div className="relative z-10 mt-8 flex items-center gap-3 sm:gap-6">
-        <div className="battle-load-card flex w-32 flex-col items-center gap-2 rounded-2xl border-2 border-white/25 bg-white/5 px-3 py-4 backdrop-blur-sm sm:w-44">
-          <span className="text-4xl sm:text-5xl">{playerAbility}</span>
-          <p className="w-full truncate text-center text-sm font-extrabold sm:text-base">
-            {playerName}
-          </p>
-          <span className="rounded-full bg-sky-500/25 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-sky-300">
-            SEN
-          </span>
-        </div>
-
-        <div className="flex flex-col items-center gap-1">
-          <span
-            className="battle-load-flash text-3xl font-black text-yellow-300 sm:text-4xl"
-            style={{ textShadow: "0 0 18px rgba(250,204,21,0.9)" }}
-          >
-            VS
-          </span>
-          <span className="text-xl">⚡</span>
-        </div>
-
-        <div
-          className="battle-load-card flex w-32 flex-col items-center gap-2 rounded-2xl border-2 border-white/25 bg-white/5 px-3 py-4 backdrop-blur-sm sm:w-44"
-          style={{ animationDelay: "0.65s" }}
-        >
-          <span className="text-4xl sm:text-5xl">{opponentAbility}</span>
-          <p className="w-full truncate text-center text-sm font-extrabold sm:text-base">
-            {opponentName}
-          </p>
-          <span className="rounded-full bg-rose-500/25 px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider text-rose-300">
-            RAKİP
-          </span>
-        </div>
-      </div>
-
-      {/* progress bar */}
-      <div className="relative z-10 mt-8 w-72 sm:w-96">
-        <div className="flex items-center justify-between text-[11px] font-extrabold tracking-wider">
-          <span key={step} className="battle-load-step text-sky-300">
-            {LOAD_STEPS[step]}
-          </span>
-          <span className="tabular-nums text-yellow-300">%{pct}</span>
-        </div>
-        <div className="mt-2 h-4 overflow-hidden rounded-full border-2 border-white/20 bg-white/10">
-          <div
-            className="battle-load-bar h-full rounded-full bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 transition-[width] duration-150 ease-linear"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="mt-2 flex justify-between text-[9px] font-bold text-white/35">
-          <span>⚙️ SANALİKA GAMES</span>
-          <span>v2.0</span>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-export default function BattleScene({
+export default function PvpBattleScene({
+  battleId,
+  mySessionId,
   playerName,
   playerConfig,
   playerEquipped,
@@ -310,6 +177,8 @@ export default function BattleScene({
   opponentAbility,
   onExit,
 }: {
+  battleId: string;
+  mySessionId: string;
   playerName: string;
   playerConfig: AvatarConfig;
   playerEquipped: string[];
@@ -318,25 +187,21 @@ export default function BattleScene({
   opponentConfig: AvatarConfig;
   opponentEquipped: string[];
   opponentAbility: string;
-  onExit: (victory: boolean) => void;
+  onExit: (
+    victory: boolean,
+    reason: "win" | "lose" | "draw" | "forfeit" | "leave",
+  ) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
-  // The joystick's live direction vector.
+  const room = `battle:${battleId}`;
+  const { publish } = usePresencePublisher(room);
+  const { others } = usePresenceOthers<PvpPayload>(room, mySessionId);
+
   const joystickRef = useRef({ x: 0, y: 0 });
-  // Brawl-Stars-style attack joystick: while held, drag to pick the aim
-  // direction (dx/dy normalized to [-1, 1]). The aim guide follows it;
-  // zero means auto-aim at the enemy. Holding keeps firing on cooldown
-  // so you can shoot while walking (run-and-gun).
   const aimRef = useRef({ active: false, dx: 0, dy: 0 });
   const attackKnobRef = useRef<HTMLSpanElement>(null);
-
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
-  const projs = useRef<BattleProj[]>([]);
-  const fxs = useRef<BattleFx[]>([]);
-  const resultRef = useRef<"win" | "lose" | null>(null);
-  const onExitRef = useRef(onExit);
-  onExitRef.current = onExit;
 
   const player = useRef<BattleFighter>(
     newFighter(playerName, playerConfig, playerEquipped, playerAbility, 420, 180, 1),
@@ -344,84 +209,56 @@ export default function BattleScene({
   const bot = useRef<BattleFighter>(
     newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1),
   );
-  bot.current.atkCd = 1;
+
+  const ownProjs = useRef<PvpProj[]>([]);
+  const remoteProjs = useRef(new Map<string, PvpProj>());
+  const projs = useRef<BattleProj[]>([]); // merged render list
+  const fxs = useRef<BattleFx[]>([]);
+  const pendingEvents = useRef<PvpEvent[]>([]);
+  const eventBornAt = useRef(new Map<string, number>());
+  const seenEvents = useRef(new Map<string, number>());
+  const evSeq = useRef(0);
+  const projSeq = useRef(0);
+
+  // Latest snapshot of the remote fighter (targets for the lerp).
+  const remoteTarget = useRef({
+    x: 1280,
+    y: 920,
+    facing: -1,
+    moving: false,
+    hp: HP,
+    superCharge: 0,
+    phase: 0,
+  });
+  const lastRemoteAt = useRef(0);
+  const remoteConnected = useRef(false);
+
+  const resultRef = useRef<"win" | "lose" | "draw" | "forfeit" | null>(null);
+  const onExitRef = useRef(onExit);
+  onExitRef.current = onExit;
+  const publishRef = useRef(publish);
+  publishRef.current = publish;
+  // phase lives in a ref too so the rAF loop always sees the current value
+  const phaseRef = useRef<"loading" | "waiting" | "fight">("loading");
 
   const webglOk = useMemo(() => supportsWebGL(), []);
-
-  const [result, setResult] = useState<"win" | "lose" | null>(null);
+  const [result, setResult] = useState<"win" | "lose" | "draw" | "forfeit" | null>(null);
   const [attackHeld, setAttackHeld] = useState(false);
   const [vsShow, setVsShow] = useState(true);
-  // Gaming-style loading sequence runs before the fight unlocks.
-  const [phase, setPhase] = useState<"loading" | "fight">("loading");
+  const [phase, setPhase] = useState<"loading" | "waiting" | "fight">("loading");
+  phaseRef.current = phase;
   const startedRef = useRef(false);
   const [loadPct, setLoadPct] = useState(0);
   const [loadStep, setLoadStep] = useState(0);
-  const [hud, setHud] = useState({
-    ph: HP,
-    ohp: HP,
-    pc: 0,
-    oc: 0,
-    atkReady: true,
-  });
-  const lastHudRef = useRef({
-    ph: -1,
-    ohp: -1,
-    pc: -1,
-    oc: -1,
-    atkReady: false,
-  });
+  const [hud, setHud] = useState({ ph: HP, ohp: HP, pc: 0, oc: 0, atkReady: true });
+  const lastHudRef = useRef({ ph: -1, ohp: -1, pc: -1, oc: -1, atkReady: false });
   const actionsRef = useRef({
     attack: () => {},
     super: () => {},
     click: (_x: number, _y: number) => {},
   });
 
-  // Animated VS banner plays once the loading sequence finishes.
-  useEffect(() => {
-    if (phase !== "fight") return;
-    const t = window.setTimeout(() => setVsShow(false), 1800);
-    return () => window.clearTimeout(t);
-  }, [phase]);
-
-  // Gaming-style loading on arena entry: animated progress bar with cycling
-  // status lines, then an orchestral "VS" sting as the fight unlocks.
-  useEffect(() => {
-    if (phase !== "loading") return;
-    const start = performance.now();
-    const DURATION = 4200;
-    const STEPS = LOAD_STEPS.length;
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / DURATION, 1);
-      setLoadPct(Math.round(t * 100));
-      setLoadStep(Math.min(Math.floor(t * STEPS), STEPS - 1));
-      if (t < 1) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        startedRef.current = true;
-        playSound("vs");
-        setPhase("fight");
-      }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [phase]);
-
-  const clamp = (v: number, a: number, b: number) =>
-    Math.min(Math.max(v, a), b);
-
-  const hitsObstacle = (cx: number, cy: number, r: number) =>
-    BATTLE_OBSTACLES.some((c) => {
-      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
-      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
-      const dx = cx - nx;
-      const dy = cy - ny;
-      return dx * dx + dy * dy < r * r;
-    });
-
-  const chargeGain = (f: BattleFighter, amt: number) => {
-    f.superCharge = Math.min(1, f.superCharge + amt);
-  };
+  /* ------------------------- local FX helpers ------------------------- */
 
   const addFx = (fx: BattleFx) => {
     fxs.current.push(fx);
@@ -431,27 +268,14 @@ export default function BattleScene({
     addFx({ kind: "text", x, y, ttl: 0.9, maxTtl: 0.9, text, color });
   };
 
-  const circleFx = (
-    x: number,
-    y: number,
-    grow: number,
-    color: string,
-    ttl: number,
-  ) => {
-    addFx({ kind: "ring", x, y, ttl, maxTtl: ttl, grow, color });
-  };
-
-  const burstFx = (
-    x: number,
-    y: number,
-    grow: number,
-    color: string,
-    ttl: number,
-  ) => {
+  const burstFx = (x: number, y: number, grow: number, color: string, ttl: number) => {
     addFx({ kind: "burst", x, y, ttl, maxTtl: ttl, grow, color });
   };
 
-  /** Spawn a cloud of soft smoke puffs that rise and spread. */
+  const circleFx = (x: number, y: number, grow: number, color: string, ttl: number) => {
+    addFx({ kind: "ring", x, y, ttl, maxTtl: ttl, grow, color });
+  };
+
   const smokeFx = (x: number, y: number, count: number, grow = 100) => {
     for (let i = 0; i < count; i++) {
       const life = 0.7 + Math.random() * 0.5;
@@ -467,23 +291,127 @@ export default function BattleScene({
     }
   };
 
+  /** I took damage (a remote hit event landed on me). */
+  const damageMe = (dmg: number) => {
+    const p = player.current;
+    if (resultRef.current || p.hp <= 0) return;
+    p.hp = Math.max(0, p.hp - dmg);
+    p.lastHitAt = performance.now();
+    floatText(p.x, p.y - 130, `-${dmg}`, "#ff6b6b");
+    playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
+    playSound("hit", { volume: 0.35, rate: 1.5 });
+    p.superCharge = Math.min(1, p.superCharge + 0.12);
+    const arenaEl = arenaRef.current;
+    if (arenaEl) {
+      arenaEl.classList.remove("battle-shake");
+      void arenaEl.getBoundingClientRect();
+      arenaEl.classList.add("battle-shake");
+    }
+  };
+
+  /** Apply a one-shot combat event sent by the other phone. */
+  const applyRemoteEvent = (ev: PvpEvent) => {
+    const p = player.current;
+    if (resultRef.current || p.hp <= 0) return;
+    switch (ev.type) {
+      case "hit":
+        damageMe(ev.dmg);
+        break;
+      case "beam": {
+        const x2 = ev.x1 + Math.cos(ev.angle) * ev.len;
+        const y2 = ev.y1 + Math.sin(ev.angle) * ev.len;
+        addFx({ kind: "beam", x1: ev.x1, y1: ev.y1, x2, y2, ttl: 0.32, maxTtl: 0.32 });
+        if (ev.hit) damageMe(ev.dmg);
+        break;
+      }
+      case "dashHit":
+        damageMe(ev.dmg);
+        break;
+      case "explode": {
+        burstFx(ev.x, ev.y, ev.r, "#fdba74", 0.45);
+        smokeFx(ev.x, ev.y, 7, 120);
+        if (ev.hit) damageMe(ev.dmg);
+        break;
+      }
+    }
+  };
+
+  /* --------------------- incoming network handling -------------------- */
+
+  /** Announce myself the moment the arena mounts so the opponent sees me. */
+  useEffect(() => {
+    const p = player.current;
+    publishRef.current({
+      x: p.x,
+      y: p.y,
+      facing: p.facing,
+      moving: false,
+      hp: HP,
+      superCharge: 0,
+      dashT: 0,
+      dashVX: 0,
+      dashVY: 0,
+      phase: 0,
+      projs: [],
+      events: [],
+      ts: performance.now(),
+    });
+  }, []);
+
+  useEffect(() => {
+    const d = others[0]?.data;
+    if (!d || typeof d.x !== "number") return;
+    remoteConnected.current = true;
+    lastRemoteAt.current = performance.now();
+    remoteTarget.current = {
+      x: d.x,
+      y: d.y,
+      facing: typeof d.facing === "number" ? d.facing : 1,
+      moving: !!d.moving,
+      hp: d.hp,
+      superCharge: d.superCharge,
+      phase: d.phase,
+    };
+    // reconcile remote projectiles with the snapshot (corrects drift)
+    const next = new Map<string, PvpProj>();
+    for (const pr of d.projs ?? []) {
+      next.set(pr.id, { ...pr });
+    }
+    remoteProjs.current = next;
+    // apply unseen one-shot events
+    for (const ev of d.events ?? []) {
+      if (!ev || !ev.id) continue;
+      if (seenEvents.current.has(ev.id)) continue;
+      seenEvents.current.set(ev.id, performance.now());
+      applyRemoteEvent(ev);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [others]);
+
+  /* ------------------------- combat actions --------------------------- */
+
+  const pushEvent = (ev: DistributiveOmit<PvpEvent, "id">) => {
+    const id = `ev${evSeq.current++}`;
+    pendingEvents.current.push({ id, ...ev } as PvpEvent);
+    eventBornAt.current.set(id, performance.now());
+  };
+
   const spawnProj = (
-    owner: BattleFighter,
-    ownerKey: "player" | "bot",
     tx: number,
     ty: number,
     dmg: number,
     opts: { r?: number; pierce?: boolean; speed?: number; explodeR?: number } = {},
   ) => {
-    const dx = tx - owner.x;
-    const dy = ty - owner.y;
+    const p = player.current;
+    const dx = tx - p.x;
+    const dy = ty - p.y;
     const d = Math.hypot(dx, dy) || 1;
     const speed = opts.speed ?? PROJ_SPEED;
     playSound("shoot", { volume: 0.6 });
-    projs.current.push({
-      owner: ownerKey,
-      x: owner.x,
-      y: owner.y,
+    ownProjs.current.push({
+      id: `pr${projSeq.current++}`,
+      x: p.x,
+      y: p.y,
       vx: (dx / d) * speed,
       vy: (dy / d) * speed,
       dmg,
@@ -492,158 +420,123 @@ export default function BattleScene({
       pierce: opts.pierce ?? false,
       explodeR: opts.explodeR,
     });
-  };
-
-  const damageEnemy = (attacker: BattleFighter, target: BattleFighter, dmg: number) => {
-    if (target.hp <= 0 || resultRef.current) return;
-    target.hp = Math.max(0, target.hp - dmg);
-    target.lastHitAt = performance.now();
-    floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
-    chargeGain(attacker, 0.26);
-    chargeGain(target, 0.12);
-    // Distinct audio for getting hurt vs. dealing damage.
-    if (target === player.current) {
-      playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
-      playSound("hit", { volume: 0.35, rate: 1.5 });
-    } else {
-      playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
-    }
-    // GIF-style feedback: arena shake on every hit.
-    const arenaEl = arenaRef.current;
-    if (arenaEl) {
-      arenaEl.classList.remove("battle-shake");
-      void arenaEl.getBoundingClientRect();
-      arenaEl.classList.add("battle-shake");
-    }
-    if (target.hp <= 0) {
-      burstFx(target.x, target.y - 40, 120, "#ffffff", 0.5);
-      smokeFx(target.x, target.y - 40, 9, 150);
-      endBattle(attacker === player.current ? "win" : "lose");
+    if (ownProjs.current.length > 24) {
+      ownProjs.current.splice(0, ownProjs.current.length - 24);
     }
   };
 
-  const explodeAt = (pr: BattleProj) => {
+  /** My fireball detonated — FX here, damage event to the target. */
+  const explodeAt = (pr: PvpProj) => {
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
     burstFx(pr.x, pr.y, r, "#fdba74", 0.45);
     smokeFx(pr.x, pr.y, 7, 120);
-    const target = pr.owner === "player" ? bot.current : player.current;
-    const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
-    if (dist < r) {
-      damageEnemy(
-        pr.owner === "player" ? player.current : bot.current,
-        target,
-        pr.dmg,
-      );
+    const b = bot.current;
+    const hit = Math.hypot(b.x - pr.x, b.y - pr.y) < r;
+    pushEvent({ type: "explode", x: pr.x, y: pr.y, r, dmg: pr.dmg, hit });
+    if (hit) {
+      floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
+      b.lastHitAt = performance.now();
+      player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
     }
   };
 
-  const beamAttack = (f: BattleFighter, enemy: BattleFighter) => {
-    const ang = Math.atan2(enemy.y - f.y, enemy.x - f.x);
+  const beamAttack = () => {
+    const p = player.current;
+    const b = bot.current;
+    const ang = Math.atan2(b.y - p.y, b.x - p.x);
     const len = 560;
-    const ex = f.x + Math.cos(ang) * len;
-    const ey = f.y + Math.sin(ang) * len;
-    addFx({ kind: "beam", x1: f.x, y1: f.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
-    const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
-    const a1 = Math.atan2(enemy.y - f.y, enemy.x - f.x);
-    let da = Math.abs(a1 - ang);
-    if (da > Math.PI) da = Math.PI * 2 - da;
-    if (dist < len && da < 0.42) {
-      damageEnemy(f, enemy, 300);
+    const ex = p.x + Math.cos(ang) * len;
+    const ey = p.y + Math.sin(ang) * len;
+    addFx({ kind: "beam", x1: p.x, y1: p.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
+    const dist = Math.hypot(b.x - p.x, b.y - p.y);
+    const hit = dist < len;
+    pushEvent({ type: "beam", x1: p.x, y1: p.y, angle: ang, len, dmg: 300, hit });
+    if (hit) {
+      floatText(b.x, b.y - 130, "-300", "#ff6b6b");
+      b.lastHitAt = performance.now();
     }
   };
 
-  const startDash = (f: BattleFighter, enemy: BattleFighter) => {
-    const ang = Math.atan2(enemy.y - f.y, enemy.x - f.x);
-    f.dashVX = Math.cos(ang);
-    f.dashVY = Math.sin(ang);
-    f.dashT = 0.32;
-    f.dashHit = false;
-    circleFx(f.x, f.y - 40, 60, "#a5f3fc", 0.35);
-    circleFx(f.x, f.y - 60, 40, "#e0f2fe", 0.3);
+  const startDash = () => {
+    const p = player.current;
+    const b = bot.current;
+    const ang = Math.atan2(b.y - p.y, b.x - p.x);
+    p.dashVX = Math.cos(ang);
+    p.dashVY = Math.sin(ang);
+    p.dashT = 0.32;
+    p.dashHit = false;
+    circleFx(p.x, p.y - 40, 60, "#a5f3fc", 0.35);
+    circleFx(p.x, p.y - 60, 40, "#e0f2fe", 0.3);
   };
 
-  const fireballAttack = (f: BattleFighter, enemy: BattleFighter) => {
-    spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 320, {
-      r: 17,
-      speed: 400,
-      explodeR: 130,
-    });
-  };
-
-  const useSuper = (f: BattleFighter, enemy: BattleFighter) => {
-    f.superCharge = 0;
+  const useSuper = () => {
+    const p = player.current;
+    p.superCharge = 0;
     playSound("super", { volume: 0.9 });
-    smokeFx(f.x, f.y - 20, 4, 80);
-    switch (f.ability.id) {
+    smokeFx(p.x, p.y - 20, 4, 80);
+    switch (p.ability.id) {
       case "isik":
-        beamAttack(f, enemy);
+        beamAttack();
         break;
       case "simsek":
         playSound("dash");
-        startDash(f, enemy);
+        startDash();
         break;
       case "sifa": {
-        const heal = Math.round(f.maxHp * 0.45);
-        f.hp = Math.min(f.maxHp, f.hp + heal);
-        floatText(f.x, f.y - 135, `+${heal}`, "#4ade80");
-        circleFx(f.x, f.y - 40, 70, "#86efac", 0.5);
-        circleFx(f.x, f.y - 40, 45, "#bbf7d0", 0.4);
+        const heal = Math.round(p.maxHp * 0.45);
+        p.hp = Math.min(p.maxHp, p.hp + heal);
+        floatText(p.x, p.y - 135, `+${heal}`, "#4ade80");
+        circleFx(p.x, p.y - 40, 70, "#86efac", 0.5);
+        circleFx(p.x, p.y - 40, 45, "#bbf7d0", 0.4);
         break;
       }
       case "ates":
-        fireballAttack(f, enemy);
+        spawnProj(bot.current.x, bot.current.y, 320, { r: 17, speed: 400, explodeR: 130 });
         break;
-      default: // temel — piercing strong shot
-        spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 240, {
-          r: 20,
-          pierce: true,
-          speed: 560,
-        });
+      default:
+        spawnProj(bot.current.x, bot.current.y, 240, { r: 20, pierce: true, speed: 560 });
     }
   };
 
   const tryAttack = useCallback((aimX?: number, aimY?: number) => {
     const p = player.current;
-    const b = bot.current;
-    if (
-      !startedRef.current ||
-      resultRef.current ||
-      p.hp <= 0 ||
-      p.dashT > 0 ||
-      p.atkCd > 0
-    )
+    if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.atkCd > 0)
       return;
     p.atkCd = ATK_CD;
     let tx: number;
     let ty: number;
     const aimMag = Math.hypot(aimX ?? 0, aimY ?? 0);
     if (aimMag > 0.15) {
-      // aimed shot — fire along the dragged joystick direction
       tx = p.x + (aimX! / aimMag) * 120;
       ty = p.y + (aimY! / aimMag) * 120;
     } else {
-      // no drag (or keyboard) — auto-aim at the enemy
-      tx = b.x;
-      ty = b.y - 40;
+      tx = bot.current.x;
+      ty = bot.current.y - 40;
     }
     p.facing = tx >= p.x ? 1 : -1;
-    spawnProj(p, "player", tx, ty, BASE_DMG);
+    spawnProj(tx, ty, BASE_DMG);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const trySuper = useCallback(() => {
     const p = player.current;
-    const b = bot.current;
-    if (
-      !startedRef.current ||
-      resultRef.current ||
-      p.hp <= 0 ||
-      p.dashT > 0 ||
-      p.superCharge < 1
-    )
+    if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.superCharge < 1)
       return;
-    useSuper(p, b);
+    useSuper();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const clamp = (v: number, a: number, b: number) => Math.min(Math.max(v, a), b);
+
+  const hitsObstacle = (cx: number, cy: number, r: number) =>
+    BATTLE_OBSTACLES.some((c) => {
+      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
+      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
+      const dx = cx - nx;
+      const dy = cy - ny;
+      return dx * dx + dy * dy < r * r;
+    });
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
     let nx = clamp(f.x + dx, 40, ARENA_W - 40);
@@ -655,20 +548,21 @@ export default function BattleScene({
     if (f.moving) f.phase += dt * 10;
   };
 
-  const endBattle = (win: "win" | "lose") => {
+  const endBattle = (win: "win" | "lose" | "draw" | "forfeit") => {
     if (resultRef.current) return;
     resultRef.current = win;
     setResult(win);
     stopBattleAmbience();
-    playSound(win === "win" ? "win" : "lose");
+    if (win === "win") playSound("win");
+    else if (win === "lose") playSound("lose");
   };
 
-  // ---- main loop ----
+  /* --------------------------- main loop ------------------------------ */
+
   useEffect(() => {
-    startBattleAmbience();
     let superReadyPlayed = false;
     let stepAcc = 0;
-    let botStepAcc = 0;
+    let lastPub = 0;
     const onKeyDown = (e: KeyboardEvent) => {
       if (
         [
@@ -714,20 +608,55 @@ export default function BattleScene({
     const step = (dt: number) => {
       const p = player.current;
       const b = bot.current;
-      // freeze the simulation until the loading sequence finishes
-      if (!startedRef.current || resultRef.current) return;
+      if (resultRef.current) return;
+
+      // --- remote fighter: lerp toward the latest snapshot ---
+      const t = remoteTarget.current;
+      const k = Math.min(1, dt * 9);
+      b.x += (t.x - b.x) * k;
+      b.y += (t.y - b.y) * k;
+      b.facing = t.facing;
+      b.moving = t.moving;
+      if (t.moving) b.phase += dt * 10;
+      if (t.hp < b.hp - 1) {
+        // enemy took a hit on their phone — reflect it here
+        const diff = Math.round(b.hp - t.hp);
+        b.lastHitAt = performance.now();
+        floatText(b.x, b.y - 130, `-${diff}`, "#ff6b6b");
+        playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
+      }
+      b.hp = t.hp;
+      b.superCharge = t.superCharge;
+      b.maxHp = HP;
+
+      // --- remote projectiles: extrapolate between snapshots ---
+      for (const pr of remoteProjs.current.values()) {
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+        pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
+        if (pr.travelled >= PROJ_RANGE) remoteProjs.current.delete(pr.id);
+      }
+
+      // freeze the sim until both fighters are connected + loading finished
+      if (phaseRef.current !== "fight" || !startedRef.current) return;
+
+      // --- disconnect guard ---
+      if (
+        remoteConnected.current &&
+        performance.now() - lastRemoteAt.current > DISCONNECT_MS
+      ) {
+        endBattle("forfeit");
+        return;
+      }
 
       p.atkCd = Math.max(0, p.atkCd - dt);
-      b.atkCd = Math.max(0, b.atkCd - dt);
 
-      // Run-and-gun: keep firing while the attack button is held (or Space
-      // is down) so you can shoot while walking with the joystick. The shot
-      // follows the dragged aim direction; zero means auto-aim.
+      // run-and-gun: hold the attack button (or Space) to keep firing
       if (aimRef.current.active && p.atkCd <= 0) {
         tryAttack(aimRef.current.dx, aimRef.current.dy);
       }
 
-      // --- player movement (keys + click target) ---
+      // --- movement (keys + joystick + click target) ---
       let vx = 0;
       let vy = 0;
       const keys = keysRef.current;
@@ -741,7 +670,6 @@ export default function BattleScene({
         vy /= l;
         clickTargetRef.current = null;
       } else {
-        // virtual joystick (mobile) — live direction while dragging
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
         if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
@@ -765,128 +693,76 @@ export default function BattleScene({
         moveFighter(p, p.dashVX * 820 * dt, p.dashVY * 820 * dt, dt);
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < 90) {
           p.dashHit = true;
-          damageEnemy(p, b, 200);
+          pushEvent({ type: "dashHit", dmg: 200 });
+          floatText(b.x, b.y - 130, "-200", "#ff6b6b");
+          burstFx(b.x, b.y - 40, 90, "#e0f2fe", 0.4);
+          b.lastHitAt = performance.now();
+          playSound("hit", { volume: 0.9, rate: 1.1 });
+          player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
         moveFighter(p, vx * 200 * dt, vy * 200 * dt, dt);
       }
 
-      // --- footstep ticks while walking (continuous battle audio) ---
+      // --- footsteps while walking ---
       if (p.moving && p.dashT <= 0) {
         stepAcc += dt;
         if (stepAcc > 0.3) {
           stepAcc = 0;
-          playSound("step", {
-            volume: 0.16,
-            rate: 0.8 + Math.random() * 0.5,
-          });
-          smokeFx(p.x, p.y - 6, 2, 20); // footstep dust
+          playSound("step", { volume: 0.16, rate: 0.8 + Math.random() * 0.5 });
+          smokeFx(p.x, p.y - 6, 2, 20);
         }
       } else {
         stepAcc = 0;
       }
-      if (b.moving && b.dashT <= 0) {
-        botStepAcc += dt;
-        if (botStepAcc > 0.34) {
-          botStepAcc = 0;
-          playSound("step", { volume: 0.08, rate: 0.7 + Math.random() * 0.4 });
-          smokeFx(b.x, b.y - 6, 2, 20); // footstep dust
-        }
-      } else {
-        botStepAcc = 0;
-      }
 
-      // --- bot AI ---
-      if (b.dashT > 0) {
-        b.dashT -= dt;
-        moveFighter(b, b.dashVX * 820 * dt, b.dashVY * 820 * dt, dt);
-        if (!b.dashHit && Math.hypot(p.x - b.x, p.y - b.y) < 90) {
-          b.dashHit = true;
-          damageEnemy(b, p, 200);
-        }
-        if (b.dashT <= 0) b.dashHit = false;
-      } else {
-        const dx = p.x - b.x;
-        const dy = p.y - b.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        let mx = 0;
-        let my = 0;
-        if (dist > 340) {
-          mx = dx / dist;
-          my = dy / dist;
-        } else if (dist < 200) {
-          mx = -dx / dist;
-          my = -dy / dist;
-        } else {
-          mx = dy / dist;
-          my = -dx / dist;
-        }
-        moveFighter(b, mx * 140 * dt, my * 140 * dt, dt);
-        b.facing = dx > 0 ? 1 : -1;
-        if (b.atkCd <= 0 && dist < 640) {
-          b.atkCd = 1.05;
-          const err = (Math.random() - 0.5) * 0.16;
-          spawnProj(
-            b,
-            "bot",
-            p.x + Math.cos(Math.atan2(dy, dx) + err) * 60,
-            p.y + Math.sin(Math.atan2(dy, dx) + err) * 60,
-            BASE_DMG,
-          );
-        }
-        if (b.superCharge >= 1 && dist < 680) {
-          useSuper(b, p);
-        }
-      }
-
-      // --- projectiles ---
-      for (let i = projs.current.length - 1; i >= 0; i--) {
-        const pr = projs.current[i];
+      // --- my projectiles ---
+      for (let i = ownProjs.current.length - 1; i >= 0; i--) {
+        const pr = ownProjs.current[i];
         pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
         const nx = pr.x + pr.vx * dt;
         const ny = pr.y + pr.vy * dt;
         if (hitsObstacle(nx, ny, pr.r)) {
-          // projectiles smack into obstacles — little thud + sparks
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
           burstFx(nx, ny, 55, "#d9c29a", 0.3);
-          projs.current.splice(i, 1);
+          ownProjs.current.splice(i, 1);
           continue;
         }
         pr.x = nx;
         pr.y = ny;
-        const target = pr.owner === "player" ? bot.current : player.current;
-        const hitDist = Math.hypot(target.x - pr.x, target.y - pr.y);
+        const hitDist = Math.hypot(b.x - pr.x, b.y - pr.y);
         if (hitDist < pr.r + FIGHTER_R) {
           if (pr.explodeR) {
             explodeAt(pr);
           } else {
-            damageEnemy(
-              pr.owner === "player" ? player.current : bot.current,
-              target,
-              pr.dmg,
-            );
+            pushEvent({ type: "hit", dmg: pr.dmg });
+            floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
+            b.lastHitAt = performance.now();
+            burstFx(pr.x, pr.y - 40, 60, "#fda4af", 0.3);
+            playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
+            player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
           }
           if (!pr.pierce) {
-            projs.current.splice(i, 1);
+            ownProjs.current.splice(i, 1);
             continue;
           }
         }
         if (pr.explodeR && pr.travelled >= 720) {
           explodeAt(pr);
-          projs.current.splice(i, 1);
+          ownProjs.current.splice(i, 1);
         } else if (pr.travelled >= PROJ_RANGE && !pr.explodeR) {
-          projs.current.splice(i, 1);
+          ownProjs.current.splice(i, 1);
         }
       }
 
-      // --- one-shot effects ---
+      // --- one-shot FX decay ---
       for (let i = fxs.current.length - 1; i >= 0; i--) {
         fxs.current[i].ttl -= dt;
         if (fxs.current[i].ttl <= 0) fxs.current.splice(i, 1);
       }
 
-      // --- super ready jingle (fires once when the bar fills) ---
+      // --- super ready jingle ---
       if (p.superCharge >= 1 && !superReadyPlayed) {
         superReadyPlayed = true;
         playSound("whoosh", { volume: 0.65 });
@@ -894,22 +770,11 @@ export default function BattleScene({
         superReadyPlayed = false;
       }
 
-      // --- HUD (React, only when values changed) ---
-      const ph = Math.round(p.hp / 5) * 5;
-      const ohp = Math.round(b.hp / 5) * 5;
-      const pc = Math.round(p.superCharge * 20) / 20;
-      const oc = Math.round(b.superCharge * 20) / 20;
-      const atkReady = p.atkCd <= 0;
-      const lh = lastHudRef.current;
-      if (
-        ph !== lh.ph ||
-        ohp !== lh.ohp ||
-        pc !== lh.pc ||
-        oc !== lh.oc ||
-        atkReady !== lh.atkReady
-      ) {
-        lastHudRef.current = { ph, ohp, pc, oc, atkReady };
-        setHud({ ph, ohp, pc, oc, atkReady });
+      // --- result checks ---
+      if (p.hp <= 0) {
+        endBattle("lose");
+      } else if (b.hp <= 0) {
+        endBattle(p.hp > 0 ? "win" : "draw");
       }
     };
 
@@ -918,8 +783,83 @@ export default function BattleScene({
         const dt = Math.min((now - last) / 1000, 0.05);
         last = now;
         step(dt);
+
+        // merged render list: my projectiles (blue) + remote (red)
+        const merged: BattleProj[] = [];
+        for (const pr of ownProjs.current) {
+          merged.push({
+            owner: "player",
+            x: pr.x,
+            y: pr.y,
+            vx: pr.vx,
+            vy: pr.vy,
+            dmg: pr.dmg,
+            r: pr.r,
+            travelled: pr.travelled,
+            pierce: pr.pierce,
+            explodeR: pr.explodeR,
+          });
+        }
+        for (const pr of remoteProjs.current.values()) {
+          merged.push({
+            owner: "bot",
+            x: pr.x,
+            y: pr.y,
+            vx: pr.vx,
+            vy: pr.vy,
+            dmg: pr.dmg,
+            r: pr.r,
+            travelled: pr.travelled,
+            pierce: pr.pierce,
+            explodeR: pr.explodeR,
+          });
+        }
+        projs.current = merged.slice(0, 26);
+
+        // drop expired events from the publish queue + prune seen-ids
+        const cutoff = performance.now() - EVENT_TTL_MS;
+        pendingEvents.current = pendingEvents.current.filter((e) => {
+          const born = eventBornAt.current.get(e.id);
+          return born === undefined || born > cutoff;
+        });
+        for (const [id, ts] of seenEvents.current) {
+          if (ts < cutoff) seenEvents.current.delete(id);
+        }
+
+        // publish my live state at ~10 Hz
+        if (now - lastPub > PUBLISH_MS) {
+          lastPub = now;
+          const p = player.current;
+          publishRef.current({
+            x: p.x,
+            y: p.y,
+            facing: p.facing,
+            moving: p.moving,
+            hp: Math.round(p.hp),
+            superCharge: p.superCharge,
+            dashT: p.dashT,
+            dashVX: p.dashVX,
+            dashVY: p.dashVY,
+            phase: p.phase,
+            projs: ownProjs.current.map((pr) => ({ ...pr })),
+            events: pendingEvents.current.map((e) => ({ ...e })),
+            ts: now,
+          });
+        }
+
+        // HUD (React, only when values changed)
+        const ph = Math.round(player.current.hp / 5) * 5;
+        const ohp = Math.round(bot.current.hp / 5) * 5;
+        const pc = Math.round(player.current.superCharge * 20) / 20;
+        const oc = Math.round(bot.current.superCharge * 20) / 20;
+        const atkReady = player.current.atkCd <= 0;
+        const lh = lastHudRef.current;
+        if (ph !== lh.ph || ohp !== lh.ohp || pc !== lh.pc || oc !== lh.oc || atkReady !== lh.atkReady) {
+          lastHudRef.current = { ph, ohp, pc, oc, atkReady };
+          setHud({ ph, ohp, pc, oc, atkReady });
+        }
       } catch (err) {
-        console.error("Savaş döngüsü hatası:", err);
+        console.error("PvP döngüsü hatası:", err);
       }
       raf = requestAnimationFrame(loop);
     };
@@ -930,10 +870,78 @@ export default function BattleScene({
       window.removeEventListener("keyup", onKeyUp);
       stopBattleAmbience();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tryAttack, trySuper]);
+
+  // ---- gaming loading sequence, then wait for the opponent to connect ----
+  useEffect(() => {
+    if (phase !== "loading") return;
+    const start = performance.now();
+    const DURATION = 3000;
+    const STEPS = 4;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / DURATION, 1);
+      setLoadPct(Math.round(t * 100));
+      setLoadStep(Math.min(Math.floor(t * STEPS), STEPS - 1));
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        startedRef.current = true;
+        if (remoteConnected.current) {
+          playSound("vs");
+          setPhase("fight");
+        } else {
+          setPhase("waiting");
+        }
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [phase]);
+
+  // when waiting, start the fight as soon as the opponent appears
+  useEffect(() => {
+    if (phase !== "waiting") return;
+    if (remoteConnected.current) {
+      playSound("vs");
+      setPhase("fight");
+    }
+  }, [phase, others]);
+
+  // battle ambience once the fight unlocks; VS banner auto-hides
+  useEffect(() => {
+    if (phase !== "fight") return;
+    void startBattleAmbience();
+    const t = window.setTimeout(() => setVsShow(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [phase]);
 
   const abilityEmoji = abilityOf(playerAbility).emoji;
   const oppAbilityEmoji = abilityOf(opponentAbility).emoji;
+
+  const RESULT_UI: Record<string, { emoji: string; title: string; msg: string }> = {
+    win: {
+      emoji: "🏆",
+      title: "Zafer!",
+      msg: `${opponentName} yere serildi! Kazanç hesabına yüklendi (+150 SP).`,
+    },
+    lose: {
+      emoji: "💀",
+      title: "Yenildin",
+      msg: `${opponentName} seni yendi. Tekrar dene — yeteneklerini mağazadan güçlendirebilirsin!`,
+    },
+    draw: {
+      emoji: "🤝",
+      title: "Berabere!",
+      msg: "İkiniz de aynı anda yere serildiniz. Rövanş ne zaman?",
+    },
+    forfeit: {
+      emoji: "📡",
+      title: "Rakip koptu",
+      msg: `${opponentName} bağlantısı koptu. Caddeye dönebilirsin.`,
+    },
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-2 backdrop-blur-sm sm:p-4">
@@ -964,13 +972,13 @@ export default function BattleScene({
 
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold">
-              <Swords className="size-3.5" /> SAVAŞ
+              <Swords className="size-3.5" /> PVP
             </span>
             <Button
               size="icon-sm"
               variant="ghost"
               aria-label="Savaşı bırak"
-              onClick={() => onExitRef.current(false)}
+              onClick={() => onExitRef.current(false, "leave")}
               className="text-slate-300 hover:bg-white/10 hover:text-white"
             >
               <X className="size-4" />
@@ -996,7 +1004,7 @@ export default function BattleScene({
           </div>
         </div>
 
-        {/* arena — 3D scene */}
+        {/* arena */}
         <main
           ref={arenaRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
@@ -1034,10 +1042,9 @@ export default function BattleScene({
             />
           )}
 
-          {/* cinematic vignette — pulls the eye to the action */}
           <div className="arena-vignette pointer-events-none absolute inset-0 z-[6]" />
 
-          {/* animated VS intro banner — GIF-style entrance */}
+          {/* VS intro banner */}
           {vsShow && phase === "fight" && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
               <div className="vs-banner flex flex-col items-center gap-2 rounded-3xl border-4 border-yellow-300/80 bg-[#151b2e]/85 px-10 py-6 text-center text-white shadow-2xl">
@@ -1047,11 +1054,14 @@ export default function BattleScene({
                 <span className="text-sm font-extrabold">
                   {playerName} vs {opponentName}
                 </span>
+                <span className="text-[11px] font-extrabold tracking-wider text-sky-300/90">
+                  GERÇEK ZAMANLI PVP
+                </span>
               </div>
             </div>
           )}
 
-          {/* gaming-style loading screen on entry */}
+          {/* loading / waiting screens */}
           <AnimatePresence>
             {phase === "loading" && (
               <BattleLoading
@@ -1063,19 +1073,35 @@ export default function BattleScene({
                 step={loadStep}
               />
             )}
+            {phase === "waiting" && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-[15] flex flex-col items-center justify-center gap-4 bg-[#0b1020]/95 text-white"
+              >
+                <span className="battle-load-spin text-5xl">⏳</span>
+                <h3 className="text-xl font-extrabold tracking-widest text-sky-300">
+                  RAKİP BEKLENİYOR…
+                </h3>
+                <p className="max-w-xs text-center text-sm font-semibold text-white/60">
+                  {opponentName} savaş alanına katılıyor. İkisi de hazır olunca
+                  dövüş başlar!
+                </p>
+                <div className="h-1.5 w-56 overflow-hidden rounded-full bg-white/10">
+                  <div className="battle-load-bar h-full w-full origin-left animate-pulse rounded-full bg-gradient-to-r from-sky-400 to-blue-500" />
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           {/* controls */}
-          {/* virtual joystick — drag to move (works with mouse + touch) */}
           <BattleJoystick stickRef={joystickRef} />
 
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
             <button
               type="button"
               onPointerDown={(e) => {
-                // Fire instantly (even while holding the joystick) instead of
-                // waiting for a click, and never let the tap fall through to
-                // the arena's tap-to-move plane.
                 e.stopPropagation();
                 e.preventDefault();
                 actionsRef.current.super();
@@ -1094,10 +1120,6 @@ export default function BattleScene({
             <button
               type="button"
               onPointerDown={(e) => {
-                // Press the attack button, then drag to aim (Brawl Stars
-                // style): the aim guide follows your finger and releasing
-                // fires in that direction. Holding still keeps firing on
-                // cooldown so you can shoot while walking with the joystick.
                 e.stopPropagation();
                 e.preventDefault();
                 e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -1121,8 +1143,6 @@ export default function BattleScene({
                 }
                 aimRef.current.dx = dx / R;
                 aimRef.current.dy = dy / R;
-                // turn the fighter toward the aim direction so the
-                // direction is obvious while aiming
                 if (Math.abs(aimRef.current.dx) > 0.2) {
                   player.current.facing = aimRef.current.dx >= 0 ? 1 : -1;
                 }
@@ -1130,7 +1150,6 @@ export default function BattleScene({
                   attackKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
               }}
               onPointerUp={() => {
-                // release — fire the aimed (or auto-aimed) shot
                 tryAttack(aimRef.current.dx, aimRef.current.dy);
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
@@ -1157,7 +1176,6 @@ export default function BattleScene({
               }`}
             >
               💥
-              {/* aim knob — slides in the dragged direction */}
               <span
                 ref={attackKnobRef}
                 className="pointer-events-none absolute top-1/2 left-1/2 -ml-3.5 -mt-3.5 flex size-7 items-center justify-center rounded-full border-2 border-white bg-white/85 text-[10px] shadow-lg"
@@ -1203,18 +1221,25 @@ export default function BattleScene({
                 transition={{ type: "spring", stiffness: 260, damping: 20 }}
                 className="w-full max-w-sm rounded-3xl border-2 border-white/20 bg-[#151b2e] p-8 text-center text-white shadow-2xl"
               >
-                <div className="text-6xl">{result === "win" ? "🏆" : "💀"}</div>
+                <div className="text-6xl">{RESULT_UI[result].emoji}</div>
                 <h2 className="mt-3 text-2xl font-extrabold">
-                  {result === "win" ? "Zafer!" : "Yenildin"}
+                  {RESULT_UI[result].title}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-400">
-                  {result === "win"
-                    ? `${opponentName} yere serildi! Kazanç hesabına yüklendi (+150 SP).`
-                    : `${opponentName} seni yendi. Tekrar dene — yeteneklerini mağazadan güçlendirebilirsin!`}
+                  {RESULT_UI[result].msg}
                 </p>
                 <Button
                   className="mt-6 w-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-base font-extrabold text-white shadow-lg hover:from-indigo-400 hover:to-fuchsia-400"
-                  onClick={() => onExitRef.current(result === "win")}
+                  onClick={() =>
+                    onExitRef.current(
+                      result === "win",
+                      result === "win"
+                        ? "win"
+                        : result === "lose"
+                          ? "lose"
+                          : (result as "draw" | "forfeit"),
+                    )
+                  }
                 >
                   <Trophy className="size-4" /> Caddeye Dön
                 </Button>

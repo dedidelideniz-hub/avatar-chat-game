@@ -4,9 +4,11 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import BattleScene from "@/components/world/BattleScene";
+import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   usePresenceOthers,
   usePresencePublisher,
@@ -178,6 +180,22 @@ interface WorldPresence {
   y: number;
   facing: number;
   moving: boolean;
+  inBattle?: boolean;
+}
+
+/** Fighter identity captured at invite time (name / avatar / equipped / super). */
+interface FighterInfo {
+  name: string;
+  config: AvatarConfig;
+  equipped: string[];
+  ability: string;
+}
+
+/** An incoming PvP duel invite shown as an overlay on the street. */
+interface PvpInvite {
+  battleId: string;
+  challenger: FighterInfo;
+  createdAt: number;
 }
 
 /** Smoothed position of a remote player's sprite (lerped each frame). */
@@ -755,6 +773,11 @@ export default function World() {
   const buyAbility = useMutation(api.profiles.buyAbility);
   const equipAbility = useMutation(api.profiles.equipAbility);
   const battleVictory = useMutation(api.profiles.battleVictory);
+  const createBattle = useMutation(api.battles.createBattle);
+  const acceptBattle = useMutation(api.battles.acceptBattle);
+  const declineBattle = useMutation(api.battles.declineBattle);
+  const finishBattle = useMutation(api.battles.finishBattle);
+  const cancelBattle = useMutation(api.battles.cancelBattle);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -823,6 +846,21 @@ export default function World() {
   const battleRef = useRef(battle);
   battleRef.current = battle;
 
+  // PvP duels against real players — invite → accept → live fight (synced
+  // through the battles table + a per-battle presence room).
+  const [pvpInvite, setPvpInvite] = useState<PvpInvite | null>(null);
+  const [pvpChallenge, setPvpChallenge] = useState<{
+    battleId: string;
+    opponentSessionId: string;
+    opponentName: string;
+  } | null>(null);
+  const [pvpBattle, setPvpBattle] = useState<{
+    battleId: string;
+    role: "challenger" | "opponent";
+  } | null>(null);
+  const pvpBattleRef = useRef(pvpBattle);
+  pvpBattleRef.current = pvpBattle;
+
   const [soundOn, setSoundOn] = useState(() => !isMuted());
 
   // Unlock audio on the first user gesture (mobile browsers require it).
@@ -857,6 +895,15 @@ export default function World() {
 
   // Online street — publish my position and watch other real players.
   const { publish, sessionId } = usePresencePublisher("world");
+  // PvP: incoming duel invites addressed to my session + the fight document.
+  const invites = useQuery(api.battles.listInvites, { sessionId });
+  const activeBattleId = pvpBattle?.battleId ?? pvpChallenge?.battleId ?? null;
+  const battleDoc = useQuery(
+    api.battles.getBattle,
+    activeBattleId
+      ? { battleId: activeBattleId as Id<"battles"> }
+      : "skip",
+  );
   // Shared server clock: bots are driven by (local time + offset) so every
   // device walks them at the same phase, even when phone clocks differ.
   const serverClock = useQuery(api.world.clock, {
@@ -912,6 +959,59 @@ export default function World() {
     });
   }, [profile, publish]);
 
+  // Keep my street session fresh even while standing still (so others always
+  // see me), and flag when I'm inside a duel arena.
+  useEffect(() => {
+    if (!profile || profile.banned) return;
+    const id = window.setInterval(() => {
+      const prof = profileRef.current;
+      const p = posRef.current;
+      publish({
+        ...prof,
+        x: p.x,
+        y: p.y,
+        facing: facingRef.current,
+        moving: false,
+        inBattle: battleRef.current !== null || pvpBattleRef.current !== null,
+      });
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [profile, publish]);
+
+  // A fresh duel invite pops up as an overlay until answered or replaced.
+  useEffect(() => {
+    if (!invites || invites.length === 0) {
+      if (!pvpBattle) setPvpInvite(null);
+      return;
+    }
+    if (pvpBattle || battle || pvpChallenge) return;
+    setPvpInvite(invites[0]);
+  }, [invites, pvpBattle, battle, pvpChallenge]);
+
+  // Challenger side: watch the fight document — it flips to "fighting" when
+  // the opponent accepts, or "done" if they decline / the invite expires.
+  useEffect(() => {
+    if (!pvpChallenge) return;
+    if (!battleDoc) {
+      toast.info("Davetinin süresi doldu.");
+      setPvpChallenge(null);
+      return;
+    }
+    if (battleDoc.status === "fighting") {
+      playSound("vs");
+      setPvpBattle({ battleId: pvpChallenge.battleId, role: "challenger" });
+      setPvpChallenge(null);
+      setViewing(null);
+    } else if (battleDoc.status === "done") {
+      toast.info(
+        battleDoc.winner === "declined"
+          ? "Rakip daveti reddetti 😔"
+          : "Davet iptal edildi.",
+      );
+      setPvpChallenge(null);
+    }
+  }, [battleDoc, pvpChallenge]);
+
   // Track the container size → visible world window for the camera.
   useEffect(() => {
     const el = containerRef.current;
@@ -965,8 +1065,8 @@ export default function World() {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
 
-      // While the duel arena is open the street player freezes.
-      const inBattle = battleRef.current !== null;
+      // While a duel arena (bot or PvP) is open the street player freezes.
+      const inBattle = battleRef.current !== null || pvpBattleRef.current !== null;
       const keys = keysRef.current;
       let vx = 0;
       let vy = 0;
@@ -1287,7 +1387,7 @@ export default function World() {
   /** Invite a character to a duel — they accept or reject after a moment. */
   const handleInvite = useCallback(
     (bot: BotDef) => {
-      if (invite || battle) return;
+      if (invite || battle || pvpBattle || pvpChallenge) return;
       playSound("invite");
       setInvite({ botId: bot.id, status: "waiting" });
       appendMessage({
@@ -1353,6 +1453,149 @@ export default function World() {
       setBattle(null);
     },
     [battleVictory],
+  );
+
+  /** Challenge a real player (from their street profile card) to a PvP duel. */
+  const handleChallengeRemote = useCallback(
+    async (remote: PresenceEntry<WorldPresence>) => {
+      if (!remote.data) return;
+      if (pvpBattle || pvpChallenge || battle) return;
+      try {
+        const { battleId } = await createBattle({
+          mySessionId: sessionId,
+          opponentSessionId: remote.sessionId,
+          me: {
+            name: username,
+            config,
+            equipped,
+            ability: equippedAbility,
+          },
+        });
+        playSound("invite");
+        setPvpChallenge({
+          battleId,
+          opponentSessionId: remote.sessionId,
+          opponentName: remote.data.name ?? "Oyuncu",
+        });
+        setViewing(null);
+        appendMessage({
+          id: nextIdRef.current++,
+          from: "Sistem",
+          text: `${remote.data.name ?? "Oyuncu"} savaşa davet edildi… ⚔️`,
+        });
+        toast.success(
+          `${remote.data.name ?? "Oyuncu"} savaşa davet edildi! Cevabı bekleniyor…`,
+        );
+      } catch (error) {
+        console.error("PvP daveti hatası:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Davet gönderilemedi.",
+        );
+      }
+    },
+    [
+      createBattle,
+      sessionId,
+      username,
+      config,
+      equipped,
+      equippedAbility,
+      pvpBattle,
+      pvpChallenge,
+      battle,
+      appendMessage,
+    ],
+  );
+
+  /** Answer an incoming duel invite — both phones enter the arena. */
+  const handleAcceptInvite = useCallback(async () => {
+    const inv = pvpInvite;
+    if (!inv) return;
+    try {
+      await acceptBattle({
+        battleId: inv.battleId as Id<"battles">,
+        sessionId,
+        me: { name: username, config, equipped, ability: equippedAbility },
+      });
+      playSound("accept");
+      setPvpBattle({ battleId: inv.battleId, role: "opponent" });
+      setPvpInvite(null);
+      appendMessage({
+        id: nextIdRef.current++,
+        from: "Sistem",
+        text: `⚔️ ${inv.challenger.name} ile düello başlıyor!`,
+      });
+    } catch (error) {
+      console.error("PvP kabul hatası:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Davet kabul edilemedi.",
+      );
+    }
+  }, [
+    pvpInvite,
+    acceptBattle,
+    sessionId,
+    username,
+    config,
+    equipped,
+    equippedAbility,
+    appendMessage,
+  ]);
+
+  const handleDeclineInvite = useCallback(async () => {
+    const inv = pvpInvite;
+    if (!inv) return;
+    try {
+      await declineBattle({ battleId: inv.battleId as Id<"battles">, sessionId });
+    } catch (error) {
+      console.error("PvP reddetme hatası:", error);
+    }
+    playSound("decline");
+    setPvpInvite(null);
+  }, [pvpInvite, declineBattle, sessionId]);
+
+  /** Close the PvP arena: award SP on a win and record the result. */
+  const endPvpBattle = useCallback(
+    async (
+      victory: boolean,
+      reason: "win" | "lose" | "draw" | "forfeit" | "leave",
+    ) => {
+      const cur = pvpBattleRef.current;
+      if (!cur) return;
+      if (victory) {
+        try {
+          const newCoins = await battleVictory();
+          toast.success(
+            `🏆 Zafer! +150 SP kazandın — yeni bakiye: ${formatCoins(newCoins)}`,
+          );
+        } catch (error) {
+          console.error("PvP ödül hatası:", error);
+          toast.error(
+            error instanceof Error ? error.message : "Ödül alınamadı.",
+          );
+        }
+      } else if (reason === "draw") {
+        toast.info("Berabere! 🤝");
+      } else if (reason === "forfeit") {
+        toast.info("Rakip bağlantısı koptu.");
+      } else {
+        toast.info("Savaş alanından ayrıldın.");
+      }
+      try {
+        const winner = victory
+          ? cur.role
+          : reason === "draw" || reason === "forfeit"
+            ? "forfeit"
+            : cur.role === "challenger"
+              ? "opponent"
+              : "challenger";
+        await finishBattle({ battleId: cur.battleId as Id<"battles">, winner });
+      } catch (error) {
+        console.error("Düello kaydı hatası:", error);
+      }
+      setPvpBattle(null);
+    },
+    [battleVictory, finishBattle],
   );
 
   const handleBuyAbility = useCallback(
@@ -1505,7 +1748,8 @@ export default function World() {
         profileOpen ||
         stallsOpen ||
         vipOpen ||
-        battleRef.current
+        battleRef.current ||
+        pvpBattleRef.current
       )
         return;
       const target = e.target as HTMLElement;
@@ -1975,9 +2219,112 @@ export default function World() {
                       .name}
                   </span>
                 }
+                action={
+                  <Button
+                    size="sm"
+                    className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
+                    onClick={() => handleChallengeRemote(viewedRemote)}
+                  >
+                    <Swords className="size-4" /> Savaşa Davet Et
+                  </Button>
+                }
                 onClose={() => setViewing(null)}
               />
             ) : null)}
+        </AnimatePresence>
+
+        {/* PvP duel invite — another player challenges you to a live fight */}
+        <AnimatePresence>
+          {pvpInvite && !battle && !pvpBattle && !pvpChallenge && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.85, y: 24, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.9, y: 12, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 320, damping: 26 }}
+                className="w-full max-w-sm rounded-3xl border-2 border-white/70 bg-[#fffaf0] p-6 text-center shadow-2xl"
+              >
+                <div className="mx-auto flex w-fit items-center justify-center gap-4">
+                  <div className="relative shrink-0">
+                    <AvatarPreview
+                      config={pvpInvite.challenger.config}
+                      className="block h-20 w-auto"
+                    />
+                    <EquippedItems
+                      equipped={pvpInvite.challenger.equipped}
+                      className="pointer-events-none absolute inset-0 h-20 w-auto"
+                    />
+                  </div>
+                  <Swords className="size-9 animate-bounce text-orange-500" />
+                </div>
+                <h2 className="mt-4 text-lg font-extrabold text-[#2b2320]">
+                  {pvpInvite.challenger.name} seni savaşa davet ediyor!
+                </h2>
+                <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                  Gerçek bir oyuncuya karşı canlı düello ⚔️
+                </p>
+                <div className="mt-5 flex gap-3">
+                  <Button
+                    size="lg"
+                    className="flex-1 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow hover:from-rose-400 hover:to-orange-400"
+                    onClick={handleAcceptInvite}
+                  >
+                    <Swords className="size-4" /> Kabul Et
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="flex-1 rounded-full"
+                    onClick={handleDeclineInvite}
+                  >
+                    Reddet
+                  </Button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* PvP challenge sent — waiting for the opponent to answer */}
+        <AnimatePresence>
+          {pvpChallenge && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-4"
+            >
+              <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border-2 border-white/70 bg-[#fffaf0] px-4 py-2.5 shadow-xl">
+                <span className="size-3 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+                <p className="text-xs font-extrabold text-[#2b2320]">
+                  {pvpChallenge.opponentName} cevap veriyor…
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await cancelBattle({
+                        battleId: pvpChallenge.battleId as Id<"battles">,
+                        sessionId,
+                      });
+                    } catch (error) {
+                      console.error("Davet iptal hatası:", error);
+                    }
+                    setPvpChallenge(null);
+                  }}
+                  className="flex size-7 items-center justify-center rounded-full bg-[#3d2f2a]/10 text-[#3d2f2a] transition-colors hover:bg-[#3d2f2a]/20"
+                  aria-label="Daveti iptal et"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* duel arena — full-screen overlay while fighting */}
@@ -1992,6 +2339,55 @@ export default function World() {
             opponentEquipped={battle.opponent.equipped}
             opponentAbility={battle.opponentAbility}
             onExit={endBattle}
+          />
+        )}
+
+        {/* PvP duel arena — two real phones, live via the battles doc + room */}
+        {pvpBattle && battleDoc?.opponent && battleDoc.status !== "waiting" && (
+          <PvpBattleScene
+            battleId={pvpBattle.battleId}
+            mySessionId={sessionId}
+            playerName={
+              pvpBattle.role === "challenger"
+                ? battleDoc.challenger.name
+                : battleDoc.opponent.name
+            }
+            playerConfig={
+              pvpBattle.role === "challenger"
+                ? battleDoc.challenger.config
+                : battleDoc.opponent.config
+            }
+            playerEquipped={
+              pvpBattle.role === "challenger"
+                ? battleDoc.challenger.equipped
+                : battleDoc.opponent.equipped
+            }
+            playerAbility={
+              pvpBattle.role === "challenger"
+                ? battleDoc.challenger.ability
+                : battleDoc.opponent.ability
+            }
+            opponentName={
+              pvpBattle.role === "challenger"
+                ? battleDoc.opponent.name
+                : battleDoc.challenger.name
+            }
+            opponentConfig={
+              pvpBattle.role === "challenger"
+                ? battleDoc.opponent.config
+                : battleDoc.challenger.config
+            }
+            opponentEquipped={
+              pvpBattle.role === "challenger"
+                ? battleDoc.opponent.equipped
+                : battleDoc.challenger.equipped
+            }
+            opponentAbility={
+              pvpBattle.role === "challenger"
+                ? battleDoc.opponent.ability
+                : battleDoc.challenger.ability
+            }
+            onExit={endPvpBattle}
           />
         )}
 

@@ -45,6 +45,52 @@ const schema = defineSchema(
       .index("by_room", ["room"])
       .index("by_room_session", ["room", "sessionId"]),
 
+    // PvP duel invites: challenger -> opponent session, resolved to a fight.
+    // The live fight itself is synced through the `presence` table (room
+    // "battle:<id>") so both phones see each other in real time.
+    battles: defineTable({
+      status: v.union(
+        v.literal("waiting"),
+        v.literal("fighting"),
+        v.literal("done"),
+      ),
+      challengerSession: v.string(), // session id of the inviter
+      opponentSession: v.optional(v.string()), // session id of the invitee
+      challenger: v.object({
+        name: v.string(),
+        config: v.object({
+          skin: v.string(),
+          hair: v.string(),
+          hairColor: v.string(),
+          shirt: v.string(),
+          pants: v.string(),
+          shoes: v.string(),
+        }),
+        equipped: v.array(v.string()),
+        ability: v.string(),
+      }),
+      opponent: v.optional(
+        v.object({
+          name: v.string(),
+          config: v.object({
+            skin: v.string(),
+            hair: v.string(),
+            hairColor: v.string(),
+            shirt: v.string(),
+            pants: v.string(),
+            shoes: v.string(),
+          }),
+          equipped: v.array(v.string()),
+          ability: v.string(),
+        }),
+      ),
+      winner: v.optional(v.string()), // "challenger" | "opponent" | reason (declined/canceled)
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_opponentSession", ["opponentSession"])
+      .index("by_challengerSession", ["challengerSession"]),
+
     profiles: defineTable({
       userId: v.id("users"),
       username: v.string(), // display name in the world
