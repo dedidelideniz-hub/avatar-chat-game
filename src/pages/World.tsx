@@ -179,6 +179,7 @@ interface WorldPresence {
   x: number;
   y: number;
   facing: number;
+  vy?: number;
   moving: boolean;
   inBattle?: boolean;
 }
@@ -203,6 +204,7 @@ interface RemoteState {
   x: number;
   y: number;
   facing: number;
+  vy: number;
   moving: boolean;
   phase: number;
 }
@@ -788,6 +790,7 @@ export default function World() {
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
+  const vyRef = useRef(0); // vertical direction: -1 up, +1 down, 0 idle
   const keysRef = useRef(new Set<string>());
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
@@ -819,6 +822,7 @@ export default function World() {
       def,
       pos: { x: def.x, y: def.y },
       facing: 1,
+      vy: 0,
       phase: 0,
       moving: false,
       path: BOT_PATHS.get(def.id)!,
@@ -1152,6 +1156,7 @@ export default function World() {
         pos.x = px;
         pos.y = py;
         if (Math.abs(vx) > 0.05) facingRef.current = vx;
+        vyRef.current = Math.abs(vy) > 0.05 ? vy : 0;
       }
 
       // Share my position with the street — throttled while walking, plus a
@@ -1165,6 +1170,7 @@ export default function World() {
             x: pos.x,
             y: pos.y,
             facing: facingRef.current,
+            vy: vyRef.current,
             moving: true,
           });
         }
@@ -1177,32 +1183,39 @@ export default function World() {
             x: pos.x,
             y: pos.y,
             facing: facingRef.current,
+            vy: 0,
             moving: false,
         });
       }
       }
 
-      // Sprite: bob + limb swing while walking, horizontal flip toward
-      // the walking direction — Sanalika style (upright, no rotation).
+      // Sprite: bob + limb swing while walking, full body faces the
+      // walking direction — horizontal flip + vertical perspective scale.
       spriteRef.current?.classList.toggle("walking", moving);
       const bob = moving ? Math.sin(phase) * 5 : 0;
-      const ty = -PLAYER_H + bob;
-      // Smoothly interpolate a flip factor: -1 = facing left, +1 = facing right.
+      // Smooth flip (horizontal) + smooth vertical scale (perspective).
       const targetFlip = facingRef.current < 0 ? -1 : 1;
       const prevFlip = spriteRef.current?.dataset.flip ? Number(spriteRef.current.dataset.flip) : 1;
-      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 12);
+      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 18);
+      // Vertical scale: walking up = compressed (0.9), walking down = stretched (1.08).
+      const targetVScale = moving ? (1 + vyRef.current * 0.08) : 1;
+      const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
+      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 10);
       if (spriteRef.current) {
         spriteRef.current.dataset.flip = String(newFlip);
-        if (Math.abs(newFlip) < 0.01) {
-          // Dead-center — no transform needed.
+        spriteRef.current.dataset.vscale = String(newVScale);
+        const scaleY = newVScale;
+        // Anchor pivot at feet: translate y = bob - scaleY*PLAYER_H + PLAYER_H
+        const ty2 = bob - scaleY * PLAYER_H + PLAYER_H;
+        if (Math.abs(newFlip) < 0.01 && Math.abs(scaleY - 1) < 0.005) {
           spriteRef.current.setAttribute(
             "transform",
-            `translate(${-PLAYER_W / 2} ${ty})`,
+            `translate(${-PLAYER_W / 2} ${bob - PLAYER_H})`,
           );
         } else {
           spriteRef.current.setAttribute(
             "transform",
-            `scale(${newFlip.toFixed(3)} 1) translate(${-PLAYER_W / 2} ${ty})`,
+            `translate(0 ${ty2.toFixed(2)}) scale(${newFlip.toFixed(3)} ${scaleY.toFixed(3)})`,
           );
         }
       }
@@ -1262,6 +1275,17 @@ export default function World() {
         bot.moving = botScratch.moving;
         if (botScratch.moving) bot.facing = botScratch.facing;
         bot.phase = botScratch.moving ? t * 8 : 0;
+        // Track bot's vertical movement direction from path segment.
+        if (botScratch.moving && bot.path) {
+          const n2 = bot.path.pts.length;
+          const seg2 = Math.floor((t / bot.path.total) * n2) % n2;
+          const pa = bot.path.pts[seg2];
+          const pb = bot.path.pts[(seg2 + 1) % n2];
+          const dy2 = pb.y - pa.y;
+          bot.vy = Math.abs(dy2) > 1 ? Math.sign(dy2) : 0;
+        } else {
+          bot.vy = 0;
+        }
         // Apply to the DOM imperatively — no React re-render per frame.
         const botEl = botRefs.current.get(bot.def.id);
         if (botEl) {
@@ -1275,12 +1299,18 @@ export default function World() {
           const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
           if (sprite) {
             sprite.classList.toggle("walking", bot.moving);
-            // Sanalika-style: horizontal flip only, no rotation.
+            // Full-body facing: horizontal flip + vertical perspective.
             const targetBotFlip = bot.facing < 0 ? -1 : 1;
             const prevBotFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
-            const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 12);
+            const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 18);
+            const botVy = bot.vy ?? 0;
+            const targetBotVS = bot.moving ? (1 + botVy * 0.08) : 1;
+            const prevBotVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
+            const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 10);
             sprite.dataset.flip = String(newBotFlip);
-            if (Math.abs(newBotFlip) < 0.01) {
+            sprite.dataset.vscale = String(newBotVS);
+            const botTy2 = bob - newBotVS * PLAYER_H + PLAYER_H;
+            if (Math.abs(newBotFlip) < 0.01 && Math.abs(newBotVS - 1) < 0.005) {
               sprite.setAttribute(
                 "transform",
                 `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
@@ -1288,7 +1318,7 @@ export default function World() {
             } else {
               sprite.setAttribute(
                 "transform",
-                `scale(${newBotFlip.toFixed(3)} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
+                `translate(0 ${botTy2.toFixed(2)}) scale(${newBotFlip.toFixed(3)} ${newBotVS.toFixed(3)})`,
               );
             }
           }
@@ -1314,6 +1344,7 @@ export default function World() {
             x: d.x,
             y: d.y,
             facing: typeof d.facing === "number" ? d.facing : 1,
+            vy: 0,
             moving: !!d.moving,
             phase: 0,
           };
@@ -1323,6 +1354,7 @@ export default function World() {
         st.x += (d.x - st.x) * k;
         st.y += (d.y - st.y) * k;
         if (Math.abs(d.x - st.x) > 1.5) st.facing = d.x >= st.x ? 1 : -1;
+        st.vy = typeof d.vy === "number" ? d.vy : 0;
         st.moving = !!d.moving;
         if (st.moving) st.phase += dt * 10;
         el.setAttribute("transform", `translate(${st.x} ${st.y})`);
@@ -1332,12 +1364,17 @@ export default function World() {
         if (sprite) {
           sprite.classList.toggle("walking", st.moving);
           const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
-          // Sanalika-style: horizontal flip only, no rotation.
+          // Full-body facing: horizontal flip + vertical perspective.
           const targetRFlip = st.facing < 0 ? -1 : 1;
           const prevRFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
           const newRFlip = prevRFlip + (targetRFlip - prevRFlip) * Math.min(1, dt * 10);
+          const targetRVS = st.moving ? (1 + st.vy * 0.08) : 1;
+          const prevRVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
+          const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 10);
           sprite.dataset.flip = String(newRFlip);
-          if (Math.abs(newRFlip) < 0.01) {
+          sprite.dataset.vscale = String(newRVS);
+          const rTy2 = bob - newRVS * PLAYER_H + PLAYER_H;
+          if (Math.abs(newRFlip) < 0.01 && Math.abs(newRVS - 1) < 0.005) {
             sprite.setAttribute(
               "transform",
               `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
@@ -1345,7 +1382,7 @@ export default function World() {
           } else {
             sprite.setAttribute(
               "transform",
-              `scale(${newRFlip.toFixed(3)} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
+              `translate(0 ${rTy2.toFixed(2)}) scale(${newRFlip.toFixed(3)} ${newRVS.toFixed(3)})`,
             );
           }
         }
