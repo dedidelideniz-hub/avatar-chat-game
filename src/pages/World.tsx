@@ -7,6 +7,11 @@ import BattleScene from "@/components/world/BattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { StreetScene } from "@/components/world/StreetScene";
 import { api } from "@/convex/_generated/api";
+import {
+  usePresenceOthers,
+  usePresencePublisher,
+  type PresenceEntry,
+} from "@/hooks/use-presence";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
 import {
   ABILITIES,
@@ -162,6 +167,28 @@ const BOT_DEFS: BotDef[] = [
   },
 ];
 
+/** Live presence payload — what other players see about you on the street. */
+interface WorldPresence {
+  name: string;
+  config: AvatarConfig;
+  equipped: string[];
+  ability: string;
+  vip: boolean;
+  x: number;
+  y: number;
+  facing: number;
+  moving: boolean;
+}
+
+/** Smoothed position of a remote player's sprite (lerped each frame). */
+interface RemoteState {
+  x: number;
+  y: number;
+  facing: number;
+  moving: boolean;
+  phase: number;
+}
+
 /** Little things the bots say while wandering the street. */
 const BOT_PHRASES = [
   "Caddede yürümek çok keyifli! 🚶",
@@ -172,16 +199,114 @@ const BOT_PHRASES = [
   "Tezgâhları gezmeyi çok seviyorum!",
 ];
 
-/** A random walkable spot on the street for bots to wander to. */
-function randomWalkTarget(): { x: number; y: number } {
+/** Deterministic PRNG so every device walks the bots the same way. */
+function djb2(str: string) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** A random walkable spot on the street (seeded — same on every device). */
+function randomWalkablePoint(rng: () => number) {
   const zone = WALKABLE_ZONES[0];
-  for (let i = 0; i < 12; i++) {
-    const x = zone.x + 40 + Math.random() * (zone.w - 80);
-    const y = zone.y + 40 + Math.random() * (zone.h - 80);
+  for (let i = 0; i < 16; i++) {
+    const x = zone.x + 40 + rng() * (zone.w - 80);
+    const y = zone.y + 40 + rng() * (zone.h - 80);
     if (inWalkable(x, y)) return { x, y };
   }
   return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };
 }
+
+/** True when the straight line between two points stays on the street. */
+function segmentClear(ax: number, ay: number, bx: number, by: number) {
+  const steps = 10;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    if (!inWalkable(ax + (bx - ax) * t, ay + (by - ay) * t)) return false;
+  }
+  return true;
+}
+
+/** A closed walking loop per bot: wait, stroll to the next point, repeat. */
+interface BotPath {
+  pts: { x: number; y: number }[];
+  wait: number[]; // seconds spent standing at each point
+  walk: number[]; // seconds spent walking from point i to point i+1
+  total: number; // loop duration in seconds
+}
+
+function buildBotPath(def: BotDef): BotPath {
+  const rng = mulberry32(djb2(def.id));
+  const pts = [{ x: def.x, y: def.y }];
+  for (let i = 0; i < 8; i++) {
+    let next: { x: number; y: number } | null = null;
+    for (let attempt = 0; attempt < 14 && next === null; attempt++) {
+      const cand = randomWalkablePoint(rng);
+      const last = pts[pts.length - 1];
+      if (segmentClear(last.x, last.y, cand.x, cand.y)) next = cand;
+    }
+    pts.push(next ?? pts[pts.length - 1]);
+  }
+  pts.push(pts[0]); // close the loop
+  const wait = pts.map(() => 0.8 + rng() * 2.4);
+  const walk: number[] = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    walk.push(d / def.speed);
+  }
+  const total =
+    wait.reduce((a, b) => a + b, 0) + walk.reduce((a, b) => a + b, 0);
+  return { pts, wait, walk, total };
+}
+
+/** Where a bot stands at loop-time t (seconds) — pure & deterministic. */
+function botPosAt(
+  path: BotPath,
+  t: number,
+  out: { x: number; y: number; moving: boolean; facing: number },
+) {
+  let acc = 0;
+  const n = path.pts.length;
+  for (let i = 0; i < n; i++) {
+    if (t < acc + path.wait[i]) {
+      out.x = path.pts[i].x;
+      out.y = path.pts[i].y;
+      out.moving = false;
+      return;
+    }
+    acc += path.wait[i];
+    const dur = path.walk[i];
+    if (t < acc + dur) {
+      const a = path.pts[i];
+      const b = path.pts[(i + 1) % n];
+      const k = dur === 0 ? 1 : (t - acc) / dur;
+      out.x = a.x + (b.x - a.x) * k;
+      out.y = a.y + (b.y - a.y) * k;
+      out.moving = k < 0.99;
+      out.facing = b.x >= a.x ? 1 : -1;
+      return;
+    }
+    acc += dur;
+  }
+  out.x = path.pts[0].x;
+  out.y = path.pts[0].y;
+  out.moving = false;
+}
+
+// Precomputed once at module load — identical on every device.
+const BOT_PATHS = new Map(BOT_DEFS.map((d) => [d.id, buildBotPath(d)]));
 
 /** Speech-bubble width adapts to the message and the sender's name. */
 function bubbleWidth(text: string, name: string) {
@@ -564,6 +689,64 @@ function inWalkable(x: number, y: number) {
   );
 }
 
+/** Real players from other phones — rendered from live presence data. */
+function RemotePlayers({
+  sessionId,
+  remoteRefs,
+  remoteStatesRef,
+  othersRef,
+  onCount,
+}: {
+  sessionId: string;
+  remoteRefs: React.RefObject<Map<string, SVGGElement>>;
+  remoteStatesRef: React.RefObject<Map<string, RemoteState>>;
+  othersRef: React.RefObject<PresenceEntry<WorldPresence>[]>;
+  onCount: (n: number) => void;
+}) {
+  const { others } = usePresenceOthers<WorldPresence>("world", sessionId);
+
+  useEffect(() => {
+    othersRef.current = others;
+    onCount(others.length + 1);
+    const live = new Set(others.map((o) => o.sessionId));
+    for (const key of [...remoteStatesRef.current.keys()]) {
+      if (!live.has(key)) remoteStatesRef.current.delete(key);
+    }
+  }, [others, othersRef, remoteStatesRef, onCount]);
+
+  return (
+    <>
+      {others.map((remote) => {
+        const d = remote.data;
+        if (!d || !d.config || typeof d.x !== "number") return null;
+        return (
+          <g
+            key={remote.sessionId}
+            className="remote-player"
+            ref={(el) => {
+              if (el) remoteRefs.current.set(remote.sessionId, el);
+              else remoteRefs.current.delete(remote.sessionId);
+            }}
+          >
+            <g className="remote-sprite">
+              <AvatarPreview
+                width={PLAYER_W}
+                height={PLAYER_H}
+                config={d.config}
+              />
+              <EquippedItems
+                equipped={d.equipped ?? []}
+                width={PLAYER_W}
+                height={PLAYER_H}
+              />
+            </g>
+          </g>
+        );
+      })}
+    </>
+  );
+}
+
 export default function World() {
   const navigate = useNavigate();
   const profile = useQuery(api.profiles.getMyProfile);
@@ -609,11 +792,12 @@ export default function World() {
     BOT_DEFS.map((def) => ({
       def,
       pos: { x: def.x, y: def.y },
-      target: null as { x: number; y: number } | null,
       facing: 1,
-      phase: Math.random() * 10,
+      phase: 0,
       moving: false,
-      pauseUntil: 0,
+      path: BOT_PATHS.get(def.id)!,
+      // A deterministic time offset per bot so they don't all start together.
+      offset: ((djb2(def.id) % 997) / 997) * 40,
     })),
   );
   const [botBubbles, setBotBubbles] = useState<Record<string, string | null>>(
@@ -670,6 +854,52 @@ export default function World() {
   const bubbleW = bubble
     ? Math.min(190, Math.max(150, bubble.length * 7 + 26, username.length * 7.5 + 28))
     : 0;
+
+  // Online street — publish my position and watch other real players.
+  const { publish, sessionId } = usePresencePublisher("world");
+  const profileRef = useRef({
+    name: username,
+    config,
+    equipped,
+    ability: equippedAbility,
+    vip: isVip,
+  });
+  const othersRef = useRef<PresenceEntry<WorldPresence>[]>([]);
+  const remoteRefs = useRef(new Map<string, SVGGElement>());
+  const remoteStatesRef = useRef(new Map<string, RemoteState>());
+  const lastPublishRef = useRef(0);
+  const lastPubMovingRef = useRef(false);
+  const [onlineCount, setOnlineCount] = useState(1);
+  const onCountChange = useCallback((n: number) => {
+    setOnlineCount((prev) => (prev === n ? prev : n));
+  }, []);
+  // Profile card target for a real player from another phone.
+  const viewedRemote =
+    viewing !== null && viewing.startsWith("remote:")
+      ? (othersRef.current.find(
+          (o) => o.sessionId === viewing.slice("remote:".length),
+        ) ?? null)
+      : null;
+
+  // When the profile loads, announce yourself so others see you in the street.
+  useEffect(() => {
+    if (!profile || profile.banned) return;
+    profileRef.current = {
+      name: profile.username,
+      config: profile.avatar,
+      equipped: profile.equipped ?? [],
+      ability: profile.equippedAbility ?? DEFAULT_ABILITY,
+      vip: profile.vip,
+    };
+    const p = posRef.current;
+    publish({
+      ...profileRef.current,
+      x: p.x,
+      y: p.y,
+      facing: facingRef.current,
+      moving: false,
+    });
+  }, [profile, publish]);
 
   // Track the container size → visible world window for the camera.
   useEffect(() => {
@@ -807,6 +1037,33 @@ export default function World() {
         pos.y = py;
         if (Math.abs(vx) > 0.05) facingRef.current = vx;
       }
+
+      // Share my position with the street — throttled while walking, plus a
+      // final "stopped" update so nobody sees you gliding forever.
+      const prof = profileRef.current;
+      if (!inBattle && moving) {
+        if (now - lastPublishRef.current > 150) {
+          lastPublishRef.current = now;
+          publish({
+            ...prof,
+            x: pos.x,
+            y: pos.y,
+            facing: facingRef.current,
+            moving: true,
+          });
+        }
+        lastPubMovingRef.current = true;
+      } else if (lastPubMovingRef.current) {
+        lastPubMovingRef.current = false;
+        lastPublishRef.current = 0;
+        publish({
+          ...prof,
+          x: pos.x,
+          y: pos.y,
+          facing: facingRef.current,
+          moving: false,
+        });
+      }
       }
 
       // Sprite: bob + limb swing while walking, face movement direction.
@@ -857,7 +1114,10 @@ export default function World() {
         }
       }
 
-      // Autonomous bots wander the street — pick waypoints, walk, animate.
+      // Autonomous bots — a deterministic time-based loop, so every phone
+      // sees the exact same bots at the exact same spots (no local
+      // randomness, no drift between devices).
+      const botScratch = { x: 0, y: 0, moving: false, facing: 1 };
       for (const bot of botsRef.current) {
         const botEl0 = botRefs.current.get(bot.def.id);
         if (botEl0) botEl0.style.display = "";
@@ -866,65 +1126,14 @@ export default function World() {
           if (botEl0) botEl0.style.display = "none";
           continue;
         }
-        const now = performance.now();
-        if (bot.pauseUntil > now) {
-          bot.moving = false;
-        } else if (bot.target === null) {
-          // Rest a moment, then pick a new spot to stroll to.
-          bot.pauseUntil = now + 1200 + Math.random() * 2200;
-          bot.target = randomWalkTarget();
-        } else {
-          const dx = bot.target.x - bot.pos.x;
-          const dy = bot.target.y - bot.pos.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < 20) {
-            bot.target = null;
-          } else {
-            const vx = dx / dist;
-            const vy = dy / dist;
-            const nx = Math.min(
-              Math.max(
-                bot.pos.x + vx * bot.def.speed * dt,
-                WORLD_BOUNDS.minX,
-              ),
-              WORLD_BOUNDS.maxX,
-            );
-            const ny = Math.min(
-              Math.max(
-                bot.pos.y + vy * bot.def.speed * dt,
-                WORLD_BOUNDS.minY,
-              ),
-              WORLD_BOUNDS.maxY,
-            );
-            // Same axis-by-axis collision as the player (stalls + curbs).
-            let px = nx;
-            let py = bot.pos.y;
-            for (const r of OBSTACLES) {
-              if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
-                px = bot.pos.x;
-                break;
-              }
-            }
-            if (!inWalkable(px, py)) px = bot.pos.x;
-            py = Math.min(Math.max(ny, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-            for (const r of OBSTACLES) {
-              if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
-                py = bot.pos.y;
-                break;
-              }
-            }
-            if (!inWalkable(px, py)) py = bot.pos.y;
-            bot.pos.x = px;
-            bot.pos.y = py;
-            bot.phase += dt * 8;
-            bot.moving = true;
-            if (Math.abs(vx) > 0.05) bot.facing = vx;
-            // Blocked by a stall / curb? Pick a fresh waypoint next frame.
-            if (Math.abs(px - nx) > 0.01 || Math.abs(py - ny) > 0.01) {
-              bot.target = null;
-            }
-          }
-        }
+        const wallT = Date.now() / 1000 + bot.offset;
+        const t = ((wallT % bot.path.total) + bot.path.total) % bot.path.total;
+        botPosAt(bot.path, t, botScratch);
+        bot.pos.x = botScratch.x;
+        bot.pos.y = botScratch.y;
+        bot.moving = botScratch.moving;
+        if (botScratch.moving) bot.facing = botScratch.facing;
+        bot.phase = botScratch.moving ? t * 8 : 0;
         // Apply to the DOM imperatively — no React re-render per frame.
         const botEl = botRefs.current.get(bot.def.id);
         if (botEl) {
@@ -946,6 +1155,53 @@ export default function World() {
                 : `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
             );
           }
+        }
+      }
+
+      // Other real players — glide their sprites toward the shared positions.
+      for (const remote of othersRef.current) {
+        const d = remote.data;
+        const el = remoteRefs.current.get(remote.sessionId);
+        if (
+          !d ||
+          typeof d.x !== "number" ||
+          typeof d.y !== "number" ||
+          !d.config ||
+          !el
+        ) {
+          continue;
+        }
+        let st = remoteStatesRef.current.get(remote.sessionId);
+        if (!st) {
+          st = {
+            x: d.x,
+            y: d.y,
+            facing: typeof d.facing === "number" ? d.facing : 1,
+            moving: !!d.moving,
+            phase: 0,
+          };
+          remoteStatesRef.current.set(remote.sessionId, st);
+        }
+        const k = Math.min(1, dt * 9);
+        st.x += (d.x - st.x) * k;
+        st.y += (d.y - st.y) * k;
+        if (Math.abs(d.x - st.x) > 1.5) st.facing = d.x >= st.x ? 1 : -1;
+        st.moving = !!d.moving;
+        if (st.moving) st.phase += dt * 10;
+        el.setAttribute("transform", `translate(${st.x} ${st.y})`);
+        const sprite = el.querySelector(
+          ".remote-sprite",
+        ) as SVGGElement | null;
+        if (sprite) {
+          sprite.classList.toggle("walking", st.moving);
+          const flip = st.facing < 0 ? -1 : 1;
+          const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
+          sprite.setAttribute(
+            "transform",
+            flip === 1
+              ? `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`
+              : `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
+          );
         }
       }
 
@@ -1277,6 +1533,24 @@ export default function World() {
           return;
         }
       }
+      // A real player from another phone — open their profile card too.
+      for (const remote of othersRef.current) {
+        const d = remote.data;
+        if (!d || typeof d.x !== "number" || typeof d.y !== "number")
+          continue;
+        const st = remoteStatesRef.current.get(remote.sessionId);
+        const rx = st ? st.x : d.x;
+        const ry = st ? st.y : d.y;
+        if (
+          wx >= rx - 34 &&
+          wx <= rx + 34 &&
+          wy >= ry - 100 &&
+          wy <= ry + 10
+        ) {
+          setViewing(`remote:${remote.sessionId}`);
+          return;
+        }
+      }
       // Tapping anywhere else closes the profile card.
       setViewing(null);
       // Tapping the stall itself opens its market page (VIP stand opens the
@@ -1328,6 +1602,10 @@ export default function World() {
             </Button>
             <span className="hidden text-sm font-extrabold tracking-tight sm:block">
               {username}
+            </span>
+            <span className="hidden items-center gap-1.5 rounded-full bg-emerald-400/15 px-2.5 py-1 text-[11px] font-extrabold text-emerald-300 lg:flex">
+              <span className="size-2 animate-pulse rounded-full bg-emerald-400" />
+              {onlineCount} çevrimiçi
             </span>
             <button
               type="button"
@@ -1542,6 +1820,15 @@ export default function World() {
               </g>
             );
           })}
+
+          {/* real players from other phones — live presence */}
+          <RemotePlayers
+            sessionId={sessionId}
+            remoteRefs={remoteRefs}
+            remoteStatesRef={remoteStatesRef}
+            othersRef={othersRef}
+            onCount={onCountChange}
+          />
           </g>
         </svg>
 
@@ -1641,6 +1928,40 @@ export default function World() {
                       <Swords className="size-4" /> Savaşa Davet Et
                     </Button>
                   )
+                }
+                onClose={() => setViewing(null)}
+              />
+            ) : viewedRemote ? (
+              <CharacterCard
+                key={viewedRemote.sessionId}
+                name={viewedRemote.data?.name ?? "Oyuncu"}
+                subtitle="Sanalika Caddesi sakini"
+                badge={
+                  viewedRemote.data?.vip ? (
+                    <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
+                      👑 VIP
+                    </span>
+                  ) : null
+                }
+                avatar={
+                  <>
+                    <AvatarPreview
+                      config={viewedRemote.data?.config ?? DEFAULT_AVATAR}
+                      className="block h-24 w-auto"
+                    />
+                    <EquippedItems
+                      equipped={viewedRemote.data?.equipped ?? []}
+                      className="pointer-events-none absolute inset-0 h-24 w-auto"
+                    />
+                  </>
+                }
+                stats={
+                  <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
+                    {abilityOf(viewedRemote.data?.ability ?? DEFAULT_ABILITY)
+                      .emoji}{" "}
+                    {abilityOf(viewedRemote.data?.ability ?? DEFAULT_ABILITY)
+                      .name}
+                  </span>
                 }
                 onClose={() => setViewing(null)}
               />
