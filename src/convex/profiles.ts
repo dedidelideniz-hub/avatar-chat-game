@@ -118,7 +118,11 @@ export const saveProfile = mutation({
       (p) => p.userId !== userId && p.username.toLowerCase() === lower,
     );
     if (taken) {
-      throw new Error("Bu kullanıcı adı zaten alınmış. Başka bir tane dene.");
+      // Suggest a unique variant with a random number suffix.
+      const suffix = Math.floor(100 + Math.random() * 900);
+      throw new Error(
+        `"${trimmed}" zaten alınmış. Fikir: "${trimmed}${suffix}" deneyebilirsin!`,
+      );
     }
 
     const now = Date.now();
