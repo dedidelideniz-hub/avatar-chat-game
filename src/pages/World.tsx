@@ -1155,8 +1155,11 @@ export default function World() {
         if (!inWalkable(px, py)) py = pos.y;
         pos.x = px;
         pos.y = py;
-        if (Math.abs(vx) > 0.05) facingRef.current = vx;
-        vyRef.current = Math.abs(vy) > 0.05 ? vy : 0;
+        // Update facing from horizontal movement direction. When moving
+        // purely vertically, preserve the last horizontal facing so the
+        // character doesn't snap to an arbitrary direction.
+        if (Math.abs(vx) > 0.1) facingRef.current = vx > 0 ? 1 : -1;
+        vyRef.current = vy;
       }
 
       // Share my position with the street — throttled while walking, plus a
@@ -1196,11 +1199,11 @@ export default function World() {
       // Smooth flip (horizontal) + smooth vertical scale (perspective).
       const targetFlip = facingRef.current < 0 ? -1 : 1;
       const prevFlip = spriteRef.current?.dataset.flip ? Number(spriteRef.current.dataset.flip) : 1;
-      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 18);
+      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 25);
       // Vertical scale: walking up = compressed (0.9), walking down = stretched (1.08).
-      const targetVScale = moving ? (1 + vyRef.current * 0.08) : 1;
+      const targetVScale = moving ? (1 + vyRef.current * 0.15) : 1;
       const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
-      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 10);
+      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 14);
       if (spriteRef.current) {
         spriteRef.current.dataset.flip = String(newFlip);
         spriteRef.current.dataset.vscale = String(newVScale);
@@ -1304,7 +1307,7 @@ export default function World() {
             const prevBotFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
             const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 18);
             const botVy = bot.vy ?? 0;
-            const targetBotVS = bot.moving ? (1 + botVy * 0.08) : 1;
+            const targetBotVS = bot.moving ? (1 + botVy * 0.15) : 1;
             const prevBotVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
             const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 10);
             sprite.dataset.flip = String(newBotFlip);
@@ -1368,7 +1371,7 @@ export default function World() {
           const targetRFlip = st.facing < 0 ? -1 : 1;
           const prevRFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
           const newRFlip = prevRFlip + (targetRFlip - prevRFlip) * Math.min(1, dt * 10);
-          const targetRVS = st.moving ? (1 + st.vy * 0.08) : 1;
+          const targetRVS = st.moving ? (1 + st.vy * 0.15) : 1;
           const prevRVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
           const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 10);
           sprite.dataset.flip = String(newRFlip);

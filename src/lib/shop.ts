@@ -474,7 +474,7 @@ export const WALKABLE_ZONES: Rect[] = [
   { x: 28, y: 578, w: 1544, h: 274 }, // y 578..852 (road through the shops)
 ];
 
-export const PLAYER_SPEED = 175; // world units per second — natural walking pace
+export const PLAYER_SPEED = 110; // world units per second — natural walking pace
 export const PLAYER_RADIUS = 20;
 
 /** Axis-aligned rectangle in world coordinates. */
