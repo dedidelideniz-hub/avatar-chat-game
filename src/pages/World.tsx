@@ -1196,14 +1196,15 @@ export default function World() {
       }
 
       // Sprite: bob + limb swing while walking, full body faces the
-      // walking direction — horizontal flip + vertical perspective scale.
+      // walking direction — flip + vertical scale around the sprite center
+      // so the character never teleports.
       spriteRef.current?.classList.toggle("walking", moving);
       const bob = moving ? Math.sin(phase) * 5 : 0;
       // Smooth flip (horizontal) + smooth vertical scale (perspective).
       const targetFlip = facingRef.current < 0 ? -1 : 1;
       const prevFlip = spriteRef.current?.dataset.flip ? Number(spriteRef.current.dataset.flip) : 1;
       const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 30);
-      // Vertical scale: up = compressed (0.88), down = stretched (1.12).
+      // Vertical scale: up = compressed, down = stretched.
       const targetVScale = moving ? (1 + vyRef.current * 0.12) : 1;
       const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
       const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 16);
@@ -1211,20 +1212,15 @@ export default function World() {
         spriteRef.current.dataset.flip = String(newFlip);
         spriteRef.current.dataset.vscale = String(newVScale);
         const scaleY = newVScale;
-        // Anchor pivot at feet: translate y = bob - scaleY*PLAYER_H + PLAYER_H
-        const ty2 = bob - scaleY * PLAYER_H + PLAYER_H;
-        // Scale origin at character center (0, PLAYER_H) — feet stay planted.
-        if (Math.abs(newFlip) < 0.01 && Math.abs(scaleY - 1) < 0.005) {
-          spriteRef.current.setAttribute(
-            "transform",
-            `translate(${-PLAYER_W / 2} ${bob - PLAYER_H})`,
-          );
-        } else {
-          spriteRef.current.setAttribute(
-            "transform",
-            `translate(0 ${ty2.toFixed(2)}) scale(${newFlip.toFixed(3)} ${scaleY.toFixed(3)})`,
-          );
-        }
+        // IMPORTANT: scale around sprite center (0, -PLAYER_H/2) so the
+        // character never jumps.  translate → center → scale → uncenter.
+        spriteRef.current.setAttribute(
+          "transform",
+          `translate(0 ${bob - PLAYER_H})` +
+          ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
+          ` scale(${newFlip.toFixed(3)} ${scaleY.toFixed(3)})` +
+          ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
+        );
       }
       if (playerRef.current) {
         playerRef.current.setAttribute(
@@ -1316,18 +1312,14 @@ export default function World() {
             const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 16);
             sprite.dataset.flip = String(newBotFlip);
             sprite.dataset.vscale = String(newBotVS);
-            const botTy2 = bob - newBotVS * PLAYER_H + PLAYER_H;
-            if (Math.abs(newBotFlip) < 0.01 && Math.abs(newBotVS - 1) < 0.005) {
-              sprite.setAttribute(
-                "transform",
-                `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
-              );
-            } else {
-              sprite.setAttribute(
-                "transform",
-                `translate(0 ${botTy2.toFixed(2)}) scale(${newBotFlip.toFixed(3)} ${newBotVS.toFixed(3)})`,
-              );
-            }
+            // Scale around sprite center — no teleport.
+            sprite.setAttribute(
+              "transform",
+              `translate(0 ${bob - PLAYER_H})` +
+              ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
+              ` scale(${newBotFlip.toFixed(3)} ${newBotVS.toFixed(3)})` +
+              ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
+            );
           }
         }
       }
@@ -1380,18 +1372,14 @@ export default function World() {
           const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 16);
           sprite.dataset.flip = String(newRFlip);
           sprite.dataset.vscale = String(newRVS);
-          const rTy2 = bob - newRVS * PLAYER_H + PLAYER_H;
-          if (Math.abs(newRFlip) < 0.01 && Math.abs(newRVS - 1) < 0.005) {
-            sprite.setAttribute(
-              "transform",
-              `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
-            );
-          } else {
-            sprite.setAttribute(
-              "transform",
-              `translate(0 ${rTy2.toFixed(2)}) scale(${newRFlip.toFixed(3)} ${newRVS.toFixed(3)})`,
-            );
-          }
+          // Scale around sprite center — no teleport.
+          sprite.setAttribute(
+            "transform",
+            `translate(0 ${bob - PLAYER_H})` +
+            ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
+            ` scale(${newRFlip.toFixed(3)} ${newRVS.toFixed(3)})` +
+            ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
+          );
         }
       }
 
