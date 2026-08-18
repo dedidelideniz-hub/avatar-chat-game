@@ -281,6 +281,20 @@
   animation: cloud-drift 36s ease-in-out infinite alternate;
 }
 
+/* Avatar pose toggle — idle (front) vs walking (side). */
+.avatar-pose-idle {
+  display: block;
+}
+.avatar-pose-walk {
+  display: none;
+}
+svg[data-pose="walking"] .avatar-pose-idle {
+  display: none;
+}
+svg[data-pose="walking"] .avatar-pose-walk {
+  display: block;
+}
+
 /* Walk cycle — arms and legs swing clearly while an ancestor has `.walking`. */
 @keyframes arm-swing {
   from {
