@@ -857,6 +857,17 @@ export default function World() {
 
   // Online street — publish my position and watch other real players.
   const { publish, sessionId } = usePresencePublisher("world");
+  // Shared server clock: bots are driven by (local time + offset) so every
+  // device walks them at the same phase, even when phone clocks differ.
+  const serverClock = useQuery(api.world.clock, {
+    t: Math.floor(Date.now() / 30_000),
+  });
+  const serverOffsetRef = useRef(0);
+  useEffect(() => {
+    if (serverClock) {
+      serverOffsetRef.current = serverClock.serverTime - Date.now();
+    }
+  }, [serverClock]);
   const profileRef = useRef({
     name: username,
     config,
@@ -1126,7 +1137,8 @@ export default function World() {
           if (botEl0) botEl0.style.display = "none";
           continue;
         }
-        const wallT = Date.now() / 1000 + bot.offset;
+        const wallT =
+          (Date.now() + serverOffsetRef.current) / 1000 + bot.offset;
         const t = ((wallT % bot.path.total) + bot.path.total) % bot.path.total;
         botPosAt(bot.path, t, botScratch);
         bot.pos.x = botScratch.x;

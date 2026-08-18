@@ -33,6 +33,18 @@ const schema = defineSchema(
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
     // Player profiles: username + avatar customization for the avatar-chat game.
+    // Live multiplayer presence: room -> sessionId -> data. Stored in the
+    // database (not in memory) so the `list` query re-runs reactively when
+    // anyone joins/moves/leaves and so it is shared across all instances.
+    presence: defineTable({
+      room: v.string(),
+      sessionId: v.string(),
+      data: v.any(), // player position/avatar payload (opaque to the server)
+      updatedAt: v.number(), // epoch ms — stale rows are swept by cleanup
+    })
+      .index("by_room", ["room"])
+      .index("by_room_session", ["room", "sessionId"]),
+
     profiles: defineTable({
       userId: v.id("users"),
       username: v.string(), // display name in the world

@@ -29,6 +29,10 @@ export function usePresencePublisher(room: string) {
 
   const updatePresence = useMutation(api.presence.update);
   const heartbeat = useMutation(api.presence.heartbeat);
+  const leave = useMutation(api.presence.leave);
+  // Keep the last published payload so the session can be re-announced if
+  // the server cleaned it up while the tab was backgrounded.
+  const latestDataRef = useRef<unknown>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -37,8 +41,30 @@ export function usePresencePublisher(room: string) {
     return () => window.clearInterval(timer);
   }, [room, sessionId, heartbeat]);
 
+  // Browsers throttle timers in background tabs, so heartbeats can stop and
+  // the session may get swept. As soon as the tab is visible again, announce
+  // the latest payload so other players see you reappear immediately.
+  useEffect(() => {
+    const rejoin = () => {
+      const data = latestDataRef.current;
+      if (data !== null) void updatePresence({ room, sessionId, data });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") rejoin();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      // Best-effort: drop my session right away when leaving the page.
+      void leave({ room, sessionId });
+    };
+  }, [room, sessionId, updatePresence, leave]);
+
   const publish = useCallback(
     (data: unknown) => {
+      latestDataRef.current = data;
       void updatePresence({ room, sessionId, data });
     },
     [room, sessionId, updatePresence],
