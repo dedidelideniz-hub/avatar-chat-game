@@ -149,8 +149,9 @@ export function AvatarPreview({
       <circle cx="33" cy="58" r="7" fill={skin} {...OUTLINE} />
       <circle cx="107" cy="58" r="7" fill={skin} {...OUTLINE} />
 
-      {/* face */}
-      <g>
+      {/* face — shifted toward the walking direction via
+          className queried imperatively by the game loop. */}
+      <g className="avatar-face">
         <ellipse cx="58" cy="63" rx="4.5" ry="6.5" fill="#2b2320" />
         <circle cx="56.5" cy="60" r="1.9" fill="#ffffff" />
         <ellipse cx="82" cy="63" rx="4.5" ry="6.5" fill="#2b2320" />

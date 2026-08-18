@@ -1195,6 +1195,18 @@ export default function World() {
             : `scale(-1 1) translate(${-PLAYER_W / 2} ${ty})`,
         );
       }
+      // Head turn: shift the face toward the walking direction so the
+      // character looks where it's going — the parent sprite flip handles
+      // left/right, so a fixed positive local translate always works.
+      if (spriteRef.current) {
+        const faceEl = spriteRef.current.querySelector(".avatar-face");
+        if (faceEl) {
+          faceEl.setAttribute(
+            "transform",
+            moving ? "translate(6 0)" : "",
+          );
+        }
+      }
       if (playerRef.current) {
         playerRef.current.setAttribute(
           "transform",
@@ -1271,6 +1283,14 @@ export default function World() {
                 ? `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`
                 : `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
             );
+            // Bot head turns toward its walking direction
+            const faceEl = sprite.querySelector(".avatar-face");
+            if (faceEl) {
+              faceEl.setAttribute(
+                "transform",
+                bot.moving ? "translate(6 0)" : "",
+              );
+            }
           }
         }
       }
@@ -1319,6 +1339,14 @@ export default function World() {
               ? `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`
               : `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
           );
+          // Remote player head turns toward their walking direction
+          const faceEl = sprite.querySelector(".avatar-face");
+          if (faceEl) {
+            faceEl.setAttribute(
+              "transform",
+              st.moving ? "translate(6 0)" : "",
+            );
+          }
         }
       }
 
