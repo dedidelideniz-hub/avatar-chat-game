@@ -179,7 +179,6 @@ interface WorldPresence {
   x: number;
   y: number;
   facing: number;
-  angle?: number;
   moving: boolean;
   inBattle?: boolean;
 }
@@ -204,7 +203,6 @@ interface RemoteState {
   x: number;
   y: number;
   facing: number;
-  angle: number;
   moving: boolean;
   phase: number;
 }
@@ -790,8 +788,6 @@ export default function World() {
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
-  // Smoothed facing angle in degrees — drives full-body rotation.
-  const angleRef = useRef(0);
   const keysRef = useRef(new Set<string>());
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
@@ -823,7 +819,6 @@ export default function World() {
       def,
       pos: { x: def.x, y: def.y },
       facing: 1,
-      angle: 0,
       phase: 0,
       moving: false,
       path: BOT_PATHS.get(def.id)!,
@@ -1070,14 +1065,6 @@ export default function World() {
     let last = performance.now();
     let phase = 0;
 
-    // Smooth angular lerp helpers.
-    const lerpAngle = (a: number, b: number, t: number) => {
-      let d = b - a;
-      if (d > 180) d -= 360;
-      if (d < -180) d += 360;
-      return a + d * t;
-    };
-
     const loop = (now: number) => {
       try {
       const dt = Math.min((now - last) / 1000, 0.05);
@@ -1165,13 +1152,6 @@ export default function World() {
         pos.x = px;
         pos.y = py;
         if (Math.abs(vx) > 0.05) facingRef.current = vx;
-      // Compute target facing angle from velocity (SVG coords: 0°=right, 90°=down).
-      if (moving) {
-        const targetAngle = (Math.atan2(vy, vx) * 180) / Math.PI;
-        angleRef.current = lerpAngle(angleRef.current, targetAngle, Math.min(1, dt * 14));
-        // Snap when very close to avoid micro-jitter.
-        if (Math.abs(angleRef.current - targetAngle) < 0.8) angleRef.current = targetAngle;
-      }
       }
 
       // Share my position with the street — throttled while walking, plus a
@@ -1185,7 +1165,6 @@ export default function World() {
             x: pos.x,
             y: pos.y,
             facing: facingRef.current,
-            angle: angleRef.current,
             moving: true,
           });
         }
@@ -1195,40 +1174,35 @@ export default function World() {
         lastPublishRef.current = 0;
         publish({
           ...prof,
-          x: pos.x,
-          y: pos.y,
-          facing: facingRef.current,
-          angle: angleRef.current,
-          moving: false,
+            x: pos.x,
+            y: pos.y,
+            facing: facingRef.current,
+            moving: false,
         });
       }
       }
 
-      // Sprite: bob + limb swing while walking, full-body rotation toward
-      // the movement direction — smooth lerp keeps turns organic.
+      // Sprite: bob + limb swing while walking, horizontal flip toward
+      // the walking direction — Sanalika style (upright, no rotation).
       spriteRef.current?.classList.toggle("walking", moving);
       const bob = moving ? Math.sin(phase) * 5 : 0;
       const ty = -PLAYER_H + bob;
-      const a = angleRef.current;
+      // Smoothly interpolate a flip factor: -1 = facing left, +1 = facing right.
+      const targetFlip = facingRef.current < 0 ? -1 : 1;
+      const prevFlip = spriteRef.current?.dataset.flip ? Number(spriteRef.current.dataset.flip) : 1;
+      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 12);
       if (spriteRef.current) {
-        if (a === 0) {
-          // Pure right — no flip, no rotation.
+        spriteRef.current.dataset.flip = String(newFlip);
+        if (Math.abs(newFlip) < 0.01) {
+          // Dead-center — no transform needed.
           spriteRef.current.setAttribute(
             "transform",
             `translate(${-PLAYER_W / 2} ${ty})`,
           );
-        } else if (a === 180 || a === -180) {
-          // Pure left — horizontal flip only.
-          spriteRef.current.setAttribute(
-            "transform",
-            `scale(-1 1) translate(${-PLAYER_W / 2} ${ty})`,
-          );
         } else {
-          // Diagonal / up / down — flip (when left of center) + rotation.
-          const flip = Math.cos(a) < 0 ? -1 : 1;
           spriteRef.current.setAttribute(
             "transform",
-            `translate(0 ${ty}) scale(${flip} 1) rotate(${a.toFixed(1)} 0 ${PLAYER_H})`,
+            `scale(${newFlip.toFixed(3)} 1) translate(${-PLAYER_W / 2} ${ty})`,
           );
         }
       }
@@ -1288,15 +1262,6 @@ export default function World() {
         bot.moving = botScratch.moving;
         if (botScratch.moving) bot.facing = botScratch.facing;
         bot.phase = botScratch.moving ? t * 8 : 0;
-        // Compute bot facing angle from its path movement direction.
-        if (botScratch.moving && bot.path) {
-          const n = bot.path.pts.length;
-          const curSeg = Math.floor((t / bot.path.total) * n) % n;
-          const a0 = bot.path.pts[curSeg];
-          const a1 = bot.path.pts[(curSeg + 1) % n];
-          const bTarget = (Math.atan2(a1.y - a0.y, a1.x - a0.x) * 180) / Math.PI;
-          bot.angle = lerpAngle(bot.angle ?? 0, bTarget, Math.min(1, dt * 10));
-        }
         // Apply to the DOM imperatively — no React re-render per frame.
         const botEl = botRefs.current.get(bot.def.id);
         if (botEl) {
@@ -1308,24 +1273,22 @@ export default function World() {
             ".bot-sprite",
           ) as SVGGElement | null;
           const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
-          const botAngle = bot.angle ?? 0;
           if (sprite) {
             sprite.classList.toggle("walking", bot.moving);
-            if (botAngle === 0) {
+            // Sanalika-style: horizontal flip only, no rotation.
+            const targetBotFlip = bot.facing < 0 ? -1 : 1;
+            const prevBotFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
+            const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 12);
+            sprite.dataset.flip = String(newBotFlip);
+            if (Math.abs(newBotFlip) < 0.01) {
               sprite.setAttribute(
                 "transform",
                 `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
               );
-            } else if (botAngle === 180 || botAngle === -180) {
-              sprite.setAttribute(
-                "transform",
-                `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
-              );
             } else {
-              const flip = Math.cos(botAngle * Math.PI / 180) < 0 ? -1 : 1;
               sprite.setAttribute(
                 "transform",
-                `translate(0 ${-PLAYER_H + bob}) scale(${flip} 1) rotate(${botAngle.toFixed(1)} 0 ${PLAYER_H})`,
+                `scale(${newBotFlip.toFixed(3)} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
               );
             }
           }
@@ -1351,7 +1314,6 @@ export default function World() {
             x: d.x,
             y: d.y,
             facing: typeof d.facing === "number" ? d.facing : 1,
-            angle: typeof d.angle === "number" ? d.angle : (typeof d.facing === "number" ? (d.facing < 0 ? 180 : 0) : 0),
             moving: !!d.moving,
             phase: 0,
           };
@@ -1361,14 +1323,6 @@ export default function World() {
         st.x += (d.x - st.x) * k;
         st.y += (d.y - st.y) * k;
         if (Math.abs(d.x - st.x) > 1.5) st.facing = d.x >= st.x ? 1 : -1;
-        // Smoothly interpolate the remote player's facing angle.
-        if (typeof d.angle === "number") {
-          st.angle = lerpAngle(st.angle, d.angle, Math.min(1, dt * 8));
-        } else {
-          // Fallback: infer angle from x-velocity.
-          const targetA = st.facing < 0 ? 180 : 0;
-          st.angle = lerpAngle(st.angle, targetA, Math.min(1, dt * 8));
-        }
         st.moving = !!d.moving;
         if (st.moving) st.phase += dt * 10;
         el.setAttribute("transform", `translate(${st.x} ${st.y})`);
@@ -1378,21 +1332,20 @@ export default function World() {
         if (sprite) {
           sprite.classList.toggle("walking", st.moving);
           const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
-          if (st.angle === 0) {
+          // Sanalika-style: horizontal flip only, no rotation.
+          const targetRFlip = st.facing < 0 ? -1 : 1;
+          const prevRFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
+          const newRFlip = prevRFlip + (targetRFlip - prevRFlip) * Math.min(1, dt * 10);
+          sprite.dataset.flip = String(newRFlip);
+          if (Math.abs(newRFlip) < 0.01) {
             sprite.setAttribute(
               "transform",
               `translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
             );
-          } else if (st.angle === 180 || st.angle === -180) {
-            sprite.setAttribute(
-              "transform",
-              `scale(-1 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
-            );
           } else {
-            const flip = Math.cos(st.angle * Math.PI / 180) < 0 ? -1 : 1;
             sprite.setAttribute(
               "transform",
-              `translate(0 ${-PLAYER_H + bob}) scale(${flip} 1) rotate(${st.angle.toFixed(1)} 0 ${PLAYER_H})`,
+              `scale(${newRFlip.toFixed(3)} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H + bob})`,
             );
           }
         }
