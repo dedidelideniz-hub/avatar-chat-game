@@ -1160,6 +1160,9 @@ export default function World() {
         // character doesn't snap to an arbitrary direction.
         if (Math.abs(vx) > 0.1) facingRef.current = vx > 0 ? 1 : -1;
         vyRef.current = vy;
+      } else {
+        // Reset vertical direction when stopped so sprite returns to normal.
+        vyRef.current = 0;
       }
 
       // Share my position with the street — throttled while walking, plus a
@@ -1199,17 +1202,18 @@ export default function World() {
       // Smooth flip (horizontal) + smooth vertical scale (perspective).
       const targetFlip = facingRef.current < 0 ? -1 : 1;
       const prevFlip = spriteRef.current?.dataset.flip ? Number(spriteRef.current.dataset.flip) : 1;
-      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 25);
-      // Vertical scale: walking up = compressed (0.9), walking down = stretched (1.08).
-      const targetVScale = moving ? (1 + vyRef.current * 0.15) : 1;
+      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 30);
+      // Vertical scale: up = compressed (0.88), down = stretched (1.12).
+      const targetVScale = moving ? (1 + vyRef.current * 0.12) : 1;
       const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
-      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 14);
+      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 16);
       if (spriteRef.current) {
         spriteRef.current.dataset.flip = String(newFlip);
         spriteRef.current.dataset.vscale = String(newVScale);
         const scaleY = newVScale;
         // Anchor pivot at feet: translate y = bob - scaleY*PLAYER_H + PLAYER_H
         const ty2 = bob - scaleY * PLAYER_H + PLAYER_H;
+        // Scale origin at character center (0, PLAYER_H) — feet stay planted.
         if (Math.abs(newFlip) < 0.01 && Math.abs(scaleY - 1) < 0.005) {
           spriteRef.current.setAttribute(
             "transform",
@@ -1305,11 +1309,11 @@ export default function World() {
             // Full-body facing: horizontal flip + vertical perspective.
             const targetBotFlip = bot.facing < 0 ? -1 : 1;
             const prevBotFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
-            const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 18);
+            const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 30);
             const botVy = bot.vy ?? 0;
-            const targetBotVS = bot.moving ? (1 + botVy * 0.15) : 1;
+            const targetBotVS = bot.moving ? (1 + botVy * 0.12) : 1;
             const prevBotVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
-            const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 10);
+            const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 16);
             sprite.dataset.flip = String(newBotFlip);
             sprite.dataset.vscale = String(newBotVS);
             const botTy2 = bob - newBotVS * PLAYER_H + PLAYER_H;
@@ -1370,10 +1374,10 @@ export default function World() {
           // Full-body facing: horizontal flip + vertical perspective.
           const targetRFlip = st.facing < 0 ? -1 : 1;
           const prevRFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
-          const newRFlip = prevRFlip + (targetRFlip - prevRFlip) * Math.min(1, dt * 10);
-          const targetRVS = st.moving ? (1 + st.vy * 0.15) : 1;
+          const newRFlip = prevRFlip + (targetRFlip - prevRFlip) * Math.min(1, dt * 25);
+          const targetRVS = st.moving ? (1 + st.vy * 0.12) : 1;
           const prevRVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
-          const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 10);
+          const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 16);
           sprite.dataset.flip = String(newRFlip);
           sprite.dataset.vscale = String(newRVS);
           const rTy2 = bob - newRVS * PLAYER_H + PLAYER_H;
