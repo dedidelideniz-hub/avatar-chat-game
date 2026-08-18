@@ -1,9 +1,10 @@
 import type { AvatarConfig } from "@/lib/avatar";
 
 /**
- * Cartoon chibi avatar with TWO poses:
- *  • data-pose="idle"   → front-facing (default, standing still)
- *  • data-pose="walking" → side-facing (profile, walking)
+ * Cartoon chibi avatar with FOUR directional poses:
+ *  • data-pose="idle"      → front-facing (standing still, OR walking down)
+ *  • data-pose="walk-up"   → back view (walking upward, only hair visible)
+ *  • data-pose="walk-side" → side profile (walking left/right, game loop flips)
  *
  * The game loop sets data-pose on the root <svg> and toggles the
  * `.walking` class on the sprite group — both views share the same
@@ -147,6 +148,100 @@ function IdlePose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) 
       <IdleHairFront style={hair} color={hairColor} />
     </g>
   );
+}
+
+/* ── Back pose (WALKING UP — only back of head with hair) ───── */
+
+function BackPose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) {
+  return (
+    <g>
+      {/* Hair back — covers the entire head from behind */}
+      <BackHair style={hair} color={hairColor} />
+
+      {/* Legs */}
+      <g className="avatar-leg-l">
+        <rect x="55" y="127" width="14" height="26" rx="7" fill={pants} {...OUTLINE} />
+        <rect x="52" y="152" width="18" height="13" rx="5" fill={shoes} {...OUTLINE} />
+      </g>
+      <g className="avatar-leg-r">
+        <rect x="71" y="127" width="14" height="26" rx="7" fill={pants} {...OUTLINE} />
+        <rect x="70" y="152" width="18" height="13" rx="5" fill={shoes} {...OUTLINE} />
+      </g>
+
+      {/* Arms */}
+      <g className="avatar-arm-l">
+        <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
+        <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
+      </g>
+      <g className="avatar-arm-r">
+        <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
+        <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
+      </g>
+
+      {/* Torso — back view (no collar detail) */}
+      <rect x="46" y="86" width="48" height="46" rx="14" fill={shirt} {...OUTLINE} />
+
+      {/* Head — back of head (skin circle, fully covered by hair) */}
+      <circle cx="70" cy="56" r="36" fill={skin} {...OUTLINE} />
+      <circle cx="33" cy="58" r="7" fill={skin} {...OUTLINE} />
+      <circle cx="107" cy="58" r="7" fill={skin} {...OUTLINE} />
+
+      {/* Hair on top — no face visible */}
+      <BackHair style={hair} color={hairColor} />
+    </g>
+  );
+}
+
+function BackHair({ style, color }: { style: string; color: string }) {
+  switch (style) {
+    case "none":
+      return null;
+    case "short":
+      return (
+        <path
+          fill={color}
+          d="M32 56 C32 22 108 22 108 56 C108 42 98 32 70 30 C42 32 32 42 32 56 Z"
+        />
+      );
+    case "long":
+      return (
+        <g fill={color}>
+          <path d="M32 56 C32 22 108 22 108 56 C108 42 98 32 70 30 C42 32 32 42 32 56 Z" />
+          <rect x="32" y="46" width="10" height="52" rx="6" />
+          <rect x="98" y="46" width="10" height="52" rx="6" />
+        </g>
+      );
+    case "spiky":
+      return (
+        <path
+          fill={color}
+          d="M32 56 L32 32 L44 42 L48 22 L60 40 L66 16 L74 38 L82 20 L90 40 L100 28 L108 56 C108 42 98 32 70 30 C42 32 32 42 32 56 Z"
+        />
+      );
+    case "curly":
+      return (
+        <g fill={color}>
+          <circle cx="46" cy="34" r="10" />
+          <circle cx="58" cy="26" r="10" />
+          <circle cx="72" cy="26" r="10" />
+          <circle cx="86" cy="30" r="10" />
+          <circle cx="36" cy="50" r="9" />
+          <circle cx="104" cy="50" r="9" />
+          <circle cx="38" cy="46" r="8" />
+          <circle cx="102" cy="46" r="8" />
+          <circle cx="70" cy="20" r="10" />
+        </g>
+      );
+    case "bob":
+      return (
+        <path
+          fill={color}
+          d="M32 56 C32 22 108 22 108 56 L108 72 L100 72 L100 80 Q100 86 92 86 Q84 86 84 80 L84 72 L56 72 L56 80 Q56 86 48 86 Q40 86 40 80 L40 72 L32 72 Z"
+        />
+      );
+    default:
+      return null;
+  }
 }
 
 /* ── Walking pose helpers (SIDE-VIEW) ────────────────────────── */
@@ -325,13 +420,18 @@ export function AvatarPreview({
       {/* Ground shadow */}
       <ellipse cx="70" cy="165" rx="36" ry="7" fill="#1c1917" opacity="0.12" />
 
-      {/* Front-facing idle pose */}
+      {/* Front-facing idle pose (also used for walking DOWN) */}
       <g className="avatar-pose-idle">
         <IdlePose {...config} />
       </g>
 
-      {/* Side-view walking pose */}
-      <g className="avatar-pose-walk">
+      {/* Back view (walking UP) */}
+      <g className="avatar-pose-back">
+        <BackPose {...config} />
+      </g>
+
+      {/* Side-view walking pose (LEFT / RIGHT — game loop handles flip) */}
+      <g className="avatar-pose-side">
         <WalkPose {...config} />
       </g>
     </svg>

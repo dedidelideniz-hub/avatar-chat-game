@@ -281,17 +281,44 @@
   animation: cloud-drift 36s ease-in-out infinite alternate;
 }
 
-/* Avatar pose toggle — idle (front) vs walking (side). */
+/* Avatar pose toggle — idle (front), back (up), side (left/right). */
 .avatar-pose-idle {
   display: block;
 }
-.avatar-pose-walk {
+.avatar-pose-back {
   display: none;
 }
-svg[data-pose="walking"] .avatar-pose-idle {
+.avatar-pose-side {
   display: none;
 }
-svg[data-pose="walking"] .avatar-pose-walk {
+/* Walking down = front-facing idle */
+svg[data-pose="walk-down"] .avatar-pose-idle {
+  display: block;
+}
+svg[data-pose="walk-down"] .avatar-pose-back {
+  display: none;
+}
+svg[data-pose="walk-down"] .avatar-pose-side {
+  display: none;
+}
+/* Walking up = back view */
+svg[data-pose="walk-up"] .avatar-pose-idle {
+  display: none;
+}
+svg[data-pose="walk-up"] .avatar-pose-back {
+  display: block;
+}
+svg[data-pose="walk-up"] .avatar-pose-side {
+  display: none;
+}
+/* Walking left/right = side profile */
+svg[data-pose="walk-side"] .avatar-pose-idle {
+  display: none;
+}
+svg[data-pose="walk-side"] .avatar-pose-back {
+  display: none;
+}
+svg[data-pose="walk-side"] .avatar-pose-side {
   display: block;
 }
 

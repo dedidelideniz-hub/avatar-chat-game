@@ -1226,9 +1226,14 @@ export default function World() {
       // direction — SNAPPED flip (no lerp through zero!) + smooth
       // vertical scale for perspective.
       spriteRef.current?.classList.toggle("walking", moving);
-      // Toggle avatar pose: idle (front) when still, walking (side) when moving.
+      // Directional avatar pose: idle (front), walk-up (back), walk-down (front), walk-side (side).
       const avatarSvg = spriteRef.current?.querySelector("svg[data-pose]") as SVGSVGElement | null;
-      if (avatarSvg) avatarSvg.dataset.pose = moving ? "walking" : "idle";
+      if (avatarSvg) {
+        if (!moving) avatarSvg.dataset.pose = "idle";
+        else if (vyRef.current < 0) avatarSvg.dataset.pose = "walk-up";
+        else if (vyRef.current > 0) avatarSvg.dataset.pose = "walk-down";
+        else avatarSvg.dataset.pose = "walk-side";
+      }
       const bob = moving ? Math.sin(phase) * 5 : 0;
       // FLIP: snap instantly — lerping through 0 makes the sprite
       // disappear for ~150ms, which looks like teleporting.
@@ -1347,9 +1352,14 @@ export default function World() {
           const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
           if (sprite) {
             sprite.classList.toggle("walking", bot.moving);
-            // Toggle avatar pose for bots.
+            // Directional avatar pose for bots.
             const botSvg = sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
-            if (botSvg) botSvg.dataset.pose = bot.moving ? "walking" : "idle";
+            if (botSvg) {
+              if (!bot.moving) botSvg.dataset.pose = "idle";
+              else if (bot.vy < 0) botSvg.dataset.pose = "walk-up";
+              else if (bot.vy > 0) botSvg.dataset.pose = "walk-down";
+              else botSvg.dataset.pose = "walk-side";
+            }
             // Full-body facing: SNAPPED flip + smooth vertical perspective.
             const botFlip = bot.facing < 0 ? -1 : 1;
             const botVy = bot.vy ?? 0;
@@ -1408,9 +1418,14 @@ export default function World() {
         ) as SVGGElement | null;
         if (sprite) {
           sprite.classList.toggle("walking", st.moving);
-          // Toggle avatar pose for remote players.
+          // Directional avatar pose for remote players.
           const rSvg = sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
-          if (rSvg) rSvg.dataset.pose = st.moving ? "walking" : "idle";
+          if (rSvg) {
+            if (!st.moving) rSvg.dataset.pose = "idle";
+            else if (st.vy < 0) rSvg.dataset.pose = "walk-up";
+            else if (st.vy > 0) rSvg.dataset.pose = "walk-down";
+            else rSvg.dataset.pose = "walk-side";
+          }
           const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
           // Full-body facing: horizontal flip + vertical perspective.
           const rFlip = st.facing < 0 ? -1 : 1;
