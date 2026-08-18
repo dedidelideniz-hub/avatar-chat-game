@@ -91,6 +91,20 @@ const schema = defineSchema(
       .index("by_opponentSession", ["opponentSession"])
       .index("by_challengerSession", ["challengerSession"]),
 
+    // Public street chat — every message is broadcast to everyone in the
+    // same room ("world" for the main street). Kept separate from `presence`
+    // because presence rows are replaced on every publish; chat is append-only.
+    chat: defineTable({
+      room: v.string(), // "world" (or a future per-location room)
+      senderId: v.id("users"),
+      senderName: v.string(),
+      text: v.string(),
+      color: v.optional(v.string()), // sender's bubble color hex
+      createdAt: v.number(),
+    })
+      .index("by_room_time", ["room", "createdAt"])
+      .index("by_sender", ["senderId", "createdAt"]),
+
     profiles: defineTable({
       userId: v.id("users"),
       username: v.string(), // display name in the world

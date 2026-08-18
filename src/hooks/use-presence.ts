@@ -36,8 +36,11 @@ export function usePresencePublisher(room: string) {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void heartbeat({ room, sessionId });
-    }, 5000);
+      // Heartbeat carries the last payload: if the row was swept (e.g. while
+      // the tab was backgrounded) the server re-announces it instead of
+      // silently no-op'ing, so the player reappears on every other phone.
+      void heartbeat({ room, sessionId, data: latestDataRef.current ?? undefined });
+    }, 4000);
     return () => window.clearInterval(timer);
   }, [room, sessionId, heartbeat]);
 
@@ -52,13 +55,18 @@ export function usePresencePublisher(room: string) {
     const onVisible = () => {
       if (document.visibilityState === "visible") rejoin();
     };
+    // Drop the session only when the tab is really going away. NOT on React
+    // unmount: in dev StrictMode mounts -> unmounts -> remounts, and a queued
+    // `leave` can land after the remount's publish and delete the fresh row,
+    // making the player invisible to everyone until the next publish.
+    const onPageHide = () => void leave({ room, sessionId });
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
+    window.addEventListener("pagehide", onPageHide);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
-      // Best-effort: drop my session right away when leaving the page.
-      void leave({ room, sessionId });
+      window.removeEventListener("pagehide", onPageHide);
     };
   }, [room, sessionId, updatePresence, leave]);
 

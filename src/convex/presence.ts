@@ -69,10 +69,17 @@ export const update = mutation({
   },
 });
 
-/** Keep the session alive so it isn't cleaned up. */
+/** Keep the session alive so it isn't cleaned up. If the row is missing
+ *  (swept while the tab was backgrounded, or a dev-mode StrictMode remount
+ *  raced the leave), re-announce the last known payload so the session
+ *  comes back on the next heartbeat instead of silently staying gone. */
 export const heartbeat = mutation({
-  args: { room: v.string(), sessionId: v.string() },
-  handler: async (ctx, { room, sessionId }) => {
+  args: {
+    room: v.string(),
+    sessionId: v.string(),
+    data: v.optional(v.any()),
+  },
+  handler: async (ctx, { room, sessionId, data }) => {
     const existing = await ctx.db
       .query("presence")
       .withIndex("by_room_session", (q) =>
@@ -81,6 +88,14 @@ export const heartbeat = mutation({
       .first();
     if (existing) {
       await ctx.db.patch(existing._id, { updatedAt: Date.now() });
+    } else if (data !== undefined) {
+      await ctx.db.insert("presence", {
+        room,
+        sessionId,
+        data,
+        updatedAt: Date.now(),
+      });
+      await ensureCleanup(ctx);
     }
   },
 });

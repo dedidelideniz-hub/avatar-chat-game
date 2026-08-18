@@ -773,6 +773,7 @@ export default function World() {
   const buyAbility = useMutation(api.profiles.buyAbility);
   const equipAbility = useMutation(api.profiles.equipAbility);
   const battleVictory = useMutation(api.profiles.battleVictory);
+  const sendChat = useMutation(api.chat.send);
   const createBattle = useMutation(api.battles.createBattle);
   const acceptBattle = useMutation(api.battles.acceptBattle);
   const declineBattle = useMutation(api.battles.declineBattle);
@@ -799,6 +800,8 @@ export default function World() {
   const [unread, setUnread] = useState(0);
   const [bubble, setBubble] = useState<string | null>(null);
   const nextIdRef = useRef(1);
+  // Server chat messages already appended (dedupe against the live query).
+  const seenServerIds = useRef(new Set<string>());
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatOpenRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -906,8 +909,10 @@ export default function World() {
   );
   // Shared server clock: bots are driven by (local time + offset) so every
   // device walks them at the same phase, even when phone clocks differ.
+  // Live street chat — messages typed by ANY player land on every phone.
+  const serverMessages = useQuery(api.chat.list, { room: "world" });
   const serverClock = useQuery(api.world.clock, {
-    t: Math.floor(Date.now() / 30_000),
+    t: Math.floor(Date.now() / 15_000),
   });
   const serverOffsetRef = useRef(0);
   useEffect(() => {
@@ -974,7 +979,7 @@ export default function World() {
         moving: false,
         inBattle: battleRef.current !== null || pvpBattleRef.current !== null,
       });
-    }, 4000);
+    }, 2000);
     return () => window.clearInterval(id);
   }, [profile, publish]);
 
@@ -1333,26 +1338,55 @@ export default function World() {
   }, []);
 
   const appendMessage = useCallback((msg: ChatMessage) => {
-    setMessages((prev) => [...prev.slice(-40), msg]);
+    setMessages((prev) => [...prev.slice(-80), msg]);
     if (!chatOpenRef.current) setUnread((u) => u + 1);
   }, []);
 
+  // Live street chat — messages sent from other phones appear here as they
+  // land (server chat rows), so the street really is shared between devices.
+  useEffect(() => {
+    if (!serverMessages || !profile) return;
+    for (const m of serverMessages) {
+      if (seenServerIds.current.has(m._id)) continue;
+      seenServerIds.current.add(m._id);
+      appendMessage({
+        id: m._id,
+        from: m.senderName,
+        text: m.text,
+        color: m.color,
+        isMe: m.senderId === profile.userId,
+      });
+    }
+  }, [serverMessages, appendMessage, profile]);
+
   const handleSend = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       playSound("chat");
-      appendMessage({
-        id: nextIdRef.current++,
-        from: username,
-        text: trimmed,
-        isMe: true,
-      });
+      // Speech bubble appears instantly; the chat row lands when the server
+      // confirms the message (so every phone sees it too).
       setBubble(trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed);
       if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
       bubbleTimerRef.current = setTimeout(() => setBubble(null), 4000);
+      try {
+        const msg = await sendChat({ room: "world", text: trimmed });
+        seenServerIds.current.add(msg._id);
+        appendMessage({
+          id: msg._id,
+          from: msg.senderName,
+          text: msg.text,
+          color: msg.color,
+          isMe: true,
+        });
+      } catch (error) {
+        console.error("Mesaj hatası:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Mesaj gönderilemedi.",
+        );
+      }
     },
-    [appendMessage, username],
+    [appendMessage, username, sendChat],
   );
 
   const openChat = () => {
@@ -1391,7 +1425,7 @@ export default function World() {
       playSound("invite");
       setInvite({ botId: bot.id, status: "waiting" });
       appendMessage({
-        id: nextIdRef.current++,
+        id: `local-${nextIdRef.current++}`,
         from: "Sistem",
         text: `${bot.name} savaşa davet edildi… ⚔️`,
       });
@@ -1400,7 +1434,7 @@ export default function World() {
           playSound("decline");
           setInvite({ botId: bot.id, status: "rejected" });
           appendMessage({
-            id: nextIdRef.current++,
+            id: `local-${nextIdRef.current++}`,
             from: bot.name,
             text: "Şu an savaşamıyorum, kusura bakma! 🙏",
             color: bot.color,
@@ -1410,7 +1444,7 @@ export default function World() {
           playSound("accept");
           setInvite({ botId: bot.id, status: "accepted" });
           appendMessage({
-            id: nextIdRef.current++,
+            id: `local-${nextIdRef.current++}`,
             from: bot.name,
             text: "Kabul! Hadi savaş alanına! ⚔️🔥",
             color: bot.color,
@@ -1479,7 +1513,7 @@ export default function World() {
         });
         setViewing(null);
         appendMessage({
-          id: nextIdRef.current++,
+          id: `local-${nextIdRef.current++}`,
           from: "Sistem",
           text: `${remote.data.name ?? "Oyuncu"} savaşa davet edildi… ⚔️`,
         });
@@ -1521,7 +1555,7 @@ export default function World() {
       setPvpBattle({ battleId: inv.battleId, role: "opponent" });
       setPvpInvite(null);
       appendMessage({
-        id: nextIdRef.current++,
+        id: `local-${nextIdRef.current++}`,
         from: "Sistem",
         text: `⚔️ ${inv.challenger.name} ile düello başlıyor!`,
       });

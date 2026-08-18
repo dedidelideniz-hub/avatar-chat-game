@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface ChatMessage {
-  id: number;
+  /** Stable key — a server chat row id, or a local numeric id for system
+   *  / bot / vendor lines that never touch the server. */
+  id: string | number;
   from: string;
   text: string;
   /** Accent color for the sender name (e.g. vendor brand color). */
