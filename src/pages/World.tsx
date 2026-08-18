@@ -1090,6 +1090,11 @@ export default function World() {
       if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
       if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
       if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
+      // Clamp to 4 cardinal directions only — no diagonal movement.
+      if (vx !== 0 && vy !== 0) {
+        if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
+        else vx = 0;
+      }
       // Cancel auto-walk when the player takes over with the keyboard.
       if (keysRef.current.size > 0 && targetRef.current) {
         targetRef.current = null;
@@ -1122,8 +1127,14 @@ export default function World() {
           const dy = w.y - p.y;
           const dist = Math.hypot(dx, dy);
           if (dist > 1) {
-            vx = dx / dist;
-            vy = dy / dist;
+            // Clamp to dominant cardinal axis — no diagonal movement.
+            if (Math.abs(dx) >= Math.abs(dy)) {
+              vx = dx > 0 ? 1 : -1;
+              vy = 0;
+            } else {
+              vx = 0;
+              vy = dy > 0 ? 1 : -1;
+            }
           }
           // Failsafe: if stuck for 3 seconds, cancel.
           const movedSince = Math.hypot(

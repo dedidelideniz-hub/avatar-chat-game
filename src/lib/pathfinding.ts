@@ -63,16 +63,12 @@ function toWorld(c: number, r: number) {
   return { x: c * CELL + CELL / 2, y: r * CELL + CELL / 2 };
 }
 
-/** 8-directional neighbours. */
+/** 4-directional neighbours only — no diagonal movement. */
 const DIRS: [number, number][] = [
   [1, 0],
   [-1, 0],
   [0, 1],
   [0, -1],
-  [1, 1],
-  [1, -1],
-  [-1, 1],
-  [-1, -1],
 ];
 
 /* ── A* ─────────────────────────────────────────────────────── */
@@ -190,14 +186,7 @@ export function findPath(
       const nk = key(nc, nr);
       if (closed.has(nk)) continue;
 
-      // diagonal movement: make sure both adjacent cardinal cells are
-      // walkable to avoid cutting corners through obstacle corners.
-      if (dc !== 0 && dr !== 0) {
-        if (!walkable[current.r + dr][current.c] || !walkable[current.r][current.c + dc])
-          continue;
-      }
-
-      const moveCost = dc !== 0 && dr !== 0 ? Math.SQRT2 : 1;
+      const moveCost = 1; // cardinal only
       const g = current.g + moveCost;
 
       const existing = openMap.get(nk);
