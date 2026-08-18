@@ -39,6 +39,7 @@ import {
   type Rect,
   type Vendor,
 } from "@/lib/shop";
+import { findPath } from "@/lib/pathfinding";
 import { isMuted, playSound, toggleMuted, unlockAudio } from "@/lib/sounds";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -814,6 +815,8 @@ export default function World() {
   const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
+  const waypointsRef = useRef<{ x: number; y: number }[]>([]);
+  const waypointIdxRef = useRef(0);
   // Autonomous bots: positions/animations live in refs (mutated every frame
   // without re-rendering React); only their speech bubbles are React state.
   const botRefs = useRef(new Map<string, SVGGElement>());
@@ -1090,37 +1093,50 @@ export default function World() {
       // Cancel auto-walk when the player takes over with the keyboard.
       if (keysRef.current.size > 0 && targetRef.current) {
         targetRef.current = null;
+        waypointsRef.current = [];
+        waypointIdxRef.current = 0;
         setTargetMarker(null);
       }
-      // Auto-walk target (click-to-move, stalls map, gift box).
-      const target = targetRef.current;
-      if (target) {
+      // Auto-walk: follow A* waypoints, advancing along the path.
+      const wp = waypointsRef.current;
+      if (wp.length > 0 && targetRef.current) {
         const p = posRef.current;
-        const dx = target.x - p.x;
-        const dy = target.y - p.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < 24) {
+        // Advance waypoint index when close enough.
+        let wi = waypointIdxRef.current;
+        if (wi < wp.length) {
+          const w = wp[wi];
+          const wd = Math.hypot(w.x - p.x, w.y - p.y);
+          if (wd < 18) wi++;
+          waypointIdxRef.current = wi;
+        }
+        if (wi >= wp.length) {
+          // Reached the final destination.
           targetRef.current = null;
+          waypointsRef.current = [];
+          waypointIdxRef.current = 0;
           setTargetMarker(null);
         } else {
-          // Track whether the player is actually making progress. If they
-          // stay pinned (wall/stall) for a moment, cancel the walk so the
-          // marker doesn't linger — but keep heading toward the target every
-          // single frame while it is active.
+          // Move toward current waypoint.
+          const w = wp[wi];
+          const dx = w.x - p.x;
+          const dy = w.y - p.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 1) {
+            vx = dx / dist;
+            vy = dy / dist;
+          }
+          // Failsafe: if stuck for 3 seconds, cancel.
           const movedSince = Math.hypot(
             p.x - stuckRef.current.x,
             p.y - stuckRef.current.y,
           );
           if (movedSince > 2) {
             stuckRef.current = { x: p.x, y: p.y, since: now };
-          } else if (now - stuckRef.current.since > 2000) {
-            // Blocked on the way — give up so the marker doesn't linger.
+          } else if (now - stuckRef.current.since > 3000) {
             targetRef.current = null;
+            waypointsRef.current = [];
+            waypointIdxRef.current = 0;
             setTargetMarker(null);
-          }
-          if (targetRef.current) {
-            vx = dx / dist;
-            vy = dy / dist;
           }
         }
       }
@@ -1759,8 +1775,16 @@ export default function World() {
   const goTo = useCallback((x: number, y: number, label: string) => {
     if (!inWalkable(x, y)) return;
     playSound("click");
-    targetRef.current = { x, y };
     const p = posRef.current;
+    const path = findPath(p.x, p.y, x, y);
+    if (path.length > 1) {
+      waypointsRef.current = path.slice(1);
+      waypointIdxRef.current = 0;
+      targetRef.current = path[path.length - 1];
+    } else {
+      waypointsRef.current = [];
+      targetRef.current = { x, y };
+    }
     stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
     setTargetMarker({ x, y });
     setStallsOpen(false);
@@ -1825,8 +1849,16 @@ export default function World() {
     const zone = WALKABLE_ZONES[0];
     const x = Math.min(Math.max(wx, zone.x), zone.x + zone.w);
     const y = Math.min(Math.max(wy, zone.y), zone.y + zone.h);
-    targetRef.current = { x, y };
     const p = posRef.current;
+    const path = findPath(p.x, p.y, x, y);
+    if (path.length > 1) {
+      waypointsRef.current = path.slice(1);
+      waypointIdxRef.current = 0;
+      targetRef.current = path[path.length - 1];
+    } else {
+      waypointsRef.current = [];
+      targetRef.current = { x, y };
+    }
     stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
     setTargetMarker({ x, y });
   }, []);
