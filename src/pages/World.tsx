@@ -1195,32 +1195,47 @@ export default function World() {
       }
       }
 
-      // Sprite: bob + limb swing while walking, full body faces the
-      // walking direction — flip + vertical scale around the sprite center
-      // so the character never teleports.
+      // Sprite: bob + limb swing while walking, body faces the walking
+      // direction — SNAPPED flip (no lerp through zero!) + smooth
+      // vertical scale for perspective.
       spriteRef.current?.classList.toggle("walking", moving);
       const bob = moving ? Math.sin(phase) * 5 : 0;
-      // Smooth flip (horizontal) + smooth vertical scale (perspective).
-      const targetFlip = facingRef.current < 0 ? -1 : 1;
-      const prevFlip = spriteRef.current?.dataset.flip ? Number(spriteRef.current.dataset.flip) : 1;
-      const newFlip = prevFlip + (targetFlip - prevFlip) * Math.min(1, dt * 30);
-      // Vertical scale: up = compressed, down = stretched.
+      // FLIP: snap instantly — lerping through 0 makes the sprite
+      // disappear for ~150ms, which looks like teleporting.
+      const flip = facingRef.current < 0 ? -1 : 1;
+      // VERTICAL SCALE: lerp smoothly — never crosses zero.
       const targetVScale = moving ? (1 + vyRef.current * 0.12) : 1;
       const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
       const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 16);
       if (spriteRef.current) {
-        spriteRef.current.dataset.flip = String(newFlip);
+        spriteRef.current.dataset.flip = String(flip);
         spriteRef.current.dataset.vscale = String(newVScale);
         const scaleY = newVScale;
-        // IMPORTANT: scale around sprite center (0, -PLAYER_H/2) so the
-        // character never jumps.  translate → center → scale → uncenter.
-        spriteRef.current.setAttribute(
-          "transform",
-          `translate(0 ${bob - PLAYER_H})` +
-          ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-          ` scale(${newFlip.toFixed(3)} ${scaleY.toFixed(3)})` +
-          ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
-        );
+        if (flip === 1 && Math.abs(scaleY - 1) < 0.005) {
+          // Default pose — no transform needed.
+          spriteRef.current.setAttribute(
+            "transform",
+            `translate(0 ${bob - PLAYER_H})`,
+          );
+        } else if (scaleY === 1) {
+          // Flip only — simple scale around center.
+          spriteRef.current.setAttribute(
+            "transform",
+            `translate(0 ${bob - PLAYER_H})` +
+            ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
+            ` scale(${flip} 1)` +
+            ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
+          );
+        } else {
+          // Flip + vertical perspective.
+          spriteRef.current.setAttribute(
+            "transform",
+            `translate(0 ${bob - PLAYER_H})` +
+            ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
+            ` scale(${flip} ${scaleY.toFixed(3)})` +
+            ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
+          );
+        }
       }
       if (playerRef.current) {
         playerRef.current.setAttribute(
@@ -1302,22 +1317,20 @@ export default function World() {
           const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
           if (sprite) {
             sprite.classList.toggle("walking", bot.moving);
-            // Full-body facing: horizontal flip + vertical perspective.
-            const targetBotFlip = bot.facing < 0 ? -1 : 1;
-            const prevBotFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
-            const newBotFlip = prevBotFlip + (targetBotFlip - prevBotFlip) * Math.min(1, dt * 30);
+            // Full-body facing: SNAPPED flip + smooth vertical perspective.
+            const botFlip = bot.facing < 0 ? -1 : 1;
             const botVy = bot.vy ?? 0;
             const targetBotVS = bot.moving ? (1 + botVy * 0.12) : 1;
             const prevBotVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
             const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 16);
-            sprite.dataset.flip = String(newBotFlip);
+            sprite.dataset.flip = String(botFlip);
             sprite.dataset.vscale = String(newBotVS);
             // Scale around sprite center — no teleport.
             sprite.setAttribute(
               "transform",
               `translate(0 ${bob - PLAYER_H})` +
               ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-              ` scale(${newBotFlip.toFixed(3)} ${newBotVS.toFixed(3)})` +
+              ` scale(${botFlip} ${newBotVS.toFixed(3)})` +
               ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
             );
           }
@@ -1364,20 +1377,18 @@ export default function World() {
           sprite.classList.toggle("walking", st.moving);
           const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
           // Full-body facing: horizontal flip + vertical perspective.
-          const targetRFlip = st.facing < 0 ? -1 : 1;
-          const prevRFlip = sprite.dataset.flip ? Number(sprite.dataset.flip) : 1;
-          const newRFlip = prevRFlip + (targetRFlip - prevRFlip) * Math.min(1, dt * 25);
+          const rFlip = st.facing < 0 ? -1 : 1;
           const targetRVS = st.moving ? (1 + st.vy * 0.12) : 1;
           const prevRVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
           const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 16);
-          sprite.dataset.flip = String(newRFlip);
+          sprite.dataset.flip = String(rFlip);
           sprite.dataset.vscale = String(newRVS);
           // Scale around sprite center — no teleport.
           sprite.setAttribute(
             "transform",
             `translate(0 ${bob - PLAYER_H})` +
             ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-            ` scale(${newRFlip.toFixed(3)} ${newRVS.toFixed(3)})` +
+            ` scale(${rFlip} ${newRVS.toFixed(3)})` +
             ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
           );
         }
