@@ -466,12 +466,24 @@ export const WORLD_BOUNDS = {
 };
 
 /**
- * Where the player may walk — the street corridor (road + shop walkway).
- * Everything outside these zones (buildings, park, top sidewalk, grass edges)
- * is blocked, so the character stays on the streets.
+ * Where the player may walk — the asphalt road + narrow shop walkway.
+ * 
+ * Map layout (StreetScene.tsx):
+ *   y   0..470  = buildings
+ *   y 470..560  = top sidewalk + hedge
+ *   y 560..680  = ASPHALT ROAD (2 lanes + center)
+ *   y 680..820  = bottom sidewalk (vendor stalls sit here)
+ *   y 820..900  = grass
+ *
+ * The character walks on the road surface.  To reach a vendor
+ * the player clicks the stall and the goTo helper snaps to the
+ * stall edge, so no extra walkable zone is needed below the road.
  */
 export const WALKABLE_ZONES: Rect[] = [
-  { x: 28, y: 578, w: 1544, h: 274 }, // y 578..852 (road through the shops)
+  // Asphalt road — full width, from curb to curb (SVG road y=560..680)
+  { x: 0, y: 560, w: 1600, h: 120 },
+  // Bottom sidewalk strip (vendor stalls sit here, y=680..820)
+  { x: 28, y: 680, w: 1544, h: 140 },
 ];
 
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace
@@ -490,20 +502,16 @@ export interface Rect {
  * Must match the drawings in StreetScene.
  */
 export const OBSTACLES: Rect[] = [
-  // vendor stalls (counter front)
-  { x: 200, y: 655, w: 160, h: 105 },
-  { x: 540, y: 655, w: 160, h: 105 },
-  { x: 740, y: 655, w: 160, h: 105 },
-  { x: 900, y: 655, w: 160, h: 105 },
-  { x: 1260, y: 655, w: 160, h: 105 },
-  // top sidewalk trees (x 200 / 820 / 1420)
-  { x: 182, y: 478, w: 36, h: 62 },
-  { x: 802, y: 478, w: 36, h: 62 },
-  { x: 1402, y: 478, w: 36, h: 62 },
-  // bottom sidewalk trees (x 120 / 1500)
+  // Vendor stall tables (on bottom sidewalk, matching SVG Stall positions)
+  // Stall component: translate(vendor.x, vendor.y), table rect x=-80 y=-50 w=160 h=54
+  // Vendor y = 745, so table occupies y=695..749
+  // Obstacles use y=690..760 to cover the full stall structure with padding
+  { x: 200, y: 690, w: 160, h: 70 },
+  { x: 540, y: 690, w: 160, h: 70 },
+  { x: 740, y: 690, w: 160, h: 70 },
+  { x: 900, y: 690, w: 160, h: 70 },
+  { x: 1260, y: 690, w: 160, h: 70 },
+  // Bottom sidewalk trees
   { x: 104, y: 828, w: 32, h: 52 },
   { x: 1484, y: 828, w: 32, h: 52 },
-  // street lamps (x 480 / 1120)
-  { x: 468, y: 480, w: 24, h: 62 },
-  { x: 1108, y: 480, w: 24, h: 62 },
 ];
