@@ -6,7 +6,7 @@ import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import BattleScene from "@/components/world/BattleScene";
 import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
-import { StreetScene } from "@/components/world/StreetScene";
+import { StreetScene3D } from "@/components/world/StreetScene3D";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -2106,15 +2106,15 @@ export default function World() {
           }}
           onClick={handleWorldClick}
         >
+        <StreetScene3D giftClaimed={giftClaimed} />
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full"
+          className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}
         >
           {/* The whole street, one SVG group in 1600x900 world units. */}
           <g ref={worldGroupRef}>
-          <StreetScene giftClaimed={giftClaimed} />
 
           {/* move-target marker — the touched spot, shown as a clear square */}
           {targetMarker !== null && (
