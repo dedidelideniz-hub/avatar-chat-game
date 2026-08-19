@@ -1065,6 +1065,8 @@ function BackgroundBuildings() {
 export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
   return (
     <g>
+      {/* DEBUG: verify StreetScene renders */}
+      <rect x={0} y={0} width={1600} height={900} fill="#4a80b8" />
       <defs>
         <linearGradient id="real-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#4a80b8" />

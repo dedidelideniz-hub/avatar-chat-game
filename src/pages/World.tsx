@@ -2111,6 +2111,7 @@ export default function World() {
         >
           {/* The whole street, one SVG group in 1600x900 world units. */}
           <g ref={worldGroupRef}>
+          <rect x={0} y={0} width={1600} height={900} fill="red" opacity={0.3} />
           <StreetScene giftClaimed={giftClaimed} />
 
           {/* move-target marker — the touched spot, shown as a clear square */}
