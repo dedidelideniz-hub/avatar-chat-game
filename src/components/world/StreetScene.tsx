@@ -4,9 +4,14 @@ import { GIFT_BOX, VENDORS, type Vendor } from "@/lib/shop";
 import type { CSSProperties } from "react";
 
 /**
- * Canlı Cadde — realistic Turkish street with textured buildings.
+ * Kenney City Kit-style Cadde — isometric 3D low-poly cityscape.
+ * Flat-shaded buildings with visible side + top faces (2.5D perspective).
+ * Warm orange / white / grey palette with blue glass windows.
  * 1600×900 world. Obstacles in shop.ts must match these drawings.
  */
+
+const DEPTH = 26;
+const DEPTH_H = DEPTH / 2;
 
 const VENDOR_AVATARS: Record<string, AvatarConfig> = {
   dondurma: {
@@ -59,263 +64,654 @@ const STALL_PRODUCTS: Record<string, string> = {
   vip: "👑💎",
 };
 
-/* ═══ Realistic Building ═══ */
-interface BuildingProps {
+/* ═══════════════════════════════════════════════════════════════ */
+/*               ISOMETRIC 3D BUILDING (Kenney style)              */
+/* ═══════════════════════════════════════════════════════════════ */
+
+interface IsoBuildingProps {
   x: number;
   w: number;
   h: number;
-  wallColor: string;
-  brickColor: string;
-  brickMortar: string;
-  roofColor: string;
-  trimColor: string;
-  doorColor: string;
-  floorCount?: number;
+  front: string;
+  side: string;
+  top: string;
+  roof: string;
+  winColor: string;
+  winFrame: string;
+  trim: string;
+  floors: number;
+  winsPerFloor: number;
   sign?: string;
   signBg?: string;
   signFg?: string;
+  hasShop?: boolean;
+  shopGlass?: string;
+  awningA?: string;
+  awningB?: string;
+  doorColor?: string;
+  /** Optional roof detail — antenna, AC unit, water tank etc. */
+  roofDetail?: "antenna" | "ac" | "tank" | "chimney" | "satellite";
 }
 
-function RealisticBuilding({
-  x, w, h, wallColor, brickColor, brickMortar, roofColor, trimColor, doorColor,
-  floorCount = 2, sign, signBg, signFg,
-}: BuildingProps) {
+function IsoBuilding({
+  x,
+  w,
+  h,
+  front,
+  side,
+  top,
+  roof,
+  winColor,
+  winFrame,
+  trim,
+  floors,
+  winsPerFloor,
+  sign,
+  signBg,
+  signFg,
+  hasShop,
+  shopGlass,
+  awningA,
+  awningB,
+  doorColor,
+  roofDetail,
+}: IsoBuildingProps) {
+  const baseY = 470;
+  const wallY = baseY - h;
   const cx = x + w / 2;
-  const wallY = 470 - h;
-  const roofH = 55;
-  const storyH = Math.floor(h / floorCount);
-  const windowW = 36;
-  const windowH = 44;
+  const storyH = Math.floor(h / floors);
+  const winW = Math.min(28, (w - 40) / winsPerFloor - 6);
+  const winH = storyH - 22;
 
   return (
     <g>
-      {/* building shadow on ground */}
-      <rect x={x + 6} y={wallY + h + 2} width={w} height={8} rx={2} fill="#000000" opacity={0.08} />
+      {/* ─── Ground shadow (isometric) ─── */}
+      <polygon
+        points={`${x + 4},${baseY + 3} ${x + w + 6},${baseY + 3} ${x + w + DEPTH + 4},${baseY + DEPTH_H + 3} ${x + DEPTH + 2},${baseY + DEPTH_H + 3}`}
+        fill="#1a1520"
+        opacity={0.1}
+      />
 
-      {/* main wall with brick texture */}
-      <rect x={x} y={wallY} width={w} height={h} fill={wallColor} />
-      {/* brick pattern overlay */}
-      {Array.from({ length: Math.floor(h / 14) }).map((_, row) =>
-        Array.from({ length: Math.floor(w / 28) }).map((_, col) => {
-          const bx = x + 2 + col * 28 + (row % 2 === 0 ? 0 : 14);
-          const by = wallY + 2 + row * 14;
-          if (bx + 24 > x + w || by + 10 > wallY + h) return null;
-          return (
-            <rect key={`${row}-${col}`} x={bx} y={by} width={24} height={10} rx={1.5} fill={brickColor} opacity={0.45} />
-          );
-        })
-      )}
-      {/* mortar lines */}
-      {Array.from({ length: Math.floor(h / 14) }).map((_, i) => (
-        <line key={`m${i}`} x1={x} y1={wallY + 2 + i * 14} x2={x + w} y2={wallY + 2 + i * 14} stroke={brickMortar} strokeWidth={0.8} opacity={0.3} />
-      ))}
+      {/* ─── Right side face (darker) ─── */}
+      <polygon
+        points={`${x + w},${wallY} ${x + w + DEPTH},${wallY - DEPTH_H} ${x + w + DEPTH},${baseY - DEPTH_H} ${x + w},${baseY}`}
+        fill={side}
+      />
+      {/* Side face edge line */}
+      <line
+        x1={x + w}
+        y1={wallY}
+        x2={x + w}
+        y2={baseY}
+        stroke="#000"
+        strokeWidth={1.2}
+        opacity={0.08}
+      />
 
-      {/* ground floor shadow strip */}
-      <rect x={x} y={wallY + h - 4} width={w} height={4} fill="#000000" opacity={0.06} />
+      {/* ─── Front face ─── */}
+      <rect x={x} y={wallY} width={w} height={h} fill={front} />
+      {/* Subtle front edge */}
+      <line
+        x1={x}
+        y1={wallY}
+        x2={x}
+        y2={baseY}
+        stroke="#fff"
+        strokeWidth={1}
+        opacity={0.15}
+      />
 
-      {/* window sills + lintels for each floor */}
-      {Array.from({ length: floorCount }).map((_, floor) => {
-        const fy = wallY + 16 + floor * storyH;
-        const winCount = floor === 0 ? 2 : 3;
-        const spacing = (w - 40) / winCount;
-        return Array.from({ length: winCount }).map((_, wi) => {
-          const wx = x + 20 + wi * spacing;
-          const wy = fy;
+      {/* ─── Top face (lightest) ─── */}
+      <polygon
+        points={`${x},${wallY} ${x + w},${wallY} ${x + w + DEPTH},${wallY - DEPTH_H} ${x + DEPTH},${wallY - DEPTH_H}`}
+        fill={top}
+      />
+      {/* Top face edge highlight */}
+      <line
+        x1={x}
+        y1={wallY}
+        x2={x + DEPTH}
+        y2={wallY - DEPTH_H}
+        stroke="#fff"
+        strokeWidth={1}
+        opacity={0.2}
+      />
+
+      {/* ─── Roof slab ─── */}
+      <rect
+        x={x - 2}
+        y={wallY - 5}
+        width={w + 4}
+        height={7}
+        rx={1}
+        fill={roof}
+      />
+      <polygon
+        points={`${x - 2},${wallY - 5} ${x + w + 2},${wallY - 5} ${x + w + DEPTH + 2},${wallY - 5 - DEPTH_H} ${x + DEPTH - 2},${wallY - 5 - DEPTH_H}`}
+        fill={roof}
+        opacity={0.85}
+      />
+
+      {/* ─── Windows (blue glass, flat rectangles) ─── */}
+      {Array.from({ length: floors }).map((_, floor) => {
+        const spacing = (w - 24) / winsPerFloor;
+        const fy = wallY + 12 + floor * storyH;
+        const isGroundFloor = floor === floors - 1 && hasShop;
+        return Array.from({ length: winsPerFloor }).map((_, wi) => {
+          if (isGroundFloor) return null; // ground floor → shop front
+          const wx = x + 12 + wi * spacing;
           return (
             <g key={`${floor}-${wi}`}>
-              {/* lintel (stone above window) */}
-              <rect x={wx - 3} y={wy - 4} width={windowW + 6} height={6} rx={1} fill={trimColor} opacity={0.7} />
-              {/* window glass */}
-              <rect x={wx} y={wy} width={windowW} height={windowH} rx={2} fill="#1a2a3a" />
-              <rect x={wx + 2} y={wy + 2} width={windowW - 4} height={windowH - 4} rx={1} fill="#3a5a7a" opacity={0.85} />
-              {/* reflection */}
-              <rect x={wx + 4} y={wy + 4} width={12} height={windowH - 12} rx={1} fill="#ffffff" opacity={0.15} />
-              {/* cross bars */}
-              <line x1={wx + windowW / 2} y1={wy} x2={wx + windowW / 2} y2={wy + windowH} stroke={trimColor} strokeWidth={2.5} opacity={0.6} />
-              <line x1={wx} y1={wy + windowH / 2} x2={wx + windowW} y2={wy + windowH / 2} stroke={trimColor} strokeWidth={2.5} opacity={0.6} />
-              {/* window sill */}
-              <rect x={wx - 4} y={wy + windowH} width={windowW + 8} height={5} rx={1} fill={trimColor} />
-              {/* shadow under sill */}
-              <rect x={wx - 2} y={wy + windowH + 5} width={windowW + 4} height={2} fill="#000000" opacity={0.06} />
+              {/* Window recess */}
+              <rect
+                x={wx - 1}
+                y={fy - 1}
+                width={winW + 2}
+                height={winH + 2}
+                fill="#000"
+                opacity={0.12}
+                rx={1}
+              />
+              {/* Window glass */}
+              <rect
+                x={wx}
+                y={fy}
+                width={winW}
+                height={winH}
+                fill={winColor}
+                rx={1}
+              />
+              {/* Window reflection */}
+              <rect
+                x={wx + 2}
+                y={fy + 2}
+                width={winW * 0.35}
+                height={winH - 4}
+                fill="#fff"
+                opacity={0.18}
+                rx={1}
+              />
+              {/* Window frame */}
+              <rect
+                x={wx}
+                y={fy}
+                width={winW}
+                height={winH}
+                fill="none"
+                stroke={winFrame}
+                strokeWidth={1.2}
+                rx={1}
+              />
+              {/* Cross divider */}
+              <line
+                x1={wx + winW / 2}
+                y1={fy}
+                x2={wx + winW / 2}
+                y2={fy + winH}
+                stroke={winFrame}
+                strokeWidth={1}
+                opacity={0.5}
+              />
             </g>
           );
         });
       })}
 
-      {/* roof — tiled */}
-      <polygon points={`${x - 8},${wallY} ${cx},${wallY - roofH} ${x + w + 8},${wallY}`} fill={roofColor} />
-      {/* roof tile rows */}
-      {Array.from({ length: 8 }).map((_, i) => {
-        const ty = wallY - roofH + 6 + i * 6;
-        const rowW = ((roofH - 6 - i * 6) / roofH) * (w + 16);
-        const rx = cx - rowW / 2;
+      {/* ─── Side face windows (smaller, fewer) ─── */}
+      {Array.from({ length: floors }).map((_, floor) => {
+        const isGroundFloor = floor === floors - 1 && hasShop;
+        if (isGroundFloor) return null;
+        const fy = wallY + 16 + floor * storyH;
+        const sw = 8;
+        const sh = winH - 6;
         return (
-          <g key={i}>
-            <line x1={rx} y1={ty} x2={rx + rowW} y2={ty} stroke="#000000" strokeWidth={0.6} opacity={0.12} />
-            {/* tile bumps */}
-            {Array.from({ length: Math.floor(rowW / 16) }).map((_, j) => (
-              <ellipse key={j} cx={rx + 8 + j * 16} cy={ty} rx={7} ry={2} fill="#000000" opacity={0.04} />
-            ))}
+          <g key={`side-${floor}`}>
+            <rect
+              x={x + w + 4}
+              y={fy}
+              width={sw}
+              height={sh}
+              fill={winColor}
+              opacity={0.7}
+              rx={1}
+            />
+            <rect
+              x={x + w + DEPTH - sw - 4}
+              y={fy}
+              width={sw}
+              height={sh}
+              fill={winColor}
+              opacity={0.5}
+              rx={1}
+            />
           </g>
         );
       })}
-      {/* roof ridge */}
-      <line x1={cx - 4} y1={wallY - roofH + 2} x2={cx + 4} y2={wallY - roofH + 2} stroke={roofColor} strokeWidth={5} strokeLinecap="round" />
-      {/* roof edge shadow */}
-      <line x1={x - 6} y1={wallY} x2={cx} y2={wallY - roofH} stroke="#000000" strokeWidth={2} opacity={0.08} />
-      <line x1={x + w + 6} y1={wallY} x2={cx} y2={wallY - roofH} stroke="#000000" strokeWidth={2} opacity={0.08} />
 
-      {/* chimney */}
-      <rect x={cx + w * 0.25} y={wallY - roofH + 16} width={18} height={32} fill="#8b7355" />
-      <rect x={cx + w * 0.25 - 2} y={wallY - roofH + 12} width={22} height={6} rx={1} fill="#7a6345" />
+      {/* ─── Decorative horizontal trim lines ─── */}
+      {[0.33, 0.66].map((pct) => (
+        <line
+          key={pct}
+          x1={x}
+          y1={wallY + h * pct}
+          x2={x + w}
+          y2={wallY + h * pct}
+          stroke={trim}
+          strokeWidth={1.5}
+          opacity={0.2}
+        />
+      ))}
 
-      {/* ground floor — shop front */}
-      <rect x={x + 6} y={wallY + h - storyH + 8} width={w - 12} height={storyH - 16} rx={4} fill="#1a1a1a" opacity={0.08} />
-      {/* shop glass */}
-      <rect x={x + 12} y={wallY + h - storyH + 16} width={w - 24} height={storyH - 40} rx={6} fill="#2a3a4a" />
-      <rect x={x + 16} y={wallY + h - storyH + 20} width={w - 32} height={storyH - 48} rx={4} fill="#d8e8f0" opacity={0.92} />
-      {/* shop interior hint */}
-      <rect x={x + 18} y={wallY + h - storyH + 22} width={w - 36} height={storyH - 52} rx={3} fill="#e8f0f4" opacity={0.5} />
+      {/* ─── Ground floor shop front ─── */}
+      {hasShop && (
+        <g>
+          {/* Shop recess */}
+          <rect
+            x={x + 6}
+            y={baseY - storyH + 6}
+            width={w - 12}
+            height={storyH - 12}
+            rx={4}
+            fill="#000"
+            opacity={0.08}
+          />
+          {/* Shop glass */}
+          <rect
+            x={x + 10}
+            y={baseY - storyH + 10}
+            width={w - 20}
+            height={storyH - 20}
+            rx={4}
+            fill={shopGlass || "#2a3a4a"}
+          />
+          <rect
+            x={x + 14}
+            y={baseY - storyH + 14}
+            width={w - 28}
+            height={storyH - 28}
+            rx={3}
+            fill="#d8e8f0"
+            opacity={0.92}
+          />
+          {/* Interior glow */}
+          <rect
+            x={x + 16}
+            y={baseY - storyH + 16}
+            width={w - 32}
+            height={storyH - 32}
+            rx={2}
+            fill="#e8f0f4"
+            opacity={0.4}
+          />
 
-      {/* door */}
-      <rect x={cx - 22} y={wallY + h - 76} width={44} height={68} rx={4} fill={doorColor} />
-      <rect x={cx - 18} y={wallY + h - 72} width={16} height={58} rx={2} fill="#000000" opacity={0.08} />
-      <rect x={cx + 2} y={wallY + h - 72} width={16} height={58} rx={2} fill="#000000" opacity={0.08} />
-      <circle cx={cx + 14} cy={wallY + h - 40} r={3} fill="#c9a84c" />
-      {/* door step */}
-      <rect x={cx - 28} y={wallY + h - 6} width={56} height={8} rx={2} fill="#b0a898" />
+          {/* Door */}
+          <rect
+            x={cx - 18}
+            y={baseY - 68}
+            width={36}
+            height={60}
+            rx={3}
+            fill={doorColor || "#4a3020"}
+          />
+          <rect
+            x={cx - 14}
+            y={baseY - 64}
+            width={13}
+            height={50}
+            rx={2}
+            fill="#000"
+            opacity={0.08}
+          />
+          <rect
+            x={cx + 1}
+            y={baseY - 64}
+            width={13}
+            height={50}
+            rx={2}
+            fill="#000"
+            opacity={0.08}
+          />
+          <circle cx={cx + 11} cy={baseY - 36} r={2.5} fill="#c9a84c" />
 
-      {/* awning over shop */}
-      <g>
-        {Array.from({ length: Math.floor(w / 20) }).map((_, i) => (
-          <rect key={i} x={x + i * 20} y={wallY + h - storyH + 4} width={21} height={32} rx={3} fill={i % 2 === 0 ? roofColor : trimColor} opacity={0.85} />
-        ))}
-        <rect x={x} y={wallY + h - storyH + 4} width={w} height={6} rx={3} fill="#000000" opacity={0.1} />
-      </g>
+          {/* Awning */}
+          {awningA &&
+            awningB &&
+            Array.from({ length: Math.floor(w / 18) }).map((_, i) => (
+              <rect
+                key={i}
+                x={x + i * 18}
+                y={baseY - storyH + 2}
+                width={19}
+                height={28}
+                rx={3}
+                fill={i % 2 === 0 ? awningA : awningB}
+              />
+            ))}
+          {awningA && (
+            <rect
+              x={x}
+              y={baseY - storyH + 2}
+              width={w}
+              height={5}
+              rx={2}
+              fill="#000"
+              opacity={0.08}
+            />
+          )}
+        </g>
+      )}
 
-      {/* sign */}
+      {/* ─── Shop sign ─── */}
       {sign && (
         <g>
-          <rect x={cx - 72} y={wallY + 8} width={144} height={36} rx={8} fill={signBg || "#ffffff"} stroke={trimColor} strokeWidth={2} />
-          <text x={cx} y={wallY + 32} textAnchor="middle" fontSize={16} fontWeight={800} fill={signFg || "#333"}>
+          <rect
+            x={cx - 64}
+            y={wallY + 10}
+            width={128}
+            height={32}
+            rx={8}
+            fill={signBg || "#ffffff"}
+            stroke={trim}
+            strokeWidth={1.5}
+          />
+          <text
+            x={cx}
+            y={wallY + 31}
+            textAnchor="middle"
+            fontSize={15}
+            fontWeight={800}
+            fill={signFg || "#333"}
+          >
             {sign}
           </text>
         </g>
       )}
 
-      {/* downpipe */}
-      <rect x={x + w - 12} y={wallY} width={4} height={h} rx={1} fill={trimColor} opacity={0.4} />
+      {/* ─── Roof details ─── */}
+      {roofDetail === "antenna" && (
+        <g>
+          <line
+            x1={cx + 10}
+            y1={wallY - 5}
+            x2={cx + 10}
+            y2={wallY - 38}
+            stroke="#707880"
+            strokeWidth={2.5}
+          />
+          <line
+            x1={cx + 3}
+            y1={wallY - 28}
+            x2={cx + 17}
+            y2={wallY - 28}
+            stroke="#707880"
+            strokeWidth={2}
+          />
+          <circle cx={cx + 10} cy={wallY - 40} r={3} fill="#e74c3c" opacity={0.8} />
+        </g>
+      )}
+      {roofDetail === "ac" && (
+        <g>
+          <rect
+            x={cx - 16}
+            y={wallY - 14}
+            width={32}
+            height={12}
+            rx={2}
+            fill="#808890"
+          />
+          <rect
+            x={cx - 14}
+            y={wallY - 12}
+            width={28}
+            height={4}
+            rx={1}
+            fill="#606870"
+          />
+          {/* Fan grill lines */}
+          {[0, 6, 12, 18, 24].map((dx) => (
+            <line
+              key={dx}
+              x1={cx - 12 + dx}
+              y1={wallY - 12}
+              x2={cx - 12 + dx}
+              y2={wallY - 8}
+              stroke="#505860"
+              strokeWidth={0.8}
+            />
+          ))}
+        </g>
+      )}
+      {roofDetail === "tank" && (
+        <g>
+          <rect
+            x={cx - 12}
+            y={wallY - 24}
+            width={24}
+            height={22}
+            rx={4}
+            fill="#6a7a8a"
+          />
+          <rect
+            x={cx - 14}
+            y={wallY - 26}
+            width={28}
+            height={4}
+            rx={2}
+            fill="#5a6a7a"
+          />
+          <line
+            x1={cx}
+            y1={wallY - 24}
+            x2={cx}
+            y2={wallY - 5}
+            stroke="#5a6a7a"
+            strokeWidth={2}
+          />
+        </g>
+      )}
+      {roofDetail === "chimney" && (
+        <g>
+          <rect
+            x={cx + w * 0.2}
+            y={wallY - 28}
+            width={14}
+            height={26}
+            fill="#6a5a4a"
+          />
+          <rect
+            x={cx + w * 0.2 - 2}
+            y={wallY - 30}
+            width={18}
+            height={4}
+            rx={1}
+            fill="#5a4a3a"
+          />
+        </g>
+      )}
+      {roofDetail === "satellite" && (
+        <g>
+          <line
+            x1={cx - 5}
+            y1={wallY - 5}
+            x2={cx - 5}
+            y2={wallY - 30}
+            stroke="#606870"
+            strokeWidth={2}
+          />
+          <ellipse
+            cx={cx - 5}
+            cy={wallY - 32}
+            rx={10}
+            ry={6}
+            fill="#808890"
+            transform={`rotate(-25 ${cx - 5} ${wallY - 32})`}
+          />
+          <circle cx={cx - 5} cy={wallY - 32} r={2} fill="#505860" />
+        </g>
+      )}
+
+      {/* ─── Downpipe ─── */}
+      <rect
+        x={x + w - 6}
+        y={wallY}
+        width={3}
+        height={h}
+        rx={1}
+        fill={trim}
+        opacity={0.25}
+      />
     </g>
   );
 }
 
-/* ═══ Realistic Tree ═══ */
-function RealisticTree({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
+/* ═══════════════════════════════════════════════════════════════ */
+/*                  LOW-POLY TREE (Kenney style)                   */
+/* ═══════════════════════════════════════════════════════════════ */
+
+function LowPolyTree({
+  x,
+  y,
+  scale = 1,
+  variant = 0,
+}: {
+  x: number;
+  y: number;
+  scale?: number;
+  variant?: number;
+}) {
+  const colors = [
+    { trunk: "#6a5035", leaves: ["#4a9a3a", "#5aad4a", "#6abb5a"] },
+    { trunk: "#5a4030", leaves: ["#3d8b37", "#4a9a42", "#58aa50"] },
+    { trunk: "#7a5c40", leaves: ["#55ad4c", "#60b858", "#70c468"] },
+  ];
+  const c = colors[variant % colors.length];
   return (
     <g transform={`translate(${x} ${y}) scale(${scale})`}>
-      {/* trunk */}
-      <rect x={-6} y={-35} width={12} height={38} rx={3} fill="#6b5035" />
-      <rect x={-3} y={-35} width={4} height={38} rx={1} fill="#7a5c40" opacity={0.5} />
-      {/* canopy — layered for depth */}
-      <ellipse cx={-14} cy={-42} rx={22} ry={20} fill="#3d8b37" />
-      <ellipse cx={14} cy={-38} rx={20} ry={18} fill="#4a9e42" />
-      <ellipse cx={0} cy={-54} rx={26} ry={22} fill="#55ad4c" />
-      <ellipse cx={-8} cy={-60} rx={16} ry={14} fill="#60b858" opacity={0.7} />
-      {/* highlights */}
-      <ellipse cx={6} cy={-64} rx={8} ry={6} fill="#7acc6a" opacity={0.4} />
+      {/* Shadow */}
+      <ellipse cx={2} cy={4} rx={18} ry={5} fill="#1a1520" opacity={0.1} />
+      {/* Trunk — simple cylinder */}
+      <rect x={-4} y={-30} width={8} height={34} rx={2} fill={c.trunk} />
+      <rect x={-1} y={-30} width={3} height={34} rx={1} fill="#000" opacity={0.06} />
+      {/* Canopy — stacked triangles (low-poly cone style) */}
+      <polygon points={`0,${-62} -18,${-30} 18,${-30}`} fill={c.leaves[0]} />
+      <polygon points={`0,${-74} -14,${-46} 14,${-46}`} fill={c.leaves[1]} />
+      <polygon points={`0,${-82} -10,${-58} 10,${-58}`} fill={c.leaves[2]} />
+      {/* Highlight edge */}
+      <line x1={0} y1={-82} x2={-10} y2={-58} stroke="#fff" strokeWidth={1} opacity={0.15} />
     </g>
   );
 }
 
-/* ═══ Realistic Lamp ═══ */
-function RealisticLamp({ x, y }: { x: number; y: number }) {
+/* ═══════════════════════════════════════════════════════════════ */
+/*                 LOW-POLY LAMP (Kenney style)                    */
+/* ═══════════════════════════════════════════════════════════════ */
+
+function LowPolyLamp({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      {/* pole */}
-      <rect x={-4} y={-56} width={8} height={58} rx={3} fill="#4a4540" />
-      {/* base */}
-      <rect x={-10} y={-2} width={20} height={6} rx={2} fill="#4a4540" />
-      {/* arm */}
-      <path d="M0 -56 Q10 -64 16 -58" fill="none" stroke="#4a4540" strokeWidth={4} strokeLinecap="round" />
-      {/* lamp housing */}
-      <rect x={10} y={-68} width={14} height={12} rx={3} fill="#5a5550" />
-      {/* light */}
-      <circle cx={17} cy={-56} r={6} fill="#ffd166" opacity={0.3} />
-      <circle cx={17} cy={-56} r={4} fill="#ffd166" />
+      {/* Base */}
+      <rect x={-8} y={-2} width={16} height={5} rx={2} fill="#4a4540" />
+      {/* Pole */}
+      <rect x={-3} y={-54} width={6} height={56} rx={2} fill="#5a5550" />
+      <rect x={-1} y={-54} width={2} height={56} fill="#000" opacity={0.06} />
+      {/* Arm */}
+      <path d="M0 -54 Q8 -62 14 -56" fill="none" stroke="#5a5550" strokeWidth={4} strokeLinecap="round" />
+      {/* Lamp head — geometric box */}
+      <rect x={8} y={-66} width={14} height={11} rx={2} fill="#6a6560" />
+      <rect x={8} y={-66} width={14} height={4} rx={1} fill="#7a7570" />
+      {/* Light glow */}
+      <circle cx={15} cy={-55} r={7} fill="#ffd166" opacity={0.2} />
+      <circle cx={15} cy={-55} r={4} fill="#ffd166" opacity={0.6} />
     </g>
   );
 }
 
-/* ═══ Flower Box ═══ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                     FLOWER BOX (updated)                        */
+/* ═══════════════════════════════════════════════════════════════ */
+
 function FlowerBox({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      <rect x={-18} y={-4} width={36} height={12} rx={3} fill="#8b6a3f" />
-      <rect x={-16} y={-2} width={32} height={8} rx={2} fill="#a07840" />
-      {/* soil */}
-      <rect x={-14} y={-6} width={28} height={4} rx={1} fill="#5a3a20" />
-      {/* flowers */}
-      {[-10, -4, 2, 8].map((fx, i) => (
+      <rect x={-16} y={-3} width={32} height={10} rx={3} fill="#7a5a30" />
+      <rect x={-14} y={-1} width={28} height={6} rx={2} fill="#8a6a38" />
+      <rect x={-12} y={-5} width={24} height={4} rx={1} fill="#5a3a18" />
+      {[-8, -2, 4, 10].map((fx, i) => (
         <g key={i}>
-          <line x1={fx} y1={-6} x2={fx} y2={-16 - i * 2} stroke="#4a8c3f" strokeWidth={1.5} />
-          <circle cx={fx} cy={-18 - i * 2} r={3.5} fill={["#ff6b6b", "#ffd166", "#ff6bcb", "#a855f7"][i]} />
+          <line x1={fx} y1={-5} x2={fx} y2={-14 - i * 2} stroke="#4a8c3f" strokeWidth={1.5} />
+          <circle
+            cx={fx}
+            cy={-16 - i * 2}
+            r={3}
+            fill={["#ff6b6b", "#ffd166", "#ff6bcb", "#a855f7"][i]}
+          />
         </g>
       ))}
     </g>
   );
 }
 
-/* ═══ Bench ═══ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                        BENCH (updated)                          */
+/* ═══════════════════════════════════════════════════════════════ */
+
 function Bench({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      {/* seat */}
-      <rect x={-30} y={-4} width={60} height={7} rx={2} fill="#8b6a3f" />
-      <rect x={-28} y={-2} width={56} height={3} rx={1} fill="#a07840" opacity={0.6} />
-      {/* backrest */}
-      <rect x={-30} y={-24} width={60} height={5} rx={2} fill="#8b6a3f" />
-      <rect x={-30} y={-18} width={60} height={5} rx={2} fill="#8b6a3f" />
-      {/* legs */}
-      <rect x={-26} y={3} width={4} height={8} rx={1} fill="#6b5030" />
-      <rect x={22} y={3} width={4} height={8} rx={1} fill="#6b5030" />
-      {/* armrests */}
-      <rect x={-30} y={-24} width={4} height={28} rx={1.5} fill="#7a5c40" />
-      <rect x={26} y={-24} width={4} height={28} rx={1.5} fill="#7a5c40" />
+      <rect x={-28} y={-3} width={56} height={6} rx={2} fill="#7a5a30" />
+      <rect x={-26} y={-1} width={52} height={3} rx={1} fill="#8a6a38" opacity={0.5} />
+      <rect x={-28} y={-22} width={56} height={4} rx={2} fill="#7a5a30" />
+      <rect x={-28} y={-16} width={56} height={4} rx={2} fill="#7a5a30" />
+      <rect x={-24} y={3} width={4} height={7} rx={1} fill="#5a4020" />
+      <rect x={20} y={3} width={4} height={7} rx={1} fill="#5a4020" />
+      <rect x={-28} y={-22} width={4} height={26} rx={1.5} fill="#6a4a28" />
+      <rect x={24} y={-22} width={4} height={26} rx={1.5} fill="#6a4a28" />
     </g>
   );
 }
 
-/* ═══ Animated Car ═══ */
-function Car({ className, y, left, color, style }: { className: string; y: number; left?: boolean; color?: string; style?: CSSProperties }) {
+/* ═══════════════════════════════════════════════════════════════ */
+/*                      ANIMATED CAR (same)                        */
+/* ═══════════════════════════════════════════════════════════════ */
+
+function Car({
+  className,
+  y,
+  left,
+  color,
+  style,
+}: {
+  className: string;
+  y: number;
+  left?: boolean;
+  color?: string;
+  style?: CSSProperties;
+}) {
   const c = color || "#4a6a8a";
   return (
     <g className={className} style={style}>
       <g transform={`translate(0 ${y})${left ? " scale(-1 1)" : ""}`}>
-        {/* shadow */}
-        <ellipse cx="0" cy="34" rx="52" ry="7" fill="#1c1917" opacity={0.12} />
-        {/* body */}
-        <rect x="-52" y="4" width="104" height="24" rx="8" fill={c} />
-        <rect x="-52" y="4" width="104" height="8" rx="4" fill="#ffffff" opacity={0.1} />
-        {/* roof */}
-        <path d="M-26 4 L-14 -12 Q0 -16 14 -12 L26 4 Z" fill={c} />
-        {/* window glass */}
-        <path d="M-22 2 L-12 -10 Q0 -13 12 -10 L22 2 Z" fill="#8ab4d0" opacity={0.8} />
-        {/* reflection */}
-        <path d="M-18 1 L-10 -7 Q-4 -9 -2 -7 L-2 1 Z" fill="#ffffff" opacity={0.2} />
-        {/* wheels */}
-        <circle cx="-30" cy="28" r="8" fill="#2a2a2a" />
-        <circle cx="30" cy="28" r="8" fill="#2a2a2a" />
-        <circle cx="-30" cy="28" r="3.5" fill="#8a8a8a" />
-        <circle cx="30" cy="28" r="3.5" fill="#8a8a8a" />
-        {/* headlights */}
-        <rect x="48" y="12" width="6" height="5" rx="2" fill="#ffe9a8" />
-        <rect x="-54" y="12" width="6" height="5" rx="2" fill="#ff6b4a" opacity={0.8} />
+        <ellipse cx="0" cy="34" rx="50" ry="7" fill="#1c1917" opacity={0.12} />
+        <rect x="-50" y="4" width="100" height="22" rx="7" fill={c} />
+        <rect x="-50" y="4" width="100" height="7" rx="3" fill="#fff" opacity={0.1} />
+        <path d="M-24 4 L-12 -12 Q0 -15 12 -12 L24 4 Z" fill={c} />
+        <path d="M-20 2 L-10 -9 Q0 -12 10 -9 L20 2 Z" fill="#8ab4d0" opacity={0.8} />
+        <path d="M-16 1 L-8 -6 Q-3 -8 -1 -6 L-1 1 Z" fill="#fff" opacity={0.2} />
+        <circle cx="-28" cy="26" r="7" fill="#2a2a2a" />
+        <circle cx="28" cy="26" r="7" fill="#2a2a2a" />
+        <circle cx="-28" cy="26" r="3" fill="#8a8a8a" />
+        <circle cx="28" cy="26" r="3" fill="#8a8a8a" />
+        <rect x="46" y="10" width="5" height="4" rx="1.5" fill="#ffe9a8" />
+        <rect x="-51" y="10" width="5" height="4" rx="1.5" fill="#ff6b4a" opacity={0.8} />
       </g>
     </g>
   );
 }
 
-/* ═══ String Lights ═══ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                      STRING LIGHTS (same)                       */
+/* ═══════════════════════════════════════════════════════════════ */
+
 function StringLights() {
   const bulbColors = ["#ff6b6b", "#ffd166", "#6bcb77", "#4d96ff", "#ff6bcb", "#ffd700"];
   const anchors = [60, 280, 500, 720, 940, 1160, 1380, 1560];
@@ -328,7 +724,13 @@ function StringLights() {
         const sag = 12 + (i % 3) * 3;
         return (
           <g key={i}>
-            <path d={`M${ax} 540 Q${midX} ${540 + sag} ${bx} 540`} fill="none" stroke="#666" strokeWidth={1} opacity={0.35} />
+            <path
+              d={`M${ax} 540 Q${midX} ${540 + sag} ${bx} 540`}
+              fill="none"
+              stroke="#666"
+              strokeWidth={1}
+              opacity={0.35}
+            />
             {Array.from({ length: 6 }).map((_, j) => {
               const t = (j + 1) / 7;
               const px = ax + (bx - ax) * t;
@@ -336,8 +738,24 @@ function StringLights() {
               const color = bulbColors[(i * 6 + j) % bulbColors.length];
               return (
                 <g key={j}>
-                  <circle cx={px} cy={py} r={4} fill={color} opacity={0.75} className="string-bulb" style={{ animationDelay: `${(i * 0.4 + j * 0.3) % 3}s` }} />
-                  <circle cx={px} cy={py} r={7} fill={color} opacity={0.15} className="string-bulb" style={{ animationDelay: `${(i * 0.4 + j * 0.3) % 3}s` }} />
+                  <circle
+                    cx={px}
+                    cy={py}
+                    r={4}
+                    fill={color}
+                    opacity={0.75}
+                    className="string-bulb"
+                    style={{ animationDelay: `${(i * 0.4 + j * 0.3) % 3}s` }}
+                  />
+                  <circle
+                    cx={px}
+                    cy={py}
+                    r={7}
+                    fill={color}
+                    opacity={0.15}
+                    className="string-bulb"
+                    style={{ animationDelay: `${(i * 0.4 + j * 0.3) % 3}s` }}
+                  />
                 </g>
               );
             })}
@@ -348,7 +766,10 @@ function StringLights() {
   );
 }
 
-/* ═══ Bunting ═══ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                        BUNTING (same)                           */
+/* ═══════════════════════════════════════════════════════════════ */
+
 function Bunting() {
   const colors = ["#e74c3c", "#f39c12", "#27ae60", "#3498db", "#9b59b6", "#e67e22"];
   return (
@@ -358,20 +779,37 @@ function Bunting() {
         const t = (i + 0.5) / 20;
         const px = 10 + 780 * t;
         const py = 532 + 26 * Math.sin(t * Math.PI);
-        return <polygon key={i} points={`${px - 7},${py} ${px + 7},${py} ${px},${py + 16}`} fill={colors[i % colors.length]} opacity={0.8} />;
+        return (
+          <polygon
+            key={i}
+            points={`${px - 7},${py} ${px + 7},${py} ${px},${py + 16}`}
+            fill={colors[i % colors.length]}
+            opacity={0.8}
+          />
+        );
       })}
       <path d="M810 532 Q1200 558 1590 532" fill="none" stroke="#999" strokeWidth={1} opacity={0.3} />
       {Array.from({ length: 20 }).map((_, i) => {
         const t = (i + 0.5) / 20;
         const px = 810 + 780 * t;
         const py = 532 + 26 * Math.sin(t * Math.PI);
-        return <polygon key={`r${i}`} points={`${px - 7},${py} ${px + 7},${py} ${px},${py + 16}`} fill={colors[(i + 3) % colors.length]} opacity={0.8} />;
+        return (
+          <polygon
+            key={`r${i}`}
+            points={`${px - 7},${py} ${px + 7},${py} ${px},${py + 16}`}
+            fill={colors[(i + 3) % colors.length]}
+            opacity={0.8}
+          />
+        );
       })}
     </g>
   );
 }
 
-/* ═══ Vendor Stall ═══ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                     VENDOR STALL (same)                         */
+/* ═══════════════════════════════════════════════════════════════ */
+
 function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
   const awningW = 176;
   return (
@@ -380,13 +818,32 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
       <rect x={77} y={-116} width={9} height={126} rx={3} fill="#6b4a2f" />
       <g>
         {Array.from({ length: 8 }).map((_, i) => (
-          <rect key={i} x={-awningW / 2 + i * 22} y={-116} width={23} height={44} rx={4} fill={i % 2 === 0 ? vendor.color : vendor.accent} />
+          <rect
+            key={i}
+            x={-awningW / 2 + i * 22}
+            y={-116}
+            width={23}
+            height={44}
+            rx={4}
+            fill={i % 2 === 0 ? vendor.color : vendor.accent}
+          />
         ))}
-        <rect x={-awningW / 2} y={-116} width={awningW} height={44} rx={6} fill="#3d2f2a" opacity={0.08} />
+        <rect
+          x={-awningW / 2}
+          y={-116}
+          width={awningW}
+          height={44}
+          rx={6}
+          fill="#3d2f2a"
+          opacity={0.08}
+        />
       </g>
       <g className="vendor-sprite" transform="rotate(-90 0 -50)">
         <ellipse className="vendor-halo" cx="0" cy="-84" rx="34" ry="40" />
-        <g className="vendor-idle" style={{ animationDelay: `${((index * 0.7) % 2.6) * -1}s` }}>
+        <g
+          className="vendor-idle"
+          style={{ animationDelay: `${((index * 0.7) % 2.6) * -1}s` }}
+        >
           <g transform="translate(-27 -120)">
             <AvatarPreview width={54} height={70} config={VENDOR_AVATARS[vendor.id]} />
           </g>
@@ -394,39 +851,68 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
       </g>
       {vendor.id === "balon" && (
         <g transform="rotate(-90 48 -140)">
-          <text x={48} y={-140} fontSize={26} className="wave-hand" aria-hidden="true">👋</text>
+          <text x={48} y={-140} fontSize={26} className="wave-hand" aria-hidden="true">
+            👋
+          </text>
         </g>
       )}
-      {vendor.id === "balon" && (() => {
-        const BALLOONS = [
-          { x: -22, y: -186, r: 15, color: "#ef4444" },
-          { x: 6, y: -214, r: 17, color: "#f7c948" },
-          { x: 34, y: -176, r: 14, color: "#a855f7" },
-          { x: 62, y: -208, r: 15, color: "#14b8a6" },
-        ];
-        return (
-          <g>
-            {BALLOONS.map((b, i) => (
-              <g key={i}>
-                <line x1={b.x} y1={-70} x2={b.x} y2={b.y + b.r + 3} stroke="#d9c49e" strokeWidth={2} />
-                <g className="balloon" style={{ animationDuration: `${3 + (i % 3) * 0.7}s`, animationDelay: `${i * -1.1}s` }}>
-                  <g transform={`translate(${b.x} ${b.y})`}>
-                    <ellipse cx="0" cy="0" rx={b.r} ry={b.r * 1.15} fill={b.color} />
-                    <ellipse cx={-b.r * 0.3} cy={-b.r * 0.45} rx={b.r * 0.3} ry={b.r * 0.4} fill="#ffffff" opacity={0.35} />
-                    <path d={`M${-b.r * 0.3} ${b.r * 1.05} L0 ${b.r * 1.4} L${b.r * 0.3} ${b.r * 1.05} Z`} fill={b.color} />
+      {vendor.id === "balon" &&
+        (() => {
+          const BALLOONS = [
+            { x: -22, y: -186, r: 15, color: "#ef4444" },
+            { x: 6, y: -214, r: 17, color: "#f7c948" },
+            { x: 34, y: -176, r: 14, color: "#a855f7" },
+            { x: 62, y: -208, r: 15, color: "#14b8a6" },
+          ];
+          return (
+            <g>
+              {BALLOONS.map((b, i) => (
+                <g key={i}>
+                  <line x1={b.x} y1={-70} x2={b.x} y2={b.y + b.r + 3} stroke="#d9c49e" strokeWidth={2} />
+                  <g
+                    className="balloon"
+                    style={{
+                      animationDuration: `${3 + (i % 3) * 0.7}s`,
+                      animationDelay: `${i * -1.1}s`,
+                    }}
+                  >
+                    <g transform={`translate(${b.x} ${b.y})`}>
+                      <ellipse cx="0" cy="0" rx={b.r} ry={b.r * 1.15} fill={b.color} />
+                      <ellipse
+                        cx={-b.r * 0.3}
+                        cy={-b.r * 0.45}
+                        rx={b.r * 0.3}
+                        ry={b.r * 0.4}
+                        fill="#fff"
+                        opacity={0.35}
+                      />
+                      <path
+                        d={`M${-b.r * 0.3} ${b.r * 1.05} L0 ${b.r * 1.4} L${b.r * 0.3} ${b.r * 1.05} Z`}
+                        fill={b.color}
+                      />
+                    </g>
                   </g>
                 </g>
-              </g>
-            ))}
-          </g>
-        );
-      })()}
+              ))}
+            </g>
+          );
+        })()}
       <rect x={-80} y={-50} width={160} height={54} rx={9} fill="#5b4636" />
       <rect x={-72} y={-44} width={144} height={12} rx={5} fill="#7a5c3f" />
       <text x={0} y={-57} textAnchor="middle" fontSize={22} transform="rotate(-90 0 -57)">
         {STALL_PRODUCTS[vendor.id]}
       </text>
-      <rect x={-64} y={-34} width={128} height={26} rx={8} fill="#ffffff" opacity={0.94} stroke="#3d2f2a" strokeOpacity={0.15} />
+      <rect
+        x={-64}
+        y={-34}
+        width={128}
+        height={26}
+        rx={8}
+        fill="#fff"
+        opacity={0.94}
+        stroke="#3d2f2a"
+        strokeOpacity={0.15}
+      />
       <text x={0} y={-16} textAnchor="middle" fontSize={13} fontWeight={800} fill="#2b2320">
         {vendor.emoji} {vendor.short}
       </text>
@@ -434,50 +920,156 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
   );
 }
 
-/* ═══ Gift Box ═══ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*                       GIFT BOX (same)                           */
+/* ═══════════════════════════════════════════════════════════════ */
+
 function GiftBox({ claimed }: { claimed: boolean }) {
   return (
     <g transform={`translate(${GIFT_BOX.x} ${GIFT_BOX.y})`}>
       {!claimed && (
         <>
-          <text x={-52} y={4} fontSize={20}>✨</text>
-          <text x={36} y={-10} fontSize={16}>✨</text>
+          <text x={-52} y={4} fontSize={20}>
+            ✨
+          </text>
+          <text x={36} y={-10} fontSize={16}>
+            ✨
+          </text>
         </>
       )}
-      <rect x={-26} y={-14} width={52} height={12} rx={5} fill={claimed ? "#9c958c" : "#eab308"} stroke="#8a6a1f" strokeWidth={2} />
-      <rect x={-24} y={-6} width={48} height={34} rx={6} fill={claimed ? "#b7b0a6" : "#f7c948"} stroke="#8a6a1f" strokeWidth={2} />
+      <rect
+        x={-26}
+        y={-14}
+        width={52}
+        height={12}
+        rx={5}
+        fill={claimed ? "#9c958c" : "#eab308"}
+        stroke="#8a6a1f"
+        strokeWidth={2}
+      />
+      <rect
+        x={-24}
+        y={-6}
+        width={48}
+        height={34}
+        rx={6}
+        fill={claimed ? "#b7b0a6" : "#f7c948"}
+        stroke="#8a6a1f"
+        strokeWidth={2}
+      />
       <rect x={-4} y={-14} width={8} height={42} rx={2} fill="#ff6b4a" />
       <circle cx={0} cy={-12} r={7} fill="#ff8fb3" stroke="#ff6b4a" strokeWidth={2} />
-      <text x={0} y={38} textAnchor="middle" fontSize={15} fontWeight={800} fill={claimed ? "#6b655b" : "#2b2320"} transform="rotate(-90 0 38)">
+      <text
+        x={0}
+        y={38}
+        textAnchor="middle"
+        fontSize={15}
+        fontWeight={800}
+        fill={claimed ? "#6b655b" : "#2b2320"}
+        transform="rotate(-90 0 38)"
+      >
         {claimed ? "Bugün toplandı ✓" : "Hediye kutusu +150 SP"}
       </text>
     </g>
   );
 }
 
-/* ═══ Cloud ═══ */
-function Cloud({ cx, cy, scale = 1 }: { cx: number; cy: number; scale?: number }) {
+/* ═══════════════════════════════════════════════════════════════ */
+/*                         CLOUD (same)                            */
+/* ═══════════════════════════════════════════════════════════════ */
+
+function Cloud({
+  cx,
+  cy,
+  scale = 1,
+}: {
+  cx: number;
+  cy: number;
+  scale?: number;
+}) {
   return (
     <g transform={`translate(${cx} ${cy}) scale(${scale})`}>
-      <ellipse cx={0} cy={0} rx={46} ry={14} fill="#ffffff" opacity={0.92} />
-      <ellipse cx={-26} cy={-6} rx={20} ry={11} fill="#ffffff" opacity={0.88} />
-      <ellipse cx={26} cy={-5} rx={24} ry={12} fill="#ffffff" opacity={0.9} />
-      <ellipse cx={0} cy={-12} rx={18} ry={9} fill="#ffffff" opacity={0.85} />
+      <ellipse cx={0} cy={0} rx={46} ry={14} fill="#fff" opacity={0.92} />
+      <ellipse cx={-26} cy={-6} rx={20} ry={11} fill="#fff" opacity={0.88} />
+      <ellipse cx={26} cy={-5} rx={24} ry={12} fill="#fff" opacity={0.9} />
+      <ellipse cx={0} cy={-12} rx={18} ry={9} fill="#fff" opacity={0.85} />
     </g>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════ */
-/*                    MAIN SCENE                              */
-/* ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════ */
+/*              BACKGROUND BUILDINGS (depth layer)                 */
+/* ═══════════════════════════════════════════════════════════════ */
+
+function BackgroundBuildings() {
+  const buildings = [
+    { x: -10, w: 80, h: 160, c1: "#b0b8c4", c2: "#98a0ac" },
+    { x: 90, w: 60, h: 210, c1: "#a8b0bc", c2: "#909aa6" },
+    { x: 230, w: 50, h: 130, c1: "#bcc4d0", c2: "#a4acba" },
+    { x: 340, w: 70, h: 180, c1: "#a0a8b4", c2: "#8892a0" },
+    { x: 470, w: 55, h: 240, c1: "#b4bcc8", c2: "#9ca6b4" },
+    { x: 570, w: 65, h: 150, c1: "#a8b0bc", c2: "#9098a6" },
+    { x: 690, w: 50, h: 200, c1: "#b8c0cc", c2: "#a0a8b8" },
+    { x: 790, w: 60, h: 170, c1: "#a4acb8", c2: "#8c96a4" },
+    { x: 900, w: 55, h: 220, c1: "#b0b8c4", c2: "#98a2b0" },
+    { x: 1010, w: 65, h: 140, c1: "#bcc4d0", c2: "#a4acba" },
+    { x: 1120, w: 50, h: 250, c1: "#a8b0bc", c2: "#9098a8" },
+    { x: 1230, w: 60, h: 180, c1: "#b4bcc8", c2: "#9ca6b4" },
+    { x: 1350, w: 55, h: 200, c1: "#a0a8b4", c2: "#8892a0" },
+    { x: 1460, w: 70, h: 160, c1: "#b8c0cc", c2: "#a0a8b8" },
+    { x: 1540, w: 80, h: 190, c1: "#a4acb8", c2: "#8c96a4" },
+  ];
+  return (
+    <g>
+      {buildings.map((b, i) => {
+        const baseY = 470;
+        const wallY = baseY - b.h;
+        return (
+          <g key={i}>
+            <polygon
+              points={`${b.x + b.w},${wallY} ${b.x + b.w + 16},${wallY - 8} ${b.x + b.w + 16},${baseY - 8} ${b.x + b.w},${baseY}`}
+              fill={b.c2}
+              opacity={0.5}
+            />
+            <rect x={b.x} y={wallY} width={b.w} height={b.h} fill={b.c1} opacity={0.5} />
+            <polygon
+              points={`${b.x},${wallY} ${b.x + b.w},${wallY} ${b.x + b.w + 16},${wallY - 8} ${b.x + 16},${wallY - 8}`}
+              fill={b.c2}
+              opacity={0.4}
+            />
+            {/* Faint windows */}
+            {Array.from({ length: Math.floor(b.h / 30) }).map((_, r) =>
+              Array.from({ length: Math.floor(b.w / 20) }).map((_, c) => (
+                <rect
+                  key={`${r}-${c}`}
+                  x={b.x + 6 + c * 20}
+                  y={wallY + 8 + r * 30}
+                  width={10}
+                  height={16}
+                  fill="#6a98b4"
+                  opacity={0.25}
+                  rx={1}
+                />
+              )),
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*                    MAIN STREET SCENE                           */
+/* ═══════════════════════════════════════════════════════════════ */
 export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
   return (
     <g>
       <defs>
         <linearGradient id="real-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6db3e8" />
-          <stop offset="60%" stopColor="#a8d8f0" />
-          <stop offset="100%" stopColor="#d0eaf8" />
+          <stop offset="0%" stopColor="#4a80b8" />
+          <stop offset="50%" stopColor="#7ab0d8" />
+          <stop offset="100%" stopColor="#a8d0e8" />
         </linearGradient>
         <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="#fff8e0" />
@@ -493,48 +1085,198 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <circle cx={1400} cy={88} r={20} fill="#fff3c4" />
       {Array.from({ length: 12 }).map((_, i) => {
         const a = (i / 12) * Math.PI * 2;
-        return <line key={i} x1={1400 + Math.cos(a) * 38} y1={88 + Math.sin(a) * 38} x2={1400 + Math.cos(a) * 56} y2={88 + Math.sin(a) * 56} stroke="#ffd166" strokeWidth={2} opacity={0.25} strokeLinecap="round" />;
+        return (
+          <line
+            key={i}
+            x1={1400 + Math.cos(a) * 38}
+            y1={88 + Math.sin(a) * 38}
+            x2={1400 + Math.cos(a) * 56}
+            y2={88 + Math.sin(a) * 56}
+            stroke="#ffd166"
+            strokeWidth={2}
+            opacity={0.25}
+            strokeLinecap="round"
+          />
+        );
       })}
       <Cloud cx={150} cy={65} scale={1.0} />
       <Cloud cx={500} cy={95} scale={0.85} />
       <Cloud cx={850} cy={50} scale={0.95} />
       <Cloud cx={1180} cy={78} scale={0.7} />
 
-      {/* ═══ REALISTIC BUILDINGS ═══ */}
-      <RealisticBuilding
-        x={0} w={330} h={230}
-        wallColor="#d4c4a8" brickColor="#b8956a" brickMortar="#c8b898"
-        roofColor="#7a4a2a" trimColor="#f0e8d8" doorColor="#5a3a1a"
-        floorCount={2} sign="☕ KAFE" signBg="#f5efe4" signFg="#5a3a1a"
+      {/* ═══ BACKGROUND BUILDINGS (depth layer) ═══ */}
+      <BackgroundBuildings />
+
+      {/* ═══ FOREGROUND ISOMETRIC 3D BUILDINGS ═══ */}
+
+      {/* Building 1 — Café (warm peach, short) */}
+      <IsoBuilding
+        x={0}
+        w={300}
+        h={180}
+        front="#e8a87c"
+        side="#c87848"
+        top="#8898a8"
+        roof="#505058"
+        winColor="#6ab0d6"
+        winFrame="#4a6070"
+        trim="#f0d8c0"
+        floors={2}
+        winsPerFloor={4}
+        sign="☕ KAFE"
+        signBg="#fff5eb"
+        signFg="#6a4020"
+        hasShop
+        shopGlass="#2a3a4a"
+        awningA="#e8a87c"
+        awningB="#f5d8b8"
+        doorColor="#5a3a1a"
+        roofDetail="chimney"
       />
-      <RealisticBuilding
-        x={330} w={330} h={210}
-        wallColor="#c8d8c4" brickColor="#a0b898" brickMortar="#b8c8b0"
-        roofColor="#5a7a4a" trimColor="#e8f0e4" doorColor="#3a5a2a"
-        floorCount={2} sign="🥐 FIRIN" signBg="#f0f5ec" signFg="#3a5a2a"
+
+      {/* Building 2 — Tall white skyscraper */}
+      <IsoBuilding
+        x={305}
+        w={120}
+        h={340}
+        front="#e8ecf0"
+        side="#c0c4cc"
+        top="#8890a0"
+        roof="#484850"
+        winColor="#5898c8"
+        winFrame="#3a5868"
+        trim="#d0d4dc"
+        floors={8}
+        winsPerFloor={2}
+        roofDetail="antenna"
       />
-      <RealisticBuilding
-        x={660} w={330} h={240}
-        wallColor="#d8ccc0" brickColor="#c0a888" brickMortar="#d0c0a8"
-        roofColor="#8a5a3a" trimColor="#f0e8dc" doorColor="#6a4a2a"
-        floorCount={2} sign="🧸 OYUNCAKÇI" signBg="#f8f0e4" signFg="#6a4a2a"
+
+      {/* Building 3 — Medium orange apartment */}
+      <IsoBuilding
+        x={430}
+        w={130}
+        h={230}
+        front="#d49060"
+        side="#b06838"
+        top="#8890a0"
+        roof="#505058"
+        winColor="#6ab0d6"
+        winFrame="#4a6070"
+        trim="#e8c8a0"
+        floors={5}
+        winsPerFloor={2}
+        roofDetail="ac"
       />
-      <RealisticBuilding
-        x={990} w={330} h={220}
-        wallColor="#c4b8d4" brickColor="#a898c0" brickMortar="#b8a8c8"
-        roofColor="#6a4a7a" trimColor="#e8e0f0" doorColor="#4a2a5a"
-        floorCount={2} sign="🕶️ MODA" signBg="#f0ecf5" signFg="#4a2a5a"
+
+      {/* Building 4 — Bakery (cream, short) */}
+      <IsoBuilding
+        x={565}
+        w={260}
+        h={160}
+        front="#f0d8b8"
+        side="#d4b088"
+        top="#9098a8"
+        roof="#505058"
+        winColor="#6ab0d6"
+        winFrame="#4a6070"
+        trim="#f8e8d0"
+        floors={2}
+        winsPerFloor={3}
+        sign="🥐 FIRIN"
+        signBg="#fff8f0"
+        signFg="#6a4020"
+        hasShop
+        shopGlass="#2a3a4a"
+        awningA="#f0d8b8"
+        awningB="#fff0e0"
+        doorColor="#5a3a1a"
       />
-      <RealisticBuilding
-        x={1320} w={280} h={200}
-        wallColor="#bcd4bc" brickColor="#98b898" brickMortar="#a8c8a8"
-        roofColor="#4a6a3a" trimColor="#e4f0e4" doorColor="#2a4a1a"
-        floorCount={2} sign="🛒 BAKKAL" signBg="#ecf5ec" signFg="#2a4a1a"
+
+      {/* Building 5 — Narrow tall white tower */}
+      <IsoBuilding
+        x={830}
+        w={100}
+        h={290}
+        front="#e0e4ec"
+        side="#b8bcc8"
+        top="#808898"
+        roof="#484850"
+        winColor="#5898c8"
+        winFrame="#3a5868"
+        trim="#ccd0d8"
+        floors={7}
+        winsPerFloor={2}
+        roofDetail="satellite"
+      />
+
+      {/* Building 6 — Toy store (warm orange, short) */}
+      <IsoBuilding
+        x={935}
+        w={260}
+        h={170}
+        front="#e0a070"
+        side="#c07848"
+        top="#8898a8"
+        roof="#505058"
+        winColor="#6ab0d6"
+        winFrame="#4a6070"
+        trim="#f0d0a8"
+        floors={2}
+        winsPerFloor={3}
+        sign="🧸 OYUNCAKÇI"
+        signBg="#fff5eb"
+        signFg="#6a4020"
+        hasShop
+        shopGlass="#2a3a4a"
+        awningA="#e0a070"
+        awningB="#f5d0a0"
+        doorColor="#5a3a1a"
+      />
+
+      {/* Building 7 — Medium white building */}
+      <IsoBuilding
+        x={1200}
+        w={120}
+        h={240}
+        front="#e4e8f0"
+        side="#bcc0cc"
+        top="#8890a0"
+        roof="#484850"
+        winColor="#5898c8"
+        winFrame="#3a5868"
+        trim="#d4d8e0"
+        floors={6}
+        winsPerFloor={2}
+        roofDetail="tank"
+      />
+
+      {/* Building 8 — Fashion store (peach, short-mid) */}
+      <IsoBuilding
+        x={1325}
+        w={275}
+        h={190}
+        front="#e8b088"
+        side="#c88858"
+        top="#8898a8"
+        roof="#505058"
+        winColor="#6ab0d6"
+        winFrame="#4a6070"
+        trim="#f0d8c0"
+        floors={2}
+        winsPerFloor={4}
+        sign="🕶️ MODA"
+        signBg="#fff5eb"
+        signFg="#5a3020"
+        hasShop
+        shopGlass="#2a3a4a"
+        awningA="#c888e8"
+        awningB="#f5d8b8"
+        doorColor="#4a2a1a"
       />
 
       {/* ═══ TOP SIDEWALK ═══ */}
-      <rect x={0} y={470} width={1600} height={90} fill="#d8d0c0" />
-      <g stroke="#ccc4b4" strokeWidth={1.2}>
+      <rect x={0} y={470} width={1600} height={90} fill="#d0ccc0" />
+      <g stroke="#c0bbb0" strokeWidth={1.2}>
         {[482, 496, 510, 524, 538, 552].map((y) => (
           <line key={y} x1={0} y1={y} x2={1600} y2={y} />
         ))}
@@ -557,39 +1299,39 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
 
       {/* ═══ ROAD ═══ */}
       <rect x={0} y={560} width={1600} height={120} fill="#3a3835" />
-      {/* road texture — subtle cracks */}
+      {/* Subtle road texture */}
       <line x1={200} y1={580} x2={215} y2={586} stroke="#4a4845" strokeWidth={0.8} opacity={0.3} />
       <line x1={680} y1={620} x2={700} y2={618} stroke="#4a4845" strokeWidth={0.8} opacity={0.3} />
       <line x1={1100} y1={660} x2={1120} y2={665} stroke="#4a4845" strokeWidth={0.8} opacity={0.3} />
-      {/* curbs */}
+      {/* Curbs */}
       <rect x={0} y={558} width={1600} height={5} fill="#8a8580" />
       <rect x={0} y={677} width={1600} height={5} fill="#8a8580" />
-      {/* lane lines */}
+      {/* Lane lines */}
       <rect x={0} y={590} width={1600} height={2} fill="#8a8580" opacity={0.3} />
       <rect x={0} y={646} width={1600} height={2} fill="#8a8580" opacity={0.3} />
-      {/* center dashes */}
+      {/* Center dashes */}
       <g className="road-dashes" fill="#e8c84a">
         {Array.from({ length: 16 }).map((_, i) => (
           <rect key={i} x={-122 + i * 122} y={614} width={64} height={10} rx={5} />
         ))}
       </g>
-      {/* crosswalks */}
-      {[360, 1060].map((x) => (
-        <g key={x} fill="#e8e4e0" opacity={0.8}>
+      {/* Crosswalks */}
+      {[360, 1060].map((cx) => (
+        <g key={cx} fill="#e8e4e0" opacity={0.8}>
           {Array.from({ length: 8 }).map((_, i) => (
-            <rect key={i} x={x + i * 26} y={563} width={16} height={114} rx={3} />
+            <rect key={i} x={cx + i * 26} y={563} width={16} height={114} rx={3} />
           ))}
         </g>
       ))}
-      {/* traffic */}
+      {/* Traffic */}
       <Car className="car-r" y={574} color="#c0392b" style={{ animationDuration: "16s", animationDelay: "-3s" }} />
       <Car className="car-r" y={602} color="#2980b9" style={{ animationDuration: "21s", animationDelay: "-11s" }} />
       <Car className="car-l" y={631} left color="#f39c12" style={{ animationDuration: "24s", animationDelay: "-8s" }} />
       <Car className="car-l" y={648} left color="#8e44ad" style={{ animationDuration: "18s", animationDelay: "-16s" }} />
 
       {/* ═══ BOTTOM SIDEWALK ═══ */}
-      <rect x={0} y={680} width={1600} height={140} fill="#d8d0c0" />
-      <g stroke="#ccc4b4" strokeWidth={1.2}>
+      <rect x={0} y={680} width={1600} height={140} fill="#d0ccc0" />
+      <g stroke="#c0bbb0" strokeWidth={1.2}>
         {[700, 716, 732, 748, 764, 780, 796, 812].map((y) => (
           <line key={y} x1={0} y1={y} x2={1600} y2={y} />
         ))}
@@ -609,7 +1351,7 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       {/* ═══ GRASS ═══ */}
       <rect x={0} y={832} width={1600} height={68} fill="#6aaa5a" />
       <rect x={0} y={832} width={1600} height={12} fill="#5a9a4a" opacity={0.5} />
-      {/* wildflowers */}
+      {/* Wildflowers */}
       {Array.from({ length: 24 }).map((_, i) => {
         const fx = 30 + i * 66;
         const fy = 850 + (i % 3) * 8;
@@ -617,14 +1359,14 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         return <circle key={i} cx={fx} cy={fy} r={3} fill={cols[i % cols.length]} />;
       })}
 
-      {/* ═══ TREES ═══ */}
-      <RealisticTree x={200} y={505} scale={1.0} />
-      <RealisticTree x={820} y={505} scale={1.1} />
-      <RealisticTree x={1420} y={505} scale={0.95} />
+      {/* ═══ LOW-POLY TREES ═══ */}
+      <LowPolyTree x={200} y={508} scale={1.0} variant={0} />
+      <LowPolyTree x={820} y={508} scale={1.1} variant={1} />
+      <LowPolyTree x={1420} y={508} scale={0.95} variant={2} />
 
-      {/* ═══ LAMPS ═══ */}
-      <RealisticLamp x={480} y={510} />
-      <RealisticLamp x={1120} y={510} />
+      {/* ═══ LOW-POLY LAMPS ═══ */}
+      <LowPolyLamp x={480} y={510} />
+      <LowPolyLamp x={1120} y={510} />
 
       {/* ═══ VENDOR STALLS ═══ */}
       {VENDORS.map((vendor, index) => (
