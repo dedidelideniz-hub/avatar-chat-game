@@ -1299,30 +1299,58 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
 
       {/* ═══ ROAD ═══ */}
       <rect x={0} y={560} width={1600} height={120} fill="#3a3835" />
-      {/* Subtle road texture */}
-      <line x1={200} y1={580} x2={215} y2={586} stroke="#4a4845" strokeWidth={0.8} opacity={0.3} />
-      <line x1={680} y1={620} x2={700} y2={618} stroke="#4a4845" strokeWidth={0.8} opacity={0.3} />
-      <line x1={1100} y1={660} x2={1120} y2={665} stroke="#4a4845" strokeWidth={0.8} opacity={0.3} />
       {/* Curbs */}
       <rect x={0} y={558} width={1600} height={5} fill="#8a8580" />
       <rect x={0} y={677} width={1600} height={5} fill="#8a8580" />
-      {/* Lane lines */}
-      <rect x={0} y={590} width={1600} height={2} fill="#8a8580" opacity={0.3} />
-      <rect x={0} y={646} width={1600} height={2} fill="#8a8580" opacity={0.3} />
-      {/* Center dashes */}
-      <g className="road-dashes" fill="#e8c84a">
-        {Array.from({ length: 16 }).map((_, i) => (
-          <rect key={i} x={-122 + i * 122} y={614} width={64} height={10} rx={5} />
+      {/* ═══ ROAD LANE MARKINGS ═══ */}
+      {/* Top edge line */}
+      <rect x={0} y={567} width={1600} height={3} fill="#e8e4e0" opacity={0.9} />
+      {/* Upper lane divider (dashed white) */}
+      <g fill="#e8e4e0" opacity={0.85}>
+        {Array.from({ length: 20 }).map((_, i) => (
+          <rect key={i} x={i * 85} y={592} width={50} height={3} rx={1} />
         ))}
       </g>
+      {/* Center median (solid yellow double line) */}
+      <rect x={0} y={611} width={1600} height={2.5} fill="#e8c84a" opacity={0.9} />
+      <rect x={0} y={615.5} width={1600} height={2.5} fill="#e8c84a" opacity={0.9} />
+      {/* Lower lane divider (dashed white) */}
+      <g fill="#e8e4e0" opacity={0.85}>
+        {Array.from({ length: 20 }).map((_, i) => (
+          <rect key={i} x={i * 85} y={644} width={50} height={3} rx={1} />
+        ))}
+      </g>
+      {/* Bottom edge line */}
+      <rect x={0} y={670} width={1600} height={3} fill="#e8e4e0" opacity={0.9} />
+      {/* ═══ DIRECTION ARROWS ═══ */}
+      {/* Right-pointing arrows (upper lane) */}
+      {[200, 500, 800, 1100, 1400].map((ax) => (
+        <g key={`r${ax}`} fill="#e8e4e0" opacity={0.5} transform={`translate(${ax}, 582)`}>
+          <rect x={0} y={2} width={30} height={3} rx={1} />
+          <polygon points="28,0 38,3.5 28,7" />
+        </g>
+      ))}
+      {/* Left-pointing arrows (lower lane) */}
+      {[100, 400, 700, 1000, 1300].map((ax) => (
+        <g key={`l${ax}`} fill="#e8e4e0" opacity={0.5} transform={`translate(${ax}, 653)`}>
+          <rect x={8} y={2} width={30} height={3} rx={1} />
+          <polygon points="10,0 0,3.5 10,7" />
+        </g>
+      ))}
       {/* Crosswalks */}
       {[360, 1060].map((cx) => (
-        <g key={cx} fill="#e8e4e0" opacity={0.8}>
+        <g key={cx} fill="#e8e4e0" opacity={0.85}>
           {Array.from({ length: 8 }).map((_, i) => (
             <rect key={i} x={cx + i * 26} y={563} width={16} height={114} rx={3} />
           ))}
         </g>
       ))}
+      {/* Animated center dashes (yellow, moving) */}
+      <g className="road-dashes" fill="#e8c84a">
+        {Array.from({ length: 16 }).map((_, i) => (
+          <rect key={i} x={-122 + i * 122} y={614} width={64} height={10} rx={5} />
+        ))}
+      </g>
       {/* Traffic */}
       <Car className="car-r" y={574} color="#c0392b" style={{ animationDuration: "16s", animationDelay: "-3s" }} />
       <Car className="car-r" y={602} color="#2980b9" style={{ animationDuration: "21s", animationDelay: "-11s" }} />
