@@ -4,7 +4,7 @@ import { GIFT_BOX, VENDORS, type Vendor } from "@/lib/shop";
 import type { CSSProperties } from "react";
 
 /**
- * Suburban Sanalika street — Kenney City Kit inspired 2D SVG scene.
+ * Canlı Cadde — a vibrant, bustling Turkish market street.
  * 1600×900 world. Obstacles in shop.ts must match these drawings.
  */
 
@@ -59,114 +59,111 @@ const STALL_PRODUCTS: Record<string, string> = {
   vip: "👑💎",
 };
 
-/* ─── Suburban House ─── */
-interface HouseProps {
+/* ─── Vibrant Shop Front ─── */
+interface ShopProps {
   x: number;
   w: number;
   wallColor: string;
-  roofColor: string;
-  trimColor: string;
-  doorColor: string;
-  sign?: string;
+  accentColor: string;
+  awningColor1: string;
+  awningColor2: string;
+  sign: string;
+  signColor?: string;
+  neon?: boolean;
 }
 
-function SuburbanHouse({ x, w, wallColor, roofColor, trimColor, doorColor, sign }: HouseProps) {
+function VibrantShop({ x, w, wallColor, accentColor, awningColor1, awningColor2, sign, signColor, neon }: ShopProps) {
   const cx = x + w / 2;
-  const roofH = 70;
-  const wallY = 280;
-  const wallH = 190;
-  const doorW = 44;
-  const doorH = 72;
+  const wallY = 240;
+  const wallH = 230;
   return (
     <g>
-      {/* lawn in front of house */}
-      <rect x={x + 10} y={wallY + wallH} width={w - 20} height={30} rx={6} fill="#8bc34a" opacity={0.5} />
-      {/* driveway */}
-      <rect x={cx - 30} y={wallY + wallH} width={60} height={100} fill="#b0b0a8" />
-      <rect x={cx - 30} y={wallY + wallH} width={60} height={4} fill="#9a9a92" />
+      {/* building body */}
+      <rect x={x} y={wallY} width={w} height={wallH} rx={6} fill={wallColor} />
+      {/* decorative horizontal stripe */}
+      <rect x={x} y={wallY} width={w} height={10} fill={accentColor} />
+      <rect x={x} y={wallY + wallH - 8} width={w} height={8} fill={accentColor} opacity={0.6} />
 
-      {/* main wall */}
-      <rect x={x + 8} y={wallY} width={w - 16} height={wallH} rx={4} fill={wallColor} />
-      {/* wall texture stripe */}
-      <rect x={x + 8} y={wallY} width={w - 16} height={8} fill="#ffffff" opacity={0.12} />
-
-      {/* pitched roof */}
-      <polygon
-        points={`${x - 10},${wallY} ${cx},${wallY - roofH} ${x + w + 10},${wallY}`}
-        fill={roofColor}
-      />
-      {/* roof ridge highlight */}
-      <line x1={cx} y1={wallY - roofH + 4} x2={cx} y2={wallY - roofH + 22} stroke="#ffffff" strokeOpacity={0.3} strokeWidth={3} />
-      {/* roof edge */}
-      <line x1={x - 8} y1={wallY} x2={cx} y2={wallY - roofH} stroke={trimColor} strokeWidth={4} strokeLinecap="round" />
-      <line x1={x + w + 8} y1={wallY} x2={cx} y2={wallY - roofH} stroke={trimColor} strokeWidth={4} strokeLinecap="round" />
-
-      {/* chimney */}
-      <rect x={cx + 40} y={wallY - roofH + 18} width={20} height={38} rx={3} fill="#8b7355" />
-      <rect x={cx + 37} y={wallY - roofH + 14} width={26} height={8} rx={2} fill="#6b5a42" />
-
-      {/* porch roof */}
-      <rect x={cx - 48} y={wallY + 20} width={96} height={10} rx={3} fill={roofColor} opacity={0.85} />
-      {/* porch posts */}
-      <rect x={cx - 44} y={wallY + 20} width={5} height={doorH - 10} rx={2} fill={trimColor} />
-      <rect x={cx + 39} y={wallY + 20} width={5} height={doorH - 10} rx={2} fill={trimColor} />
-
-      {/* windows */}
-      {[x + 24, x + w - 64].map((wx, i) => (
-        <g key={i}>
-          {/* window frame */}
-          <rect x={wx} y={wallY + 40} width={40} height={50} rx={4} fill="#d4e6f1" stroke={trimColor} strokeWidth={3} />
-          {/* cross bars */}
-          <line x1={wx + 20} y1={wallY + 40} x2={wx + 20} y2={wallY + 90} stroke={trimColor} strokeWidth={2} />
-          <line x1={wx} y1={wallY + 65} x2={wx + 40} y2={wallY + 65} stroke={trimColor} strokeWidth={2} />
-          {/* curtains */}
-          <rect x={wx + 2} y={wallY + 42} width={16} height={22} rx={2} fill="#f8e8d0" opacity={0.7} />
-          <rect x={wx + 22} y={wallY + 42} width={16} height={22} rx={2} fill="#f8e8d0" opacity={0.7} />
-          {/* shutters */}
-          <rect x={wx - 6} y={wallY + 38} width={7} height={54} rx={2} fill={trimColor} opacity={0.7} />
-          <rect x={wx + 39} y={wallY + 38} width={7} height={54} rx={2} fill={trimColor} opacity={0.7} />
-        </g>
-      ))}
-
-      {/* front door */}
-      <rect x={cx - doorW / 2} y={wallY + wallH - doorH} width={doorW} height={doorH} rx={6} fill={doorColor} stroke={trimColor} strokeWidth={2} />
-      {/* door panels */}
-      <rect x={cx - doorW / 2 + 5} y={wallY + wallH - doorH + 6} width={doorW - 10} height={28} rx={3} fill="#000000" opacity={0.1} />
-      <rect x={cx - doorW / 2 + 5} y={wallY + wallH - doorH + 38} width={doorW - 10} height={28} rx={3} fill="#000000" opacity={0.1} />
-      {/* door handle */}
-      <circle cx={cx + 12} cy={wallY + wallH - doorH + 42} r={3.5} fill="#ffd166" />
-      {/* door number */}
-      {sign && (
-        <text x={cx} y={wallY + wallH - doorH - 4} textAnchor="middle" fontSize={11} fontWeight={700} fill={trimColor}>
-          {sign}
-        </text>
+      {/* upper windows — 2 rows */}
+      {[0, 1].map((row) =>
+        [0, 1, 2].map((col) => {
+          const wx = x + 20 + col * ((w - 40) / 3);
+          const wy = wallY + 20 + row * 52;
+          return (
+            <g key={`${row}-${col}`}>
+              <rect x={wx} y={wy} width={38} height={40} rx={6} fill="#1a1a2e" stroke={accentColor} strokeWidth={2.5} />
+              {/* window glow */}
+              <rect x={wx + 3} y={wy + 3} width={32} height={34} rx={4} fill="#ffe9a8" opacity={0.85} />
+              {/* cross */}
+              <line x1={wx + 19} y1={wy + 3} x2={wx + 19} y2={wy + 37} stroke={accentColor} strokeWidth={2} />
+              <line x1={wx + 3} y1={wy + 20} x2={wx + 35} y2={wy + 20} stroke={accentColor} strokeWidth={2} />
+            </g>
+          );
+        })
       )}
 
-      {/* house number plaque */}
-      <rect x={cx + doorW / 2 + 8} y={wallY + wallH - 22} width={28} height={18} rx={4} fill="#ffffff" opacity={0.9} stroke={trimColor} strokeWidth={1.5} />
-      <text x={cx + doorW / 2 + 22} y={wallY + wallH - 8} textAnchor="middle" fontSize={10} fontWeight={800} fill="#333">
-        {Math.floor(x / 100) + 1}
+      {/* shop front — large glass window */}
+      <rect x={x + 14} y={wallY + 120} width={w - 28} height={70} rx={8} fill="#1a1a2e" stroke={accentColor} strokeWidth={3} />
+      <rect x={x + 18} y={wallY + 124} width={w - 36} height={62} rx={5} fill="#e8f4f8" opacity={0.9} />
+
+      {/* door */}
+      <rect x={cx - 24} y={wallY + 195} width={48} height={35} rx={6} fill="#5b4636" stroke={accentColor} strokeWidth={2} />
+      <circle cx={cx + 10} cy={wallY + 212} r={3} fill="#ffd166" />
+
+      {/* awning — scalloped */}
+      <g>
+        {Array.from({ length: Math.floor(w / 22) }).map((_, i) => (
+          <g key={i}>
+            <rect x={x + i * 22} y={wallY + wallH} width={23} height={38} rx={4} fill={i % 2 === 0 ? awningColor1 : awningColor2} />
+            <ellipse cx={x + i * 22 + 11} cy={wallY + wallH + 38} rx={11} ry={5} fill={i % 2 === 0 ? awningColor1 : awningColor2} />
+          </g>
+        ))}
+      </g>
+
+      {/* sign board */}
+      <rect x={cx - 78} y={wallY + 70} width={156} height={42} rx={10} fill="#ffffff" opacity={0.95} stroke={accentColor} strokeWidth={2.5} />
+      <text x={cx} y={wallY + 98} textAnchor="middle" fontSize={18} fontWeight={900} fill={signColor || "#2b2320"}>
+        {sign}
       </text>
+
+      {/* neon glow effect */}
+      {neon && (
+        <g opacity={0.6} className="neon-blink">
+          <rect x={cx - 80} y={wallY + 68} width={160} height={46} rx={12} fill="none" stroke={accentColor} strokeWidth={3} />
+        </g>
+      )}
     </g>
   );
 }
 
-/* ─── White Picket Fence ─── */
-function PicketFence({ x1, x2, y }: { x1: number; x2: number; y: number }) {
-  const count = Math.floor((x2 - x1) / 18);
+/* ─── String Lights (crisscrossing the street) ─── */
+function StringLights() {
+  const bulbColors = ["#ff6b6b", "#ffd166", "#6bcb77", "#4d96ff", "#ff6bcb", "#ffd700", "#00e5ff", "#ff4444"];
+  const anchors = [80, 320, 560, 800, 1040, 1280, 1520];
   return (
     <g>
-      {/* horizontal rails */}
-      <rect x={x1} y={y - 18} width={x2 - x1} height={4} rx={2} fill="#f5f0e8" stroke="#d4cbb8" strokeWidth={1} />
-      <rect x={x1} y={y - 6} width={x2 - x1} height={4} rx={2} fill="#f5f0e8" stroke="#d4cbb8" strokeWidth={1} />
-      {/* pickets */}
-      {Array.from({ length: count }).map((_, i) => {
-        const px = x1 + 4 + i * 18;
+      {anchors.map((ax, i) => {
+        if (i >= anchors.length - 1) return null;
+        const bx = anchors[i + 1];
+        const midX = (ax + bx) / 2;
+        const sag = 14 + (i % 3) * 4;
         return (
           <g key={i}>
-            <rect x={px} y={y - 32} width={8} height={36} rx={1.5} fill="#f5f0e8" stroke="#d4cbb8" strokeWidth={1} />
-            {/* pointed top */}
-            <polygon points={`${px},${y - 32} ${px + 4},${y - 38} ${px + 8},${y - 32}`} fill="#f5f0e8" stroke="#d4cbb8" strokeWidth={1} />
+            {/* wire */}
+            <path d={`M${ax} 540 Q${midX} ${540 + sag} ${bx} 540`} fill="none" stroke="#555" strokeWidth={1.5} opacity={0.5} />
+            {/* bulbs */}
+            {Array.from({ length: 7 }).map((_, j) => {
+              const t = (j + 1) / 8;
+              const px = ax + (bx - ax) * t;
+              const py = 540 + sag * Math.sin(t * Math.PI);
+              const color = bulbColors[(i * 7 + j) % bulbColors.length];
+              return (
+                <g key={j}>
+                  <circle cx={px} cy={py} r={5} fill={color} opacity={0.85} className="string-bulb" style={{ animationDelay: `${(i * 0.3 + j * 0.2) % 2.5}s` }} />
+                  <circle cx={px} cy={py} r={8} fill={color} opacity={0.2} className="string-bulb" style={{ animationDelay: `${(i * 0.3 + j * 0.2) % 2.5}s` }} />
+                </g>
+              );
+            })}
           </g>
         );
       })}
@@ -174,76 +171,90 @@ function PicketFence({ x1, x2, y }: { x1: number; x2: number; y: number }) {
   );
 }
 
-/* ─── Suburban Mailbox ─── */
-function Mailbox({ x, y }: { x: number; y: number }) {
+/* ─── Bunting / Pennant Flags ─── */
+function Bunting() {
+  const colors = ["#ff6b6b", "#ffd166", "#6bcb77", "#4d96ff", "#ff6bcb", "#a855f7"];
+  return (
+    <g>
+      {/* left half */}
+      <path d="M20 530 Q400 555 780 530" fill="none" stroke="#888" strokeWidth={1.2} opacity={0.4} />
+      {Array.from({ length: 18 }).map((_, i) => {
+        const t = (i + 0.5) / 18;
+        const px = 20 + 760 * t;
+        const py = 530 + 25 * Math.sin(t * Math.PI);
+        return (
+          <polygon key={i} points={`${px - 8},${py} ${px + 8},${py} ${px},${py + 18}`} fill={colors[i % colors.length]} opacity={0.85} />
+        );
+      })}
+      {/* right half */}
+      <path d="M820 530 Q1200 555 1580 530" fill="none" stroke="#888" strokeWidth={1.2} opacity={0.4} />
+      {Array.from({ length: 18 }).map((_, i) => {
+        const t = (i + 0.5) / 18;
+        const px = 820 + 760 * t;
+        const py = 530 + 25 * Math.sin(t * Math.PI);
+        return (
+          <polygon key={`r${i}`} points={`${px - 8},${py} ${px + 8},${py} ${px},${py + 18}`} fill={colors[(i + 3) % colors.length]} opacity={0.85} />
+        );
+      })}
+    </g>
+  );
+}
+
+/* ─── Flower Pot ─── */
+function FlowerPot({ x, y, flowerColor }: { x: number; y: number; flowerColor: string }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      <rect x={-3} y={-36} width={6} height={38} rx={2} fill="#8b7355" />
-      <rect x={-10} y={-48} width={20} height={14} rx={4} fill="#3b82f6" stroke="#2563eb" strokeWidth={1.5} />
-      {/* flag */}
-      <rect x={10} y={-48} width={4} height={10} rx={1} fill="#ef4444" />
-      <rect x={10} y={-48} width={8} height={4} rx={1} fill="#ef4444" />
+      <rect x={-10} y={-4} width={20} height={14} rx={3} fill="#c45a3c" />
+      <rect x={-8} y={-2} width={16} height={10} rx={2} fill="#a04830" />
+      <circle cx={0} cy={-14} r={8} fill="#5cb85c" />
+      <circle cx={-5} cy={-18} r={5} fill="#6cc96c" />
+      <circle cx={5} cy={-16} r={5} fill="#4fae4f" />
+      <circle cx={0} cy={-22} r={4} fill={flowerColor} />
+      <circle cx={-4} cy={-20} r={3} fill={flowerColor} opacity={0.8} />
+      <circle cx={4} cy={-20} r={3} fill={flowerColor} opacity={0.8} />
     </g>
   );
 }
 
-/* ─── Suburban Tree ─── */
-function SuburbanTree({ x, y, scale = 1, type = "round" }: { x: number; y: number; scale?: number; type?: "round" | "cone" | "bush" }) {
-  if (type === "cone") {
-    return (
-      <g transform={`translate(${x} ${y}) scale(${scale})`}>
-        <rect x={-6} y={-20} width={12} height={22} rx={4} fill="#8a6a3f" />
-        <polygon points="0,-65 -22,-20 22,-20" fill="#4a8c3f" />
-        <polygon points="0,-55 -16,-25 16,-25" fill="#5a9e4f" />
-      </g>
-    );
-  }
-  if (type === "bush") {
-    return (
-      <g transform={`translate(${x} ${y}) scale(${scale})`}>
-        <ellipse cx={0} cy={-12} rx={20} ry={16} fill="#5cb85c" />
-        <ellipse cx={-12} cy={-8} rx={14} ry={12} fill="#6cc96c" />
-        <ellipse cx={12} cy={-8} rx={14} ry={12} fill="#4fae4f" />
-      </g>
-    );
-  }
-  return (
-    <g transform={`translate(${x} ${y}) scale(${scale})`}>
-      <rect x={-7} y={-28} width={14} height={30} rx={5} fill="#8a5a33" />
-      <circle cx={0} cy={-50} r={30} fill="#5cb85c" />
-      <circle cx={-20} cy={-38} r={18} fill="#6cc96c" />
-      <circle cx={20} cy={-38} r={18} fill="#4fae4f" />
-      <circle cx={0} cy={-62} r={16} fill="#7ad97a" opacity={0.6} />
-    </g>
-  );
-}
-
-/* ─── Street Lamp ─── */
-function StreetLamp({ x, y }: { x: number; y: number }) {
+/* ─── Street Lamp (ornate) ─── */
+function OrnateLamp({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      <rect x={-4} y={-54} width={8} height={56} rx={3} fill="#5a5550" />
-      <circle cx={0} cy={-62} r={14} fill="#ffd166" opacity={0.25} />
-      <circle cx={0} cy={-62} r={8} fill="#ffd166" />
-      <rect x={-10} y={-66} width={20} height={5} rx={2.5} fill="#5a5550" />
+      <rect x={-5} y={-58} width={10} height={60} rx={4} fill="#4a4540" />
+      <rect x={-8} y={-62} width={16} height={8} rx={4} fill="#4a4540" />
+      <circle cx={0} cy={-72} r={12} fill="#ffd166" opacity={0.35} />
+      <circle cx={0} cy={-72} r={7} fill="#ffd166" />
+      <circle cx={0} cy={-72} r={4} fill="#fff3c4" />
+      {/* decorative scroll */}
+      <path d="M-16 -40 Q-20 -50 -10 -55" fill="none" stroke="#4a4540" strokeWidth={2.5} strokeLinecap="round" />
+      <path d="M16 -40 Q20 -50 10 -55" fill="none" stroke="#4a4540" strokeWidth={2.5} strokeLinecap="round" />
     </g>
   );
 }
 
-const BALLOONS = [
-  { x: -22, y: -186, r: 15, color: "#ef4444" },
-  { x: 6, y: -214, r: 17, color: "#f7c948" },
-  { x: 34, y: -176, r: 14, color: "#a855f7" },
-  { x: 62, y: -208, r: 15, color: "#14b8a6" },
-] as const;
+/* ─── Bench ─── */
+function Bench({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x={-28} y={-6} width={56} height={8} rx={3} fill="#8b6a3f" />
+      <rect x={-28} y={-24} width={56} height={6} rx={3} fill="#8b6a3f" />
+      <rect x={-24} y={-24} width={4} height={26} rx={2} fill="#6b5030" />
+      <rect x={20} y={-24} width={4} height={26} rx={2} fill="#6b5030" />
+      {/* backrest slats */}
+      <rect x={-22} y={-22} width={44} height={4} rx={1} fill="#a07840" opacity={0.7} />
+      <rect x={-22} y={-16} width={44} height={4} rx={1} fill="#a07840" opacity={0.7} />
+    </g>
+  );
+}
 
-/* ─── Cartoon Car ─── */
-function Car({ className, y, left, style }: { className: string; y: number; left?: boolean; style?: CSSProperties }) {
+/* ─── Animated Car ─── */
+function Car({ className, y, left, color, style }: { className: string; y: number; left?: boolean; color?: string; style?: CSSProperties }) {
+  const c = color || "#3b82f6";
   return (
     <g className={className} style={style}>
       <g transform={`translate(0 ${y})${left ? " scale(-1 1)" : ""}`}>
         <ellipse cx="0" cy="34" rx="52" ry="7" fill="#1c1917" opacity={0.16} />
-        <rect x="-52" y="2" width="104" height="28" rx="12" fill="#3b82f6" stroke="#3d2f2a" strokeOpacity={0.25} strokeWidth={2} />
+        <rect x="-52" y="2" width="104" height="28" rx="12" fill={c} stroke="#3d2f2a" strokeOpacity={0.25} strokeWidth={2} />
         <path d="M-24 2 L-12 -16 Q0 -21 12 -16 L24 2 Z" fill="#93c5fd" stroke="#3d2f2a" strokeOpacity={0.25} strokeWidth={2} />
         <circle cx="-30" cy="30" r="9" fill="#2b2320" />
         <circle cx="30" cy="30" r="9" fill="#2b2320" />
@@ -256,7 +267,7 @@ function Car({ className, y, left, style }: { className: string; y: number; left
   );
 }
 
-/* ─── Vendor Stall (unchanged from original) ─── */
+/* ─── Vendor Stall ─── */
 function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
   const awningW = 176;
   return (
@@ -282,22 +293,30 @@ function Stall({ vendor, index }: { vendor: Vendor; index: number }) {
           <text x={48} y={-140} fontSize={26} className="wave-hand" aria-hidden="true">👋</text>
         </g>
       )}
-      {vendor.id === "balon" && (
-        <g>
-          {BALLOONS.map((b, i) => (
-            <g key={i}>
-              <line x1={b.x} y1={-70} x2={b.x} y2={b.y + b.r + 3} stroke="#d9c49e" strokeWidth={2} />
-              <g className="balloon" style={{ animationDuration: `${3 + (i % 3) * 0.7}s`, animationDelay: `${i * -1.1}s` }}>
-                <g transform={`translate(${b.x} ${b.y})`}>
-                  <ellipse cx="0" cy="0" rx={b.r} ry={b.r * 1.15} fill={b.color} />
-                  <ellipse cx={-b.r * 0.3} cy={-b.r * 0.45} rx={b.r * 0.3} ry={b.r * 0.4} fill="#ffffff" opacity={0.35} />
-                  <path d={`M${-b.r * 0.3} ${b.r * 1.05} L0 ${b.r * 1.4} L${b.r * 0.3} ${b.r * 1.05} Z`} fill={b.color} />
+      {vendor.id === "balon" && (() => {
+        const BALLOONS = [
+          { x: -22, y: -186, r: 15, color: "#ef4444" },
+          { x: 6, y: -214, r: 17, color: "#f7c948" },
+          { x: 34, y: -176, r: 14, color: "#a855f7" },
+          { x: 62, y: -208, r: 15, color: "#14b8a6" },
+        ];
+        return (
+          <g>
+            {BALLOONS.map((b, i) => (
+              <g key={i}>
+                <line x1={b.x} y1={-70} x2={b.x} y2={b.y + b.r + 3} stroke="#d9c49e" strokeWidth={2} />
+                <g className="balloon" style={{ animationDuration: `${3 + (i % 3) * 0.7}s`, animationDelay: `${i * -1.1}s` }}>
+                  <g transform={`translate(${b.x} ${b.y})`}>
+                    <ellipse cx="0" cy="0" rx={b.r} ry={b.r * 1.15} fill={b.color} />
+                    <ellipse cx={-b.r * 0.3} cy={-b.r * 0.45} rx={b.r * 0.3} ry={b.r * 0.4} fill="#ffffff" opacity={0.35} />
+                    <path d={`M${-b.r * 0.3} ${b.r * 1.05} L0 ${b.r * 1.4} L${b.r * 0.3} ${b.r * 1.05} Z`} fill={b.color} />
+                  </g>
                 </g>
               </g>
-            </g>
-          ))}
-        </g>
-      )}
+            ))}
+          </g>
+        );
+      })()}
       <rect x={-80} y={-50} width={160} height={54} rx={9} fill="#5b4636" />
       <rect x={-72} y={-44} width={144} height={12} rx={5} fill="#7a5c3f" />
       <text x={0} y={-57} textAnchor="middle" fontSize={22} transform="rotate(-90 0 -57)">
@@ -332,57 +351,66 @@ function GiftBox({ claimed }: { claimed: boolean }) {
   );
 }
 
-/* ─── Main Scene ─── */
+/* ─── Cloud ─── */
+function Cloud({ cx, cy, scale = 1 }: { cx: number; cy: number; scale?: number }) {
+  return (
+    <g transform={`translate(${cx} ${cy}) scale(${scale})`} fill="#ffffff" opacity={0.9}>
+      <ellipse cx={0} cy={0} rx={48} ry={16} />
+      <ellipse cx={-28} cy={-8} rx={22} ry={12} />
+      <ellipse cx={28} cy={-6} rx={26} ry={14} />
+      <ellipse cx={0} cy={-14} rx={20} ry={10} />
+    </g>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*                    MAIN SCENE                              */
+/* ═══════════════════════════════════════════════════════════ */
 export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
   return (
     <g>
       <defs>
-        <linearGradient id="suburban-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#87CEEB" />
-          <stop offset="60%" stopColor="#b8e4f9" />
-          <stop offset="100%" stopColor="#dff0ff" />
+        <linearGradient id="vibrant-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#6ec6ff" />
+          <stop offset="50%" stopColor="#a8dcf7" />
+          <stop offset="100%" stopColor="#d4eeff" />
         </linearGradient>
+        <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#fff3c4" />
+          <stop offset="60%" stopColor="#ffd166" stopOpacity={0.3} />
+          <stop offset="100%" stopColor="#ffd166" stopOpacity={0} />
+        </radialGradient>
       </defs>
 
       {/* ═══ SKY ═══ */}
-      <rect x={0} y={0} width={1600} height={470} fill="url(#suburban-sky)" />
-      {/* sun */}
-      <circle cx={1452} cy={86} r={52} fill="#ffd166" opacity={0.3} />
-      <circle cx={1452} cy={86} r={34} fill="#ffd166" />
-      <circle cx={1452} cy={86} r={22} fill="#fff3c4" />
+      <rect x={0} y={0} width={1600} height={470} fill="url(#vibrant-sky)" />
+      {/* sun with glow */}
+      <circle cx={1420} cy={90} r={80} fill="url(#sun-glow)" />
+      <circle cx={1420} cy={90} r={36} fill="#ffd166" />
+      <circle cx={1420} cy={90} r={24} fill="#fff3c4" />
+      {/* sun rays */}
+      {Array.from({ length: 12 }).map((_, i) => {
+        const a = (i / 12) * Math.PI * 2;
+        return (
+          <line key={i} x1={1420 + Math.cos(a) * 42} y1={90 + Math.sin(a) * 42} x2={1420 + Math.cos(a) * 62} y2={90 + Math.sin(a) * 62} stroke="#ffd166" strokeWidth={2.5} opacity={0.3} strokeLinecap="round" />
+        );
+      })}
       {/* clouds */}
-      <g className="clouds" fill="#ffffff" opacity={0.92}>
-        <ellipse cx={180} cy={80} rx={50} ry={16} />
-        <ellipse cx={220} cy={68} rx={32} ry={14} />
-        <ellipse cx={580} cy={110} rx={56} ry={18} />
-        <ellipse cx={630} cy={96} rx={34} ry={14} />
-        <ellipse cx={1020} cy={60} rx={44} ry={15} />
-        <ellipse cx={1060} cy={48} rx={28} ry={12} />
-      </g>
+      <Cloud cx={160} cy={70} scale={1.1} />
+      <Cloud cx={520} cy={100} scale={0.9} />
+      <Cloud cx={880} cy={55} scale={1.0} />
+      <Cloud cx={1200} cy={85} scale={0.75} />
 
-      {/* ═══ SUBURBAN HOUSES ═══ */}
-      <SuburbanHouse x={10} w={310} wallColor="#e8d5b8" roofColor="#8b5e3c" trimColor="#6b4a2f" doorColor="#5b3a1f" sign="☕" />
-      <SuburbanHouse x={330} w={310} wallColor="#d4e8d0" roofColor="#6b8f5e" trimColor="#4a6b3e" doorColor="#3d5c2f" sign="🥐" />
-      <SuburbanHouse x={660} w={310} wallColor="#e8e0d4" roofColor="#9b7653" trimColor="#7a5c3f" doorColor="#6b4a2f" sign="🧸" />
-      <SuburbanHouse x={990} w={310} wallColor="#e0d4e8" roofColor="#7a5e8b" trimColor="#5c3d6b" doorColor="#4a2f5b" sign="🕶️" />
-      <SuburbanHouse x={1320} w={280} wallColor="#d8e4d4" roofColor="#5a7e4e" trimColor="#3d5c2f" doorColor="#2f4a1f" sign="🛒" />
-
-      {/* ═══ FENCES between houses ═══ */}
-      <PicketFence x1={318} x2={340} y={470} />
-      <PicketFence x1={640} x2={668} y={470} />
-      <PicketFence x1={970} x2={1000} y={470} />
-      <PicketFence x1={1300} x2={1330} y={470} />
-
-      {/* ═══ MAILBOXES ═══ */}
-      <Mailbox x={160} y={470} />
-      <Mailbox x={480} y={470} />
-      <Mailbox x={810} y={470} />
-      <Mailbox x={1140} y={470} />
-      <Mailbox x={1460} y={470} />
+      {/* ═══ VIBRANT BUILDINGS ═══ */}
+      <VibrantShop x={0} w={330} wallColor="#ff6b6b" accentColor="#ffd166" awningColor1="#ff6b6b" awningColor2="#ffd166" sign="☕ KAFE" signColor="#c0392b" neon />
+      <VibrantShop x={330} w={330} wallColor="#4ecdc4" accentColor="#ffffff" awningColor1="#4ecdc4" awningColor2="#45b7aa" sign="🥐 FIRIN" signColor="#1a7a6e" />
+      <VibrantShop x={660} w={330} wallColor="#ffe66d" accentColor="#ff6b6b" awningColor1="#ffe66d" awningColor2="#ffd93d" sign="🧸 OYUNCAKÇI" signColor="#c0392b" />
+      <VibrantShop x={990} w={330} wallColor="#a855f7" accentColor="#ffd166" awningColor1="#a855f7" awningColor2="#c084fc" sign="🕶️ MODA" signColor="#ffd166" neon />
+      <VibrantShop x={1320} w={280} wallColor="#22c55e" accentColor="#ffffff" awningColor1="#22c55e" awningColor2="#16a34a" sign="🛒 BAKKAL" signColor="#ffffff" />
 
       {/* ═══ TOP SIDEWALK ═══ */}
-      <rect x={0} y={470} width={1600} height={90} fill="#d9d0c0" />
-      <g stroke="#c8bfae" strokeWidth={1.5}>
+      <rect x={0} y={470} width={1600} height={90} fill="#f0e6d6" />
+      <g stroke="#ddd0be" strokeWidth={1.5}>
         {[482, 494, 506, 518, 530, 542, 554].map((y) => (
           <line key={y} x1={0} y1={y} x2={1600} y2={y} />
         ))}
@@ -392,21 +420,27 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <g>
         {Array.from({ length: 14 }).map((_, i) => (
           <g key={i}>
-            <rect x={i * 118 - 10} y={514} width={128} height={34} rx={16} fill="#3e8e4a" />
-            <rect x={i * 118 - 10} y={514} width={128} height={15} rx={8} fill="#57b164" opacity={0.85} />
+            <rect x={i * 118 - 10} y={514} width={128} height={34} rx={16} fill="#2d8a3e" />
+            <rect x={i * 118 - 10} y={514} width={128} height={15} rx={8} fill="#43a854" opacity={0.85} />
           </g>
         ))}
       </g>
 
+      {/* ═══ STRING LIGHTS ═══ */}
+      <StringLights />
+
+      {/* ═══ BUNTING ═══ */}
+      <Bunting />
+
       {/* ═══ ROAD ═══ */}
-      <rect x={0} y={560} width={1600} height={120} fill="#4a4540" />
-      <rect x={0} y={560} width={1600} height={5} fill="#8a7f70" />
-      <rect x={0} y={675} width={1600} height={5} fill="#8a7f70" />
+      <rect x={0} y={560} width={1600} height={120} fill="#3d3a36" />
+      <rect x={0} y={560} width={1600} height={5} fill="#6b6560" />
+      <rect x={0} y={675} width={1600} height={5} fill="#6b6560" />
       {/* lane lines */}
-      <rect x={0} y={590} width={1600} height={2} fill="#8a7f70" opacity={0.35} />
-      <rect x={0} y={646} width={1600} height={2} fill="#8a7f70" opacity={0.35} />
+      <rect x={0} y={590} width={1600} height={2} fill="#6b6560" opacity={0.35} />
+      <rect x={0} y={646} width={1600} height={2} fill="#6b6560" opacity={0.35} />
       {/* center dashes */}
-      <g className="road-dashes" fill="#f7c948">
+      <g className="road-dashes" fill="#ffd166">
         {Array.from({ length: 16 }).map((_, i) => (
           <rect key={i} x={-122 + i * 122} y={614} width={64} height={12} rx={6} />
         ))}
@@ -419,48 +453,50 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
           ))}
         </g>
       ))}
-      {/* traffic */}
-      <Car className="car-r" y={574} style={{ animationDuration: "16s", animationDelay: "-3s" }} />
-      <Car className="car-r" y={602} style={{ animationDuration: "21s", animationDelay: "-11s" }} />
-      <Car className="car-l" y={631} left style={{ animationDuration: "24s", animationDelay: "-8s" }} />
-      <Car className="car-l" y={648} left style={{ animationDuration: "18s", animationDelay: "-16s" }} />
+      {/* traffic — colorful cars */}
+      <Car className="car-r" y={574} color="#ff6b6b" style={{ animationDuration: "16s", animationDelay: "-3s" }} />
+      <Car className="car-r" y={602} color="#4ecdc4" style={{ animationDuration: "21s", animationDelay: "-11s" }} />
+      <Car className="car-l" y={631} left color="#ffe66d" style={{ animationDuration: "24s", animationDelay: "-8s" }} />
+      <Car className="car-l" y={648} left color="#a855f7" style={{ animationDuration: "18s", animationDelay: "-16s" }} />
 
       {/* ═══ BOTTOM SIDEWALK ═══ */}
-      <rect x={0} y={680} width={1600} height={140} fill="#d9d0c0" />
-      <g stroke="#c8bfae" strokeWidth={1.5}>
+      <rect x={0} y={680} width={1600} height={140} fill="#f0e6d6" />
+      <g stroke="#ddd0be" strokeWidth={1.5}>
         {[700, 716, 732, 748, 764, 780, 796, 812].map((y) => (
           <line key={y} x1={0} y1={y} x2={1600} y2={y} />
         ))}
       </g>
 
+      {/* ═══ FLOWER POTS on bottom sidewalk ═══ */}
+      <FlowerPot x={160} y={820} flowerColor="#ff6b6b" />
+      <FlowerPot x={460} y={820} flowerColor="#ffd166" />
+      <FlowerPot x={760} y={820} flowerColor="#a855f7" />
+      <FlowerPot x={1060} y={820} flowerColor="#ff6bcb" />
+      <FlowerPot x={1360} y={820} flowerColor="#4ecdc4" />
+
+      {/* ═══ BENCHES ═══ */}
+      <Bench x={350} y={816} />
+      <Bench x={1150} y={816} />
+
       {/* ═══ GRASS ═══ */}
-      <rect x={0} y={820} width={1600} height={80} fill="#8bc34a" />
-      <rect x={0} y={820} width={1600} height={16} fill="#7ab33a" opacity={0.6} />
-      {/* flowers */}
-      <g>
-        <circle cx={60} cy={852} r={4} fill="#ff8fb3" />
-        <circle cx={420} cy={868} r={4} fill="#ffd166" />
-        <circle cx={700} cy={858} r={4} fill="#9b5de5" />
-        <circle cx={1120} cy={864} r={4} fill="#ff8fb3" />
-        <circle cx={1420} cy={852} r={4} fill="#ffd166" />
-        <circle cx={280} cy={874} r={3} fill="#14b8a6" />
-        <circle cx={900} cy={870} r={3} fill="#f59e0b" />
-        <circle cx={1300} cy={876} r={3} fill="#ec4899" />
-      </g>
+      <rect x={0} y={830} width={1600} height={70} fill="#6bcb77" />
+      <rect x={0} y={830} width={1600} height={14} fill="#5cb85c" opacity={0.6} />
+      {/* wildflowers */}
+      {Array.from({ length: 20 }).map((_, i) => {
+        const fx = 40 + i * 78;
+        const fy = 848 + (i % 3) * 10;
+        const colors = ["#ff6b6b", "#ffd166", "#a855f7", "#ff6bcb", "#4ecdc4", "#f59e0b"];
+        return (
+          <g key={i}>
+            <circle cx={fx} cy={fy} r={3.5} fill={colors[i % colors.length]} />
+            <circle cx={fx} cy={fy - 2} r={2.5} fill={colors[(i + 2) % colors.length]} opacity={0.7} />
+          </g>
+        );
+      })}
 
-      {/* ═══ TREES ═══ */}
-      <SuburbanTree x={200} y={505} type="round" />
-      <SuburbanTree x={820} y={505} type="cone" />
-      <SuburbanTree x={1420} y={505} type="round" />
-      <SuburbanTree x={120} y={862} scale={0.85} type="bush" />
-      <SuburbanTree x={1500} y={862} scale={0.85} type="bush" />
-      {/* extra bushes near houses */}
-      <SuburbanTree x={350} y={468} scale={0.6} type="bush" />
-      <SuburbanTree x={1020} y={468} scale={0.6} type="bush" />
-
-      {/* ═══ LAMPS ═══ */}
-      <StreetLamp x={480} y={510} />
-      <StreetLamp x={1120} y={510} />
+      {/* ═══ ORNATE LAMPS ═══ */}
+      <OrnateLamp x={480} y={510} />
+      <OrnateLamp x={1120} y={510} />
 
       {/* ═══ VENDOR STALLS ═══ */}
       {VENDORS.map((vendor, index) => (

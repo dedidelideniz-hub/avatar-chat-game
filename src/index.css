@@ -698,3 +698,21 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   display: inline-block;
   animation: load-step-pop 0.25s ease-out both;
 }
+
+/* ─── Neon sign blink ─── */
+@keyframes neon-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.2; }
+}
+.neon-blink {
+  animation: neon-pulse 1.8s ease-in-out infinite;
+}
+
+/* ─── String light bulbs twinkling ─── */
+@keyframes bulb-twinkle {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.35; }
+}
+.string-bulb {
+  animation: bulb-twinkle 2.2s ease-in-out infinite;
+}
