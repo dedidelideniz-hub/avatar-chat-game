@@ -100,7 +100,7 @@ const BOT_DEFS: BotDef[] = [
     id: "bot-ada",
     name: "Ada",
     color: "#ec4899",
-    speed: 120,
+    speed: 80,
     x: 450,
     y: 690,
     config: {
@@ -118,7 +118,7 @@ const BOT_DEFS: BotDef[] = [
     id: "bot-mert",
     name: "Mert",
     color: "#0ea5e9",
-    speed: 150,
+    speed: 80,
     x: 1100,
     y: 700,
     config: {
@@ -136,7 +136,7 @@ const BOT_DEFS: BotDef[] = [
     id: "bot-elif",
     name: "Elif",
     color: "#a855f7",
-    speed: 105,
+    speed: 80,
     x: 250,
     y: 820,
     config: {
@@ -154,7 +154,7 @@ const BOT_DEFS: BotDef[] = [
     id: "bot-kaan",
     name: "Kaan",
     color: "#f59e0b",
-    speed: 135,
+    speed: 80,
     x: 1350,
     y: 810,
     config: {
@@ -270,21 +270,46 @@ interface BotPath {
 
 function buildBotPath(def: BotDef): BotPath {
   const rng = mulberry32(djb2(def.id));
-  const pts = [{ x: def.x, y: def.y }];
+  // Generate 8 destination waypoints
+  const waypoints: { x: number; y: number }[] = [{ x: def.x, y: def.y }];
   for (let i = 0; i < 8; i++) {
     let next: { x: number; y: number } | null = null;
     for (let attempt = 0; attempt < 14 && next === null; attempt++) {
       const cand = randomWalkablePoint(rng);
-      const last = pts[pts.length - 1];
+      const last = waypoints[waypoints.length - 1];
       if (segmentClear(last.x, last.y, cand.x, cand.y)) next = cand;
     }
-    pts.push(next ?? pts[pts.length - 1]);
+    waypoints.push(next ?? waypoints[waypoints.length - 1]);
   }
-  pts.push(pts[0]); // close the loop
-  const wait = pts.map(() => 0.8 + rng() * 2.4);
+  waypoints.push({ x: def.x, y: def.y }); // close the loop
+
+  // Insert cardinal-only intermediate points between each destination.
+  // Between A and B: go horizontal first, then vertical (L-shape = no diagonal).
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const a = waypoints[i];
+    const b = waypoints[i + 1];
+    pts.push(a);
+    const dx = Math.abs(b.x - a.x);
+    const dy = Math.abs(b.y - a.y);
+    if (dx > 2 && dy > 2) {
+      // L-shape: horizontal first, then vertical
+      pts.push({ x: b.x, y: a.y });
+    }
+  }
+  pts.push(waypoints[waypoints.length - 1]);
+
+  // Build per-point wait and walk arrays (must be pts.length each).
+  // Only the original destinations have non-zero wait; intermediate cardinal
+  // points get zero wait so the bot passes through them without pausing.
+  const destSet = new Set(waypoints.map((p) => `${p.x},${p.y}`));
+  const wait: number[] = [];
   const walk: number[] = [];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const d = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+  for (let i = 0; i < pts.length; i++) {
+    const isDest = destSet.has(`${pts[i].x},${pts[i].y}`);
+    wait.push(isDest ? 0.8 + rng() * 2.4 : 0);
+    const next = pts[(i + 1) % pts.length];
+    const d = Math.hypot(next.x - pts[i].x, next.y - pts[i].y);
     walk.push(d / def.speed);
   }
   const total =
