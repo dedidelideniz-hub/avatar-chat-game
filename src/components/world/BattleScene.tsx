@@ -781,7 +781,7 @@ export default function BattleScene({
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
-        moveFighter(p, vx * 80 * dt, vy * 80 * dt, dt);
+        moveFighter(p, vx * 90 * dt, vy * 90 * dt, dt);
       }
 
       // --- footstep ticks while walking (continuous battle audio) ---
@@ -839,7 +839,7 @@ export default function BattleScene({
           if (Math.abs(mx) >= Math.abs(my)) my = 0;
           else mx = 0;
         }
-        moveFighter(b, mx * 80 * dt, my * 80 * dt, dt);
+        moveFighter(b, mx * 90 * dt, my * 90 * dt, dt);
         b.facing = dx > 0 ? 1 : -1;
         if (b.atkCd <= 0 && dist < 640) {
           b.atkCd = 1.05;

@@ -710,7 +710,7 @@ export default function PvpBattleScene({
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
-        moveFighter(p, vx * 80 * dt, vy * 80 * dt, dt);
+        moveFighter(p, vx * 90 * dt, vy * 90 * dt, dt);
       }
 
       // --- footsteps while walking ---
