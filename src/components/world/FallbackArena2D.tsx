@@ -185,11 +185,25 @@ export function FallbackArena2D({
         const flip = f.facing < 0 ? -1 : 1;
         const bob = f.moving ? Math.sin(f.phase) * 5 : 0;
         sprite.classList.toggle("walking", f.moving);
+        // Directional pose (walk-up / walk-down / walk-side / idle)
+        const svgEl = sprite.querySelector("svg[data-pose]") as HTMLElement | null;
+        if (svgEl) {
+          if (!f.moving) svgEl.dataset.pose = "idle";
+          else if (f.vy < 0) svgEl.dataset.pose = "walk-up";
+          else if (f.vy > 0) svgEl.dataset.pose = "walk-down";
+          else svgEl.dataset.pose = "walk-side";
+        }
+        // Body facing: flip + vertical scale (same as world)
+        const vyVal = f.vy ?? 0;
+        const vscale = f.moving ? 1 + vyVal * 0.15 : 1;
+        const spriteEl = sprite as unknown as HTMLElement;
+        const prevVS = spriteEl.dataset.vscale ? Number(spriteEl.dataset.vscale) : 1;
+        const smoothVS = prevVS + (vscale - prevVS) * Math.min(1, dt * 16);
+        spriteEl.dataset.flip = String(flip);
+        spriteEl.dataset.vscale = String(smoothVS);
         sprite.setAttribute(
           "transform",
-          flip === 1
-            ? `translate(${-CHAR_W / 2} ${-CHAR_H + bob})`
-            : `scale(-1 1) translate(${-CHAR_W / 2} ${-CHAR_H + bob})`,
+          `translate(${-CHAR_W / 2} ${-CHAR_H + bob}) translate(${CHAR_W / 2} ${CHAR_H / 2}) scale(${flip} ${smoothVS.toFixed(3)}) translate(${-CHAR_W / 2} ${-CHAR_H / 2})`,
         );
       };
       applySprite(p, pSpriteRef.current);

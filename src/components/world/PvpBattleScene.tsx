@@ -144,6 +144,7 @@ function newFighter(
     dashVY: 0,
     dashHit: false,
     lastHitAt: -9999,
+    vy: 0,
   };
 }
 
@@ -545,6 +546,12 @@ export default function PvpBattleScene({
     if (!hitsObstacle(f.x, ny, FIGHTER_R)) f.y = ny;
     if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
     f.moving = Math.hypot(dx, dy) > 0.5;
+    if (f.moving) {
+      if (Math.abs(dy) > Math.abs(dx)) f.vy = dy > 0 ? 1 : -1;
+      else f.vy = 0;
+    } else {
+      f.vy = 0;
+    }
     if (f.moving) f.phase += dt * 10;
   };
 
@@ -665,16 +672,17 @@ export default function PvpBattleScene({
       if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
       if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
       if (vx !== 0 || vy !== 0) {
-        const l = Math.hypot(vx, vy);
-        vx /= l;
-        vy /= l;
+        if (vx !== 0 && vy !== 0) {
+          if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
+          else vx = 0;
+        }
         clickTargetRef.current = null;
       } else {
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
         if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
-          vx = jx;
-          vy = jy;
+          if (Math.abs(jx) >= Math.abs(jy)) { vx = jx > 0 ? 1 : -1; vy = 0; }
+          else { vx = 0; vy = jy > 0 ? 1 : -1; }
           clickTargetRef.current = null;
         }
       }
@@ -684,8 +692,8 @@ export default function PvpBattleScene({
         const d = Math.hypot(dx, dy);
         if (d < 24) clickTargetRef.current = null;
         else {
-          vx = dx / d;
-          vy = dy / d;
+          if (Math.abs(dx) >= Math.abs(dy)) { vx = dx > 0 ? 1 : -1; vy = 0; }
+          else { vx = 0; vy = dy > 0 ? 1 : -1; }
         }
       }
       if (p.dashT > 0) {
@@ -702,7 +710,7 @@ export default function PvpBattleScene({
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
-        moveFighter(p, vx * 200 * dt, vy * 200 * dt, dt);
+        moveFighter(p, vx * 80 * dt, vy * 80 * dt, dt);
       }
 
       // --- footsteps while walking ---

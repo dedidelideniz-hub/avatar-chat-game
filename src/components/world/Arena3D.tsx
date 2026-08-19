@@ -118,6 +118,7 @@ export interface BattleFighter {
   dashVY: number;
   dashHit: boolean;
   lastHitAt: number;
+  vy: number; // vertical movement direction: -1 up, 0 idle, +1 down
 }
 
 export interface BattleProj {
