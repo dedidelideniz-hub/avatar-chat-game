@@ -1,5 +1,6 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
+import { StreetScene } from "@/components/world/StreetScene";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
@@ -2110,6 +2111,7 @@ export default function World() {
         >
           {/* The whole street, one SVG group in 1600x900 world units. */}
           <g ref={worldGroupRef}>
+          <StreetScene giftClaimed={giftClaimed} />
 
           {/* move-target marker — the touched spot, shown as a clear square */}
           {targetMarker !== null && (
