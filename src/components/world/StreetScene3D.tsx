@@ -1056,7 +1056,7 @@ function Scene3DContent({ giftClaimed }: { giftClaimed: boolean }) {
 
 export function StreetScene3D({ giftClaimed }: StreetScene3DProps) {
   return (
-    <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, pointerEvents: "none" }}>
+    <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none" }}>
       <Canvas
         shadows
         camera={{

@@ -2097,16 +2097,17 @@ export default function World() {
         {/* The game area: the street is drawn in landscape world units and
             the camera (viewBox) zooms + pans so it always fills this area —
             no rotation, no letterboxing, on any phone orientation. */}
+        <StreetScene3D giftClaimed={giftClaimed} />
         <main
           ref={containerRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
           style={{
+            zIndex: 1,
             background:
               "linear-gradient(90deg, #aee571 0%, #d9eee5 45%, #bfe3ff 100%)",
           }}
           onClick={handleWorldClick}
         >
-        <StreetScene3D giftClaimed={giftClaimed} />
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
