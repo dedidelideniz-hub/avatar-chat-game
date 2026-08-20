@@ -1,7 +1,7 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { StreetScene3D } from "@/components/world/StreetScene3D";
+import { WorldGame3D } from "@/components/game3d/WorldGame3D";
 import { cameraState } from "@/components/world/cameraState";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
@@ -2130,7 +2130,35 @@ export default function World() {
 
           </g>
         </svg>
-        <StreetScene3D />
+        <WorldGame3D
+          player={{
+            x: posRef.current.x,
+            y: posRef.current.y,
+            facing: facingRef.current,
+            moving: !!targetRef.current || keysRef.current.size > 0,
+            config,
+            name: username,
+            bubble,
+          }}
+          remotePlayers={othersRef.current.filter((o) => {
+            const d = o.data;
+            return d != null && typeof d.x === "number" && typeof d.y === "number";
+          }).map((o) => {
+            const d = o.data!;
+            const st = remoteStatesRef.current.get(o.sessionId);
+            return {
+              sessionId: o.sessionId,
+              x: st?.x ?? d.x,
+              y: st?.y ?? d.y,
+              facing: d.facing ?? 1,
+              config: d.config ?? config,
+              name: d.name ?? "Player",
+              bubble: null,
+            };
+          })}
+          onPlayerClick={() => setViewing("me")}
+          onRemoteClick={(sid) => setViewing("remote:" + sid)}
+        />
         <svg
           ref={playerSvgRef}
           viewBox="0 0 1600 900"
