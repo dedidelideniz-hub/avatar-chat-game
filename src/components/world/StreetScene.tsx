@@ -585,7 +585,7 @@ function LowPolyTree({
     { trunk: "#7a5c40", leaves: ["#55ad4c", "#60b858", "#70c468"] },
   ];
   const c = colors[variant % colors.length];
-  const swayClass = variant === 1 ? "tree-sway tree-sway-1" : variant === 2 ? "tree-sway tree-sway-2" : "tree-sway";
+  const swayClass = variant === 1 ? "tree-sway tree-sway-alt" : variant === 2 ? "tree-sway tree-sway-alt2" : "tree-sway";
   return (
     <g transform={`translate(${x} ${y}) scale(${scale})`}>
       {/* Shadow */}
@@ -601,6 +601,8 @@ function LowPolyTree({
         {/* Highlight edge */}
         <line x1={0} y1={-82} x2={-10} y2={-58} stroke="#fff" strokeWidth={1} opacity={0.15} />
       </g>
+      {/* Falling leaves from tree */}
+      <FallingLeaves cx={0} cy={-70} />
     </g>
   );
 }
