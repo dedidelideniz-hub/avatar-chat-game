@@ -1,7 +1,7 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { WorldGame3D } from "@/components/game3d/WorldGame3D";
+import { GameWorld3D } from "@/components/game3d/GameWorld3D";
 import { cameraState } from "@/components/world/cameraState";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
@@ -2127,7 +2127,7 @@ export default function World() {
         >
           <g ref={worldGroupRef} />
         </svg>
-        <WorldGame3D
+        <GameWorld3D
           player={{
             x: posRef.current.x,
             y: posRef.current.y,
