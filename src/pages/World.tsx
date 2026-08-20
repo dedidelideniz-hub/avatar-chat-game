@@ -1,7 +1,6 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { GameWorld3D } from "@/components/game3d/GameWorld3D";
 import { cameraState } from "@/components/world/cameraState";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
@@ -2114,53 +2113,26 @@ export default function World() {
             no rotation, no letterboxing, on any phone orientation. */}
         <main
           ref={containerRef}
-          className="relative flex-1 touch-none overflow-hidden"
-          style={{ minHeight: 0, zIndex: 1 }}
+          className="relative min-h-0 flex-1 touch-none overflow-hidden"
+          style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
-        {/* Hidden SVG — only for cameraState viewBox sync & click coords */}
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
+          className="absolute inset-0 h-full w-full"
+          style={{ pointerEvents: "none" }}
         >
-          <g ref={worldGroupRef} />
+          <g ref={worldGroupRef}>
+          <StreetScene giftClaimed={giftClaimed} />
+          </g>
         </svg>
-        <GameWorld3D
-          player={{
-            x: posRef.current.x,
-            y: posRef.current.y,
-            facing: facingRef.current,
-            moving: !!targetRef.current || keysRef.current.size > 0,
-            config,
-            name: username,
-            bubble,
-          }}
-          remotePlayers={othersRef.current.filter((o) => {
-            const d = o.data;
-            return d != null && typeof d.x === "number" && typeof d.y === "number";
-          }).map((o) => {
-            const d = o.data!;
-            const st = remoteStatesRef.current.get(o.sessionId);
-            return {
-              sessionId: o.sessionId,
-              x: st?.x ?? d.x,
-              y: st?.y ?? d.y,
-              facing: d.facing ?? 1,
-              config: d.config ?? config,
-              name: d.name ?? "Player",
-              bubble: null,
-            };
-          })}
-          onPlayerClick={() => setViewing("me")}
-          onRemoteClick={(sid) => setViewing("remote:" + sid)}
-        />
         <svg
           ref={playerSvgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
+          className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none", zIndex: 3 }}
         >
           <g ref={playerWorldGroupRef}>
 
