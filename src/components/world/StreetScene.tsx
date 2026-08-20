@@ -1500,9 +1500,7 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       })}
 
       {/* ═══ LOW-POLY TREES (with wind sway) ═══ */}
-      <LowPolyTree x={200} y={508} scale={1.0} variant={0} />
-      <LowPolyTree x={820} y={508} scale={1.1} variant={1} />
-      <LowPolyTree x={1420} y={508} scale={0.95} variant={2} />
+
 
 
 
