@@ -52,10 +52,15 @@ function CameraRig() {
     if (vw <= 0 || vh <= 0) return;
 
     const cam = camera as THREE.OrthographicCamera;
-    cam.left = x;
-    cam.right = x + vw;
-    cam.top = y;
-    cam.bottom = y + vh;
+    // Ortho camera frustum is relative to camera.position
+    // Place camera at the center of the desired view
+    const cx = x + vw / 2;
+    const cy = y + vh / 2;
+    cam.position.set(cx, cy, 500);
+    cam.left = -vw / 2;
+    cam.right = vw / 2;
+    cam.top = vh / 2;
+    cam.bottom = -vh / 2;
     cam.updateProjectionMatrix();
   });
 
@@ -80,12 +85,13 @@ export function WorldGame3D({
       <Canvas
         orthographic
         camera={{
-          left: 0,
-          right: 1600,
-          top: 0,
-          bottom: 900,
-          near: 0.1,
-          far: 500,
+          position: [800, 450, 500],
+          left: -800,
+          right: 800,
+          top: 450,
+          bottom: -450,
+          near: -2000,
+          far: 2000,
         }}
         gl={{ antialias: true, alpha: true }}
         dpr={[1, 1.5]}
@@ -98,17 +104,25 @@ export function WorldGame3D({
         <CameraRig />
 
         {/* Warm cartoon-style lighting */}
-        <ambientLight intensity={0.55} color="#c0d8f0" />
+        <ambientLight intensity={0.7} color="#c0d8f0" />
         <directionalLight
           position={[400, 400, -200]}
-          intensity={1.4}
+          intensity={1.6}
           color="#fff8e0"
           castShadow={false}
         />
-        <hemisphereLight args={["#87ceeb", "#4a8a3a", 0.35]} />
+        <hemisphereLight args={["#87ceeb", "#4a8a3a", 0.4]} />
+        <directionalLight
+          position={[-300, 200, 300]}
+          intensity={0.4}
+          color="#e0e8ff"
+        />
 
-        {/* Sky */}
-        <color attach="background" args={["#78b8d8"]} />
+        {/* Test cube — confirms Canvas renders */}
+        <mesh position={[800, 20, -620]}>
+          <boxGeometry args={[30, 40, 30]} />
+          <meshStandardMaterial color="#ff0000" />
+        </mesh>
 
         {/* Ground, roads, sidewalks */}
         <Ground3D />
