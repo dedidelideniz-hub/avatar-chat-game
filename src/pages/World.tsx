@@ -2114,24 +2114,18 @@ export default function World() {
             no rotation, no letterboxing, on any phone orientation. */}
         <main
           ref={containerRef}
-          className="relative min-h-0 flex-1 touch-none overflow-hidden"
+          className="relative min-h-[300px] flex-1 touch-none overflow-hidden"
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
-        {/*
-          StreetScene SVG hidden — replaced by 3D WorldGame3D.
-          Keep <svg> element so svgRef + worldGroupRef still work
-          for camera state and click coordinate conversion.
-        */}
+        {/* Hidden SVG — only for cameraState viewBox sync & click coords */}
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full"
-          style={{ pointerEvents: "none", zIndex: 1, visibility: "hidden" }}
+          style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
         >
-          <g ref={worldGroupRef}>
-          </g>
+          <g ref={worldGroupRef} />
         </svg>
         <WorldGame3D
           player={{
@@ -2166,8 +2160,7 @@ export default function World() {
           ref={playerSvgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full"
-          style={{ pointerEvents: "none", zIndex: 3, visibility: "hidden" }}
+          style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}
         >
           <g ref={playerWorldGroupRef}>
 
