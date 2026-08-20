@@ -585,6 +585,7 @@ function LowPolyTree({
     { trunk: "#7a5c40", leaves: ["#55ad4c", "#60b858", "#70c468"] },
   ];
   const c = colors[variant % colors.length];
+  const swayClass = variant === 1 ? "tree-sway tree-sway-1" : variant === 2 ? "tree-sway tree-sway-2" : "tree-sway";
   return (
     <g transform={`translate(${x} ${y}) scale(${scale})`}>
       {/* Shadow */}
@@ -592,12 +593,16 @@ function LowPolyTree({
       {/* Trunk — simple cylinder */}
       <rect x={-4} y={-30} width={8} height={34} rx={2} fill={c.trunk} />
       <rect x={-1} y={-30} width={3} height={34} rx={1} fill="#000" opacity={0.06} />
-      {/* Canopy — stacked triangles (low-poly cone style) */}
-      <polygon points={`0,${-62} -18,${-30} 18,${-30}`} fill={c.leaves[0]} />
-      <polygon points={`0,${-74} -14,${-46} 14,${-46}`} fill={c.leaves[1]} />
-      <polygon points={`0,${-82} -10,${-58} 10,${-58}`} fill={c.leaves[2]} />
-      {/* Highlight edge */}
-      <line x1={0} y1={-82} x2={-10} y2={-58} stroke="#fff" strokeWidth={1} opacity={0.15} />
+      {/* Canopy — stacked triangles (low-poly cone style) with wind sway */}
+      <g className={swayClass}>
+        <polygon points={`0,${-62} -18,${-30} 18,${-30}`} fill={c.leaves[0]} />
+        <polygon points={`0,${-74} -14,${-46} 14,${-46}`} fill={c.leaves[1]} />
+        <polygon points={`0,${-82} -10,${-58} 10,${-58}`} fill={c.leaves[2]} />
+        {/* Highlight edge */}
+        <line x1={0} y1={-82} x2={-10} y2={-58} stroke="#fff" strokeWidth={1} opacity={0.15} />
+      </g>
+      {/* Falling leaves from this tree */}
+      <FallingLeaves cx={0} cy={-70} />
     </g>
   );
 }
@@ -998,6 +1003,38 @@ function Cloud({
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
+/*                  FALLING LEAVES (wind effect)                   */
+/* ═══════════════════════════════════════════════════════════════ */
+
+function FallingLeaves({ cx, cy }: { cx: number; cy: number }) {
+  const leaves = [
+    { dx: -12, delay: "0s", dur: "4.5s", color: "#5aad4a", size: 3.5, anim: "wind-leaf-1" },
+    { dx: 8, delay: "1.8s", dur: "5.2s", color: "#6abb5a", size: 3, anim: "wind-leaf-2" },
+    { dx: -5, delay: "3.2s", dur: "4s", color: "#88c86a", size: 2.8, anim: "wind-leaf-3" },
+    { dx: 14, delay: "2.5s", dur: "5.8s", color: "#4a9a3a", size: 3.2, anim: "wind-leaf-1" },
+    { dx: -18, delay: "0.8s", dur: "4.8s", color: "#55ad4c", size: 2.5, anim: "wind-leaf-2" },
+  ];
+  return (
+    <g>
+      {leaves.map((l, i) => (
+        <g key={i}>
+          {/* Leaf shape — small diamond */}
+          <polygon
+            points={`${cx + l.dx},${cy} ${cx + l.dx + l.size},${cy - l.size * 0.7} ${cx + l.dx},${cy - l.size * 1.4} ${cx + l.dx - l.size},${cy - l.size * 0.7}`}
+            fill={l.color}
+            className="leaf"
+            style={{
+              transformOrigin: `${cx + l.dx}px ${cy}px`,
+              animation: `${l.anim} ${l.dur} ease-in-out ${l.delay} infinite`,
+            }}
+          />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
 /*              BACKGROUND BUILDINGS (depth layer)                 */
 /* ═══════════════════════════════════════════════════════════════ */
 
@@ -1284,9 +1321,9 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         ))}
       </g>
 
-      {/* ═══ HEDGE ═══ */}
+      {/* ═══ HEDGE (with wind sway) ═══ */}
       {Array.from({ length: 14 }).map((_, i) => (
-        <g key={i}>
+        <g key={i} className="hedge-sway" style={{ animationDelay: `${i * 0.15}s` }}>
           <rect x={i * 118 - 10} y={514} width={128} height={32} rx={14} fill="#2d7a38" />
           <rect x={i * 118 - 10} y={514} width={128} height={14} rx={7} fill="#3d9a48" opacity={0.8} />
           <rect x={i * 118 - 4} y={516} width={116} height={6} rx={3} fill="#4dAA58" opacity={0.4} />
@@ -1389,10 +1426,16 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         return <circle key={i} cx={fx} cy={fy} r={3} fill={cols[i % cols.length]} />;
       })}
 
-      {/* ═══ LOW-POLY TREES ═══ */}
+      {/* ═══ LOW-POLY TREES (with wind sway + falling leaves) ═══ */}
       <LowPolyTree x={200} y={508} scale={1.0} variant={0} />
       <LowPolyTree x={820} y={508} scale={1.1} variant={1} />
       <LowPolyTree x={1420} y={508} scale={0.95} variant={2} />
+
+      {/* ═══ SCATTERED WIND-BLOWN LEAVES ═══ */}
+      <FallingLeaves cx={350} cy={460} />
+      <FallingLeaves cx={700} cy={470} />
+      <FallingLeaves cx={1100} cy={455} />
+      <FallingLeaves cx={1400} cy={465} />
 
       {/* ═══ LOW-POLY LAMPS ═══ */}
       <LowPolyLamp x={480} y={510} />

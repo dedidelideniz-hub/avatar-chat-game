@@ -281,6 +281,105 @@
   animation: cloud-drift 36s ease-in-out infinite alternate;
 }
 
+/* ═══ TREE WIND SWAY ═══ */
+@keyframes tree-sway {
+  0%, 100% {
+    transform: rotate(0deg) skewX(0deg);
+  }
+  25% {
+    transform: rotate(2.5deg) skewX(1.5deg);
+  }
+  50% {
+    transform: rotate(-1.5deg) skewX(-1deg);
+  }
+  75% {
+    transform: rotate(1.8deg) skewX(1deg);
+  }
+}
+.tree-sway {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: tree-sway 3.5s ease-in-out infinite;
+}
+.tree-sway-1 {
+  animation-duration: 4.2s;
+  animation-delay: -1s;
+}
+.tree-sway-2 {
+  animation-duration: 3s;
+  animation-delay: -2.2s;
+}
+
+/* ═══ FALLING LEAVES ═══ */
+@keyframes leaf-fall {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  5% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(80px, 120px) rotate(540deg);
+  }
+}
+@keyframes leaf-fall-alt {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg);
+  }
+  5% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(55px, 140px) rotate(-420deg);
+  }
+}
+.leaf {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+/* ═══ HEDGE SWAY ═══ */
+@keyframes hedge-sway {
+  0%, 100% {
+    transform: scaleX(1) skewX(0deg);
+  }
+  50% {
+    transform: scaleX(1.015) skewX(0.8deg);
+  }
+}
+.hedge-sway {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: hedge-sway 4.5s ease-in-out infinite;
+}
+
+/* ═══ AVENUE WIND BLOW ═══ */
+@keyframes wind-leaf-1 {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.8); }
+  8% { opacity: 0.9; }
+  100% { opacity: 0; transform: translate(120px, 90px) rotate(720deg) scale(0.5); }
+}
+@keyframes wind-leaf-2 {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(1); }
+  8% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(95px, 110px) rotate(-540deg) scale(0.6); }
+}
+@keyframes wind-leaf-3 {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.7); }
+  8% { opacity: 0.8; }
+  100% { opacity: 0; transform: translate(70px, 100px) rotate(480deg) scale(0.4); }
+}
+
 /* Avatar pose toggle — idle (front), back (up), side (left/right). */
 .avatar-pose-idle {
   display: block;
