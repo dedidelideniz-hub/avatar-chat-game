@@ -2,7 +2,7 @@ import { Canvas } from "@react-three/fiber";
 import { Tree3D } from "./Trees3D";
 
 /**
- * 3D tree layer — renders behind the SVG game world.
+ * 3D tree layer — renders on top of SVG (pointer-events: none) game world.
  * The Canvas captures no pointer events so clicks pass through to the SVG/main.
  *
  * Tree positions match SVG coordinates mapped to 3D space:
@@ -10,7 +10,7 @@ import { Tree3D } from "./Trees3D";
  *   where SCALE converts 1600×900 world units → Three.js units.
  */
 
-const SCALE = 0.012; // 1600 SVG units → ~19.2 Three.js units
+const SCALE = 0.005; // 1600 SVG units → ~19.2 Three.js units
 
 // Map SVG coordinates to 3D world positions
 const TREE_POSITIONS: { svgX: number; svgY: number; scale: number; variant: number }[] = [
@@ -33,13 +33,13 @@ export function StreetScene3D() {
       style={{
         position: "absolute",
         inset: 0,
-        zIndex: 0,
+        zIndex: 2,
         pointerEvents: "none",
         overflow: "hidden",
       }}
     >
       <Canvas
-        camera={{ position: [0, 5, 12], fov: 45, near: 0.1, far: 50 }}
+        camera={{ position: [0, 3.5, 6], fov: 60, near: 0.1, far: 50 }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         dpr={[1, 1.5]}
         events={undefined}
