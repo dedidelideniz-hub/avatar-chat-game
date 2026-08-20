@@ -601,8 +601,6 @@ function LowPolyTree({
         {/* Highlight edge */}
         <line x1={0} y1={-82} x2={-10} y2={-58} stroke="#fff" strokeWidth={1} opacity={0.15} />
       </g>
-      {/* Falling leaves from this tree */}
-      <FallingLeaves cx={0} cy={-70} />
     </g>
   );
 }
@@ -1007,28 +1005,24 @@ function Cloud({
 /* ═══════════════════════════════════════════════════════════════ */
 
 function FallingLeaves({ cx, cy }: { cx: number; cy: number }) {
+  // Reduced from 5 to 2 leaves per instance for performance
   const leaves = [
-    { dx: -12, delay: "0s", dur: "4.5s", color: "#5aad4a", size: 3.5, anim: "wind-leaf-1" },
-    { dx: 8, delay: "1.8s", dur: "5.2s", color: "#6abb5a", size: 3, anim: "wind-leaf-2" },
-    { dx: -5, delay: "3.2s", dur: "4s", color: "#88c86a", size: 2.8, anim: "wind-leaf-3" },
-    { dx: 14, delay: "2.5s", dur: "5.8s", color: "#4a9a3a", size: 3.2, anim: "wind-leaf-1" },
-    { dx: -18, delay: "0.8s", dur: "4.8s", color: "#55ad4c", size: 2.5, anim: "wind-leaf-2" },
+    { dx: -10, delay: "0s", dur: "5s", color: "#5aad4a", size: 3.5 },
+    { dx: 12, delay: "2.5s", dur: "6s", color: "#6abb5a", size: 3 },
   ];
   return (
     <g>
       {leaves.map((l, i) => (
-        <g key={i}>
-          {/* Leaf shape — small diamond */}
-          <polygon
-            points={`${cx + l.dx},${cy} ${cx + l.dx + l.size},${cy - l.size * 0.7} ${cx + l.dx},${cy - l.size * 1.4} ${cx + l.dx - l.size},${cy - l.size * 0.7}`}
-            fill={l.color}
-            className="leaf"
-            style={{
-              transformOrigin: `${cx + l.dx}px ${cy}px`,
-              animation: `${l.anim} ${l.dur} ease-in-out ${l.delay} infinite`,
-            }}
-          />
-        </g>
+        <polygon
+          key={i}
+          points={`${cx + l.dx},${cy} ${cx + l.dx + l.size},${cy - l.size * 0.7} ${cx + l.dx},${cy - l.size * 1.4} ${cx + l.dx - l.size},${cy - l.size * 0.7}`}
+          fill={l.color}
+          className="leaf"
+          style={{
+            transformOrigin: `${cx + l.dx}px ${cy}px`,
+            animation: `wind-leaf-1 ${l.dur} ease-in-out ${l.delay} infinite`,
+          }}
+        />
       ))}
     </g>
   );
@@ -1074,21 +1068,7 @@ function BackgroundBuildings() {
               fill={b.c2}
               opacity={0.4}
             />
-            {/* Faint windows */}
-            {Array.from({ length: Math.floor(b.h / 30) }).map((_, r) =>
-              Array.from({ length: Math.floor(b.w / 20) }).map((_, c) => (
-                <rect
-                  key={`${r}-${c}`}
-                  x={b.x + 6 + c * 20}
-                  y={wallY + 8 + r * 30}
-                  width={10}
-                  height={16}
-                  fill="#6a98b4"
-                  opacity={0.25}
-                  rx={1}
-                />
-              )),
-            )}
+
           </g>
         );
       })}
@@ -1102,8 +1082,7 @@ function BackgroundBuildings() {
 export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
   return (
     <g>
-      {/* DEBUG: verify StreetScene renders */}
-      <rect x={0} y={0} width={1600} height={900} fill="#4a80b8" />
+
       <defs>
         <linearGradient id="real-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#4a80b8" />
@@ -1315,23 +1294,20 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
 
       {/* ═══ TOP SIDEWALK ═══ */}
       <rect x={0} y={470} width={1600} height={90} fill="#d0ccc0" />
-      <g stroke="#c0bbb0" strokeWidth={1.2}>
-        {[482, 496, 510, 524, 538, 552].map((y) => (
-          <line key={y} x1={0} y1={y} x2={1600} y2={y} />
-        ))}
+      <g stroke="#c0bbb0" strokeWidth={1.2} opacity={0.5}>
+        <line x1={0} y1={482} x2={1600} y2={482} />
+        <line x1={0} y1={510} x2={1600} y2={510} />
+        <line x1={0} y1={538} x2={1600} y2={538} />
       </g>
 
-      {/* ═══ HEDGE (with wind sway) ═══ */}
+      {/* ═══ HEDGE ═══ */}
       {Array.from({ length: 14 }).map((_, i) => (
-        <g key={i} className="hedge-sway" style={{ animationDelay: `${i * 0.15}s` }}>
+        <g key={i}>
           <rect x={i * 118 - 10} y={514} width={128} height={32} rx={14} fill="#2d7a38" />
           <rect x={i * 118 - 10} y={514} width={128} height={14} rx={7} fill="#3d9a48" opacity={0.8} />
           <rect x={i * 118 - 4} y={516} width={116} height={6} rx={3} fill="#4dAA58" opacity={0.4} />
         </g>
       ))}
-
-      {/* ═══ STRING LIGHTS ═══ */}
-      <StringLights />
 
       {/* ═══ BUNTING ═══ */}
       <Bunting />
@@ -1361,29 +1337,8 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       </g>
       {/* Bottom edge line */}
       <rect x={0} y={670} width={1600} height={3} fill="#e8e4e0" opacity={0.9} />
-      {/* ═══ DIRECTION ARROWS ═══ */}
-      {/* Right-pointing arrows (upper lane) */}
-      {[200, 500, 800, 1100, 1400].map((ax) => (
-        <g key={`r${ax}`} fill="#e8e4e0" opacity={0.5} transform={`translate(${ax}, 582)`}>
-          <rect x={0} y={2} width={30} height={3} rx={1} />
-          <polygon points="28,0 38,3.5 28,7" />
-        </g>
-      ))}
-      {/* Left-pointing arrows (lower lane) */}
-      {[100, 400, 700, 1000, 1300].map((ax) => (
-        <g key={`l${ax}`} fill="#e8e4e0" opacity={0.5} transform={`translate(${ax}, 653)`}>
-          <rect x={8} y={2} width={30} height={3} rx={1} />
-          <polygon points="10,0 0,3.5 10,7" />
-        </g>
-      ))}
-      {/* Crosswalks */}
-      {[360, 1060].map((cx) => (
-        <g key={cx} fill="#e8e4e0" opacity={0.85}>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <rect key={i} x={cx + i * 26} y={563} width={16} height={114} rx={3} />
-          ))}
-        </g>
-      ))}
+
+
       {/* Animated center dashes (yellow, moving) */}
       <g className="road-dashes" fill="#e8c84a">
         {Array.from({ length: 16 }).map((_, i) => (
@@ -1398,10 +1353,10 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
 
       {/* ═══ BOTTOM SIDEWALK ═══ */}
       <rect x={0} y={680} width={1600} height={140} fill="#d0ccc0" />
-      <g stroke="#c0bbb0" strokeWidth={1.2}>
-        {[700, 716, 732, 748, 764, 780, 796, 812].map((y) => (
-          <line key={y} x1={0} y1={y} x2={1600} y2={y} />
-        ))}
+      <g stroke="#c0bbb0" strokeWidth={1.2} opacity={0.5}>
+        <line x1={0} y1={700} x2={1600} y2={700} />
+        <line x1={0} y1={740} x2={1600} y2={740} />
+        <line x1={0} y1={780} x2={1600} y2={780} />
       </g>
 
       {/* ═══ FLOWER BOXES ═══ */}
@@ -1426,20 +1381,14 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         return <circle key={i} cx={fx} cy={fy} r={3} fill={cols[i % cols.length]} />;
       })}
 
-      {/* ═══ LOW-POLY TREES (with wind sway + falling leaves) ═══ */}
+      {/* ═══ LOW-POLY TREES (with wind sway) ═══ */}
       <LowPolyTree x={200} y={508} scale={1.0} variant={0} />
       <LowPolyTree x={820} y={508} scale={1.1} variant={1} />
       <LowPolyTree x={1420} y={508} scale={0.95} variant={2} />
 
-      {/* ═══ SCATTERED WIND-BLOWN LEAVES ═══ */}
-      <FallingLeaves cx={350} cy={460} />
-      <FallingLeaves cx={700} cy={470} />
-      <FallingLeaves cx={1100} cy={455} />
-      <FallingLeaves cx={1400} cy={465} />
 
-      {/* ═══ LOW-POLY LAMPS ═══ */}
-      <LowPolyLamp x={480} y={510} />
-      <LowPolyLamp x={1120} y={510} />
+
+
 
       {/* ═══ VENDOR STALLS ═══ */}
       {VENDORS.map((vendor, index) => (
