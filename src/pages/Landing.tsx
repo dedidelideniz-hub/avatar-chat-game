@@ -179,7 +179,7 @@ const FEATURES = [
   {
     icon: MessageCircle,
     color: "bg-secondary/20 text-secondary-foreground",
-    title: "Gerçek Zamanlı Sohbet",
+    title: "Gerçek Zamanlı aşk",
     desc: "Dünyadaki herkesle sohbet et. Konuşma balonları avatarının hemen üstünde belirsin.",
     badge: "Yakında",
   },
