@@ -328,17 +328,7 @@
     transform: translate(80px, 120px) rotate(540deg);
   }
 }
-  5% {
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 0.6;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(55px, 140px) rotate(-420deg);
-  }
-}
+
 .leaf {
   transform-box: fill-box;
   transform-origin: 50% 50%;
@@ -351,12 +341,7 @@
   8% { opacity: 0.9; }
   100% { opacity: 0; transform: translate(120px, 90px) rotate(720deg) scale(0.5); }
 }
-  8% { opacity: 0.85; }
-  100% { opacity: 0; transform: translate(95px, 110px) rotate(-540deg) scale(0.6); }
-}
-  8% { opacity: 0.8; }
-  100% { opacity: 0; transform: translate(70px, 100px) rotate(480deg) scale(0.4); }
-}
+
 
 /* Avatar pose toggle — idle (front), back (up), side (left/right). */
 .avatar-pose-idle {
