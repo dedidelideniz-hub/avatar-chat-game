@@ -9,11 +9,11 @@ import { cameraState } from "../world/cameraState";
 import type { AvatarConfig } from "@/lib/avatar";
 
 /**
- * Main 3D game scene — replaces the SVG street rendering.
+ * Main 3D game scene — professional city layout.
  * Orthographic camera synced with the existing game camera state.
  *
- * The game loop in World.tsx writes to cameraState (x, y, vw, vh)
- * and this component reads it to keep the 3D camera in sync.
+ * Camera follows the player through the city.
+ * Buildings, trees, and environment render in proper layers.
  */
 
 interface PlayerState {
@@ -97,17 +97,18 @@ export function WorldGame3D({
       >
         <CameraRig />
 
-        {/* Lighting — warm cartoon style */}
-        <ambientLight intensity={0.6} color="#b8d0e8" />
+        {/* Warm cartoon-style lighting */}
+        <ambientLight intensity={0.55} color="#c0d8f0" />
         <directionalLight
-          position={[400, 300, -200]}
-          intensity={1.3}
+          position={[400, 400, -200]}
+          intensity={1.4}
           color="#fff8e0"
+          castShadow={false}
         />
-        <hemisphereLight args={["#87ceeb", "#3a7a3a", 0.4]} />
+        <hemisphereLight args={["#87ceeb", "#4a8a3a", 0.35]} />
 
-        {/* Sky background */}
-        <color attach="background" args={["#7ab0d8"]} />
+        {/* Sky */}
+        <color attach="background" args={["#78b8d8"]} />
 
         {/* Ground, roads, sidewalks */}
         <Ground3D />
@@ -115,7 +116,7 @@ export function WorldGame3D({
         {/* Buildings */}
         <Buildings3D />
 
-        {/* Environment: trees, stalls, lamps, benches */}
+        {/* Trees, stalls, lamps, decorations */}
         <Environment3D />
 
         {/* Player avatar */}
