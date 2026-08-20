@@ -2104,6 +2104,7 @@ export default function World() {
         {/* The game area: the street is drawn in landscape world units and
             the camera (viewBox) zooms + pans so it always fills this area —
             no rotation, no letterboxing, on any phone orientation. */}
+        <StreetScene3D />
         <main
           ref={containerRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
@@ -2289,7 +2290,6 @@ export default function World() {
           />
           </g>
         </svg>
-        <StreetScene3D />
 
         {/* character profile card — tapping a character opens it here */}
         <AnimatePresence>
