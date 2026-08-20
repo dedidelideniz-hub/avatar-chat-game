@@ -812,7 +812,9 @@ export default function World() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const playerSvgRef = useRef<SVGSVGElement>(null);
   const worldGroupRef = useRef<SVGGElement>(null);
+  const playerWorldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
   const spriteRef = useRef<SVGGElement>(null);
 
@@ -1072,6 +1074,7 @@ export default function World() {
       worldGroupRef.current?.setAttribute("transform", "");
       // Force the camera to re-apply the matching viewBox next frame.
       camRef.current = { x: -1, y: -1 };
+      playerSvgRef.current?.setAttribute("viewBox", "0 0 1600 900");
     };
     update();
     const observer = new ResizeObserver(update);
@@ -1336,6 +1339,11 @@ export default function World() {
           cameraState.y = camY;
           cameraState.vw = view.vw;
           cameraState.vh = view.vh;
+          // Sync player SVG viewBox
+          playerSvgRef.current?.setAttribute(
+            "viewBox",
+            `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
+          );
         }
       }
 
@@ -2104,22 +2112,33 @@ export default function World() {
         {/* The game area: the street is drawn in landscape world units and
             the camera (viewBox) zooms + pans so it always fills this area —
             no rotation, no letterboxing, on any phone orientation. */}
-        <StreetScene3D />
         <main
           ref={containerRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
-          style={{ zIndex: 1 }}
+          style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none" }}
+          className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none", zIndex: 1 }}
         >
           {/* The whole street, one SVG group in 1600x900 world units. */}
           <g ref={worldGroupRef}>
           <StreetScene giftClaimed={giftClaimed} />
+
+          </g>
+        </svg>
+        <StreetScene3D />
+        <svg
+          ref={playerSvgRef}
+          viewBox="0 0 1600 900"
+          preserveAspectRatio="xMidYMid meet"
+          className="absolute inset-0 h-full w-full"
+          style={{ pointerEvents: "none", zIndex: 3 }}
+        >
+          <g ref={playerWorldGroupRef}>
 
           {/* move-target marker — the touched spot, shown as a clear square */}
           {targetMarker !== null && (
