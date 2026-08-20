@@ -59,7 +59,7 @@ function WorldScene({ className }: { className?: string }) {
       viewBox="0 0 420 380"
       className={className}
       role="img"
-      aria-label="Sanalika dünyasından bir sahne"
+      aria-label="Sanalikaaa dünyasından bir sahne"
     >
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -321,7 +321,7 @@ export default function Landing() {
             Neler var?
           </span>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Sanal dünyanın kapıları kapalı
+            Merhaba
           </h2>
           <p className="mt-4 text-base leading-7 text-muted-foreground">
             Sohbetten keşfe, arkadaşlıktan kişiselleştirmeye — sanal bir dünyada

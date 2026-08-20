@@ -16,6 +16,7 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import { ArrowLeft, ArrowRight, Loader2, Mail, UserX } from "lucide-react";
+import { motion } from "framer-motion";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -155,7 +156,13 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     <GameLogo className="size-16 rounded-2xl shadow-md" />
                   </div>
                   <CardTitle className="mt-3 text-2xl">
-                    Sanalika'ya hoş geldin
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                    >
+                      Oyunumuza hoş geldin
+                    </motion.div>
                   </CardTitle>
                   <CardDescription>
                     Avatar dünyasına giriş için e-postanı gir ya da misafir olarak devam et
