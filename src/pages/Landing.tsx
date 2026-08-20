@@ -321,7 +321,7 @@ export default function Landing() {
             Neler var?
           </span>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Sanal dünyanın kapıları kapalı
+            TEST 123 - Gemini çalışıyor
           </h2>
           <p className="mt-4 text-base leading-7 text-muted-foreground">
             Sohbetten keşfe, arkadaşlıktan kişiselleştirmeye — sanal bir dünyada
