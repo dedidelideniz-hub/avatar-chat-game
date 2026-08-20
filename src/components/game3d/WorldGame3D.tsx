@@ -118,12 +118,6 @@ export function WorldGame3D({
           color="#e0e8ff"
         />
 
-        {/* Test cube — confirms Canvas renders */}
-        <mesh position={[800, 20, -620]}>
-          <boxGeometry args={[30, 40, 30]} />
-          <meshStandardMaterial color="#ff0000" />
-        </mesh>
-
         {/* Ground, roads, sidewalks */}
         <Ground3D />
 

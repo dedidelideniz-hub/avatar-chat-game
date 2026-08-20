@@ -2118,16 +2118,19 @@ export default function World() {
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
+        {/*
+          StreetScene SVG hidden — replaced by 3D WorldGame3D.
+          Keep <svg> element so svgRef + worldGroupRef still work
+          for camera state and click coordinate conversion.
+        */}
         <svg
           ref={svgRef}
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none", zIndex: 1 }}
+          className="absolute inset-0 h-full w-full"
+          style={{ pointerEvents: "none", zIndex: 1, visibility: "hidden" }}
         >
-          {/* The whole street, one SVG group in 1600x900 world units. */}
           <g ref={worldGroupRef}>
-          <StreetScene giftClaimed={giftClaimed} />
-
           </g>
         </svg>
         <WorldGame3D
@@ -2164,7 +2167,7 @@ export default function World() {
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid meet"
           className="absolute inset-0 h-full w-full"
-          style={{ pointerEvents: "none", zIndex: 3 }}
+          style={{ pointerEvents: "none", zIndex: 3, visibility: "hidden" }}
         >
           <g ref={playerWorldGroupRef}>
 
