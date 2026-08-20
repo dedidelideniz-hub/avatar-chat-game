@@ -2114,8 +2114,8 @@ export default function World() {
             no rotation, no letterboxing, on any phone orientation. */}
         <main
           ref={containerRef}
-          className="relative min-h-[300px] flex-1 touch-none overflow-hidden"
-          style={{ zIndex: 1, isolation: "isolate" }}
+          className="relative flex-1 touch-none overflow-hidden"
+          style={{ minHeight: 0, zIndex: 1 }}
           onClick={handleWorldClick}
         >
         {/* Hidden SVG — only for cameraState viewBox sync & click coords */}

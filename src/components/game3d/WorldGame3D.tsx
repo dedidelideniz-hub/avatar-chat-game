@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { Ground3D } from "./Ground3D";
@@ -30,12 +30,32 @@ interface WorldGame3DProps {
   onRemoteClick?: (sessionId: string) => void;
 }
 
+/** Camera synced with SVG viewBox */
 function CameraRig() {
   const { camera } = useThree();
+  const initialized = useRef(false);
+
   useFrame(() => {
+    const cam = camera as THREE.OrthographicCamera;
+
+    // First frame: use default full world view
+    if (!initialized.current) {
+      cam.position.set(800, 500, -450);
+      cam.up.set(0, 0, -1);
+      cam.left = -800;
+      cam.right = 800;
+      cam.top = 450;
+      cam.bottom = -450;
+      cam.near = 0;
+      cam.far = 1000;
+      cam.updateProjectionMatrix();
+      initialized.current = true;
+      return;
+    }
+
     const { x, y, vw, vh } = cameraState;
     if (vw <= 0 || vh <= 0) return;
-    const cam = camera as THREE.OrthographicCamera;
+
     const cx = x + vw / 2;
     const cz = -(y + vh / 2);
     cam.position.set(cx, 500, cz);
@@ -73,29 +93,24 @@ export function WorldGame3D({
         top: 450, bottom: -450,
         near: 0, far: 1000,
       }}
-      gl={{ antialias: true, alpha: true }}
+      gl={{ antialias: true, alpha: false }}
       dpr={[1, 1.5]}
       onCreated={({ gl }) => {
-        gl.setClearColor(0x000000, 0);
+        gl.setClearColor(0x78b8d8);
       }}
       style={{
         position: "absolute",
-        top: 0, left: 0, right: 0, bottom: 0,
+        top: 0, left: 0,
         width: "100%", height: "100%",
         pointerEvents: "none",
       }}
     >
       <CameraRig />
 
-      <ambientLight intensity={0.7} color="#c8d8f0" />
-      <directionalLight position={[400, 600, -200]} intensity={1.5} color="#fff8e0" />
-      <hemisphereLight args={["#87ceeb", "#4a8a3a", 0.35]} />
-
-      {/* DEBUG cube — confirms Canvas renders */}
-      <mesh position={[800, 30, -620]}>
-        <boxGeometry args={[40, 60, 40]} />
-        <meshStandardMaterial color="#ff0000" />
-      </mesh>
+      {/* Lighting */}
+      <ambientLight intensity={0.8} color="#ffffff" />
+      <directionalLight position={[400, 600, -200]} intensity={1.2} color="#ffffff" />
+      <hemisphereLight args={["#87ceeb", "#4a8a3a", 0.3]} />
 
       <Ground3D />
       <Buildings3D />
