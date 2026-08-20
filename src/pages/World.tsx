@@ -2,6 +2,7 @@
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
 import { StreetScene3D } from "@/components/world/StreetScene3D";
+import { cameraState } from "@/components/world/cameraState";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
@@ -1330,6 +1331,11 @@ export default function World() {
             "viewBox",
             `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
           );
+          // Sync 3D camera with SVG viewBox
+          cameraState.x = camX;
+          cameraState.y = camY;
+          cameraState.vw = view.vw;
+          cameraState.vh = view.vh;
         }
       }
 

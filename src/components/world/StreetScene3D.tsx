@@ -1,30 +1,43 @@
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import * as THREE from "three";
 import { Tree3D } from "./Trees3D";
+import { cameraState } from "./cameraState";
 
 /**
- * 3D tree layer — renders on top of SVG (pointer-events: none) game world.
- * The Canvas captures no pointer events so clicks pass through to the SVG/main.
- *
- * Tree positions match SVG coordinates mapped to 3D space:
- *   SVG (x, y) → 3D (x * SCALE - 800, 0, (y - 620) * SCALE)
- *   where SCALE converts 1600×900 world units → Three.js units.
+ * Maps SVG world coordinates to Three.js 3D positions.
+ * SVG viewBox = 1600×900, camera is orthographic-like.
  */
+const WORLD_W = 1600;
+const WORLD_H = 900;
 
-const SCALE = 0.005; // 1600 SVG units → ~19.2 Three.js units
-
-// Map SVG coordinates to 3D world positions
-const TREE_POSITIONS: { svgX: number; svgY: number; scale: number; variant: number }[] = [
-  { svgX: 200, svgY: 508, scale: 1.0, variant: 0 },
-  { svgX: 820, svgY: 508, scale: 1.1, variant: 1 },
-  { svgX: 1420, svgY: 508, scale: 0.95, variant: 2 },
+// Trees are at the top sidewalk (y≈508 in SVG)
+const TREE_POSITIONS = [
+  { svgX: 200, svgY: 508, scale: 0.35, variant: 0 },
+  { svgX: 820, svgY: 508, scale: 0.4, variant: 1 },
+  { svgX: 1420, svgY: 508, scale: 0.33, variant: 2 },
 ];
 
-function to3D(svgX: number, svgY: number): [number, number, number] {
-  return [
-    (svgX - 800) * SCALE,  // center X around 0
-    0,                      // ground level
-    -(svgY - 620) * SCALE,  // depth (negative = toward camera)
-  ];
+/**
+ * Syncs the Three.js camera to match the SVG viewBox exactly.
+ * Uses orthographic camera so 2D ↔ 3D mapping is 1:1.
+ */
+function CameraSync() {
+  const { camera } = useThree();
+
+  useFrame(() => {
+    const { x, y, vw, vh } = cameraState;
+    // Orthographic camera: left/right/top/bottom match SVG viewBox
+    const cam = camera as THREE.OrthographicCamera;
+    cam.left = x;
+    cam.right = x + vw;
+    cam.top = y;
+    cam.bottom = y + vh;
+    cam.position.set(x + vw / 2, y + vh / 2, 10);
+    cam.lookAt(x + vw / 2, y + vh / 2, 0);
+    cam.updateProjectionMatrix();
+  });
+
+  return null;
 }
 
 export function StreetScene3D() {
@@ -39,29 +52,36 @@ export function StreetScene3D() {
       }}
     >
       <Canvas
-        camera={{ position: [0, 3.5, 6], fov: 60, near: 0.1, far: 50 }}
+        orthographic
+        camera={{
+          left: 0,
+          right: WORLD_W,
+          top: 0,
+          bottom: WORLD_H,
+          near: 0.1,
+          far: 100,
+          position: [WORLD_W / 2, WORLD_H / 2, 10],
+        }}
         gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
         dpr={[1, 1.5]}
         events={undefined}
         onCreated={({ gl }) => {
           (gl.domElement as HTMLCanvasElement).style.pointerEvents = "none";
-          gl.setClearColor(0x000000, 0); // transparent background
+          gl.setClearColor(0x000000, 0);
         }}
       >
-        {/* Lighting — warm sun from upper right */}
-        <ambientLight intensity={0.5} color="#b8d0e8" />
-        <directionalLight
-          position={[5, 8, 4]}
-          intensity={1.4}
-          color="#fff8e0"
-        />
+        <CameraSync />
+
+        {/* Lighting */}
+        <ambientLight intensity={0.6} color="#b8d0e8" />
+        <directionalLight position={[400, -200, 8]} intensity={1.3} color="#fff8e0" />
         <hemisphereLight args={["#87ceeb", "#3a7a3a", 0.3]} />
 
-        {/* 3D Trees */}
+        {/* 3D Trees — positioned at SVG world coordinates */}
         {TREE_POSITIONS.map((t, i) => (
           <Tree3D
             key={i}
-            position={to3D(t.svgX, t.svgY)}
+            position={[t.svgX, t.svgY, 0]}
             scale={t.scale}
             variant={t.variant}
             windOffset={i * 2.1}
