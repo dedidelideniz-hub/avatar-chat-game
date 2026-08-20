@@ -1,7 +1,7 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { cameraState } from "@/components/world/cameraState";
+
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
@@ -1270,42 +1270,35 @@ export default function World() {
       // VERTICAL SCALE: lerp smoothly — never crosses zero.
       const targetVScale = moving ? (1 + vyRef.current * 0.12) : 1;
       const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
-      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 16);
-      if (spriteRef.current) {
+      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 12);
+      // Build transform string — only write to DOM if it actually changed.
+      const scaleY = newVScale;
+      let newTransform: string;
+      if (flip === 1 && Math.abs(scaleY - 1) < 0.005) {
+        newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)})`;
+      } else if (Math.abs(scaleY - 1) < 0.005) {
+        newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${flip} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
+      } else {
+        newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${flip} ${scaleY.toFixed(3)}) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
+      }
+      if (spriteRef.current && spriteRef.current.dataset.vscale !== String(newVScale)) {
         spriteRef.current.dataset.flip = String(flip);
         spriteRef.current.dataset.vscale = String(newVScale);
-        const scaleY = newVScale;
-        if (flip === 1 && Math.abs(scaleY - 1) < 0.005) {
-          // Default pose — no transform needed.
-          spriteRef.current.setAttribute(
-            "transform",
-            `translate(0 ${bob - PLAYER_H})`,
-          );
-        } else if (scaleY === 1) {
-          // Flip only — simple scale around center.
-          spriteRef.current.setAttribute(
-            "transform",
-            `translate(0 ${bob - PLAYER_H})` +
-            ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-            ` scale(${flip} 1)` +
-            ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
-          );
-        } else {
-          // Flip + vertical perspective.
-          spriteRef.current.setAttribute(
-            "transform",
-            `translate(0 ${bob - PLAYER_H})` +
-            ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-            ` scale(${flip} ${scaleY.toFixed(3)})` +
-            ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
-          );
-        }
+      }
+      if (spriteRef.current) {
+        spriteRef.current.setAttribute(
+          "transform",
+          newTransform,
+        );
       }
       if (playerRef.current) {
-        playerRef.current.setAttribute(
-          "transform",
-          `translate(${pos.x} ${pos.y})`,
-        );
+        const px = pos.x.toFixed(1);
+        const py = pos.y.toFixed(1);
+        const curTransform = playerRef.current.getAttribute("transform");
+        const newTransform = `translate(${px} ${py})`;
+        if (curTransform !== newTransform) {
+          playerRef.current.setAttribute("transform", newTransform);
+        }
       }
 
       // Follow camera — the world always fills the screen (cover, no
@@ -1333,11 +1326,6 @@ export default function World() {
             "viewBox",
             `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
           );
-          // Sync 3D camera with SVG viewBox
-          cameraState.x = camX;
-          cameraState.y = camY;
-          cameraState.vw = view.vw;
-          cameraState.vh = view.vh;
           // Sync player SVG viewBox
           playerSvgRef.current?.setAttribute(
             "viewBox",
@@ -1381,17 +1369,11 @@ export default function World() {
         // Apply to the DOM imperatively — no React re-render per frame.
         const botEl = botRefs.current.get(bot.def.id);
         if (botEl) {
-          botEl.setAttribute(
-            "transform",
-            `translate(${bot.pos.x} ${bot.pos.y})`,
-          );
-          const sprite = botEl.querySelector(
-            ".bot-sprite",
-          ) as SVGGElement | null;
-          const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
+          const botT = `translate(${bot.pos.x.toFixed(1)} ${bot.pos.y.toFixed(1)})`;
+          if (botEl.getAttribute("transform") !== botT) botEl.setAttribute("transform", botT);
+          const sprite = botEl.querySelector(".bot-sprite") as SVGGElement | null;
           if (sprite) {
             sprite.classList.toggle("walking", bot.moving);
-            // Directional avatar pose for bots.
             const botSvg = sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
             if (botSvg) {
               if (!bot.moving) botSvg.dataset.pose = "idle";
@@ -1399,22 +1381,18 @@ export default function World() {
               else if (bot.vy > 0) botSvg.dataset.pose = "walk-down";
               else botSvg.dataset.pose = "walk-side";
             }
-            // Full-body facing: SNAPPED flip + smooth vertical perspective.
             const botFlip = bot.facing < 0 ? -1 : 1;
             const botVy = bot.vy ?? 0;
             const targetBotVS = bot.moving ? (1 + botVy * 0.12) : 1;
             const prevBotVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
-            const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 16);
-            sprite.dataset.flip = String(botFlip);
-            sprite.dataset.vscale = String(newBotVS);
-            // Scale around sprite center — no teleport.
-            sprite.setAttribute(
-              "transform",
-              `translate(0 ${bob - PLAYER_H})` +
-              ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-              ` scale(${botFlip} ${newBotVS.toFixed(3)})` +
-              ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
-            );
+            const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 12);
+            const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
+            const botSpriteT = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${botFlip} ${newBotVS.toFixed(3)}) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
+            if (sprite.getAttribute("transform") !== botSpriteT) {
+              sprite.dataset.flip = String(botFlip);
+              sprite.dataset.vscale = String(newBotVS);
+              sprite.setAttribute("transform", botSpriteT);
+            }
           }
         }
       }
