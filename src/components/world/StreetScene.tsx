@@ -579,30 +579,146 @@ function LowPolyTree({
   scale?: number;
   variant?: number;
 }) {
-  const colors = [
-    { trunk: "#6a5035", leaves: ["#4a9a3a", "#5aad4a", "#6abb5a"] },
-    { trunk: "#5a4030", leaves: ["#3d8b37", "#4a9a42", "#58aa50"] },
-    { trunk: "#7a5c40", leaves: ["#55ad4c", "#60b858", "#70c468"] },
+  /**
+   * 3D puffy tree inspired by the provided reference image.
+   * Rounded leaf clusters, branching trunk with visible roots.
+   */
+  const palettes = [
+    { // Variant 0 — lush bright green
+      trunk: "#b87a3d",
+      trunkDark: "#8a5a28",
+      trunkLight: "#d49a5a",
+      root: "#9a6830",
+      clusters: [
+        { cx: 0, cy: -58, rx: 22, ry: 18, fill: "#2d9a3a" },
+        { cx: -14, cy: -48, rx: 18, ry: 15, fill: "#3aad48" },
+        { cx: 14, cy: -50, rx: 16, ry: 14, fill: "#38a845" },
+        { cx: -8, cy: -68, rx: 20, ry: 16, fill: "#44b852" },
+        { cx: 8, cy: -72, rx: 18, ry: 14, fill: "#52c460" },
+        { cx: 0, cy: -80, rx: 14, ry: 12, fill: "#5ed06a" },
+        { cx: -18, cy: -56, rx: 12, ry: 10, fill: "#60c858" },
+        { cx: 16, cy: -62, rx: 13, ry: 11, fill: "#48b84e" },
+        // Highlight clusters (bright green tips)
+        { cx: -4, cy: -82, rx: 10, ry: 8, fill: "#80e878" },
+        { cx: 6, cy: -76, rx: 8, ry: 7, fill: "#90f088" },
+      ],
+    },
+    { // Variant 1 — teal-green
+      trunk: "#a06830",
+      trunkDark: "#784e20",
+      trunkLight: "#c08848",
+      root: "#886028",
+      clusters: [
+        { cx: 2, cy: -56, rx: 20, ry: 17, fill: "#1a8a6a" },
+        { cx: -12, cy: -46, rx: 17, ry: 14, fill: "#22a07a" },
+        { cx: 14, cy: -48, rx: 15, ry: 13, fill: "#209a75" },
+        { cx: -6, cy: -66, rx: 19, ry: 15, fill: "#28a880" },
+        { cx: 10, cy: -70, rx: 16, ry: 13, fill: "#30b48a" },
+        { cx: 0, cy: -78, rx: 13, ry: 11, fill: "#38c090" },
+        { cx: -16, cy: -54, rx: 11, ry: 9, fill: "#32b888" },
+        { cx: 18, cy: -58, rx: 12, ry: 10, fill: "#26a57d" },
+        { cx: -2, cy: -80, rx: 9, ry: 7, fill: "#50d8a0" },
+        { cx: 8, cy: -74, rx: 7, ry: 6, fill: "#60e8b0" },
+      ],
+    },
+    { // Variant 2 — warm yellow-green
+      trunk: "#b07038",
+      trunkDark: "#885528",
+      trunkLight: "#cc9050",
+      root: "#906028",
+      clusters: [
+        { cx: 0, cy: -54, rx: 21, ry: 16, fill: "#4a9a30" },
+        { cx: -16, cy: -44, rx: 16, ry: 13, fill: "#55a838" },
+        { cx: 12, cy: -48, rx: 15, ry: 12, fill: "#50a535" },
+        { cx: -4, cy: -64, rx: 18, ry: 14, fill: "#5cb840" },
+        { cx: 8, cy: -68, rx: 17, ry: 13, fill: "#64c048" },
+        { cx: 0, cy: -76, rx: 13, ry: 11, fill: "#6cc850" },
+        { cx: -14, cy: -52, rx: 11, ry: 9, fill: "#62b842" },
+        { cx: 16, cy: -56, rx: 12, ry: 10, fill: "#58a838" },
+        { cx: -2, cy: -78, rx: 10, ry: 8, fill: "#88e068" },
+        { cx: 6, cy: -72, rx: 8, ry: 6, fill: "#98e878" },
+      ],
+    },
   ];
-  const c = colors[variant % colors.length];
-  const swayClass = variant === 1 ? "tree-sway tree-sway-alt" : variant === 2 ? "tree-sway tree-sway-alt2" : "tree-sway";
+  const p = palettes[variant % palettes.length];
+  const swayClass =
+    variant === 1
+      ? "tree-sway tree-sway-alt"
+      : variant === 2
+        ? "tree-sway tree-sway-alt2"
+        : "tree-sway";
+
   return (
     <g transform={`translate(${x} ${y}) scale(${scale})`}>
-      {/* Shadow */}
-      <ellipse cx={2} cy={4} rx={18} ry={5} fill="#1a1520" opacity={0.1} />
-      {/* Trunk — simple cylinder */}
-      <rect x={-4} y={-30} width={8} height={34} rx={2} fill={c.trunk} />
-      <rect x={-1} y={-30} width={3} height={34} rx={1} fill="#000" opacity={0.06} />
-      {/* Canopy — stacked triangles (low-poly cone style) with wind sway */}
+      {/* Ground shadow */}
+      <ellipse cx={2} cy={4} rx={20} ry={5} fill="#1a1520" opacity={0.12} />
+
+      {/* ── Root base ── */}
+      <path
+        d={`M-10,0 Q-14,4 -16,6 M10,0 Q14,4 16,6 M-4,0 Q-6,3 -8,5 M4,0 Q6,3 8,5`}
+        fill="none"
+        stroke={p.root}
+        strokeWidth={3}
+        strokeLinecap="round"
+      />
+
+      {/* ── Trunk ── */}
+      <path
+        d={`M-5,-2 Q-6,-20 -4,-35 Q-2,-42 0,-44 Q2,-42 4,-35 Q6,-20 5,-2 Z`}
+        fill={p.trunk}
+      />
+      {/* Trunk highlight */}
+      <path
+        d={`M-2,-4 Q-3,-22 -1,-36 Q0,-40 0,-44 Q1,-40 1,-36 Q2,-22 2,-4 Z`}
+        fill={p.trunkLight}
+        opacity={0.4}
+      />
+      {/* Trunk shadow */}
+      <path
+        d={`M3,-2 Q4,-18 3,-32 Q2,-38 0,-44 Q-2,-42 -4,-35`}
+        fill="none"
+        stroke={p.trunkDark}
+        strokeWidth={2}
+        opacity={0.3}
+      />
+
+      {/* ── Left branch ── */}
+      <path
+        d="M-2,-30 Q-14,-38 -20,-42"
+        fill="none"
+        stroke={p.trunk}
+        strokeWidth={3.5}
+        strokeLinecap="round"
+      />
+
+      {/* ── Right branch ── */}
+      <path
+        d="M2,-34 Q16,-40 22,-44"
+        fill="none"
+        stroke={p.trunk}
+        strokeWidth={3}
+        strokeLinecap="round"
+      />
+
+      {/* ── Puffy leaf clusters with wind sway ── */}
       <g className={swayClass}>
-        <polygon points={`0,${-62} -18,${-30} 18,${-30}`} fill={c.leaves[0]} />
-        <polygon points={`0,${-74} -14,${-46} 14,${-46}`} fill={c.leaves[1]} />
-        <polygon points={`0,${-82} -10,${-58} 10,${-58}`} fill={c.leaves[2]} />
-        {/* Highlight edge */}
-        <line x1={0} y1={-82} x2={-10} y2={-58} stroke="#fff" strokeWidth={1} opacity={0.15} />
+        {p.clusters.map((cl, i) => (
+          <ellipse
+            key={i}
+            cx={cl.cx}
+            cy={cl.cy}
+            rx={cl.rx}
+            ry={cl.ry}
+            fill={cl.fill}
+          />
+        ))}
+        {/* Top highlight glints */}
+        <ellipse cx={-3} cy={-84} rx={6} ry={4} fill="#a0ff90" opacity={0.3} />
+        <ellipse cx={5} cy={-78} rx={5} ry={3} fill="#b0ff98" opacity={0.25} />
       </g>
+
       {/* Falling leaves from tree */}
-      <FallingLeaves cx={0} cy={-70} />
+      <FallingLeaves cx={0} cy={-60} />
     </g>
   );
 }
