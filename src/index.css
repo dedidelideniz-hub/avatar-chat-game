@@ -168,7 +168,7 @@
   }
 }
 .road-dashes {
-  /* Static road dashes — no continuous animation */
+  animation: street-dash-scroll 2.4s linear infinite;
 }
 
 /* Little cars driving along the street lanes. */
@@ -188,11 +188,13 @@
     transform: translateX(-220px);
   }
 }.car-r {
-  /* Static cars — no continuous animation */
+  animation: street-car-right 35s linear infinite;
+  will-change: transform;
 }
 
 .car-l {
-  /* Static cars — no continuous animation */
+  animation: street-car-left 46s linear infinite;
+  will-change: transform;
 }
 
 /* Balloons bobbing above the balloon stand. */
@@ -206,7 +208,8 @@
   }
 }
 .balloon {
-  /* Static balloons — no continuous animation */
+  animation: balloon-bob 5s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* Vendors gently bob behind their counters. */
@@ -220,7 +223,7 @@
   }
 }
 .vendor-idle {
-  /* Static vendors — no continuous animation */
+  animation: vendor-idle 2.6s ease-in-out infinite;
 }
 
 /* Vendors are tappable — a soft halo pulses behind them (no text). */
@@ -243,7 +246,9 @@
   stroke: #ffffff;
   stroke-width: 2.5;
   stroke-dasharray: 5 8;
-  opacity: 0.4;
+  transform-origin: center;
+  animation: vendor-halo-pulse 3.6s ease-in-out infinite;
+  will-change: transform, opacity;
   transition: opacity 0.2s ease;
 }
 .vendor-sprite:hover .vendor-halo {
@@ -261,7 +266,9 @@
   }
 }
 .wave-hand {
-  /* Performance: removed transform-box fill-box + continuous animation */
+  transform-origin: center bottom;
+  animation: wave-swing 1.4s ease-in-out infinite;
+  will-change: transform;
 }
 
 /* Clouds drifting slowly across the sky. */
@@ -274,7 +281,8 @@
   }
 }
 .clouds {
-  /* Static clouds — no continuous animation */
+  animation: cloud-drift 72s ease-in-out infinite alternate;
+  will-change: transform;
 }
 
 /* ═══ TREE WIND SWAY ═══ */
@@ -292,7 +300,9 @@
     transform: rotate(1.8deg) skewX(1deg);
   }
 }.tree-sway {
+  will-change: transform;
   transform-origin: center bottom;
+  animation: tree-sway 5s ease-in-out infinite;
 }
 
 .tree-sway-alt {
@@ -324,7 +334,7 @@
 }
 
 .leaf {
-  /* Performance: removed transform-box fill-box */
+  transform-origin: center center;
 }
 
 
