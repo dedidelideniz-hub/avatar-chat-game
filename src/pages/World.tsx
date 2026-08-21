@@ -1,6 +1,6 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
-import { StreetScene } from "@/components/world/StreetScene";
+import { GameScene3D } from "@/components/game3d/GameScene3D";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
@@ -812,8 +812,7 @@ export default function World() {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const playerSvgRef = useRef<SVGSVGElement>(null);
-  const worldGroupRef = useRef<SVGGElement>(null);
-  const playerWorldGroupRef = useRef<SVGGElement>(null);
+    const playerWorldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
   const spriteRef = useRef<SVGGElement>(null);
   const avatarSvgCache = useRef<SVGSVGElement | null>(null);
@@ -1076,10 +1075,8 @@ export default function World() {
         vw: Math.min(w / scale, WORLD_W),
         vh: Math.min(h / scale, WORLD_H),
       };
-      worldGroupRef.current?.setAttribute("transform", "");
-      // Force the camera to re-apply the matching viewBox next frame.
+      // Force the camera to re-apply next frame.
       camRef.current = { x: -1, y: -1 };
-      playerSvgRef.current?.setAttribute("viewBox", "0 0 1600 900");
     };
     update();
     const observer = new ResizeObserver(update);
@@ -1329,10 +1326,6 @@ export default function World() {
         }
         if (Math.abs(camX - prev.x) > 0.01 || Math.abs(camY - prev.y) > 0.01) {
           camRef.current = { x: camX, y: camY };
-          svgRef.current?.setAttribute(
-            "viewBox",
-            `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
-          );
           // Sync player SVG viewBox
           playerSvgRef.current?.setAttribute(
             "viewBox",
@@ -1956,18 +1949,17 @@ export default function World() {
       const target = e.target as HTMLElement;
       if (target.closest("button") || target.closest("[data-profile-card]"))
         return;
-      // Map the tap to world coordinates through the SVG's own screen CTM.
-      // This is exact even when the world is letterboxed or the camera has
-      // moved — it never depends on viewport bookkeeping that could be stale.
-      const svg = svgRef.current;
-      if (!svg) return;
-      const ctm = svg.getScreenCTM();
-      if (!ctm) return;
-      const svgPt = new DOMPoint(e.clientX, e.clientY).matrixTransform(
-        ctm.inverse(),
-      );
-      const wx = svgPt.x;
-      const wy = svgPt.y;
+      // Map the tap to world coordinates using the camera state.
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const cs = viewRef.current;
+      const cx = camRef.current.x >= 0 ? camRef.current.x : 0;
+      const cy = camRef.current.y >= 0 ? camRef.current.y : 0;
+      const wx = cx + (screenX / rect.width) * cs.vw;
+      const wy = cy + (screenY / rect.height) * cs.vh;
       // Tapping a character (player or bot) opens their profile card.
       const p = posRef.current;
       if (
@@ -2106,17 +2098,11 @@ export default function World() {
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
-        <svg
-          ref={svgRef}
-          viewBox="0 0 1600 900"
-          preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full"
-          style={{ pointerEvents: "none" }}
-        >
-          <g ref={worldGroupRef}>
-          <StreetScene giftClaimed={giftClaimed} />
-          </g>
-        </svg>
+        {/* 3D WebGL environment — replaces SVG StreetScene */}
+        <GameScene3D
+          giftClaimed={giftClaimed}
+          getCameraState={() => viewRef.current.vw > 0 ? { x: camRef.current.x >= 0 ? camRef.current.x : 0, y: camRef.current.y >= 0 ? camRef.current.y : 0, vw: viewRef.current.vw, vh: viewRef.current.vh } : { x: 0, y: 0, vw: WORLD_W, vh: WORLD_H }}
+        />
         <svg
           ref={playerSvgRef}
           viewBox="0 0 1600 900"
