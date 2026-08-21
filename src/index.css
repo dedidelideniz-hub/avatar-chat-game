@@ -168,7 +168,7 @@
   }
 }
 .road-dashes {
-  animation: street-dash-scroll 2.4s linear infinite;
+  /* Static road dashes — no continuous animation */
 }
 
 /* Little cars driving along the street lanes. */
@@ -188,13 +188,11 @@
     transform: translateX(-220px);
   }
 }.car-r {
-  animation: street-car-right 35s linear infinite;
-  will-change: transform;
+  /* Static cars — no continuous animation */
 }
 
 .car-l {
-  animation: street-car-left 46s linear infinite;
-  will-change: transform;
+  /* Static cars — no continuous animation */
 }
 
 /* Balloons bobbing above the balloon stand. */
@@ -208,8 +206,7 @@
   }
 }
 .balloon {
-  animation: balloon-bob 5s ease-in-out infinite;
-  will-change: transform;
+  /* Static balloons — no continuous animation */
 }
 
 /* Vendors gently bob behind their counters. */
@@ -223,7 +220,7 @@
   }
 }
 .vendor-idle {
-  animation: vendor-idle 2.6s ease-in-out infinite;
+  /* Static vendors — no continuous animation */
 }
 
 /* Vendors are tappable — a soft halo pulses behind them (no text). */
@@ -246,10 +243,7 @@
   stroke: #ffffff;
   stroke-width: 2.5;
   stroke-dasharray: 5 8;
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-  animation: vendor-halo-pulse 3.6s ease-in-out infinite;
-  will-change: transform, opacity;
+  opacity: 0.4;
   transition: opacity 0.2s ease;
 }
 .vendor-sprite:hover .vendor-halo {
@@ -267,10 +261,7 @@
   }
 }
 .wave-hand {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: wave-swing 1.4s ease-in-out infinite;
-  will-change: transform;
+  /* Performance: removed transform-box fill-box + continuous animation */
 }
 
 /* Clouds drifting slowly across the sky. */
@@ -283,8 +274,7 @@
   }
 }
 .clouds {
-  animation: cloud-drift 72s ease-in-out infinite alternate;
-  will-change: transform;
+  /* Static clouds — no continuous animation */
 }
 
 /* ═══ TREE WIND SWAY ═══ */
@@ -302,10 +292,7 @@
     transform: rotate(1.8deg) skewX(1deg);
   }
 }.tree-sway {
-  will-change: transform;
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
-  animation: tree-sway 5s ease-in-out infinite;
+  transform-origin: center bottom;
 }
 
 .tree-sway-alt {
@@ -337,8 +324,7 @@
 }
 
 .leaf {
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
+  /* Performance: removed transform-box fill-box */
 }
 
 
@@ -415,23 +401,19 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   }
 }
 .walking .avatar-arm-l {
-  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: arm-swing 0.5s linear infinite;
 }
 .walking .avatar-arm-r {
-  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: arm-swing 0.5s linear infinite;
   animation-delay: -0.25s;
 }
 .walking .avatar-leg-l {
-  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: leg-swing 0.5s linear infinite;
 }
 .walking .avatar-leg-r {
-  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: leg-swing 0.5s linear infinite;
   animation-delay: -0.25s;
@@ -449,7 +431,6 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   }
 }
 .speech-bubble {
-  transform-box: fill-box;
   transform-origin: 50% 100%;
   animation: bubble-pop 0.25s ease-out;
 }
@@ -466,7 +447,6 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   }
 }
 .move-marker {
-  transform-box: fill-box;
   transform-origin: 50% 50%;
   animation: marker-pop 0.2s ease-out;
 }
@@ -482,6 +462,7 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   }
 }
 .unread-pulse {
+  /* Lightweight CSS-only pulse — no transform-box needed */
   animation: unread-pulse 1.6s ease-in-out infinite;
 }
 
@@ -785,4 +766,22 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 }
 .string-bulb {
   animation: bulb-twinkle 4s ease-in-out infinite;
+}
+
+/* ═══ PERFORMANCE: SVG containment ═══ */
+svg {
+  will-change: auto;
+}
+main > svg,
+#game-world svg {
+  contain: layout style;
+}
+
+/* Disable animations for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -816,6 +816,9 @@ export default function World() {
   const playerWorldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
   const spriteRef = useRef<SVGGElement>(null);
+  const avatarSvgCache = useRef<SVGSVGElement | null>(null);
+  const remoteSpriteCache = useRef(new Map<string, SVGGElement>());
+  const remotePoseCache = useRef(new Map<string, SVGSVGElement>());
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
@@ -848,6 +851,9 @@ export default function World() {
   // Autonomous bots: positions/animations live in refs (mutated every frame
   // without re-rendering React); only their speech bubbles are React state.
   const botRefs = useRef(new Map<string, SVGGElement>());
+  // Cache querySelector results for bots to avoid per-frame DOM traversal.
+  const botSpriteCache = useRef(new Map<string, SVGGElement>());
+  const botPoseCache = useRef(new Map<string, SVGSVGElement>());
   const botsRef = useRef(
     BOT_DEFS.map((def) => ({
       def,
@@ -1256,7 +1262,8 @@ export default function World() {
       // vertical scale for perspective.
       spriteRef.current?.classList.toggle("walking", moving);
       // Directional avatar pose: idle (front), walk-up (back), walk-down (front), walk-side (side).
-      const avatarSvg = spriteRef.current?.querySelector("svg[data-pose]") as SVGSVGElement | null;
+      const avatarSvg = avatarSvgCache.current ?? (spriteRef.current?.querySelector("svg[data-pose]") as SVGSVGElement | null);
+      if (avatarSvg && !avatarSvgCache.current) avatarSvgCache.current = avatarSvg;
       if (avatarSvg) {
         if (!moving) avatarSvg.dataset.pose = "idle";
         else if (vyRef.current < 0) avatarSvg.dataset.pose = "walk-up";
@@ -1371,10 +1378,12 @@ export default function World() {
         if (botEl) {
           const botT = `translate(${bot.pos.x.toFixed(1)} ${bot.pos.y.toFixed(1)})`;
           if (botEl.getAttribute("transform") !== botT) botEl.setAttribute("transform", botT);
-          const sprite = botEl.querySelector(".bot-sprite") as SVGGElement | null;
+          const sprite = botSpriteCache.current.get(bot.def.id) ?? botEl.querySelector(".bot-sprite") as SVGGElement | null;
+          if (sprite && !botSpriteCache.current.has(bot.def.id)) botSpriteCache.current.set(bot.def.id, sprite);
           if (sprite) {
             sprite.classList.toggle("walking", bot.moving);
-            const botSvg = sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
+            const botSvg = botPoseCache.current.get(bot.def.id) ?? sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
+            if (botSvg && !botPoseCache.current.has(bot.def.id)) botPoseCache.current.set(bot.def.id, botSvg);
             if (botSvg) {
               if (!bot.moving) botSvg.dataset.pose = "idle";
               else if (bot.vy < 0) botSvg.dataset.pose = "walk-up";
@@ -1430,13 +1439,15 @@ export default function World() {
         st.moving = !!d.moving;
         if (st.moving) st.phase += dt * 10;
         el.setAttribute("transform", `translate(${st.x} ${st.y})`);
-        const sprite = el.querySelector(
+        const sprite = remoteSpriteCache.current.get(remote.sessionId) ?? el.querySelector(
           ".remote-sprite",
         ) as SVGGElement | null;
+        if (sprite && !remoteSpriteCache.current.has(remote.sessionId)) remoteSpriteCache.current.set(remote.sessionId, sprite);
         if (sprite) {
           sprite.classList.toggle("walking", st.moving);
           // Directional avatar pose for remote players.
-          const rSvg = sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
+          const rSvg = remotePoseCache.current.get(remote.sessionId) ?? sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
+          if (rSvg && !remotePoseCache.current.has(remote.sessionId)) remotePoseCache.current.set(remote.sessionId, rSvg);
           if (rSvg) {
             if (!st.moving) rSvg.dataset.pose = "idle";
             else if (st.vy < 0) rSvg.dataset.pose = "walk-up";
