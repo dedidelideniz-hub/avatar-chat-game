@@ -247,7 +247,7 @@ export const VENDORS: Vendor[] = [
     color: "#ff8fb3",
     accent: "#ffffff",
     x: 250,
-    y: 450,
+    y: 495,
   },
   {
     id: "balon",
@@ -257,7 +257,7 @@ export const VENDORS: Vendor[] = [
     color: "#14b8a6",
     accent: "#ffffff",
     x: 500,
-    y: 450,
+    y: 495,
   },
   {
     id: "oyuncak",
@@ -267,7 +267,7 @@ export const VENDORS: Vendor[] = [
     color: "#f59e0b",
     accent: "#ffd166",
     x: 750,
-    y: 450,
+    y: 495,
   },
   {
     id: "moda",
@@ -277,7 +277,7 @@ export const VENDORS: Vendor[] = [
     color: "#a855f7",
     accent: "#ffd166",
     x: 1000,
-    y: 450,
+    y: 495,
   },
   {
     id: VIP_VENDOR_ID,
@@ -287,7 +287,7 @@ export const VENDORS: Vendor[] = [
     color: "#f59e0b",
     accent: "#ffd166",
     x: 1250,
-    y: 450,
+    y: 495,
   },
 ];
 

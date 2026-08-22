@@ -2008,16 +2008,17 @@ export default function World() {
       // Screen-space character hit testing
       let closestId: string | null = null;
       let closestDist = Infinity;
-      const CHAR_HIT_RADIUS = 80; // pixels
+      const PLAYER_HIT_RADIUS = 80; // generous for player/bots
+      const VENDOR_HIT_RADIUS = 35; // tight for vendors — must click ON the character
 
-      const checkChar = (id: string, svgX: number, svgY: number) => {
+      const checkChar = (id: string, svgX: number, svgY: number, radius: number) => {
         const wp = svgToWorld(svgX, svgY);
         const sp = worldToScreen(wp.x, PLAYER_3D_HEIGHT / 2, wp.z, container);
         if (!sp) return;
         const dx = screenX - sp.sx;
         const dy = screenY - sp.sy;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < CHAR_HIT_RADIUS && dist < closestDist) {
+        if (dist < radius && dist < closestDist) {
           closestDist = dist;
           closestId = id;
         }
@@ -2025,11 +2026,12 @@ export default function World() {
 
       // Check local player
       const p = posRef.current;
-      checkChar("me", p.x, p.y);
+      checkChar("me", p.x, p.y, PLAYER_HIT_RADIUS);
 
-      // Check bots/vendors
+      // Check bots/vendors — vendors get a tighter hit radius
       for (const bot of botsRef.current) {
-        checkChar(bot.def.id, bot.pos.x, bot.pos.y);
+        const isV = "isVendor" in bot.def && !!(bot.def as { isVendor?: boolean }).isVendor;
+        checkChar(bot.def.id, bot.pos.x, bot.pos.y, isV ? VENDOR_HIT_RADIUS : PLAYER_HIT_RADIUS);
       }
 
       // Check remote players
@@ -2039,7 +2041,7 @@ export default function World() {
         const st = remoteStatesRef.current.get(remote.sessionId);
         const rx = st ? st.x : d.x;
         const ry = st ? st.y : d.y;
-        checkChar(`remote:${remote.sessionId}`, rx, ry);
+        checkChar(`remote:${remote.sessionId}`, rx, ry, PLAYER_HIT_RADIUS);
       }
 
       if (closestId) {
