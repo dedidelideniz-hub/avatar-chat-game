@@ -133,7 +133,7 @@ function WorldScene({ className }: { className?: string }) {
         <rect x="4" y="0" width="118" height="34" rx="17" fill="#ffffff" stroke="#ead9bd" strokeWidth="2" />
         <path d="M34 34 L42 48 L56 34 Z" fill="#ffffff" stroke="#ead9bd" strokeWidth="2" />
         <text x="63" y="23" textAnchor="middle" fontSize="14" fontWeight="700" fill="#2b2320">
-          Merhaba! 👋
+          Merhaba! amca 👋
         </text>
       </g>
     </svg>
