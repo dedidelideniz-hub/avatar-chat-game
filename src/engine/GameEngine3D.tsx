@@ -849,6 +849,8 @@ export function GameEngine3D({
     >
       <FollowCamera posRef={playerPosRef} />
 
+   <Avatar3DTest />
+
       {/* Sky — soft warm blue */}
       <color attach="background" args={["#78c8e8"]} />
 
