@@ -1477,25 +1477,25 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         <line x1={0} y1={780} x2={1600} y2={780} />
       </g>
 
-      {/* ═══ LAMPS (bottom sidewalk) ═══ */}
-      <LowPolyLamp x={50} y={790} />
-      <LowPolyLamp x={300} y={790} />
-      <LowPolyLamp x={550} y={790} />
-      <LowPolyLamp x={800} y={790} />
-      <LowPolyLamp x={1050} y={790} />
-      <LowPolyLamp x={1300} y={790} />
-      <LowPolyLamp x={1550} y={790} />
+      {/* ═══ LAMPS (bottom sidewalk, scaled 2.8x → ~3.3m tall) ═══ */}
+      <g transform="translate(50 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
+      <g transform="translate(300 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
+      <g transform="translate(550 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
+      <g transform="translate(800 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
+      <g transform="translate(1050 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
+      <g transform="translate(1300 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
+      <g transform="translate(1550 790) scale(2.8)"><LowPolyLamp x={0} y={0} /></g>
 
       {/* ═══ FLOWER BOXES ═══ */}
-      <FlowerBox x={160} y={820} />
-      <FlowerBox x={460} y={820} />
-      <FlowerBox x={760} y={820} />
-      <FlowerBox x={1060} y={820} />
-      <FlowerBox x={1360} y={820} />
+      <g transform="translate(160 820) scale(1.5)"><FlowerBox x={0} y={0} /></g>
+      <g transform="translate(460 820) scale(1.5)"><FlowerBox x={0} y={0} /></g>
+      <g transform="translate(760 820) scale(1.5)"><FlowerBox x={0} y={0} /></g>
+      <g transform="translate(1060 820) scale(1.5)"><FlowerBox x={0} y={0} /></g>
+      <g transform="translate(1360 820) scale(1.5)"><FlowerBox x={0} y={0} /></g>
 
       {/* ═══ BENCHES ═══ */}
-      <Bench x={350} y={816} />
-      <Bench x={1150} y={816} />
+      <g transform="translate(350 816) scale(1.6)"><Bench x={0} y={0} /></g>
+      <g transform="translate(1150 816) scale(1.6)"><Bench x={0} y={0} /></g>
 
       {/* ═══ GRASS ═══ */}
       <rect x={0} y={832} width={1600} height={68} fill="#6aaa5a" />
@@ -1509,22 +1509,22 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       })}      {/* ═══ LOW-POLY TREES (with wind sway) ═══ */}
 
       {/* Top sidewalk trees — between buildings */}
-      <LowPolyTree x={310} y={548} scale={0.55} variant={0} />
-      <LowPolyTree x={550} y={548} scale={0.5} variant={1} />
-      <LowPolyTree x={820} y={548} scale={0.55} variant={2} />
-      <LowPolyTree x={1180} y={548} scale={0.5} variant={0} />
-      <LowPolyTree x={1490} y={548} scale={0.55} variant={1} />
+      <LowPolyTree x={310} y={548} scale={3.2} variant={0} />
+      <LowPolyTree x={550} y={548} scale={3.0} variant={1} />
+      <LowPolyTree x={820} y={548} scale={3.4} variant={2} />
+      <LowPolyTree x={1180} y={548} scale={3.1} variant={0} />
+      <LowPolyTree x={1490} y={548} scale={3.3} variant={1} />
 
       {/* Bottom grass trees */}
-      <LowPolyTree x={80} y={890} scale={0.7} variant={0} />
-      <LowPolyTree x={240} y={895} scale={0.65} variant={2} />
-      <LowPolyTree x={420} y={888} scale={0.7} variant={1} />
-      <LowPolyTree x={620} y={892} scale={0.65} variant={0} />
-      <LowPolyTree x={840} y={888} scale={0.7} variant={2} />
-      <LowPolyTree x={1020} y={894} scale={0.65} variant={1} />
-      <LowPolyTree x={1200} y={890} scale={0.7} variant={0} />
-      <LowPolyTree x={1380} y={893} scale={0.65} variant={2} />
-      <LowPolyTree x={1540} y={889} scale={0.7} variant={1} />
+      <LowPolyTree x={100} y={890} scale={4.0} variant={0} />
+      <LowPolyTree x={300} y={895} scale={3.8} variant={2} />
+      <LowPolyTree x={500} y={888} scale={4.2} variant={1} />
+      <LowPolyTree x={700} y={892} scale={3.7} variant={0} />
+      <LowPolyTree x={900} y={888} scale={4.0} variant={2} />
+      <LowPolyTree x={1100} y={894} scale={3.9} variant={1} />
+      <LowPolyTree x={1300} y={890} scale={4.1} variant={0} />
+      <LowPolyTree x={1500} y={893} scale={3.8} variant={2} />
+      <LowPolyTree x={1500} y={889} scale={3.8} variant={1} />
 
       {/* ═══ VENDOR STALLS ═══ */}
       {VENDORS.map((vendor, index) => (
