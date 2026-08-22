@@ -2,7 +2,11 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 
-export default function Avatar3DTest() {
+interface Avatar3DTestProps {
+  position: [number, number, number];
+}
+
+export default function Avatar3DTest({ position }: Avatar3DTestProps) {
   const groupRef = useRef<THREE.Group>(null);
 
   useFrame((_, delta) => {
