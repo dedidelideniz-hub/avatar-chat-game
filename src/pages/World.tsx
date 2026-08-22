@@ -1,6 +1,6 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
-import { GameScene3D } from "@/components/game3d/GameScene3D";
+import { StreetScene } from "@/components/world/StreetScene";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
@@ -811,6 +811,7 @@ export default function World() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const worldGroupRef = useRef<SVGGElement>(null);
   const playerSvgRef = useRef<SVGSVGElement>(null);
     const playerWorldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
@@ -1326,11 +1327,10 @@ export default function World() {
         }
         if (Math.abs(camX - prev.x) > 0.01 || Math.abs(camY - prev.y) > 0.01) {
           camRef.current = { x: camX, y: camY };
-          // Sync player SVG viewBox
-          playerSvgRef.current?.setAttribute(
-            "viewBox",
-            `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`,
-          );
+          // Sync both SVG viewBoxes
+          const vb = `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`;
+          playerSvgRef.current?.setAttribute("viewBox", vb);
+          svgRef.current?.setAttribute("viewBox", vb);
         }
       }
 
@@ -2098,11 +2098,17 @@ export default function World() {
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
-        {/* 3D WebGL environment — replaces SVG StreetScene */}
-        <GameScene3D
-          giftClaimed={giftClaimed}
-          getCameraState={() => viewRef.current.vw > 0 ? { x: camRef.current.x >= 0 ? camRef.current.x : 0, y: camRef.current.y >= 0 ? camRef.current.y : 0, vw: viewRef.current.vw, vh: viewRef.current.vh } : { x: 0, y: 0, vw: WORLD_W, vh: WORLD_H }}
-        />
+        <svg
+          ref={svgRef}
+          viewBox="0 0 1600 900"
+          preserveAspectRatio="xMidYMid meet"
+          className="absolute inset-0 h-full w-full"
+          style={{ pointerEvents: "none" }}
+        >
+          <g ref={worldGroupRef}>
+          <StreetScene giftClaimed={giftClaimed} />
+          </g>
+        </svg>
         <svg
           ref={playerSvgRef}
           viewBox="0 0 1600 900"
