@@ -1,6 +1,8 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
+import { GameEngine3D } from "@/engine/GameEngine3D";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
@@ -796,6 +798,7 @@ function RemotePlayers({
 
 export default function World() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const profile = useQuery(api.profiles.getMyProfile);
   const claimDaily = useMutation(api.profiles.claimDailyBonus);
   const setBubbleColor = useMutation(api.profiles.setBubbleColor);
@@ -822,6 +825,7 @@ export default function World() {
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
+  const movingRef = useRef(false);
   const vyRef = useRef(0); // vertical direction: -1 up, +1 down, 0 idle
   const keysRef = useRef(new Set<string>());
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
@@ -1186,6 +1190,7 @@ export default function World() {
       }
       const len = Math.hypot(vx, vy);
       moving = len > 0.05;
+      movingRef.current = moving;
       if (len > 1) {
         vx /= len;
         vy /= len;
@@ -2098,194 +2103,24 @@ export default function World() {
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
-        <svg
-          ref={svgRef}
-          viewBox="0 0 1600 900"
-          preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full"
-          style={{ pointerEvents: "none" }}
-        >
-          <g ref={worldGroupRef}>
-          <StreetScene giftClaimed={giftClaimed} />
-          </g>
-        </svg>
-        <svg
-          ref={playerSvgRef}
-          viewBox="0 0 1600 900"
-          preserveAspectRatio="xMidYMid meet"
-          className="absolute inset-0 h-full w-full" style={{ pointerEvents: "none", zIndex: 3 }}
-        >
-          <g ref={playerWorldGroupRef}>
-
-          {/* move-target marker — the touched spot, shown as a clear square */}
-          {targetMarker !== null && (
-            <g
-              transform={`translate(${targetMarker.x} ${targetMarker.y})`}
-              className="move-marker"
-            >
-              <rect
-                x={-26}
-                y={-26}
-                width={52}
-                height={52}
-                rx={9}
-                fill="#ffffff"
-                opacity={0.3}
-                stroke="#ff6b4a"
-                strokeWidth={3}
-                strokeDasharray="7 5"
-              />
-              <circle cx="0" cy="0" r="4" fill="#ff6b4a" />
-            </g>
-          )}
-
-          {/* player */}
-          <g ref={playerRef}>
-            <g ref={spriteRef}>
-              <AvatarPreview
-                width={PLAYER_W}
-                height={PLAYER_H}
-                config={config}
-              />
-              <EquippedItems
-                equipped={equipped}
-                width={PLAYER_W}
-                height={PLAYER_H}
-              />
-            </g>
-            {/* speech bubble above the player's head — classic rounded comic
-                bubble with a white border and tail, in the chosen color */}
-            {bubble !== null && (
-              <g
-                transform={`translate(${-bubbleW / 2} -144)`}
-                className="speech-bubble"
-              >
-                <rect
-                  width={bubbleW}
-                  height={58}
-                  rx={22}
-                  fill={bubbleDef.hex}
-                  stroke={bubbleDef.stroke}
-                  strokeOpacity={bubbleDef.strokeOpacity}
-                  strokeWidth={3.5}
-                />
-                <path
-                  d={`M${bubbleW / 2 - 11} 58 L${bubbleW / 2} 72 L${bubbleW / 2 + 11} 58 Z`}
-                  fill={bubbleDef.hex}
-                  stroke={bubbleDef.stroke}
-                  strokeOpacity={bubbleDef.strokeOpacity}
-                  strokeWidth={3.5}
-                  strokeLinejoin="round"
-                />
-                <text
-                  x={bubbleW / 2}
-                  y={19}
-                  textAnchor="middle"
-                  fontSize={10.5}
-                  fontWeight={900}
-                  letterSpacing={0.8}
-                  fill={bubbleDef.text}
-                >
-                  {username}
-                </text>
-                <text
-                  x={bubbleW / 2}
-                  y={41}
-                  textAnchor="middle"
-                  fontSize={12.5}
-                  fontWeight={800}
-                  fill={bubbleDef.text}
-                >
-                  {bubble}
-                </text>
-              </g>
-            )}
-          </g>
-
-          {/* autonomous bots — wander the street with name tags + bubbles */}
-          {botsRef.current.map((bot) => {
-            const bubbleText = botBubbles[bot.def.id] ?? null;
-            const bw = bubbleText ? bubbleWidth(bubbleText, bot.def.name) : 0;
-            return (
-              <g
-                key={bot.def.id}
-                ref={(el) => {
-                  if (el) botRefs.current.set(bot.def.id, el);
-                  else botRefs.current.delete(bot.def.id);
-                }}
-              >
-                <g className="bot-sprite">
-                  <AvatarPreview
-                    width={PLAYER_W}
-                    height={PLAYER_H}
-                    config={bot.def.config}
-                  />
-                  <EquippedItems
-                    equipped={bot.def.equipped}
-                    width={PLAYER_W}
-                    height={PLAYER_H}
-                  />
-                </g>
-                {/* occasional speech bubble */}
-                {bubbleText !== null && (
-                  <g
-                    transform={`translate(${-bw / 2} -144)`}
-                    className="speech-bubble"
-                  >
-                    <rect
-                      width={bw}
-                      height={58}
-                      rx={22}
-                      fill="#ffffff"
-                      stroke="#3d2f2a"
-                      strokeOpacity={0.22}
-                      strokeWidth={3.5}
-                    />
-                    <path
-                      d={`M${bw / 2 - 11} 58 L${bw / 2} 72 L${bw / 2 + 11} 58 Z`}
-                      fill="#ffffff"
-                      stroke="#3d2f2a"
-                      strokeOpacity={0.22}
-                      strokeWidth={3.5}
-                      strokeLinejoin="round"
-                    />
-                    <text
-                      x={bw / 2}
-                      y={19}
-                      textAnchor="middle"
-                      fontSize={10.5}
-                      fontWeight={900}
-                      letterSpacing={0.8}
-                      fill="#2b2320"
-                    >
-                      {bot.def.name}
-                    </text>
-                    <text
-                      x={bw / 2}
-                      y={41}
-                      textAnchor="middle"
-                      fontSize={12.5}
-                      fontWeight={800}
-                      fill="#2b2320"
-                    >
-                      {bubbleText}
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
-
-          {/* real players from other phones — live presence */}
-          <RemotePlayers
-            sessionId={sessionId}
-            remoteRefs={remoteRefs}
-            remoteStatesRef={remoteStatesRef}
-            othersRef={othersRef}
-            onCount={onCountChange}
-          />
-          </g>
-        </svg>
+                <GameEngine3D
+          playerPosRef={posRef}
+          playerConfig={config}
+          playerEquipped={equipped}
+          isPlayerMoving={movingRef.current}
+          facingRef={facingRef}
+          bots={botsRef.current.map((b) => ({
+            id: b.def.id,
+            x: b.pos.x,
+            y: b.pos.y,
+            config: b.def.config,
+            equipped: b.def.equipped,
+            isMoving: b.moving,
+            facing: b.facing,
+          }))}
+          moveTarget={targetMarker}
+          isMobile={isMobile}
+        />
 
         {/* character profile card — tapping a character opens it here */}
         <AnimatePresence>
