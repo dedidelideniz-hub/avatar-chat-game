@@ -2107,7 +2107,6 @@ export default function World() {
           playerPosRef={posRef}
           playerConfig={config}
           playerEquipped={equipped}
-          isPlayerMoving={movingRef.current}
           facingRef={facingRef}
           bots={botsRef.current.map((b) => ({
             id: b.def.id,
