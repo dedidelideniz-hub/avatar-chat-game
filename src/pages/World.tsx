@@ -105,7 +105,7 @@ const BOT_DEFS: BotDef[] = [
     color: "#ec4899",
     speed: 80,
     x: 450,
-    y: 690,
+    y: 580,
     config: {
       skin: "#ffd1a3",
       hair: "long",
@@ -123,7 +123,7 @@ const BOT_DEFS: BotDef[] = [
     color: "#0ea5e9",
     speed: 80,
     x: 1100,
-    y: 700,
+    y: 560,
     config: {
       skin: "#e8a87c",
       hair: "spiky",
@@ -141,7 +141,7 @@ const BOT_DEFS: BotDef[] = [
     color: "#a855f7",
     speed: 80,
     x: 250,
-    y: 820,
+    y: 540,
     config: {
       skin: "#f5c19a",
       hair: "curly",
@@ -159,7 +159,7 @@ const BOT_DEFS: BotDef[] = [
     color: "#f59e0b",
     speed: 80,
     x: 1350,
-    y: 810,
+    y: 600,
     config: {
       skin: "#b97e4f",
       hair: "short",
@@ -1898,9 +1898,17 @@ export default function World() {
    * curb (or slightly off due to rendering rounding) always results in a walk.
    */
   const pickTarget = useCallback((wx: number, wy: number) => {
-    const zone = WALKABLE_ZONES[0];
-    const x = Math.min(Math.max(wx, zone.x), zone.x + zone.w);
-    const y = Math.min(Math.max(wy, zone.y), zone.y + zone.h);
+    // Find the closest walkable zone to clamp into
+    let bestDist = Infinity;
+    let bestZone = WALKABLE_ZONES[0];
+    for (const z of WALKABLE_ZONES) {
+      const cx = Math.max(z.x, Math.min(wx, z.x + z.w));
+      const cy = Math.max(z.y, Math.min(wy, z.y + z.h));
+      const d = Math.hypot(cx - wx, cy - wy);
+      if (d < bestDist) { bestDist = d; bestZone = z; }
+    }
+    const x = Math.max(bestZone.x, Math.min(wx, bestZone.x + bestZone.w));
+    const y = Math.max(bestZone.y, Math.min(wy, bestZone.y + bestZone.h));
     const p = posRef.current;
     const path = findPath(p.x, p.y, x, y);
     if (path.length > 1) {

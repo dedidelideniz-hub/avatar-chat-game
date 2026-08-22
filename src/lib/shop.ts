@@ -247,7 +247,7 @@ export const VENDORS: Vendor[] = [
     color: "#ff8fb3",
     accent: "#ffffff",
     x: 280,
-    y: 745,
+    y: 480,
   },
   {
     id: "balon",
@@ -257,7 +257,7 @@ export const VENDORS: Vendor[] = [
     color: "#14b8a6",
     accent: "#ffffff",
     x: 620,
-    y: 745,
+    y: 480,
   },
   {
     id: "oyuncak",
@@ -267,7 +267,7 @@ export const VENDORS: Vendor[] = [
     color: "#f59e0b",
     accent: "#ffd166",
     x: 980,
-    y: 745,
+    y: 480,
   },
   {
     id: "moda",
@@ -277,7 +277,7 @@ export const VENDORS: Vendor[] = [
     color: "#a855f7",
     accent: "#ffd166",
     x: 1340,
-    y: 745,
+    y: 480,
   },
   {
     id: VIP_VENDOR_ID,
@@ -287,7 +287,7 @@ export const VENDORS: Vendor[] = [
     color: "#f59e0b",
     accent: "#ffd166",
     x: 820,
-    y: 745,
+    y: 480,
   },
 ];
 
@@ -425,7 +425,7 @@ export function productsOf(vendorId: string): Product[] {
 /** Daily gift box position + reach radius (world coordinates). */
 export const GIFT_BOX = {
   x: 800,
-  y: 852,
+  y: 570,
   radius: 115,
 };
 
@@ -461,8 +461,8 @@ export function vendorAtPoint(x: number, y: number): Vendor | undefined {
 export const WORLD_BOUNDS = {
   minX: 28,
   maxX: 1572,
-  minY: 505,
-  maxY: 878,
+  minY: 450,
+  maxY: 690,
 };
 
 /**
