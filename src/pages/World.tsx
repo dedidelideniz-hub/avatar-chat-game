@@ -2118,15 +2118,26 @@ export default function World() {
           playerConfig={config}
           playerEquipped={equipped}
           facingRef={facingRef}
-          bots={botsRef.current.map((b) => ({
-            id: b.def.id,
-            x: b.pos.x,
-            y: b.pos.y,
-            config: b.def.config,
-            equipped: b.def.equipped,
-            isMoving: b.moving,
-            facing: b.facing,
-          }))}
+          bots={[
+            ...botsRef.current.map((b) => ({
+              id: b.def.id,
+              x: b.pos.x,
+              y: b.pos.y,
+              config: b.def.config,
+              equipped: b.def.equipped,
+              isMoving: b.moving,
+              facing: b.facing,
+            })),
+            ...VENDORS.map((v) => ({
+              id: v.id,
+              x: v.x,
+              y: v.y,
+              config: { skin: "#ffd1a3", hair: "short", hairColor: "#3d2f2a", shirt: v.color, pants: "#3d3040", shoes: "#2a2020" },
+              equipped: [],
+              isMoving: false,
+              facing: 1,
+            })),
+          ]}
           moveTarget={targetMarker}
           isMobile={isMobile}
         />
