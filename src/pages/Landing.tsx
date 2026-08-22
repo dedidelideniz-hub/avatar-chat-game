@@ -59,7 +59,7 @@ function WorldScene({ className }: { className?: string }) {
       viewBox="0 0 420 380"
       className={className}
       role="img"
-      aria-label="Sanalikaaa dünyasından bir sahne"
+      aria-label="bilsek dünyasından bir sahne"
     >
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
