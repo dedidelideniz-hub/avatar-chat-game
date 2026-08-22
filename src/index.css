@@ -411,19 +411,23 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   }
 }
 .walking .avatar-arm-l {
+  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: arm-swing 0.5s linear infinite;
 }
 .walking .avatar-arm-r {
+  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: arm-swing 0.5s linear infinite;
   animation-delay: -0.25s;
 }
 .walking .avatar-leg-l {
+  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: leg-swing 0.5s linear infinite;
 }
 .walking .avatar-leg-r {
+  transform-box: fill-box;
   transform-origin: 50% 0%;
   animation: leg-swing 0.5s linear infinite;
   animation-delay: -0.25s;
