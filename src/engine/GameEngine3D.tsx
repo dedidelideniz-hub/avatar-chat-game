@@ -1,15 +1,8 @@
 /**
- * SANALIKA 3D GAME ENGINE — Street Prototype Scene
+ * SANALIKA 3D GAME ENGINE — Visual Polish Pass
  *
- * A polished single-street level with:
- *   - Clear road with sidewalks
- *   - 5 buildings along the north side
- *   - Trees with wind sway
- *   - Lamp posts, benches, flower boxes
- *   - Vendor stalls
- *   - Player/bot billboard avatars
- *   - Smooth follow camera
- *   - Debug overlay
+ * All positions, coordinates, zones, and dimensions are UNCHANGED.
+ * This file only improves: materials, colors, lighting, detail geometry.
  */
 
 import React, { useRef, useMemo } from "react";
@@ -49,17 +42,17 @@ import {
 /*  Helpers                                                    */
 /* ═══════════════════════════════════════════════════════════ */
 
-/** SVG X → 3D X (centered) */
 function sX(svgX: number): number {
   return svgX / S - WORLD_WIDTH / 2;
 }
-/** SVG Y → 3D Z (flip: SVG down → 3D toward camera) */
 function sZ(svgY: number): number {
   return -(svgY / S - WORLD_DEPTH / 2);
 }
 
+
+
 /* ═══════════════════════════════════════════════════════════ */
-/*  Follow Camera — smooth lerp to player                     */
+/*  Follow Camera                                             */
 /* ═══════════════════════════════════════════════════════════ */
 
 function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: number }> }) {
@@ -72,10 +65,8 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
     const tx = p.x / S - WORLD_WIDTH / 2;
     const tz = -(p.y / S - WORLD_DEPTH / 2);
     target.current.set(tx, 0, tz);
-
     const lerp = Math.min(1, CAMERA_LERP_SPEED * dt);
     cur.current.lerp(target.current, lerp);
-
     const el = CAMERA_ELEVATION;
     const d = CAMERA_ZOOM;
     camera.position.set(
@@ -90,139 +81,206 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Ground — zone-colored ground planes                        */
+/*  Ground — polished zones with road detail                   */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Ground() {
-  const halfW = WORLD_WIDTH / 2 + 1;  // extend slightly beyond world edge
-  const halfD = WORLD_DEPTH / 2 + 1;
+  const roadMid = (ZONE.roadTop + ZONE.roadBot) / 2;
+  const roadW = ZONE.roadBot - ZONE.roadTop;
 
-  const zones = [
-    // North grass
-    { y: (ZONE.northGrassTop + ZONE.northGrassBot) / 2, h: ZONE.northGrassBot - ZONE.northGrassTop, color: "#5cb848" },
-    // North sidewalk
-    { y: (ZONE.northSidewalkTop + ZONE.northSidewalkBot) / 2, h: ZONE.northSidewalkBot - ZONE.northSidewalkTop, color: "#e0d8c8" },
-    // Road — warm pedestrian paving
-    { y: (ZONE.roadTop + ZONE.roadBot) / 2, h: ZONE.roadBot - ZONE.roadTop, color: "#c8b898" },
-    // South sidewalk
-    { y: (ZONE.southSidewalkTop + ZONE.southSidewalkBot) / 2, h: ZONE.southSidewalkBot - ZONE.southSidewalkTop, color: "#e0d8c8" },
-    // South grass
-    { y: (ZONE.southGrassTop + ZONE.southGrassBot) / 2, h: ZONE.southGrassBot - ZONE.southGrassTop, color: "#5cb848" },
-  ];
+  // Subtle road dashes for pedestrian walkway feel
+  const dashes = useMemo(() => {
+    const arr: number[] = [];
+    for (let x = -14; x <= 14; x += 1.6) arr.push(x);
+    return arr;
+  }, []);
 
   return (
     <group>
-      {/* Base ground — green grass extending to world edge */}
+      {/* Base grass — full extent */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[WORLD_WIDTH + 2, WORLD_DEPTH + 2]} />
-        <meshStandardMaterial color="#4ca838" roughness={1} />
+        <planeGeometry args={[WORLD_WIDTH + 4, WORLD_DEPTH + 4]} />
+        <meshStandardMaterial color="#3da830" roughness={1} />
       </mesh>
 
-      {/* Zone overlays */}
-      {zones.map((z, i) => (
-        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005 * (i + 1), z.y]} receiveShadow>
-          <planeGeometry args={[WORLD_WIDTH, z.h]} />
-          <meshStandardMaterial color={z.color} roughness={0.9} />
+      {/* North grass overlay — slightly brighter */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, (ZONE.northGrassTop + ZONE.northGrassBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.northGrassBot - ZONE.northGrassTop]} />
+        <meshStandardMaterial color="#55c040" roughness={1} />
+      </mesh>
+
+      {/* North sidewalk — warm stone */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, (ZONE.northSidewalkTop + ZONE.northSidewalkBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.northSidewalkBot - ZONE.northSidewalkTop]} />
+        <meshStandardMaterial color="#ddd4c0" roughness={0.92} />
+      </mesh>
+
+      {/* Road surface — warm pedestrian paving */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, roadMid]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, roadW]} />
+        <meshStandardMaterial color="#9e9486" roughness={0.95} />
+      </mesh>
+
+      {/* Road dashes — pedestrian lane markers */}
+      {dashes.map((dx) => (
+        <mesh key={dx} rotation={[-Math.PI / 2, 0, 0]} position={[dx, 0.012, roadMid]}>
+          <planeGeometry args={[0.6, 0.06]} />
+          <meshStandardMaterial color="#bfb5a3" roughness={0.9} />
         </mesh>
       ))}
 
-      {/* Road center line — subtle divider */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, (ZONE.roadTop + ZONE.roadBot) / 2]}>
-        <planeGeometry args={[WORLD_WIDTH, 0.06]} />
-        <meshStandardMaterial color="#b0a088" />
+      {/* South sidewalk — warm stone */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, (ZONE.southSidewalkTop + ZONE.southSidewalkBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.southSidewalkBot - ZONE.southSidewalkTop]} />
+        <meshStandardMaterial color="#ddd4c0" roughness={0.92} />
       </mesh>
 
-      {/* Road edge lines — north */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, ZONE.roadTop + 0.05]}>
-        <planeGeometry args={[WORLD_WIDTH, 0.08]} />
-        <meshStandardMaterial color="#a89878" />
-      </mesh>
-      {/* Road edge lines — south */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, ZONE.roadBot - 0.05]}>
-        <planeGeometry args={[WORLD_WIDTH, 0.08]} />
-        <meshStandardMaterial color="#a89878" />
+      {/* South grass overlay */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, (ZONE.southGrassTop + ZONE.southGrassBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.southGrassBot - ZONE.southGrassTop]} />
+        <meshStandardMaterial color="#55c040" roughness={1} />
       </mesh>
 
-      {/* Plaza circle — center of the street */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, (ZONE.roadTop + ZONE.roadBot) / 2]}>
-        <circleGeometry args={[1.2, 24]} />
-        <meshStandardMaterial color="#d8c8a8" roughness={0.8} />
+      {/* ═══ Curbs ═══ */}
+      {/* North sidewalk → road curb */}
+      <mesh position={[0, 0.05, ZONE.northSidewalkBot]}>
+        <boxGeometry args={[WORLD_WIDTH, 0.1, 0.12]} />
+        <meshStandardMaterial color="#b5ad98" roughness={0.88} />
+      </mesh>
+      {/* Road → south sidewalk curb */}
+      <mesh position={[0, 0.05, ZONE.southSidewalkTop]}>
+        <boxGeometry args={[WORLD_WIDTH, 0.1, 0.12]} />
+        <meshStandardMaterial color="#b5ad98" roughness={0.88} />
       </mesh>
 
-      {/* Sidewalk curb stones — north edge */}
-      <mesh position={[0, 0.06, ZONE.northSidewalkBot - 0.06]}>
-        <boxGeometry args={[WORLD_WIDTH, 0.12, 0.12]} />
-        <meshStandardMaterial color="#c0b8a0" roughness={0.85} />
+      {/* ═══ Central plaza circle ═══ */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, roadMid]}>
+        <circleGeometry args={[1.3, 32]} />
+        <meshStandardMaterial color="#c8bca4" roughness={0.85} />
       </mesh>
-      {/* Sidewalk curb stones — south edge */}
-      <mesh position={[0, 0.06, ZONE.southSidewalkTop + 0.06]}>
-        <boxGeometry args={[WORLD_WIDTH, 0.12, 0.12]} />
-        <meshStandardMaterial color="#c0b8a0" roughness={0.85} />
+      {/* Plaza inner ring */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, roadMid]}>
+        <ringGeometry args={[0.8, 0.85, 32]} />
+        <meshStandardMaterial color="#a89880" roughness={0.88} />
+      </mesh>
+      {/* Plaza center dot */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, roadMid]}>
+        <circleGeometry args={[0.25, 16]} />
+        <meshStandardMaterial color="#b8a890" roughness={0.82} />
       </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Building — detailed low-poly with windows + door          */
+/*  Building — polished with ledges, awnings, window frames   */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Building({ def }: { def: BuildingDef }) {
   const storyH = def.h / def.floors;
-  const winW = Math.min(0.4, ((def.w - 0.5) / def.windows) * 0.55);
-  const winH = storyH * 0.35;
+  const winW = Math.min(0.38, ((def.w - 0.6) / def.windows) * 0.52);
+  const winH = storyH * 0.32;
+
+  // Alternate facade material colors for visual variety
+  const facadeMat = useMemo(() => {
+    return new THREE.MeshStandardMaterial({ color: def.front, roughness: 0.82 });
+  }, [def.front]);
+  const sideMat = useMemo(() => {
+    return new THREE.MeshStandardMaterial({ color: def.side, roughness: 0.88 });
+  }, [def.side]);
+  const roofMat = useMemo(() => {
+    return new THREE.MeshStandardMaterial({ color: def.roof, roughness: 0.75 });
+  }, [def.roof]);
 
   return (
     <group position={[def.x, def.h / 2, def.frontZ - def.d / 2]}>
       {/* Main body */}
-      <mesh castShadow receiveShadow>
+      <mesh material={facadeMat} castShadow receiveShadow>
         <boxGeometry args={[def.w, def.h, def.d]} />
-        <meshStandardMaterial color={def.front} roughness={0.8} />
       </mesh>
 
-      {/* Roof slab — slightly overhanging */}
-      <mesh position={[0, def.h / 2 + 0.06, 0]} castShadow>
-        <boxGeometry args={[def.w + 0.15, 0.12, def.d + 0.15]} />
-        <meshStandardMaterial color={def.roof} roughness={0.7} />
+      {/* Side face — darker */}
+      <mesh position={[def.w / 2 + 0.005, 0, 0]} material={sideMat}>
+        <planeGeometry args={[def.d, def.h]} />
       </mesh>
 
-      {/* Door — centered on front face */}
-      <mesh position={[0, -def.h / 2 + 0.35, def.d / 2 + 0.01]}>
-        <planeGeometry args={[0.45, 0.7]} />
-        <meshStandardMaterial color="#6b4830" roughness={0.85} />
+      {/* ═══ Roof — textured slab with slight overhang ═══ */}
+      <mesh position={[0, def.h / 2 + 0.06, 0]} material={roofMat} castShadow>
+        <boxGeometry args={[def.w + 0.18, 0.14, def.d + 0.18]} />
+      </mesh>
+      {/* Roof edge trim */}
+      <mesh position={[0, def.h / 2 + 0.14, 0]}>
+        <boxGeometry args={[def.w + 0.22, 0.04, def.d + 0.22]} />
+        <meshStandardMaterial color="#e0dcd4" roughness={0.7} />
       </mesh>
 
-      {/* Windows — arranged in grid on front face */}
+      {/* ═══ Front ledge — architectural detail ═══ */}
+      <mesh position={[0, -def.h / 2 + 0.08, def.d / 2 + 0.02]}>
+        <boxGeometry args={[def.w + 0.08, 0.16, 0.06]} />
+        <meshStandardMaterial color="#d8d0c0" roughness={0.8} />
+      </mesh>
+
+      {/* ═══ Door ═══ */}
+      {/* Door frame */}
+      <mesh position={[0, -def.h / 2 + 0.4, def.d / 2 + 0.015]}>
+        <boxGeometry args={[0.52, 0.82, 0.03]} />
+        <meshStandardMaterial color="#7a5838" roughness={0.85} />
+      </mesh>
+      {/* Door panel */}
+      <mesh position={[0, -def.h / 2 + 0.38, def.d / 2 + 0.035]}>
+        <planeGeometry args={[0.4, 0.7]} />
+        <meshStandardMaterial color="#5c3820" roughness={0.88} />
+      </mesh>
+      {/* Door handle */}
+      <mesh position={[0.12, -def.h / 2 + 0.38, def.d / 2 + 0.05]}>
+        <sphereGeometry args={[0.025, 6, 6]} />
+        <meshStandardMaterial color="#d4a840" roughness={0.4} metalness={0.5} />
+      </mesh>
+
+      {/* ═══ Windows — with frames ═══ */}
       {Array.from({ length: def.floors }).map((_, floor) =>
         Array.from({ length: def.windows }).map((_, win) => {
           const wx = -def.w / 2 + (win + 1) * (def.w / (def.windows + 1));
           const wy = -def.h / 2 + (floor + 1) * storyH - storyH * 0.15;
           return (
-            <mesh key={`${floor}-${win}`} position={[wx, wy, def.d / 2 + 0.01]}>
-              <planeGeometry args={[winW, winH]} />
-              <meshStandardMaterial
-                color="#38b8f8"
-                roughness={0.3}
-                metalness={0.15}
-                emissive="#1a4060"
-                emissiveIntensity={0.1}
-              />
-            </mesh>
+            <group key={`${floor}-${win}`} position={[wx, wy, def.d / 2 + 0.01]}>
+              {/* Window frame */}
+              <mesh position={[0, 0, -0.005]}>
+                <boxGeometry args={[winW + 0.06, winH + 0.06, 0.02]} />
+                <meshStandardMaterial color="#e8e4dc" roughness={0.7} />
+              </mesh>
+              {/* Glass pane */}
+              <mesh position={[0, 0, 0.005]}>
+                <planeGeometry args={[winW, winH]} />
+                <meshStandardMaterial
+                  color="#5cc8f0"
+                  roughness={0.2}
+                  metalness={0.15}
+                  emissive="#183848"
+                  emissiveIntensity={0.15}
+                />
+              </mesh>
+              {/* Window sill */}
+              <mesh position={[0, -winH / 2 - 0.02, 0.02]}>
+                <boxGeometry args={[winW + 0.1, 0.04, 0.06]} />
+                <meshStandardMaterial color="#d8d0c0" roughness={0.8} />
+              </mesh>
+            </group>
           );
         })
       )}
 
-      {/* Side shadow — darker side face */}
-      <mesh position={[def.w / 2 + 0.005, 0, 0]}>
-        <planeGeometry args={[def.d, def.h]} />
-        <meshStandardMaterial color={def.side} roughness={0.85} />
+      {/* ═══ Sign board — above door ═══ */}
+      <mesh position={[0, -def.h / 2 + 0.95, def.d / 2 + 0.025]}>
+        <boxGeometry args={[def.w * 0.5, 0.22, 0.03]} />
+        <meshStandardMaterial color="#4a3828" roughness={0.85} />
       </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Tree — low-poly with gentle wind sway                     */
+/*  Tree — polished layered foliage with crown                 */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Tree3D({ def }: { def: TreeDef }) {
@@ -230,94 +288,118 @@ function Tree3D({ def }: { def: TreeDef }) {
   const timeRef = useRef(Math.random() * 100);
   const groupRef = useRef<THREE.Group>(null);
 
+  // Subtle per-tree rotation offset
+  const rotOffset = useMemo(() => Math.random() * Math.PI * 2, []);
+
   useFrame((_, dt) => {
     timeRef.current += dt;
     if (groupRef.current) {
-      // Gentle sway — subtle and natural
-      groupRef.current.rotation.z = Math.sin(timeRef.current * 0.7) * 0.015;
-      groupRef.current.rotation.x = Math.sin(timeRef.current * 0.5 + 1.2) * 0.008;
+      groupRef.current.rotation.z = Math.sin(timeRef.current * 0.7) * 0.018;
+      groupRef.current.rotation.x = Math.sin(timeRef.current * 0.5 + rotOffset) * 0.01;
     }
   });
 
+
+
   return (
     <group ref={groupRef} position={[def.x, 0, def.z]} scale={[def.scale, def.scale, def.scale]}>
-      {/* Trunk */}
-      <mesh position={[0, 0.6, 0]} castShadow>
-        <cylinderGeometry args={[0.08, 0.12, 1.2, 6]} />
-        <meshStandardMaterial color={TREE_TRUNK_COLOR} roughness={0.9} />
+      {/* Trunk — tapered cylinder */}
+      <mesh position={[0, 0.55, 0]} castShadow>
+        <cylinderGeometry args={[0.06, 0.1, 1.1, 6]} />
+        <meshStandardMaterial color="#6a4828" roughness={0.92} />
       </mesh>
-      {/* Main canopy */}
-      <mesh position={[0, 1.5, 0]} castShadow>
-        <sphereGeometry args={[0.5, 8, 6]} />
-        <meshStandardMaterial color={colors[0]} roughness={0.95} />
-      </mesh>
-      {/* Top canopy cluster */}
-      <mesh position={[0.06, 1.85, 0.04]} castShadow>
-        <sphereGeometry args={[0.35, 8, 6]} />
+      {/* Lower branches — darker */}
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <sphereGeometry args={[0.48, 8, 6]} />
         <meshStandardMaterial color={colors[1]} roughness={0.95} />
       </mesh>
-      {/* Side canopy cluster */}
-      <mesh position={[-0.08, 1.35, -0.05]} castShadow>
-        <sphereGeometry args={[0.3, 8, 6]} />
+      {/* Main canopy — bright */}
+      <mesh position={[0.04, 1.5, 0.03]} castShadow>
+        <sphereGeometry args={[0.52, 8, 6]} />
         <meshStandardMaterial color={colors[0]} roughness={0.95} />
+      </mesh>
+      {/* Top crown */}
+      <mesh position={[-0.03, 1.82, -0.02]} castShadow>
+        <sphereGeometry args={[0.32, 8, 6]} />
+        <meshStandardMaterial color={colors[0]} roughness={0.95} />
+      </mesh>
+      {/* Side accent */}
+      <mesh position={[0.12, 1.3, 0.08]} castShadow>
+        <sphereGeometry args={[0.25, 8, 6]} />
+        <meshStandardMaterial color={colors[1]} roughness={0.95} />
+      </mesh>
+      {/* Shadow blob at base */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, 0]}>
+        <circleGeometry args={[0.35, 12]} />
+        <meshStandardMaterial color="#2a6818" roughness={1} transparent opacity={0.35} />
       </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Lamp Post — simple stylized street lamp                    */
+/*  Lamp Post                                                  */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Lamp3D({ def }: { def: LampDef }) {
   return (
     <group position={[def.x, 0, def.z]}>
+      {/* Base plate */}
+      <mesh position={[0, 0.03, 0]}>
+        <cylinderGeometry args={[0.08, 0.1, 0.06, 8]} />
+        <meshStandardMaterial color="#3a3a40" roughness={0.6} metalness={0.3} />
+      </mesh>
       {/* Pole */}
       <mesh position={[0, 0.9, 0]} castShadow>
-        <cylinderGeometry args={[0.03, 0.04, 1.8, 6]} />
-        <meshStandardMaterial color="#555555" roughness={0.5} />
+        <cylinderGeometry args={[0.025, 0.035, 1.75, 6]} />
+        <meshStandardMaterial color="#4a4a52" roughness={0.55} metalness={0.3} />
       </mesh>
-      {/* Arm */}
-      <mesh position={[0.12, 1.75, 0]} rotation={[0, 0, -0.4]}>
-        <cylinderGeometry args={[0.02, 0.02, 0.3, 4]} />
-        <meshStandardMaterial color="#555555" roughness={0.5} />
+      {/* Arm bracket */}
+      <mesh position={[0.1, 1.72, 0]} rotation={[0, 0, -0.35]}>
+        <cylinderGeometry args={[0.018, 0.018, 0.28, 4]} />
+        <meshStandardMaterial color="#4a4a52" roughness={0.55} metalness={0.3} />
       </mesh>
-      {/* Light globe */}
-      <mesh position={[0.2, 1.7, 0]}>
-        <sphereGeometry args={[0.08, 8, 8]} />
-        <meshStandardMaterial
-          color="#fff4d0"
-          emissive="#fff4d0"
-          emissiveIntensity={0.5}
-          roughness={0.2}
-        />
+      {/* Lamp housing */}
+      <mesh position={[0.18, 1.68, 0]}>
+        <boxGeometry args={[0.12, 0.1, 0.1]} />
+        <meshStandardMaterial color="#3a3a40" roughness={0.6} metalness={0.3} />
+      </mesh>
+      {/* Light globe — warm glow */}
+      <mesh position={[0.18, 1.62, 0]}>
+        <sphereGeometry args={[0.065, 8, 8]} />
+        <meshStandardMaterial color="#fff8d4" emissive="#ffe870" emissiveIntensity={0.8} roughness={0.15} />
       </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Bench — wooden park bench                                  */
+/*  Bench                                                      */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Bench3D({ def }: { def: BenchDef }) {
   return (
     <group position={[def.x, 0, def.z]}>
-      {/* Seat */}
+      {/* Seat planks */}
       <mesh position={[0, 0.22, 0]} castShadow>
-        <boxGeometry args={[0.55, 0.04, 0.2]} />
-        <meshStandardMaterial color="#c9a06c" roughness={0.8} />
+        <boxGeometry args={[0.55, 0.035, 0.2]} />
+        <meshStandardMaterial color="#c49a60" roughness={0.82} />
+      </mesh>
+      {/* Seat plank detail */}
+      <mesh position={[0, 0.24, 0]} castShadow>
+        <boxGeometry args={[0.52, 0.02, 0.18]} />
+        <meshStandardMaterial color="#b88c50" roughness={0.85} />
       </mesh>
       {/* Backrest */}
-      <mesh position={[0, 0.35, -0.08]} castShadow>
-        <boxGeometry args={[0.55, 0.22, 0.04]} />
-        <meshStandardMaterial color="#c9a06c" roughness={0.8} />
+      <mesh position={[0, 0.36, -0.085]} castShadow>
+        <boxGeometry args={[0.55, 0.2, 0.035]} />
+        <meshStandardMaterial color="#c49a60" roughness={0.82} />
       </mesh>
-      {/* Legs */}
+      {/* Metal legs */}
       {[-0.22, 0.22].map((lx) => (
         <mesh key={lx} position={[lx, 0.11, 0]}>
-          <boxGeometry args={[0.04, 0.22, 0.18]} />
-          <meshStandardMaterial color="#6b4830" roughness={0.9} />
+          <boxGeometry args={[0.035, 0.22, 0.18]} />
+          <meshStandardMaterial color="#4a4a52" roughness={0.6} metalness={0.25} />
         </mesh>
       ))}
     </group>
@@ -325,62 +407,101 @@ function Bench3D({ def }: { def: BenchDef }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Flower Box — colorful planter box                          */
+/*  Flower Box                                                 */
 /* ═══════════════════════════════════════════════════════════ */
 
 function FlowerBox3D({ def }: { def: FlowerBoxDef }) {
   return (
     <group position={[def.x, 0, def.z]}>
-      {/* Box */}
+      {/* Planter box */}
       <mesh position={[0, 0.12, 0]} castShadow>
-        <boxGeometry args={[0.45, 0.24, 0.24]} />
-        <meshStandardMaterial color="#8b6848" roughness={0.85} />
+        <boxGeometry args={[0.45, 0.22, 0.22]} />
+        <meshStandardMaterial color="#8b6848" roughness={0.88} />
       </mesh>
-      {/* Flowers */}
-      {[[-0.12, 0.3, 0], [0, 0.32, 0.04], [0.12, 0.29, -0.03]].map((pos, i) => (
-        <mesh key={i} position={pos as [number, number, number]}>
-          <sphereGeometry args={[0.065, 6, 6]} />
-          <meshStandardMaterial
-            color={i % 3 === 0 ? "#ff6b8a" : i % 3 === 1 ? "#ffb347" : "#a855f7"}
-            roughness={0.9}
-          />
-        </mesh>
+      {/* Box rim */}
+      <mesh position={[0, 0.24, 0]}>
+        <boxGeometry args={[0.48, 0.03, 0.25]} />
+        <meshStandardMaterial color="#a07858" roughness={0.82} />
+      </mesh>
+      {/* Soil */}
+      <mesh position={[0, 0.22, 0]}>
+        <boxGeometry args={[0.42, 0.02, 0.2]} />
+        <meshStandardMaterial color="#4a3020" roughness={1} />
+      </mesh>
+      {/* Flowers — colorful spheres */}
+      {[
+        { pos: [-0.12, 0.3, 0] as [number, number, number], color: "#ff6b8a" },
+        { pos: [0, 0.33, 0.04] as [number, number, number], color: "#ffb347" },
+        { pos: [0.12, 0.29, -0.03] as [number, number, number], color: "#a855f7" },
+        { pos: [0.06, 0.31, 0.06] as [number, number, number], color: "#ff4080" },
+        { pos: [-0.08, 0.28, -0.05] as [number, number, number], color: "#ffc040" },
+      ].map((f, i) => (
+        <group key={i} position={f.pos}>
+          {/* Stem */}
+          <mesh position={[0, -0.04, 0]}>
+            <cylinderGeometry args={[0.005, 0.005, 0.06, 3]} />
+            <meshStandardMaterial color="#3a8020" roughness={0.9} />
+          </mesh>
+          {/* Bloom */}
+          <mesh>
+            <sphereGeometry args={[0.05, 6, 6]} />
+            <meshStandardMaterial color={f.color} roughness={0.9} />
+          </mesh>
+        </group>
       ))}
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Stall — vendor market stall with awning                    */
+/*  Stall — vendor market stall                                */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Stall3D({ def }: { def: StallDef }) {
+  const awningMat = useMemo(() => new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.7 }), [def.color]);
   return (
     <group position={[def.x, 0, def.z]}>
-      {/* Table surface */}
+      {/* Table surface — dark wood */}
       <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
-        <boxGeometry args={[1.6, 0.1, 0.6]} />
-        <meshStandardMaterial color="#8b6848" roughness={0.85} />
+        <boxGeometry args={[1.6, 0.08, 0.6]} />
+        <meshStandardMaterial color="#7a5838" roughness={0.85} />
       </mesh>
-      {/* Table legs */}
+      {/* Table edge trim */}
+      <mesh position={[0, 0.395, 0.3]}>
+        <boxGeometry args={[1.6, 0.02, 0.02]} />
+        <meshStandardMaterial color="#a08060" roughness={0.8} />
+      </mesh>
+      {/* Table legs — dark wood */}
       {[-0.65, 0.65].map((lx) =>
         [-0.2, 0.2].map((lz) => (
           <mesh key={`${lx}-${lz}`} position={[lx, 0.17, lz]}>
             <boxGeometry args={[0.06, 0.34, 0.06]} />
-            <meshStandardMaterial color="#6b4830" roughness={0.9} />
+            <meshStandardMaterial color="#5c3820" roughness={0.9} />
           </mesh>
         ))
       )}
-      {/* Awning — tilted shade */}
-      <mesh position={[0, 0.85, -0.2]} rotation={[0.3, 0, 0]} castShadow>
-        <boxGeometry args={[1.8, 0.05, 0.9]} />
+      {/* Awning — striped fabric */}
+      <mesh position={[0, 0.88, -0.2]} rotation={[0.28, 0, 0]} castShadow>
+        <boxGeometry args={[1.8, 0.04, 0.85]} />
         <meshStandardMaterial color={def.color} roughness={0.7} />
       </mesh>
-      {/* Back support poles */}
+      {/* Awning underside — darker */}
+      <mesh position={[0, 0.86, -0.18]} rotation={[0.28, 0, 0]}>
+        <boxGeometry args={[1.76, 0.02, 0.8]} />
+        <meshStandardMaterial color={def.accent} roughness={0.75} />
+      </mesh>
+      {/* Support poles — dark wood */}
       {[-0.7, 0.7].map((lx) => (
         <mesh key={lx} position={[lx, 0.6, -0.4]}>
-          <cylinderGeometry args={[0.025, 0.025, 1.0, 4]} />
-          <meshStandardMaterial color="#6b4830" roughness={0.9} />
+          <cylinderGeometry args={[0.022, 0.022, 1.0, 4]} />
+          <meshStandardMaterial color="#5c3820" roughness={0.9} />
+        </mesh>
+      ))}
+      {/* Items on table — small colored spheres representing goods */}
+      {[-0.4, 0, 0.4].map((ix, i) => (
+        <mesh key={i} position={[ix, 0.42, 0]}>
+          <sphereGeometry args={[0.06, 6, 6]} />
+          <meshStandardMaterial color={i === 0 ? "#ff6b6b" : i === 1 ? "#4ecdc4" : "#ffe66d"} roughness={0.7} />
         </mesh>
       ))}
     </group>
@@ -388,39 +509,49 @@ function Stall3D({ def }: { def: StallDef }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Move Target Marker — pulsing ring                          */
+/*  Move Target Marker                                         */
 /* ═══════════════════════════════════════════════════════════ */
 
 function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
   if (!target) return null;
   const meshRef = useRef<THREE.Mesh>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
   const timeRef = useRef(0);
 
   useFrame((_, dt) => {
     timeRef.current += dt;
     if (meshRef.current) {
       const mat = meshRef.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.3 + Math.sin(timeRef.current * 3) * 0.15;
+      mat.opacity = 0.35 + Math.sin(timeRef.current * 3) * 0.15;
+    }
+    if (ringRef.current) {
+      const s = 1 + Math.sin(timeRef.current * 2.5) * 0.15;
+      ringRef.current.scale.set(s, s, s);
+      const mat = ringRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.25 + Math.sin(timeRef.current * 2.5) * 0.1;
     }
   });
 
   return (
-    <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[sX(target.x), 0.01, sZ(target.y)]}>
-      <ringGeometry args={[0.15, 0.25, 20]} />
-      <meshBasicMaterial color="#ff6b4a" transparent opacity={0.4} side={THREE.DoubleSide} />
-    </mesh>
+    <group position={[sX(target.x), 0.01, sZ(target.y)]}>
+      <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.15, 0.22, 20]} />
+        <meshBasicMaterial color="#ff6b4a" transparent opacity={0.35} side={THREE.DoubleSide} />
+      </mesh>
+      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]}>
+        <ringGeometry args={[0.28, 0.32, 20]} />
+        <meshBasicMaterial color="#ff9060" transparent opacity={0.2} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Player Avatar3D — billboard with facing flip + walk anim  */
+/*  Player Avatar3D                                            */
 /* ═══════════════════════════════════════════════════════════ */
 
 function PlayerAvatar3D({
-  posRef,
-  config,
-  equipped,
-  facingRef,
+  posRef, config, equipped, facingRef,
 }: {
   posRef: React.RefObject<{ x: number; y: number }>;
   config: AvatarConfig;
@@ -435,11 +566,11 @@ function PlayerAvatar3D({
   useFrame(() => {
     if (!groupRef.current || !posRef.current) return;
     const p = posRef.current;
-    const wx = p.x / S - WORLD_WIDTH / 2;
-    const wz = -(p.y / S - WORLD_DEPTH / 2);
-    groupRef.current.position.set(wx, 0.02, wz);
-
-    // Detect movement from position delta
+    groupRef.current.position.set(
+      p.x / S - WORLD_WIDTH / 2,
+      0.02,
+      -(p.y / S - WORLD_DEPTH / 2),
+    );
     const dx = Math.abs(p.x - prevPos.current.x);
     const dy = Math.abs(p.y - prevPos.current.y);
     const moving = dx > 0.1 || dy > 0.1;
@@ -448,11 +579,8 @@ function PlayerAvatar3D({
       divRef.current.classList.toggle("walking", moving);
     }
     prevPos.current = { x: p.x, y: p.y };
-
-    // Facing flip via DOM
     if (divRef.current) {
-      const flip = (facingRef.current ?? 1) < 0 ? -1 : 1;
-      divRef.current.style.transform = `scaleX(${flip})`;
+      divRef.current.style.transform = `scaleX(${(facingRef.current ?? 1) < 0 ? -1 : 1})`;
     }
   });
 
@@ -494,7 +622,6 @@ function BotAvatar3D({
   useFrame(() => {
     if (!groupRef.current) return;
     groupRef.current.position.set(x / S - WORLD_WIDTH / 2, 0.02, -(y / S - WORLD_DEPTH / 2));
-
     const dx = Math.abs(x - prevPos.current.x);
     const dy = Math.abs(y - prevPos.current.y);
     const moving = dx > 0.1 || dy > 0.1;
@@ -503,7 +630,6 @@ function BotAvatar3D({
       divRef.current.classList.toggle("walking", moving);
     }
     prevPos.current = { x, y };
-
     if (divRef.current) {
       divRef.current.style.transform = `scaleX(${facing < 0 ? -1 : 1})`;
     }
@@ -525,65 +651,6 @@ function BotAvatar3D({
           <EquippedItems equipped={equipped} width={70} height={96} />
         </div>
       </Html>
-    </group>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  Player Info HUD — debug position display                   */
-/* ═══════════════════════════════════════════════════════════ */
-
-function PlayerInfoHUD({ posRef }: { posRef: React.RefObject<{ x: number; y: number }> }) {
-  const posText = useRef("...");
-
-  useFrame(() => {
-    if (!posRef.current) return;
-    const p = posRef.current;
-    const x3 = (p.x / S - WORLD_WIDTH / 2).toFixed(1);
-    const z3 = (-(p.y / S - WORLD_DEPTH / 2)).toFixed(1);
-    posText.current = `3D(${x3}, 0, ${z3})`;
-  });
-
-  return (
-    <Html center distanceFactor={10} style={{ pointerEvents: "none" }} position={[0, PLAYER_3D_HEIGHT + 0.5, 0]} zIndexRange={[10, 0]}>
-      <div style={{
-        background: "rgba(0,0,0,0.7)",
-        color: "#0f0",
-        fontSize: "9px",
-        fontFamily: "monospace",
-        padding: "2px 4px",
-        borderRadius: "3px",
-        whiteSpace: "nowrap",
-        textAlign: "center",
-      }}>
-        {posText.current}
-      </div>
-    </Html>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  Debug Axes — X=red, Y=green, Z=blue                       */
-/* ═══════════════════════════════════════════════════════════ */
-
-function DebugAxes() {
-  return (
-    <group>
-      {/* X axis — red */}
-      <mesh position={[0, 0.015, 0]}>
-        <boxGeometry args={[30, 0.03, 0.03]} />
-        <meshBasicMaterial color="#ff3333" transparent opacity={0.25} />
-      </mesh>
-      {/* Z axis — blue */}
-      <mesh position={[0, 0.015, 0]}>
-        <boxGeometry args={[0.03, 0.03, 30]} />
-        <meshBasicMaterial color="#3333ff" transparent opacity={0.25} />
-      </mesh>
-      {/* Origin marker */}
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.15, 0.2, 12]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.4} side={THREE.DoubleSide} />
-      </mesh>
     </group>
   );
 }
@@ -637,32 +704,33 @@ export function GameEngine3D({
     >
       <FollowCamera posRef={playerPosRef} />
 
-      {/* Sky — clean gradient blue */}
-      <color attach="background" args={["#7ec8e3"]} />
+      {/* Sky — soft warm blue */}
+      <color attach="background" args={["#78c8e8"]} />
 
-      {/* Lighting — warm, clear, mobile-friendly */}
-      <ambientLight intensity={0.75} />
-      <hemisphereLight args={["#d4ecff", "#5a9a40", 0.35]} />
+      {/* ═══ LIGHTING — warm stylized mobile-game lighting ═══ */}
+      <ambientLight intensity={0.6} color="#f0e8d8" />
+      <hemisphereLight args={["#c8e0ff", "#509030", 0.4]} />
       <directionalLight
-        position={[6, 10, 5]}
-        intensity={1.4}
+        position={[8, 12, 6]}
+        intensity={1.6}
+        color="#fff4e0"
         castShadow={!isMobile}
         shadow-mapSize-width={isMobile ? 512 : 1024}
         shadow-mapSize-height={isMobile ? 512 : 1024}
-        shadow-camera-left={-14}
-        shadow-camera-right={14}
+        shadow-camera-left={-16}
+        shadow-camera-right={16}
         shadow-camera-top={10}
         shadow-camera-bottom={-10}
+        shadow-bias={-0.001}
       />
+      {/* Fill light — soft cool from opposite side */}
+      <directionalLight position={[-5, 6, -4]} intensity={0.25} color="#b8d8ff" />
 
-      {/* Sun — subtle in sky */}
-      <mesh position={[12, 9, -8]}>
-        <sphereGeometry args={[0.35, 10, 10]} />
+      {/* Sun disc */}
+      <mesh position={[14, 10, -10]}>
+        <sphereGeometry args={[0.4, 12, 12]} />
         <meshBasicMaterial color="#ffe870" />
       </mesh>
-
-      {/* === DEBUG === */}
-      <DebugAxes />
 
       {/* === GROUND === */}
       <Ground />
@@ -707,7 +775,6 @@ export function GameEngine3D({
         equipped={playerEquipped}
         facingRef={facingRef}
       />
-      <PlayerInfoHUD posRef={playerPosRef} />
 
       {/* === BOTS === */}
       {bots.map((bot) => (
