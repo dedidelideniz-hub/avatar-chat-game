@@ -1222,26 +1222,79 @@ export default function World() {
 
       if (moving) {
         phase += dt * 10;
-        const nx = Math.min(Math.max(pos.x + vx * PLAYER_SPEED * dt, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
-        const ny = Math.min(Math.max(pos.y + vy * PLAYER_SPEED * dt, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-        // Resolve collisions axis by axis (obstacles + walkable street zones).
-        let px = nx;
-        let py = pos.y;
+        const stepX = vx * PLAYER_SPEED * dt;
+        const stepY = vy * PLAYER_SPEED * dt;
+
+        // ── 1. Try moving on both axes ──
+        let px = Math.min(Math.max(pos.x + stepX, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
+        let py = Math.min(Math.max(pos.y + stepY, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
+        let hitX = false;
+        let hitY = false;
         for (const r of OBSTACLES) {
-          if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
-            px = pos.x;
-            break;
+          if (circleHitsRect(px, py, PLAYER_RADIUS, r)) { hitX = true; hitY = true; break; }
+        }
+
+        // ── 2. If blocked, try sliding: X only, then Y only ──
+        if (hitX) {
+          const tryX = Math.min(Math.max(pos.x + stepX, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
+          const tryY = pos.y;
+          let blockedX = false;
+          for (const r of OBSTACLES) {
+            if (circleHitsRect(tryX, tryY, PLAYER_RADIUS, r)) { blockedX = true; break; }
+          }
+          if (!blockedX && inWalkable(tryX, tryY)) {
+            px = tryX; py = tryY; hitX = false; hitY = false;
+          } else {
+            const tryX2 = pos.x;
+            const tryY2 = Math.min(Math.max(pos.y + stepY, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
+            let blockedY = false;
+            for (const r of OBSTACLES) {
+              if (circleHitsRect(tryX2, tryY2, PLAYER_RADIUS, r)) { blockedY = true; break; }
+            }
+            if (!blockedY && inWalkable(tryX2, tryY2)) {
+              px = tryX2; py = tryY2; hitX = false; hitY = false;
+            } else {
+              px = pos.x; py = pos.y;
+            }
           }
         }
-        if (!inWalkable(px, py)) px = pos.x;
-        py = Math.min(Math.max(ny, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-        for (const r of OBSTACLES) {
-          if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
-            py = pos.y;
-            break;
+        if (!inWalkable(px, py)) { px = pos.x; py = pos.y; }
+
+        // ── 3. Character separation: push apart if overlapping ──
+        const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
+        // Check against bots/vendors
+        for (const bot of botsRef.current) {
+          const bx = bot.pos.x;
+          const by = bot.pos.y;
+          const dx = px - bx;
+          const dy = py - by;
+          const dist = Math.hypot(dx, dy);
+          if (dist < CHAR_MIN_DIST && dist > 0.1) {
+            const push = (CHAR_MIN_DIST - dist) / 2;
+            px += (dx / dist) * push;
+            py += (dy / dist) * push;
           }
         }
-        if (!inWalkable(px, py)) py = pos.y;
+        // Check against remote players
+        for (const remote of othersRef.current) {
+          const d = remote.data;
+          if (!d || typeof d.x !== "number" || typeof d.y !== "number") continue;
+          const st = remoteStatesRef.current.get(remote.sessionId);
+          const rx = st ? st.x : d.x;
+          const ry = st ? st.y : d.y;
+          const dx = px - rx;
+          const dy = py - ry;
+          const dist = Math.hypot(dx, dy);
+          if (dist < CHAR_MIN_DIST && dist > 0.1) {
+            const push = (CHAR_MIN_DIST - dist) / 2;
+            px += (dx / dist) * push;
+            py += (dy / dist) * push;
+          }
+        }
+        // Clamp back to world bounds after separation
+        px = Math.min(Math.max(px, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
+        py = Math.min(Math.max(py, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
+
         pos.x = px;
         pos.y = py;
         // Update facing from horizontal movement direction. When moving
