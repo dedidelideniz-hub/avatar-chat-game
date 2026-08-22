@@ -19,7 +19,7 @@ export default function Avatar3DTest({ position }: Avatar3DTestProps) {
   });
 
   return (
-    <group ref={groupRef} position={[0, 0, 0]}>
+    <group ref={groupRef} position={position}>
 
       {/* BODY */}
       <mesh position={[0, 0.75, 0]} castShadow>
