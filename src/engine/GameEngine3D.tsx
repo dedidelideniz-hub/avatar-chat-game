@@ -4,7 +4,6 @@
  * All positions, coordinates, zones, and dimensions are UNCHANGED.
  * This file only improves: materials, colors, lighting, detail geometry.
  */
-import Avatar3DTest from "../components/avatar/Avatar3DTest";
 import React, { useRef, useMemo, useState, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
@@ -848,8 +847,6 @@ export function GameEngine3D({
       style={{ pointerEvents: "none" }}
     >
       <FollowCamera posRef={playerPosRef} />
-
-   <Avatar3DTest />
 
       {/* Sky — soft warm blue */}
       <color attach="background" args={["#78c8e8"]} />
