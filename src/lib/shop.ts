@@ -246,7 +246,7 @@ export const VENDORS: Vendor[] = [
     emoji: "🍦",
     color: "#ff8fb3",
     accent: "#ffffff",
-    x: 280,
+    x: 250,
     y: 450,
   },
   {
@@ -256,7 +256,7 @@ export const VENDORS: Vendor[] = [
     emoji: "🎈",
     color: "#14b8a6",
     accent: "#ffffff",
-    x: 620,
+    x: 500,
     y: 450,
   },
   {
@@ -266,7 +266,7 @@ export const VENDORS: Vendor[] = [
     emoji: "🧸",
     color: "#f59e0b",
     accent: "#ffd166",
-    x: 980,
+    x: 750,
     y: 450,
   },
   {
@@ -276,7 +276,7 @@ export const VENDORS: Vendor[] = [
     emoji: "🕶️",
     color: "#a855f7",
     accent: "#ffd166",
-    x: 1340,
+    x: 1000,
     y: 450,
   },
   {
@@ -286,7 +286,7 @@ export const VENDORS: Vendor[] = [
     emoji: "👑",
     color: "#f59e0b",
     accent: "#ffd166",
-    x: 820,
+    x: 1250,
     y: 450,
   },
 ];
