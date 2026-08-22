@@ -5,7 +5,7 @@
  * This file only improves: materials, colors, lighting, detail geometry.
  */
 
-import React, { useRef, useMemo } from "react";
+import React, { useRef, useMemo, useState, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
@@ -84,6 +84,30 @@ export function raycastScreenToSVG(
   const intersected = _raycaster.ray.intersectPlane(_groundPlane, hit);
   if (!intersected) return null;
   return { x: toSvgX(hit.x), y: toSvgY(hit.z) };
+}
+
+/** Convert SVG coordinates to 3D world coordinates.
+ *  SVG X → 3D X, SVG Y → 3D Z, ground Y = 0. */
+export function svgToWorld(svgX: number, svgY: number): { x: number; y: number; z: number } {
+  return { x: svgX / S - WORLD_WIDTH / 2, y: 0, z: -(svgY / S - WORLD_DEPTH / 2) };
+}
+
+/** Project a 3D world position to screen-space pixel coordinates.
+ *  Returns null if the point is behind the camera. */
+export function worldToScreen(
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+  container: HTMLElement,
+): { sx: number; sy: number } | null {
+  if (!_engineCamera) return null;
+  const vec = new THREE.Vector3(worldX, worldY, worldZ);
+  vec.project(_engineCamera);
+  const rect = container.getBoundingClientRect();
+  return {
+    sx: ((vec.x + 1) / 2) * rect.width,
+    sy: ((-vec.y + 1) / 2) * rect.height,
+  };
 }
 
 
@@ -763,6 +787,17 @@ export function GameEngine3D({
   const initCamY = Math.sin(CAMERA_ELEVATION) * CAMERA_ZOOM;
   const initCamZ = Math.cos(CAMERA_ELEVATION) * CAMERA_ZOOM;
 
+  // Track bot count to force re-render when vendors are added after mount
+  const [botsLen, setBotsLen] = useState(botsRef.current.length);
+  React.useEffect(() => {
+    // Poll for new bots/vendors being added to the ref
+    const iv = setInterval(() => {
+      const len = botsRef.current.length;
+      if (len !== botsLen) setBotsLen(len);
+    }, 200);
+    return () => clearInterval(iv);
+  }, [botsRef, botsLen]);
+
   return (
     <Canvas
       dpr={[1, isMobile ? 1.5 : 2]}
@@ -851,8 +886,8 @@ export function GameEngine3D({
       />
 
       {/* === BOTS + VENDORS (read from ref every frame) === */}
-      {botsRef.current.map((_, i) => (
-        <BotAvatar3D key={botsRef.current[i].def.id} index={i} botsDataRef={botsRef} />
+      {Array.from({ length: botsLen }, (_, i) => (
+        <BotAvatar3D key={botsRef.current[i]?.def.id ?? `bot-${i}`} index={i} botsDataRef={botsRef} />
       ))}
     </Canvas>
   );

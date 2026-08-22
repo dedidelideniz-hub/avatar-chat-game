@@ -1,7 +1,8 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { GameEngine3D, raycastScreenToSVG } from "@/engine/GameEngine3D";
+import { GameEngine3D, raycastScreenToSVG, svgToWorld, worldToScreen } from "@/engine/GameEngine3D";
+import { PLAYER_3D_HEIGHT } from "@/engine/constants";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -1999,46 +2000,52 @@ export default function World() {
         wx = cx + (screenX / rect.width) * cs.vw;
         wy = cy + (screenY / rect.height) * cs.vh;
       }
-      // Tapping a character (player or bot) opens their profile card.
-      const p = posRef.current;
-      if (
-        wx >= p.x - 34 &&
-        wx <= p.x + 34 &&
-        wy >= p.y - 100 &&
-        wy <= p.y + 10
-      ) {
-        setViewing("me");
-        return;
-      }
-      for (const bot of botsRef.current) {
-        if (
-          wx >= bot.pos.x - 34 &&
-          wx <= bot.pos.x + 34 &&
-          wy >= bot.pos.y - 100 &&
-          wy <= bot.pos.y + 10
-        ) {
-          setViewing(bot.def.id);
-          return;
+      // ── Screen-space character hit testing ──
+      // Project each character's world position to screen space and compare
+      // pixel distances to the click point. This avoids the ground-plane
+      // perspective offset that causes click misalignment with 3D characters.
+      // Screen-space character hit testing
+      let closestId: string | null = null;
+      let closestDist = Infinity;
+      const CHAR_HIT_RADIUS = 80; // pixels
+
+      const checkChar = (id: string, svgX: number, svgY: number) => {
+        const wp = svgToWorld(svgX, svgY);
+        const sp = worldToScreen(wp.x, PLAYER_3D_HEIGHT / 2, wp.z, container);
+        if (!sp) return;
+        const dx = screenX - sp.sx;
+        const dy = screenY - sp.sy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CHAR_HIT_RADIUS && dist < closestDist) {
+          closestDist = dist;
+          closestId = id;
         }
+      };
+
+      // Check local player
+      const p = posRef.current;
+      checkChar("me", p.x, p.y);
+
+      // Check bots/vendors
+      for (const bot of botsRef.current) {
+        checkChar(bot.def.id, bot.pos.x, bot.pos.y);
       }
-      // A real player from another phone — open their profile card too.
+
+      // Check remote players
       for (const remote of othersRef.current) {
         const d = remote.data;
-        if (!d || typeof d.x !== "number" || typeof d.y !== "number")
-          continue;
+        if (!d || typeof d.x !== "number" || typeof d.y !== "number") continue;
         const st = remoteStatesRef.current.get(remote.sessionId);
         const rx = st ? st.x : d.x;
         const ry = st ? st.y : d.y;
-        if (
-          wx >= rx - 34 &&
-          wx <= rx + 34 &&
-          wy >= ry - 100 &&
-          wy <= ry + 10
-        ) {
-          setViewing(`remote:${remote.sessionId}`);
-          return;
-        }
+        checkChar(`remote:${remote.sessionId}`, rx, ry);
       }
+
+      if (closestId) {
+        setViewing(closestId);
+        return;
+      }
+
       // Tapping anywhere else closes the profile card.
       setViewing(null);
       // Tapping the stall itself opens its market page (VIP stand opens the
