@@ -599,25 +599,28 @@ function PlayerAvatar3D({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const divRef = useRef<HTMLDivElement>(null);
-  const prevPos = useRef({ x: 0, y: 0 });
+  const smoothPos = useRef({ x: 0, y: 0 });
   const isWalking = useRef(false);
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     if (!groupRef.current || !posRef.current) return;
     const p = posRef.current;
+    // Smooth interpolation toward target position
+    const lerpFactor = Math.min(1, 14 * dt);
+    smoothPos.current.x += (p.x - smoothPos.current.x) * lerpFactor;
+    smoothPos.current.y += (p.y - smoothPos.current.y) * lerpFactor;
     groupRef.current.position.set(
-      p.x / S - WORLD_WIDTH / 2,
+      smoothPos.current.x / S - WORLD_WIDTH / 2,
       0.02,
-      -(p.y / S - WORLD_DEPTH / 2),
+      -(smoothPos.current.y / S - WORLD_DEPTH / 2),
     );
-    const dx = Math.abs(p.x - prevPos.current.x);
-    const dy = Math.abs(p.y - prevPos.current.y);
-    const moving = dx > 0.1 || dy > 0.1;
+    const dx = Math.abs(p.x - smoothPos.current.x);
+    const dy = Math.abs(p.y - smoothPos.current.y);
+    const moving = dx > 0.3 || dy > 0.3;
     if (moving !== isWalking.current && divRef.current) {
       isWalking.current = moving;
       divRef.current.classList.toggle("walking", moving);
     }
-    prevPos.current = { x: p.x, y: p.y };
     if (divRef.current) {
       divRef.current.style.transform = `scaleX(${(facingRef.current ?? 1) < 0 ? -1 : 1})`;
     }
@@ -647,32 +650,67 @@ function PlayerAvatar3D({
 /*  Bot Avatar3D                                               */
 /* ═══════════════════════════════════════════════════════════ */
 
+/** Bot/Vendor avatar that reads its position from a shared ref every frame.
+ *  This avoids stale props — the ref is mutated by the game loop and read
+ *  directly in useFrame, so positions update without React re-renders. */
 function BotAvatar3D({
-  x, y, config, equipped, isMoving, facing,
+  index,
+  botsDataRef,
 }: {
-  x: number; y: number; config: AvatarConfig; equipped: string[];
-  isMoving: boolean; facing: number;
+  index: number;
+  botsDataRef: React.RefObject<Array<{
+    def: { id: string; config: AvatarConfig; equipped: string[] };
+    pos: { x: number; y: number };
+    facing: number;
+    moving: boolean;
+  }>>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const divRef = useRef<HTMLDivElement>(null);
-  const prevPos = useRef({ x: 0, y: 0 });
+  // Smooth interpolation state
+  const smoothPos = useRef({ x: 0, y: 0 });
   const isWalkingRef = useRef(false);
+  const facingRef = useRef(1);
 
-  useFrame(() => {
-    if (!groupRef.current) return;
-    groupRef.current.position.set(x / S - WORLD_WIDTH / 2, 0.02, -(y / S - WORLD_DEPTH / 2));
-    const dx = Math.abs(x - prevPos.current.x);
-    const dy = Math.abs(y - prevPos.current.y);
-    const moving = dx > 0.1 || dy > 0.1;
+  useFrame((_, dt) => {
+    if (!groupRef.current || !botsDataRef.current) return;
+    const bot = botsDataRef.current[index];
+    if (!bot) return;
+
+    // Read fresh position from ref (updated by game loop)
+    const targetX = bot.pos.x;
+    const targetY = bot.pos.y;
+
+    // Smooth interpolation — lerp toward target
+    const lerpFactor = Math.min(1, 12 * dt);
+    smoothPos.current.x += (targetX - smoothPos.current.x) * lerpFactor;
+    smoothPos.current.y += (targetY - smoothPos.current.y) * lerpFactor;
+
+    // Set 3D position
+    const wx = smoothPos.current.x / S - WORLD_WIDTH / 2;
+    const wz = -(smoothPos.current.y / S - WORLD_DEPTH / 2);
+    groupRef.current.position.set(wx, 0.02, wz);
+
+    // Walking animation
+    const dx = Math.abs(targetX - smoothPos.current.x);
+    const dy = Math.abs(targetY - smoothPos.current.y);
+    const moving = dx > 0.3 || dy > 0.3;
     if (moving !== isWalkingRef.current && divRef.current) {
       isWalkingRef.current = moving;
       divRef.current.classList.toggle("walking", moving);
     }
-    prevPos.current = { x, y };
+
+    // Facing direction
+    if (bot.moving) facingRef.current = bot.facing;
     if (divRef.current) {
-      divRef.current.style.transform = `scaleX(${facing < 0 ? -1 : 1})`;
+      divRef.current.style.transform = `scaleX(${facingRef.current < 0 ? -1 : 1})`;
     }
   });
+
+  // Read initial config from ref (only changes if component remounts)
+  const bot = botsDataRef.current?.[index];
+  const config = bot?.def.config ?? { skin: "#ffd1a3", hair: "short", hairColor: "#3d2f2a", shirt: "#888", pants: "#444", shoes: "#333" };
+  const equipped = bot?.def.equipped ?? [];
 
   return (
     <group ref={groupRef}>
@@ -682,7 +720,7 @@ function BotAvatar3D({
           style={{
             width: 70,
             height: 96,
-            transform: `scaleX(${facing < 0 ? -1 : 1})`,
+            transform: "scaleX(1)",
             transformOrigin: "center bottom",
           }}
         >
@@ -703,15 +741,12 @@ export interface GameEngine3DProps {
   playerConfig: AvatarConfig;
   playerEquipped: string[];
   facingRef: React.RefObject<number>;
-  bots: Array<{
-    id: string;
-    x: number;
-    y: number;
-    config: AvatarConfig;
-    equipped: string[];
-    isMoving: boolean;
+  botsRef: React.RefObject<Array<{
+    def: { id: string; config: AvatarConfig; equipped: string[] };
+    pos: { x: number; y: number };
     facing: number;
-  }>;
+    moving: boolean;
+  }>>;
   moveTarget: { x: number; y: number } | null;
   isMobile: boolean;
 }
@@ -721,7 +756,7 @@ export function GameEngine3D({
   playerConfig,
   playerEquipped,
   facingRef,
-  bots,
+  botsRef,
   moveTarget,
   isMobile,
 }: GameEngine3DProps) {
@@ -815,17 +850,9 @@ export function GameEngine3D({
         facingRef={facingRef}
       />
 
-      {/* === BOTS === */}
-      {bots.map((bot) => (
-        <BotAvatar3D
-          key={bot.id}
-          x={bot.x}
-          y={bot.y}
-          config={bot.config}
-          equipped={bot.equipped}
-          isMoving={bot.isMoving}
-          facing={bot.facing}
-        />
+      {/* === BOTS + VENDORS (read from ref every frame) === */}
+      {botsRef.current.map((_, i) => (
+        <BotAvatar3D key={botsRef.current[i].def.id} index={i} botsDataRef={botsRef} />
       ))}
     </Canvas>
   );

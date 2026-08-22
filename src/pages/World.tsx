@@ -859,17 +859,39 @@ export default function World() {
   const botSpriteCache = useRef(new Map<string, SVGGElement>());
   const botPoseCache = useRef(new Map<string, SVGSVGElement>());
   const botsRef = useRef(
-    BOT_DEFS.map((def) => ({
-      def,
-      pos: { x: def.x, y: def.y },
-      facing: 1,
-      vy: 0,
-      phase: 0,
-      moving: false,
-      path: BOT_PATHS.get(def.id)!,
-      // A deterministic time offset per bot so they don't all start together.
-      offset: ((djb2(def.id) % 997) / 997) * 40,
-    })),
+    [
+      ...BOT_DEFS.map((def) => ({
+        def,
+        pos: { x: def.x, y: def.y },
+        facing: 1,
+        vy: 0,
+        phase: 0,
+        moving: false,
+        path: BOT_PATHS.get(def.id)!,
+        offset: ((djb2(def.id) % 997) / 997) * 40,
+      })),
+      // Vendor NPCs — static shopkeepers at their stalls
+      ...VENDORS.map((v) => ({
+        def: {
+          id: v.id,
+          name: v.short,
+          color: v.color,
+          speed: 0,
+          x: v.x,
+          y: v.y,
+          config: { skin: "#ffd1a3", hair: "short", hairColor: "#3d2f2a", shirt: v.color, pants: "#3d3040", shoes: "#2a2020" } as AvatarConfig,
+          equipped: [] as string[],
+          ability: "isik" as AbilityId,
+        },
+        pos: { x: v.x, y: v.y },
+        facing: 1,
+        vy: 0,
+        phase: 0,
+        moving: false,
+        path: { pts: [], wait: [], walk: [], total: 0 } as BotPath,
+        offset: 0,
+      })),
+    ],
   );
   const [botBubbles, setBotBubbles] = useState<Record<string, string | null>>(
     {},
@@ -1344,6 +1366,8 @@ export default function World() {
       // randomness, no drift between devices).
       const botScratch = { x: 0, y: 0, moving: false, facing: 1 };
       for (const bot of botsRef.current) {
+        // Skip vendors (static shopkeepers with no movement path)
+        if (!bot.path || bot.path.pts.length === 0) continue;
         const botEl0 = botRefs.current.get(bot.def.id);
         if (botEl0) botEl0.style.display = "";
         // The challenged bot teleports to the arena while fighting.
@@ -2118,26 +2142,7 @@ export default function World() {
           playerConfig={config}
           playerEquipped={equipped}
           facingRef={facingRef}
-          bots={[
-            ...botsRef.current.map((b) => ({
-              id: b.def.id,
-              x: b.pos.x,
-              y: b.pos.y,
-              config: b.def.config,
-              equipped: b.def.equipped,
-              isMoving: b.moving,
-              facing: b.facing,
-            })),
-            ...VENDORS.map((v) => ({
-              id: v.id,
-              x: v.x,
-              y: v.y,
-              config: { skin: "#ffd1a3", hair: "short", hairColor: "#3d2f2a", shirt: v.color, pants: "#3d3040", shoes: "#2a2020" },
-              equipped: [],
-              isMoving: false,
-              facing: 1,
-            })),
-          ]}
+          botsRef={botsRef}
           moveTarget={targetMarker}
           isMobile={isMobile}
         />
