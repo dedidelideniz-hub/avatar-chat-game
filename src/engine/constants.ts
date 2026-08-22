@@ -116,9 +116,9 @@ export const TREES: TreeDef[] = [
   { x: -7.0,  z: -5.3, scale: 0.9, variant: 2 },
   { x: -3.5,  z: -5.5, scale: 0.8, variant: 0 },
   // Roadside trees — left and right
-  { x: 5.0,   z: -3.2, scale: 0.85, variant: 1 },
-  { x: 9.0,   z: -1.4, scale: 0.9, variant: 2 },
-  { x: 12.5,  z: -3.0, scale: 0.85, variant: 0 },
+  { x: 5.0,   z: -5.0, scale: 0.85, variant: 1 },
+  { x: 9.0,   z: -5.2, scale: 0.9, variant: 2 },
+  { x: 12.5,  z: -5.0, scale: 0.85, variant: 0 },
   // South grass
   { x: -12.0, z: 0.8,  scale: 0.9, variant: 1 },
   { x: -7.0,  z: 1.0,  scale: 0.85, variant: 2 },

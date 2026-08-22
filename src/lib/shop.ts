@@ -247,7 +247,7 @@ export const VENDORS: Vendor[] = [
     color: "#ff8fb3",
     accent: "#ffffff",
     x: 280,
-    y: 480,
+    y: 450,
   },
   {
     id: "balon",
@@ -257,7 +257,7 @@ export const VENDORS: Vendor[] = [
     color: "#14b8a6",
     accent: "#ffffff",
     x: 620,
-    y: 480,
+    y: 450,
   },
   {
     id: "oyuncak",
@@ -267,7 +267,7 @@ export const VENDORS: Vendor[] = [
     color: "#f59e0b",
     accent: "#ffd166",
     x: 980,
-    y: 480,
+    y: 450,
   },
   {
     id: "moda",
@@ -277,7 +277,7 @@ export const VENDORS: Vendor[] = [
     color: "#a855f7",
     accent: "#ffd166",
     x: 1340,
-    y: 480,
+    y: 450,
   },
   {
     id: VIP_VENDOR_ID,
@@ -287,7 +287,7 @@ export const VENDORS: Vendor[] = [
     color: "#f59e0b",
     accent: "#ffd166",
     x: 820,
-    y: 480,
+    y: 450,
   },
 ];
 
@@ -508,7 +508,5 @@ export const OBSTACLES: Rect[] = [
   { x: 710, y: 465, w: 80, h: 30 },
   { x: 960, y: 465, w: 80, h: 30 },
   { x: 1210, y: 465, w: 80, h: 30 },
-  // Tree trunks (converted from 3D positions — near walkable zones)
-  { x: 1020, y: 580, w: 30, h: 30 },  // 3D(5.0,-3.2) — on road
-  { x: 1220, y: 490, w: 30, h: 30 },  // 3D(9.0,-1.4) — near sidewalk edge
+
 ];
