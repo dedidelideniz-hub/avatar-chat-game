@@ -387,46 +387,46 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   display: block;
 }
 
-/* Walk cycle — realistic cross-coordinated arm/leg swing.
-   Key rule: left arm ↔ right leg (same phase), right arm ↔ left leg.
-   Easing uses cubic-bezier to mimic natural pendulum deceleration. */
-@keyframes arm-swing-fwd {
-  0%   { transform: rotate(-28deg); }
-  50%  { transform: rotate(32deg); }
-  100% { transform: rotate(-28deg); }
+/* Walk cycle — arms and legs swing clearly while an ancestor has `.walking`. */
+@keyframes arm-swing {
+  from {
+    transform: rotate(-34deg);
+  }
+  50% {
+    transform: rotate(34deg);
+  }
+  to {
+    transform: rotate(-34deg);
+  }
 }
-@keyframes arm-swing-back {
-  0%   { transform: rotate(28deg); }
-  50%  { transform: rotate(-32deg); }
-  100% { transform: rotate(28deg); }
+@keyframes leg-swing {
+  from {
+    transform: rotate(-26deg);
+  }
+  50% {
+    transform: rotate(26deg);
+  }
+  to {
+    transform: rotate(-26deg);
+  }
 }
-@keyframes leg-swing-fwd {
-  0%   { transform: rotate(-22deg); }
-  50%  { transform: rotate(28deg); }
-  100% { transform: rotate(-22deg); }
-}
-@keyframes leg-swing-back {
-  0%   { transform: rotate(22deg); }
-  50%  { transform: rotate(-28deg); }
-  100% { transform: rotate(22deg); }
-}
-/* Natural pendulum easing — slows at extremes, faster through center */
 .walking .avatar-arm-l {
   transform-origin: 50% 0%;
-  animation: arm-swing-fwd 0.48s cubic-bezier(0.33, 0, 0.67, 1) infinite;
+  animation: arm-swing 0.5s linear infinite;
 }
 .walking .avatar-arm-r {
   transform-origin: 50% 0%;
-  animation: arm-swing-back 0.48s cubic-bezier(0.33, 0, 0.67, 1) infinite;
+  animation: arm-swing 0.5s linear infinite;
+  animation-delay: -0.25s;
 }
-/* Cross-coordination: left leg follows right arm (same phase) */
 .walking .avatar-leg-l {
   transform-origin: 50% 0%;
-  animation: leg-swing-back 0.48s cubic-bezier(0.33, 0, 0.67, 1) infinite;
+  animation: leg-swing 0.5s linear infinite;
 }
 .walking .avatar-leg-r {
   transform-origin: 50% 0%;
-  animation: leg-swing-fwd 0.48s cubic-bezier(0.33, 0, 0.67, 1) infinite;
+  animation: leg-swing 0.5s linear infinite;
+  animation-delay: -0.25s;
 }
 
 /* Speech bubbles pop in above characters and stalls. */
