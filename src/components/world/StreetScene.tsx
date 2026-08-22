@@ -322,7 +322,7 @@ function IsoBuilding({
             width={w - 20}
             height={storyH - 20}
             rx={4}
-            fill={shopGlass || "#2a3a4a"}
+            fill={shopGlass || "#1a2838"}
           />
           <rect
             x={x + 14}
@@ -741,8 +741,8 @@ function LowPolyLamp({ x, y }: { x: number; y: number }) {
       <rect x={8} y={-66} width={14} height={11} rx={2} fill="#6a6560" />
       <rect x={8} y={-66} width={14} height={4} rx={1} fill="#7a7570" />
       {/* Light glow */}
-      <circle cx={15} cy={-55} r={7} fill="#ffd166" opacity={0.2} />
-      <circle cx={15} cy={-55} r={4} fill="#ffd166" opacity={0.6} />
+      <circle cx={15} cy={-55} r={7} fill="#ffe040" opacity={0.2} />
+      <circle cx={15} cy={-55} r={4} fill="#ffe040" opacity={0.6} />
     </g>
   );
 }
@@ -764,7 +764,7 @@ function FlowerBox({ x, y }: { x: number; y: number }) {
             cx={fx}
             cy={-16 - i * 2}
             r={3}
-            fill={["#ff6b6b", "#ffd166", "#ff6bcb", "#a855f7"][i]}
+            fill={["#ff6b6b", "#ffe040", "#ff6bcb", "#a855f7"][i]}
           />
         </g>
       ))}
@@ -834,7 +834,7 @@ function Car({
 /* ═══════════════════════════════════════════════════════════════ */
 
 function StringLights() {
-  const bulbColors = ["#ff6b6b", "#ffd166", "#6bcb77", "#4d96ff", "#ff6bcb", "#ffd700"];
+  const bulbColors = ["#ff6b6b", "#ffe040", "#6bcb77", "#4d96ff", "#ff6bcb", "#ffd700"];
   const anchors = [60, 280, 500, 720, 940, 1160, 1380, 1560];
   return (
     <g>
@@ -1203,22 +1203,22 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
 
       <defs>
         <linearGradient id="real-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#4a80b8" />
-          <stop offset="50%" stopColor="#7ab0d8" />
-          <stop offset="100%" stopColor="#a8d0e8" />
+          <stop offset="0%" stopColor="#2878d0" />
+          <stop offset="50%" stopColor="#50baf0" />
+          <stop offset="100%" stopColor="#80e0ff" />
         </linearGradient>
         <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="#fff8e0" />
-          <stop offset="50%" stopColor="#ffd166" stopOpacity={0.25} />
-          <stop offset="100%" stopColor="#ffd166" stopOpacity={0} />
+          <stop offset="50%" stopColor="#ffe040" stopOpacity={0.25} />
+          <stop offset="100%" stopColor="#ffe040" stopOpacity={0} />
         </radialGradient>
       </defs>
 
       {/* ═══ SKY ═══ */}
       <rect x={0} y={0} width={1600} height={470} fill="url(#real-sky)" />
       <circle cx={1400} cy={88} r={70} fill="url(#sun-glow)" />
-      <circle cx={1400} cy={88} r={32} fill="#ffd166" />
-      <circle cx={1400} cy={88} r={20} fill="#fff3c4" />
+      <circle cx={1400} cy={88} r={32} fill="#ffe040" />
+      <circle cx={1400} cy={88} r={20} fill="#fff8b0" />
       {Array.from({ length: 12 }).map((_, i) => {
         const a = (i / 12) * Math.PI * 2;
         return (
@@ -1228,7 +1228,7 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
             y1={88 + Math.sin(a) * 38}
             x2={1400 + Math.cos(a) * 56}
             y2={88 + Math.sin(a) * 56}
-            stroke="#ffd166"
+            stroke="#ffe040"
             strokeWidth={2}
             opacity={0.25}
             strokeLinecap="round"
@@ -1250,21 +1250,21 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={0}
         w={300}
         h={180}
-        front="#e8a87c"
-        side="#c87848"
+        front="#f09058"
+        side="#d06828"
         top="#8898a8"
-        roof="#505058"
-        winColor="#6ab0d6"
+        roof="#383840"
+        winColor="#38b8f8"
         winFrame="#4a6070"
-        trim="#f0d8c0"
+        trim="#f8dcc0"
         floors={2}
         winsPerFloor={4}
         sign="☕ KAFE"
         signBg="#fff5eb"
         signFg="#6a4020"
         hasShop
-        shopGlass="#2a3a4a"
-        awningA="#e8a87c"
+        shopGlass="#1a2838"
+        awningA="#f09058"
         awningB="#f5d8b8"
         doorColor="#5a3a1a"
         roofDetail="chimney"
@@ -1275,13 +1275,13 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={305}
         w={120}
         h={340}
-        front="#e8ecf0"
-        side="#c0c4cc"
+        front="#dce4fa"
+        side="#a8b4d0"
         top="#8890a0"
-        roof="#484850"
-        winColor="#5898c8"
+        roof="#303038"
+        winColor="#2898e8"
         winFrame="#3a5868"
-        trim="#d0d4dc"
+        trim="#bcc8e0"
         floors={8}
         winsPerFloor={2}
         roofDetail="antenna"
@@ -1292,13 +1292,13 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={430}
         w={130}
         h={230}
-        front="#d49060"
-        side="#b06838"
+        front="#e88040"
+        side="#c05020"
         top="#8890a0"
-        roof="#505058"
-        winColor="#6ab0d6"
+        roof="#383840"
+        winColor="#38b8f8"
         winFrame="#4a6070"
-        trim="#e8c8a0"
+        trim="#f0c888"
         floors={5}
         winsPerFloor={2}
         roofDetail="ac"
@@ -1309,21 +1309,21 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={565}
         w={260}
         h={160}
-        front="#f0d8b8"
-        side="#d4b088"
+        front="#f8d898"
+        side="#c89060"
         top="#9098a8"
-        roof="#505058"
-        winColor="#6ab0d6"
+        roof="#383840"
+        winColor="#38b8f8"
         winFrame="#4a6070"
-        trim="#f8e8d0"
+        trim="#fff0d8"
         floors={2}
         winsPerFloor={3}
         sign="🥐 FIRIN"
         signBg="#fff8f0"
         signFg="#6a4020"
         hasShop
-        shopGlass="#2a3a4a"
-        awningA="#f0d8b8"
+        shopGlass="#1a2838"
+        awningA="#f8d898"
         awningB="#fff0e0"
         doorColor="#5a3a1a"
       />
@@ -1336,10 +1336,10 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         front="#e0e4ec"
         side="#b8bcc8"
         top="#808898"
-        roof="#484850"
-        winColor="#5898c8"
+        roof="#303038"
+        winColor="#2898e8"
         winFrame="#3a5868"
-        trim="#ccd0d8"
+        trim="#b8c4e0"
         floors={7}
         winsPerFloor={2}
         roofDetail="satellite"
@@ -1350,21 +1350,21 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={935}
         w={260}
         h={170}
-        front="#e0a070"
-        side="#c07848"
+        front="#e88848"
+        side="#c86028"
         top="#8898a8"
-        roof="#505058"
-        winColor="#6ab0d6"
+        roof="#383840"
+        winColor="#38b8f8"
         winFrame="#4a6070"
-        trim="#f0d0a8"
+        trim="#f8d090"
         floors={2}
         winsPerFloor={3}
         sign="🧸 OYUNCAKÇI"
         signBg="#fff5eb"
         signFg="#6a4020"
         hasShop
-        shopGlass="#2a3a4a"
-        awningA="#e0a070"
+        shopGlass="#1a2838"
+        awningA="#e88848"
         awningB="#f5d0a0"
         doorColor="#5a3a1a"
       />
@@ -1374,13 +1374,13 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={1200}
         w={120}
         h={240}
-        front="#e4e8f0"
-        side="#bcc0cc"
+        front="#d8e4fc"
+        side="#98a8cc"
         top="#8890a0"
-        roof="#484850"
-        winColor="#5898c8"
+        roof="#303038"
+        winColor="#2898e8"
         winFrame="#3a5868"
-        trim="#d4d8e0"
+        trim="#c0d0e8"
         floors={6}
         winsPerFloor={2}
         roofDetail="tank"
@@ -1391,28 +1391,28 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
         x={1325}
         w={275}
         h={190}
-        front="#e8b088"
-        side="#c88858"
+        front="#f09868"
+        side="#d87838"
         top="#8898a8"
-        roof="#505058"
-        winColor="#6ab0d6"
+        roof="#383840"
+        winColor="#38b8f8"
         winFrame="#4a6070"
-        trim="#f0d8c0"
+        trim="#f8dcc0"
         floors={2}
         winsPerFloor={4}
         sign="🕶️ MODA"
         signBg="#fff5eb"
         signFg="#5a3020"
         hasShop
-        shopGlass="#2a3a4a"
+        shopGlass="#1a2838"
         awningA="#c888e8"
         awningB="#f5d8b8"
         doorColor="#4a2a1a"
       />
 
       {/* ═══ TOP SIDEWALK ═══ */}
-      <rect x={0} y={470} width={1600} height={90} fill="#d0ccc0" />
-      <g stroke="#c0bbb0" strokeWidth={1.2} opacity={0.5}>
+      <rect x={0} y={470} width={1600} height={90} fill="#e8e2d8" />
+      <g stroke="#d8d0c0" strokeWidth={1.2} opacity={0.5}>
         <line x1={0} y1={482} x2={1600} y2={482} />
         <line x1={0} y1={510} x2={1600} y2={510} />
         <line x1={0} y1={538} x2={1600} y2={538} />
@@ -1421,9 +1421,9 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       {/* ═══ HEDGE ═══ */}
       {Array.from({ length: 14 }).map((_, i) => (
         <g key={i}>
-          <rect x={i * 118 - 10} y={514} width={128} height={32} rx={14} fill="#2d7a38" />
-          <rect x={i * 118 - 10} y={514} width={128} height={14} rx={7} fill="#3d9a48" opacity={0.8} />
-          <rect x={i * 118 - 4} y={516} width={116} height={6} rx={3} fill="#4dAA58" opacity={0.4} />
+          <rect x={i * 118 - 10} y={514} width={128} height={32} rx={14} fill="#1a8c2a" />
+          <rect x={i * 118 - 10} y={514} width={128} height={14} rx={7} fill="#2eb83e" opacity={0.8} />
+          <rect x={i * 118 - 4} y={516} width={116} height={6} rx={3} fill="#40cc55" opacity={0.4} />
         </g>
       ))}
 
@@ -1431,7 +1431,7 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <Bunting />
 
       {/* ═══ ROAD ═══ */}
-      <rect x={0} y={560} width={1600} height={120} fill="#3a3835" />
+      <rect x={0} y={560} width={1600} height={120} fill="#252220" />
       {/* Curbs */}
       <rect x={0} y={558} width={1600} height={5} fill="#8a8580" />
       <rect x={0} y={677} width={1600} height={5} fill="#8a8580" />
@@ -1470,8 +1470,8 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <Car className="car-l" y={648} left color="#8e44ad" style={{ animationDuration: "18s", animationDelay: "-16s" }} />
 
       {/* ═══ BOTTOM SIDEWALK ═══ */}
-      <rect x={0} y={680} width={1600} height={140} fill="#d0ccc0" />
-      <g stroke="#c0bbb0" strokeWidth={1.2} opacity={0.5}>
+      <rect x={0} y={680} width={1600} height={140} fill="#e8e2d8" />
+      <g stroke="#d8d0c0" strokeWidth={1.2} opacity={0.5}>
         <line x1={0} y1={700} x2={1600} y2={700} />
         <line x1={0} y1={740} x2={1600} y2={740} />
         <line x1={0} y1={780} x2={1600} y2={780} />
@@ -1498,8 +1498,8 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       <g transform="translate(1150 816) scale(1.6)"><Bench x={0} y={0} /></g>
 
       {/* ═══ GRASS ═══ */}
-      <rect x={0} y={832} width={1600} height={68} fill="#6aaa5a" />
-      <rect x={0} y={832} width={1600} height={12} fill="#5a9a4a" opacity={0.5} />
+      <rect x={0} y={832} width={1600} height={68} fill="#4cc040" />
+      <rect x={0} y={832} width={1600} height={12} fill="#38b828" opacity={0.5} />
       {/* Wildflowers */}
       {Array.from({ length: 24 }).map((_, i) => {
         const fx = 30 + i * 66;
