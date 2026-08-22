@@ -19,13 +19,14 @@ const SLOT_POS: Record<WearSlot, { x: number; y: number; size: number }> = {
   head: { x: 70, y: 24, size: 32 },
   face: { x: 70, y: 68, size: 24 },
   neck: { x: 70, y: 106, size: 26 },
-  hand: { x: 30, y: 124, size: 26 },
+  hand: { x: 34, y: 90, size: 26 },
 };
 
-/** Position used for the Nth item worn in a hand slot (left, right, ...). */
+/** Position used for the Nth item worn in a hand slot (left, right, ...).
+ *  Aligned with the avatar arm rects which span y=42..98. */
 const HAND_OFFSETS = [
-  { x: 30, y: 124 },
-  { x: 110, y: 124 },
+  { x: 34, y: 90 },
+  { x: 106, y: 90 },
 ];
 
 export function EquippedItems({
