@@ -38,7 +38,6 @@ import {
   VIP_VENDOR_ID,
   WALKABLE_ZONES,
   WORLD_BOUNDS,
-  vendorAtPoint,
   type AbilityId,
   type Rect,
   type Vendor,
@@ -97,6 +96,7 @@ interface BotDef {
   config: AvatarConfig;
   equipped: string[]; // small touches so they look lived-in
   ability: AbilityId; // battle super (Brawl-styled)
+  isVendor?: boolean; // true for vendor NPCs at stalls
 }
 
 const BOT_DEFS: BotDef[] = [
@@ -883,6 +883,7 @@ export default function World() {
           config: { skin: "#ffd1a3", hair: "short", hairColor: "#3d2f2a", shirt: v.color, pants: "#3d3040", shoes: "#2a2020" } as AvatarConfig,
           equipped: [] as string[],
           ability: "isik" as AbilityId,
+          isVendor: true,
         },
         pos: { x: v.x, y: v.y },
         facing: 1,
@@ -2042,25 +2043,27 @@ export default function World() {
       }
 
       if (closestId) {
+        // Unified system: check if this is a vendor NPC
+        const clickedBot = botsRef.current.find((b) => b.def.id === closestId);
+        const isVendor = clickedBot && "isVendor" in clickedBot.def && (clickedBot.def as { isVendor?: boolean }).isVendor;
+        if (isVendor) {
+          const vendorDef = VENDORS.find((v) => v.id === closestId);
+          if (vendorDef) {
+            playSound("click");
+            if (closestId === VIP_VENDOR_ID) {
+              setVipOpen(true);
+            } else {
+              setShopVendor(vendorDef);
+            }
+            return;
+          }
+        }
         setViewing(closestId);
         return;
       }
 
-      // Tapping anywhere else closes the profile card.
+      // Tapping anywhere else closes the profile card and checks gift box.
       setViewing(null);
-      // Tapping the stall itself opens its market page (VIP stand opens the
-      // membership page instead).
-      const vendor = vendorAtPoint(wx, wy);
-      if (vendor) {
-        playSound("click");
-        if (vendor.id === VIP_VENDOR_ID) {
-          setVipOpen(true);
-        } else {
-          setShopVendor(vendor);
-        }
-        return;
-      }
-      // Tapping the gift box claims the daily bonus.
       if (Math.hypot(wx - GIFT_BOX.x, wy - GIFT_BOX.y) <= GIFT_CLICK_RADIUS) {
         handleClaim();
         return;
