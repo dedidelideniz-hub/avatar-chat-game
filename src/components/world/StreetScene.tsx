@@ -791,43 +791,6 @@ function Bench({ x, y }: { x: number; y: number }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════ */
-/*                      ANIMATED CAR (same)                        */
-/* ═══════════════════════════════════════════════════════════════ */
-
-function Car({
-  className,
-  y,
-  left,
-  color,
-  style,
-}: {
-  className: string;
-  y: number;
-  left?: boolean;
-  color?: string;
-  style?: CSSProperties;
-}) {
-  const c = color || "#4a6a8a";
-  return (
-    <g className={className} style={style}>
-      <g transform={`translate(0 ${y})${left ? " scale(-1 1)" : ""}`}>
-        <ellipse cx="0" cy="34" rx="50" ry="7" fill="#1c1917" opacity={0.12} />
-        <rect x="-50" y="4" width="100" height="22" rx="7" fill={c} />
-        <rect x="-50" y="4" width="100" height="7" rx="3" fill="#fff" opacity={0.1} />
-        <path d="M-24 4 L-12 -12 Q0 -15 12 -12 L24 4 Z" fill={c} />
-        <path d="M-20 2 L-10 -9 Q0 -12 10 -9 L20 2 Z" fill="#8ab4d0" opacity={0.8} />
-        <path d="M-16 1 L-8 -6 Q-3 -8 -1 -6 L-1 1 Z" fill="#fff" opacity={0.2} />
-        <circle cx="-28" cy="26" r="7" fill="#2a2a2a" />
-        <circle cx="28" cy="26" r="7" fill="#2a2a2a" />
-        <circle cx="-28" cy="26" r="3" fill="#8a8a8a" />
-        <circle cx="28" cy="26" r="3" fill="#8a8a8a" />
-        <rect x="46" y="10" width="5" height="4" rx="1.5" fill="#ffe9a8" />
-        <rect x="-51" y="10" width="5" height="4" rx="1.5" fill="#ff6b4a" opacity={0.8} />
-      </g>
-    </g>
-  );
-}
 
 /* ═══════════════════════════════════════════════════════════════ */
 /*                      STRING LIGHTS (same)                       */
@@ -1430,44 +1393,32 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       {/* ═══ BUNTING ═══ */}
       <Bunting />
 
-      {/* ═══ ROAD ═══ */}
-      <rect x={0} y={560} width={1600} height={120} fill="#252220" />
-      {/* Curbs */}
-      <rect x={0} y={558} width={1600} height={5} fill="#8a8580" />
-      <rect x={0} y={677} width={1600} height={5} fill="#8a8580" />
-      {/* ═══ ROAD LANE MARKINGS ═══ */}
-      {/* Top edge line */}
-      <rect x={0} y={567} width={1600} height={3} fill="#e8e4e0" opacity={0.9} />
-      {/* Upper lane divider (dashed white) */}
-      <g fill="#e8e4e0" opacity={0.85}>
-        {Array.from({ length: 20 }).map((_, i) => (
-          <rect key={i} x={i * 85} y={592} width={50} height={3} rx={1} />
-        ))}
-      </g>
-      {/* Center median (solid yellow double line) */}
-      <rect x={0} y={611} width={1600} height={2.5} fill="#e8c84a" opacity={0.9} />
-      <rect x={0} y={615.5} width={1600} height={2.5} fill="#e8c84a" opacity={0.9} />
-      {/* Lower lane divider (dashed white) */}
-      <g fill="#e8e4e0" opacity={0.85}>
-        {Array.from({ length: 20 }).map((_, i) => (
-          <rect key={i} x={i * 85} y={644} width={50} height={3} rx={1} />
-        ))}
-      </g>
-      {/* Bottom edge line */}
-      <rect x={0} y={670} width={1600} height={3} fill="#e8e4e0" opacity={0.9} />
-
-
-      {/* Animated center dashes (yellow, moving) */}
-      <g className="road-dashes" fill="#e8c84a">
+      {/* ═══ PEDESTRIAN PROMENADE (wide walking path) ═══ */}
+      <rect x={0} y={555} width={1600} height={130} fill="#c8b898" />
+      {/* Stone pavement pattern - horizontal lines */}
+      <g stroke="#b8a888" strokeWidth={1} opacity={0.4}>
         {Array.from({ length: 16 }).map((_, i) => (
-          <rect key={i} x={-122 + i * 122} y={614} width={64} height={10} rx={5} />
+          <line key={"h"+i} x1={0} y1={565 + i * 8} x2={1600} y2={565 + i * 8} />
         ))}
       </g>
-      {/* Traffic */}
-      <Car className="car-r" y={574} color="#c0392b" style={{ animationDuration: "16s", animationDelay: "-3s" }} />
-      <Car className="car-r" y={602} color="#2980b9" style={{ animationDuration: "21s", animationDelay: "-11s" }} />
-      <Car className="car-l" y={631} left color="#f39c12" style={{ animationDuration: "24s", animationDelay: "-8s" }} />
-      <Car className="car-l" y={648} left color="#8e44ad" style={{ animationDuration: "18s", animationDelay: "-16s" }} />
+      {/* Stone pavement pattern - vertical brick joints */}
+      <g stroke="#b8a888" strokeWidth={0.8} opacity={0.3}>
+        {Array.from({ length: 80 }).map((_, i) => (
+          <line key={"v"+i} x1={i * 20 + ((Math.floor(i/2) % 2) * 10)} y1={555} x2={i * 20 + ((Math.floor(i/2) % 2) * 10)} y2={685} />
+        ))}
+      </g>
+      {/* Center walking lane marking - dashed guide */}
+      <g fill="#a89878" opacity={0.5}>
+        {Array.from({ length: 20 }).map((_, i) => (
+          <rect key={i} x={i * 85} y={615} width={50} height={4} rx={2} />
+        ))}
+      </g>
+      {/* Decorative center strip */}
+      <rect x={0} y={618} width={1600} height={2} fill="#988868" opacity={0.3} />
+      {/* Curb edges */}
+      <rect x={0} y={553} width={1600} height={4} fill="#a89878" />
+      <rect x={0} y={683} width={1600} height={4} fill="#a89878" />
+      {/* Walking footprints scattered (decorative) */}
 
       {/* ═══ BOTTOM SIDEWALK ═══ */}
       <rect x={0} y={680} width={1600} height={140} fill="#e8e2d8" />

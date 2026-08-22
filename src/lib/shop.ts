@@ -480,10 +480,12 @@ export const WORLD_BOUNDS = {
  * stall edge, so no extra walkable zone is needed below the road.
  */
 export const WALKABLE_ZONES: Rect[] = [
-  // Asphalt road — full width, from curb to curb (SVG road y=560..680)
-  { x: 0, y: 560, w: 1600, h: 120 },
-  // Bottom sidewalk strip (vendor stalls sit here, y=680..820)
-  { x: 28, y: 680, w: 1544, h: 140 },
+  // Top sidewalk (between buildings, y=470..555)
+  { x: 0, y: 470, w: 1600, h: 85 },
+  // Pedestrian promenade — wide central walking path (y=555..685)
+  { x: 0, y: 555, w: 1600, h: 130 },
+  // Bottom sidewalk strip (vendor stalls sit here, y=685..820)
+  { x: 28, y: 685, w: 1544, h: 135 },
 ];
 
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace

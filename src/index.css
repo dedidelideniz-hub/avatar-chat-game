@@ -387,50 +387,51 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   display: block;
 }
 
-/* Walk cycle — arms and legs swing clearly while an ancestor has `.walking`. */
+/* Walk cycle — realistic natural movement with easing */
 @keyframes arm-swing {
-  from {
-    transform: rotate(-34deg);
-  }
-  50% {
-    transform: rotate(34deg);
-  }
-  to {
-    transform: rotate(-34deg);
-  }
+  0% { transform: rotate(-30deg) translateY(0); }
+  25% { transform: rotate(12deg) translateY(-1px); }
+  50% { transform: rotate(30deg) translateY(0); }
+  75% { transform: rotate(-12deg) translateY(-1px); }
+  100% { transform: rotate(-30deg) translateY(0); }
 }
 @keyframes leg-swing {
-  from {
-    transform: rotate(-26deg);
-  }
-  50% {
-    transform: rotate(26deg);
-  }
-  to {
-    transform: rotate(-26deg);
-  }
+  0% { transform: rotate(-24deg) translateY(0); }
+  25% { transform: rotate(10deg) translateY(-1px); }
+  50% { transform: rotate(24deg) translateY(0); }
+  75% { transform: rotate(-10deg) translateY(-1px); }
+  100% { transform: rotate(-24deg) translateY(0); }
+}
+@keyframes walk-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
 }
 .walking .avatar-arm-l {
   transform-box: fill-box;
   transform-origin: 50% 0%;
-  animation: arm-swing 0.5s linear infinite;
+  animation: arm-swing 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 .walking .avatar-arm-r {
   transform-box: fill-box;
   transform-origin: 50% 0%;
-  animation: arm-swing 0.5s linear infinite;
-  animation-delay: -0.25s;
+  animation: arm-swing 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation-delay: -0.21s;
 }
 .walking .avatar-leg-l {
   transform-box: fill-box;
   transform-origin: 50% 0%;
-  animation: leg-swing 0.5s linear infinite;
+  animation: leg-swing 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 .walking .avatar-leg-r {
   transform-box: fill-box;
   transform-origin: 50% 0%;
-  animation: leg-swing 0.5s linear infinite;
-  animation-delay: -0.25s;
+  animation: leg-swing 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation-delay: -0.21s;
+}
+.walking .avatar-body {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: walk-bob 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* Speech bubbles pop in above characters and stalls. */
