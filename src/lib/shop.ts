@@ -468,24 +468,22 @@ export const WORLD_BOUNDS = {
 /**
  * Where the player may walk — the asphalt road + narrow shop walkway.
  *
- * Map layout (StreetScene.tsx):
- *   y   0..470  = buildings
- *   y 470..560  = top sidewalk + hedge
- *   y 560..680  = ASPHALT ROAD (2 lanes + center)
- *   y 680..820  = bottom sidewalk (vendor stalls sit here)
- *   y 820..900  = grass
+ * Map layout (3D engine → SVG coordinates):
+ *   y   0..450  = buildings (north, off-screen above)
+ *   y 450..510  = south sidewalk (vendor stalls)
+ *   y 510..630  = MAIN ROAD (pedestrian promenade)
+ *   y 630..690  = north sidewalk
+ *   y 690..900  = north grass + buildings
  *
- * The character walks on the road surface. To reach a vendor
- * the player clicks the stall and the goTo helper snaps to the
- * stall edge, so no extra walkable zone is needed below the road.
+ * The character walks on the road + sidewalks.
  */
 export const WALKABLE_ZONES: Rect[] = [
-  // Top sidewalk (between buildings, y=470..555)
-  { x: 0, y: 470, w: 1600, h: 85 },
-  // Pedestrian promenade — wide central walking path (y=555..685)
-  { x: 0, y: 555, w: 1600, h: 130 },
-  // Bottom sidewalk strip (vendor stalls sit here, y=685..820)
-  { x: 28, y: 685, w: 1544, h: 135 },
+  // South sidewalk (vendor stalls zone, y=450..510)
+  { x: 0, y: 450, w: 1600, h: 60 },
+  // Main pedestrian road (y=510..630)
+  { x: 0, y: 510, w: 1600, h: 120 },
+  // North sidewalk (y=630..690)
+  { x: 0, y: 630, w: 1600, h: 60 },
 ];
 
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace
@@ -500,20 +498,19 @@ export interface Rect {
 }
 
 /**
- * Solid objects the player cannot walk through (stalls, trees, lamps).
- * Must match the drawings in StreetScene.
+ * Solid objects the player cannot walk through (stalls).
+ * Positions converted from 3D engine layout.
  */
 export const OBSTACLES: Rect[] = [
-  // Vendor stall tables (on bottom sidewalk, matching SVG Stall positions)
-  // Stall component: translate(vendor.x, vendor.y), table rect x=-80 y=-50 w=160 h=54
-  // Vendor y = 745, so table occupies y=695..749
-  // Obstacles use y=690..760 to cover the full stall structure with padding
-  { x: 200, y: 690, w: 160, h: 70 },
-  { x: 540, y: 690, w: 160, h: 70 },
-  { x: 740, y: 690, w: 160, h: 70 },
-  { x: 900, y: 690, w: 160, h: 70 },
-  { x: 1260, y: 690, w: 160, h: 70 },
-  // Bottom sidewalk trees
-  { x: 104, y: 828, w: 32, h: 52 },
-  { x: 1484, y: 828, w: 32, h: 52 },
+  // Vendor stall tables (south sidewalk, matching 3D stall positions)
+  // 3D(-11,-0.6) → SVG(250,480), table 80×30
+  { x: 210, y: 465, w: 80, h: 30 },
+  // 3D(-6,-0.6) → SVG(500,480)
+  { x: 460, y: 465, w: 80, h: 30 },
+  // 3D(-1,-0.6) → SVG(750,480)
+  { x: 710, y: 465, w: 80, h: 30 },
+  // 3D(4,-0.6) → SVG(1000,480)
+  { x: 960, y: 465, w: 80, h: 30 },
+  // 3D(9,-0.6) → SVG(1250,480)
+  { x: 1210, y: 465, w: 80, h: 30 },
 ];

@@ -5,7 +5,10 @@
  * SVG: x=0..1600, y=0..900 (top=0)
  * 3D: x=centered, y=height, z=toward camera (positive = "south")
  */
-import { S, WORLD_CX, WORLD_CZ } from "./constants";
+import { S, WORLD_WIDTH, WORLD_DEPTH } from "./constants";
+
+const WORLD_CX = WORLD_WIDTH / 2;
+const WORLD_CZ = WORLD_DEPTH / 2;
 
 /** SVG (x,y) → Three.js [x, y, z] (y=0 ground) */
 export function svgTo3D(svgX: number, svgY: number): [number, number, number] {

@@ -1,136 +1,187 @@
 /**
- * SANALIKA 3D GAME ENGINE — World Constants
- * Fixed scale: 1 Three.js unit ≈ 1 meter. Player = 1.7m reference.
+ * SANALIKA 3D GAME ENGINE — Street Prototype Constants
+ *
+ * Coordinate system:
+ *   X = left/right (centered, -16..+16)
+ *   Y = up (0 = ground)
+ *   Z = forward/back (positive = toward camera)
+ *
+ * Scale: 1 Three.js unit ≈ 1 meter
+ * Player reference: 1.92 units tall (≈ 1.7m person)
+ *
+ * Camera: 50° elevation, 9-unit distance, 70° FOV
+ *   → player at ~52% screen height (center-lower, ideal for gameplay)
+ *   → buildings at ~18% screen top (visible but not dominant)
+ *   → roads at ~30-50% (main visual area)
  */
 
-// ─── SVG WORLD DIMENSIONS ───
-export const SVG_WORLD_W = 1600;
-export const SVG_WORLD_H = 900;
-
-// ─── SCALE: 1 Three.js unit = 1 SVG meter-ish ───
-// Player SVG is 70×96 units. We want player ≈ 1.7 units tall in 3D.
-// So: 96 SVG units → 1.7 Three.js units → S ≈ 56.5
-// But for clean numbers: S = 50 → player = 1.92 units tall
+// ─── SCALE ───
 export const S = 50;
 
-// ─── 3D WORLD DIMENSIONS ───
-export const WORLD_WIDTH = SVG_WORLD_W / S;   // 32
-export const WORLD_DEPTH = SVG_WORLD_H / S;   // 18
-export const WORLD_CX = WORLD_WIDTH / 2;      // 16
-export const WORLD_CZ = WORLD_DEPTH / 2;      // 9
+// ─── WORLD SIZE ───
+export const WORLD_WIDTH = 32;   // X: -16..+16
+export const WORLD_DEPTH = 18;   // Z: -9..+9
 
-// ─── GROUND Y = 0 ───
+// ─── GROUND Y ───
 export const GROUND_Y = 0;
 
-// ─── PLAYER REFERENCE ───
+// ─── PLAYER ───
 export const PLAYER_3D_WIDTH = 70 / S;   // 1.4
 export const PLAYER_3D_HEIGHT = 96 / S;  // 1.92
 
-// ─── SPAWN POINT (SVG coordinates) ───
+// ─── SPAWN (SVG coordinates — for compatibility with World.tsx game loop) ───
 export const SPAWN_SVG = { x: 800, y: 610 };
 
-// ─── CAMERA SETTINGS ───
-// Brawl Stars-style: ~60° looking down, player visible at center-bottom
-export const CAMERA_ELEVATION = 0.95; // radians (~55°)
-export const CAMERA_ZOOM = 10;         // distance from target
+// ─── CAMERA ───
+export const CAMERA_ELEVATION = 0.87; // radians (~50°) — shows road + buildings
+export const CAMERA_ZOOM = 9;         // distance from target
 export const CAMERA_LERP_SPEED = 5;
 
 // ─── BUILDING HEIGHT SCALE ───
-// Buildings in SVG: h=120-200. We want 3D height = 2-4 units (1-2× player).
-// So multiply SVG height by this factor:
-export const BUILDING_HEIGHT_SCALE = 0.01;
-// h=120 → 2.4, h=160 → 3.2, h=200 → 4.0
+// Buildings: 3-5 units tall (player = 1.92 units)
+// SVG h=120 → 3.0u, h=160 → 4.0u, h=200 → 5.0u
+export const BUILDING_HEIGHT_SCALE = 0.025;
+
+// ─── ZONE BOUNDARIES (3D Z coordinates) ───
+// These define the ground layout:
+//
+//  Z = -6.0  ░░░ North grass (trees, benches) ░░░
+//  Z = -4.8  ─── North sidewalk ───
+//  Z = -3.4  ═══ Main pedestrian road ═══
+//  Z = -1.0  ─── South sidewalk (vendors, flower boxes) ───
+//  Z = +0.4  ░░░ South grass / grass border ░░░
+//  Z = +2.0  ─── Edge of visible area ───
+//
+export const ZONE = {
+  northGrassTop: -6.0,
+  northGrassBot: -4.8,
+  northSidewalkTop: -4.8,
+  northSidewalkBot: -3.6,
+  roadTop: -3.6,
+  roadBot: -1.2,
+  southSidewalkTop: -1.2,
+  southSidewalkBot: 0.0,
+  southGrassTop: 0.0,
+  southGrassBot: 1.6,
+  edge: 2.4,
+} as const;
 
 // ─── BUILDING DEFINITIONS ───
 export interface BuildingDef {
+  /** 3D X position (center of building) */
   x: number;
+  /** 3D width */
   w: number;
+  /** 3D height (already scaled) */
   h: number;
+  /** 3D depth (into scene) */
+  d: number;
+  /** Front face color (facing road/camera) */
   front: string;
+  /** Side face color */
   side: string;
-  top: string;
+  /** Roof color */
+  roof: string;
+  /** Number of floors (for window rows) */
   floors: number;
+  /** Number of windows per floor */
   windows: number;
+  /** Z position of front face (south side) */
+  frontZ: number;
 }
 
 export const BUILDINGS: BuildingDef[] = [
-  { x: 10, w: 110, h: 180, front: "#e88040", side: "#c06830", top: "#f09058", floors: 4, windows: 3 },
-  { x: 130, w: 90, h: 140, front: "#dce4fa", side: "#bcc8e0", top: "#e8ecf8", floors: 3, windows: 2 },
-  { x: 230, w: 120, h: 200, front: "#f09058", side: "#d07040", top: "#ff9060", floors: 5, windows: 3 },
-  { x: 360, w: 80, h: 160, front: "#e8ecf0", side: "#c8ccd4", top: "#f0f0f4", floors: 4, windows: 2 },
-  { x: 450, w: 100, h: 120, front: "#e88040", side: "#c06830", top: "#f09058", floors: 3, windows: 3 },
-  { x: 560, w: 90, h: 180, front: "#dce4fa", side: "#bcc8e0", top: "#e8ecf8", floors: 4, windows: 2 },
-  { x: 660, w: 110, h: 150, front: "#f09058", side: "#d07040", top: "#ff9060", floors: 3, windows: 3 },
-  { x: 780, w: 100, h: 170, front: "#e88040", side: "#c06830", top: "#f09058", floors: 4, windows: 2 },
-  { x: 890, w: 80, h: 130, front: "#dce4fa", side: "#bcc8e0", top: "#e8ecf8", floors: 3, windows: 2 },
-  { x: 980, w: 120, h: 200, front: "#f09058", side: "#d07040", top: "#ff9060", floors: 5, windows: 3 },
-  { x: 1110, w: 90, h: 160, front: "#e88040", side: "#c06830", top: "#f09058", floors: 4, windows: 2 },
-  { x: 1210, w: 100, h: 140, front: "#dce4fa", side: "#bcc8e0", top: "#e8ecf8", floors: 3, windows: 3 },
-  { x: 1320, w: 110, h: 180, front: "#f09058", side: "#d07040", top: "#ff9060", floors: 4, windows: 3 },
-  { x: 1440, w: 90, h: 150, front: "#e88040", side: "#c06830", top: "#f09058", floors: 3, windows: 2 },
-  { x: 1540, w: 50, h: 120, front: "#dce4fa", side: "#bcc8e0", top: "#e8ecf8", floors: 3, windows: 1 },
+  // Left cluster — small shops
+  { x: -12, w: 2.6, h: 3.2, d: 2.0, front: "#f09058", side: "#d07040", roof: "#c05828", floors: 2, windows: 2, frontZ: ZONE.northGrassTop + 0.3 },
+  { x: -8.8, w: 2.0, h: 4.0, d: 1.8, front: "#dce4fa", side: "#bcc8e0", roof: "#a0aac0", floors: 3, windows: 2, frontZ: ZONE.northGrassTop + 0.3 },
+  // Center — taller landmark building
+  { x: -5.6, w: 3.0, h: 5.0, d: 2.2, front: "#f0a030", side: "#d08820", roof: "#b07018", floors: 3, windows: 3, frontZ: ZONE.northGrassTop + 0.3 },
+  // Right cluster — smaller shops
+  { x: -2.0, w: 2.2, h: 3.5, d: 1.8, front: "#e8ecf0", side: "#c8ccd4", roof: "#b0b4bc", floors: 2, windows: 2, frontZ: ZONE.northGrassTop + 0.3 },
+  { x: 1.6, w: 2.6, h: 4.2, d: 2.0, front: "#e88040", side: "#c06830", roof: "#a85828", floors: 3, windows: 3, frontZ: ZONE.northGrassTop + 0.3 },
 ];
 
-// ─── TREE POSITIONS (SVG coordinates) ───
-export interface TreePos {
+// ─── TREE DEFINITIONS (3D positions) ───
+export interface TreeDef {
   x: number;
-  y: number;
+  z: number;
   scale: number;
   variant: number;
 }
 
-export const TREES: TreePos[] = [
-  { x: 310, y: 548, scale: 1.5, variant: 0 },
-  { x: 550, y: 548, scale: 1.55, variant: 1 },
-  { x: 820, y: 548, scale: 1.5, variant: 2 },
-  { x: 1180, y: 548, scale: 1.6, variant: 0 },
-  { x: 1490, y: 548, scale: 1.5, variant: 1 },
-  { x: 80, y: 890, scale: 1.8, variant: 0 },
-  { x: 240, y: 895, scale: 1.85, variant: 2 },
-  { x: 420, y: 888, scale: 1.9, variant: 1 },
-  { x: 620, y: 892, scale: 1.8, variant: 0 },
-  { x: 840, y: 888, scale: 2.0, variant: 2 },
-  { x: 1020, y: 894, scale: 1.85, variant: 1 },
-  { x: 1200, y: 890, scale: 1.9, variant: 0 },
-  { x: 1380, y: 893, scale: 1.8, variant: 2 },
-  { x: 1540, y: 889, scale: 1.85, variant: 1 },
-];
-
-// ─── LAMP POSITIONS ───
-export interface LampPos { x: number; y: number; }
-
-export const LAMPS: LampPos[] = [
-  { x: 180, y: 810 }, { x: 400, y: 810 }, { x: 620, y: 810 },
-  { x: 840, y: 810 }, { x: 1060, y: 810 }, { x: 1280, y: 810 }, { x: 1500, y: 810 },
-];
-
-// ─── FLOWER BOX / BENCH POSITIONS ───
-export interface PosXY { x: number; y: number; }
-
-export const FLOWER_BOXES: PosXY[] = [
-  { x: 160, y: 820 }, { x: 460, y: 820 }, { x: 760, y: 820 },
-  { x: 1060, y: 820 }, { x: 1360, y: 820 },
-];
-
-export const BENCHES: PosXY[] = [
-  { x: 350, y: 816 }, { x: 1150, y: 816 },
+export const TREES: TreeDef[] = [
+  // North grass — behind buildings
+  { x: -14.5, z: -5.3, scale: 0.9, variant: 0 },
+  { x: -10.5, z: -5.5, scale: 0.85, variant: 1 },
+  { x: -7.0,  z: -5.3, scale: 0.9, variant: 2 },
+  { x: -3.5,  z: -5.5, scale: 0.8, variant: 0 },
+  // Roadside trees — left and right
+  { x: 5.0,   z: -3.2, scale: 0.85, variant: 1 },
+  { x: 9.0,   z: -1.4, scale: 0.9, variant: 2 },
+  { x: 12.5,  z: -3.0, scale: 0.85, variant: 0 },
+  // South grass
+  { x: -12.0, z: 0.8,  scale: 0.9, variant: 1 },
+  { x: -7.0,  z: 1.0,  scale: 0.85, variant: 2 },
+  { x: -2.0,  z: 0.8,  scale: 0.9, variant: 0 },
+  { x: 4.0,   z: 1.0,  scale: 0.85, variant: 1 },
+  { x: 10.0,  z: 0.8,  scale: 0.9, variant: 2 },
 ];
 
 // ─── TREE COLORS ───
 export const TREE_FOLIAGE_COLORS = [
-  ["#4cc040", "#3aa030"],
-  ["#2eb83e", "#1e9830"],
-  ["#60c838", "#48a828"],
+  ["#4cc040", "#3aa030"], // vibrant green
+  ["#2eb83e", "#1e9830"], // teal green
+  ["#60c838", "#48a828"], // yellow-green
 ];
 export const TREE_TRUNK_COLOR = "#7a5230";
 
-// ─── STALLS ───
-export interface StallDef { x: number; y: number; color: string; accent: string; }
+// ─── LAMP POSITIONS ───
+export interface LampDef { x: number; z: number; }
+
+export const LAMPS: LampDef[] = [
+  // Along north sidewalk
+  { x: -13, z: -4.0 },
+  { x: -7,  z: -4.0 },
+  { x: -1,  z: -4.0 },
+  { x: 5,   z: -4.0 },
+  // Along south sidewalk
+  { x: -10, z: -0.4 },
+  { x: -4,  z: -0.4 },
+  { x: 2,   z: -0.4 },
+  { x: 8,   z: -0.4 },
+];
+
+// ─── BENCH POSITIONS ───
+export interface BenchDef { x: number; z: number; }
+
+export const BENCHES: BenchDef[] = [
+  { x: -9, z: -4.0 },   // north sidewalk, near shop
+  { x: 3,  z: -0.4 },   // south sidewalk, near market
+  { x: 11, z: -0.4 },   // south sidewalk, near trees
+];
+
+// ─── FLOWER BOX POSITIONS ───
+export interface FlowerBoxDef { x: number; z: number; }
+
+export const FLOWER_BOXES: FlowerBoxDef[] = [
+  { x: -11, z: -4.2 },  // north sidewalk, between buildings
+  { x: -4,  z: -4.2 },
+  { x: 2,   z: -4.2 },
+  { x: -6,  z: -0.2 },  // south sidewalk
+  { x: 6,   z: -0.2 },
+];
+
+// ─── VENDOR STALL POSITIONS ───
+export interface StallDef { x: number; z: number; color: string; accent: string; }
 
 export const STALLS: StallDef[] = [
-  { x: 280, y: 745, color: "#ff8fb3", accent: "#ffffff" },
-  { x: 620, y: 745, color: "#14b8a6", accent: "#ffffff" },
-  { x: 980, y: 745, color: "#f59e0b", accent: "#ffd166" },
-  { x: 1340, y: 745, color: "#a855f7", accent: "#ffd166" },
-  { x: 820, y: 745, color: "#f59e0b", accent: "#ffd166" },
+  { x: -11, z: -0.6, color: "#ff8fb3", accent: "#ffffff" },
+  { x: -6,  z: -0.6, color: "#14b8a6", accent: "#ffffff" },
+  { x: -1,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },
+  { x: 4,   z: -0.6, color: "#a855f7", accent: "#ffd166" },
+  { x: 9,   z: -0.6, color: "#f59e0b", accent: "#ffd166" },
 ];
+
+// ─── SVG WORLD DIMENSIONS (for backward compatibility) ───
+export const SVG_WORLD_W = WORLD_WIDTH * S;
+export const SVG_WORLD_H = WORLD_DEPTH * S;

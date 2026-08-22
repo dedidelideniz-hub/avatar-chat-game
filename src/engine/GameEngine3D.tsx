@@ -1,17 +1,15 @@
 /**
- * SANALIKA 3D GAME ENGINE — Main Scene
+ * SANALIKA 3D GAME ENGINE — Street Prototype Scene
  *
- * COORDINATE SYSTEM (fixed):
- *   X = right / left (centered, -16..+16)
- *   Y = up (0 = ground, positive = above)
- *   Z = toward camera (positive = "south")
- *
- * Key fixes:
- *   - Camera at ~60° angle, distance 12, shows ground+player clearly
- *   - Buildings scaled to 2-4 units (player = 1.92 units = reference)
- *   - No clouds/fog — clean visible scene
- *   - Debug axes overlay for verification
- *   - Ground clearly visible with distinct zone colors
+ * A polished single-street level with:
+ *   - Clear road with sidewalks
+ *   - 5 buildings along the north side
+ *   - Trees with wind sway
+ *   - Lamp posts, benches, flower boxes
+ *   - Vendor stalls
+ *   - Player/bot billboard avatars
+ *   - Smooth follow camera
+ *   - Debug overlay
  */
 
 import React, { useRef, useMemo } from "react";
@@ -22,41 +20,42 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import type { AvatarConfig } from "@/lib/avatar";
 import {
-  S,
-  WORLD_CX,
-  WORLD_CZ,
+  WORLD_WIDTH,
+  WORLD_DEPTH,
   CAMERA_ELEVATION,
   CAMERA_ZOOM,
   CAMERA_LERP_SPEED,
   PLAYER_3D_HEIGHT,
   SPAWN_SVG,
+  ZONE,
   BUILDINGS,
   TREES,
   LAMPS,
-  FLOWER_BOXES,
   BENCHES,
+  FLOWER_BOXES,
   STALLS,
   TREE_FOLIAGE_COLORS,
   TREE_TRUNK_COLOR,
-  BUILDING_HEIGHT_SCALE,
+  S,
   type BuildingDef,
-  type TreePos,
-  type LampPos,
-  type PosXY,
+  type TreeDef,
+  type LampDef,
+  type BenchDef,
+  type FlowerBoxDef,
   type StallDef,
 } from "./constants";
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Helpers                                                  */
+/*  Helpers                                                    */
 /* ═══════════════════════════════════════════════════════════ */
 
 /** SVG X → 3D X (centered) */
 function sX(svgX: number): number {
-  return svgX / S - WORLD_CX;
+  return svgX / S - WORLD_WIDTH / 2;
 }
 /** SVG Y → 3D Z (flip: SVG down → 3D toward camera) */
 function sZ(svgY: number): number {
-  return -(svgY / S - WORLD_CZ);
+  return -(svgY / S - WORLD_DEPTH / 2);
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -70,8 +69,8 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
 
   useFrame((_, dt) => {
     const p = posRef.current;
-    const tx = p.x / S - WORLD_CX;
-    const tz = -(p.y / S - WORLD_CZ);
+    const tx = p.x / S - WORLD_WIDTH / 2;
+    const tz = -(p.y / S - WORLD_DEPTH / 2);
     target.current.set(tx, 0, tz);
 
     const lerp = Math.min(1, CAMERA_LERP_SPEED * dt);
@@ -91,154 +90,142 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Debug Axes — X=red, Y=green, Z=blue                      */
-/* ═══════════════════════════════════════════════════════════ */
-
-function DebugAxes() {
-  const len = 20;
-  return (
-    <group>
-      {/* X axis — red */}
-      <mesh position={[0, 0.02, 0]}>
-        <boxGeometry args={[len, 0.04, 0.04]} />
-        <meshBasicMaterial color="#ff0000" />
-      </mesh>
-      {/* Y axis — green (vertical) */}
-      <mesh position={[0, len / 2, 0]}>
-        <boxGeometry args={[0.04, len, 0.04]} />
-        <meshBasicMaterial color="#00ff00" />
-      </mesh>
-      {/* Z axis — blue */}
-      <mesh position={[0, 0.02, 0]}>
-        <boxGeometry args={[0.04, 0.04, len]} />
-        <meshBasicMaterial color="#0000ff" />
-      </mesh>
-      {/* Grid on ground */}
-      {Array.from({ length: 21 }).map((_, i) => {
-        const pos = -10 + i;
-        return (
-          <React.Fragment key={i}>
-            <mesh position={[pos, 0.005, 0]}>
-              <boxGeometry args={[0.02, 0.001, 20]} />
-              <meshBasicMaterial color="#666666" transparent opacity={0.3} />
-            </mesh>
-            <mesh position={[0, 0.005, pos]}>
-              <boxGeometry args={[20, 0.001, 0.02]} />
-              <meshBasicMaterial color="#666666" transparent opacity={0.3} />
-            </mesh>
-          </React.Fragment>
-        );
-      })}
-    </group>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  Ground — clear zone-colored ground plane                   */
+/*  Ground — zone-colored ground planes                        */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Ground() {
-  const worldW = 32;
-  const worldD = 18;
-  const cx = WORLD_CX;
-  const cz = WORLD_CZ;
+  const halfW = WORLD_WIDTH / 2 + 1;  // extend slightly beyond world edge
+  const halfD = WORLD_DEPTH / 2 + 1;
 
-  // Zone boundaries in 3D Z
-  const bldgEnd = sZ(470);      // buildings end / sidewalk start
-  const roadTop = sZ(555);      // promenade start
-  const roadBot = sZ(685);      // promenade end / vendor start
-  const vendorEnd = sZ(820);    // vendor end / grass start
+  const zones = [
+    // North grass
+    { y: (ZONE.northGrassTop + ZONE.northGrassBot) / 2, h: ZONE.northGrassBot - ZONE.northGrassTop, color: "#5cb848" },
+    // North sidewalk
+    { y: (ZONE.northSidewalkTop + ZONE.northSidewalkBot) / 2, h: ZONE.northSidewalkBot - ZONE.northSidewalkTop, color: "#e0d8c8" },
+    // Road — warm pedestrian paving
+    { y: (ZONE.roadTop + ZONE.roadBot) / 2, h: ZONE.roadBot - ZONE.roadTop, color: "#c8b898" },
+    // South sidewalk
+    { y: (ZONE.southSidewalkTop + ZONE.southSidewalkBot) / 2, h: ZONE.southSidewalkBot - ZONE.southSidewalkTop, color: "#e0d8c8" },
+    // South grass
+    { y: (ZONE.southGrassTop + ZONE.southGrassBot) / 2, h: ZONE.southGrassBot - ZONE.southGrassTop, color: "#5cb848" },
+  ];
 
   return (
     <group>
-      {/* Base ground — dark green grass (full extent) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, -0.01, cz]} receiveShadow>
-        <planeGeometry args={[worldW, worldD]} />
-        <meshStandardMaterial color="#3a8a30" roughness={1} />
+      {/* Base ground — green grass extending to world edge */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH + 2, WORLD_DEPTH + 2]} />
+        <meshStandardMaterial color="#4ca838" roughness={1} />
       </mesh>
 
-      {/* Top sidewalk (buildings front area) — warm stone */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, 0.005, (bldgEnd + roadTop) / 2]} receiveShadow>
-        <planeGeometry args={[worldW, Math.abs(bldgEnd - roadTop)]} />
-        <meshStandardMaterial color="#d8d0c0" roughness={0.9} />
+      {/* Zone overlays */}
+      {zones.map((z, i) => (
+        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005 * (i + 1), z.y]} receiveShadow>
+          <planeGeometry args={[WORLD_WIDTH, z.h]} />
+          <meshStandardMaterial color={z.color} roughness={0.9} />
+        </mesh>
+      ))}
+
+      {/* Road center line — subtle divider */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, (ZONE.roadTop + ZONE.roadBot) / 2]}>
+        <planeGeometry args={[WORLD_WIDTH, 0.06]} />
+        <meshStandardMaterial color="#b0a088" />
       </mesh>
 
-      {/* Central promenade — stone tile */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, 0.01, (roadTop + roadBot) / 2]} receiveShadow>
-        <planeGeometry args={[worldW, Math.abs(roadTop - roadBot)]} />
-        <meshStandardMaterial color="#c0b8a8" roughness={0.85} />
+      {/* Road edge lines — north */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, ZONE.roadTop + 0.05]}>
+        <planeGeometry args={[WORLD_WIDTH, 0.08]} />
+        <meshStandardMaterial color="#a89878" />
+      </mesh>
+      {/* Road edge lines — south */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, ZONE.roadBot - 0.05]}>
+        <planeGeometry args={[WORLD_WIDTH, 0.08]} />
+        <meshStandardMaterial color="#a89878" />
       </mesh>
 
-      {/* Bottom vendor zone — warm stone */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, 0.005, (roadBot + vendorEnd) / 2]} receiveShadow>
-        <planeGeometry args={[worldW, Math.abs(roadBot - vendorEnd)]} />
-        <meshStandardMaterial color="#d0c8b8" roughness={0.9} />
+      {/* Plaza circle — center of the street */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, (ZONE.roadTop + ZONE.roadBot) / 2]}>
+        <circleGeometry args={[1.2, 24]} />
+        <meshStandardMaterial color="#d8c8a8" roughness={0.8} />
       </mesh>
 
-      {/* Road center line (decorative) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[cx, 0.015, (roadTop + roadBot) / 2]}>
-        <planeGeometry args={[worldW, 0.08]} />
-        <meshStandardMaterial color="#a09888" />
+      {/* Sidewalk curb stones — north edge */}
+      <mesh position={[0, 0.06, ZONE.northSidewalkBot - 0.06]}>
+        <boxGeometry args={[WORLD_WIDTH, 0.12, 0.12]} />
+        <meshStandardMaterial color="#c0b8a0" roughness={0.85} />
+      </mesh>
+      {/* Sidewalk curb stones — south edge */}
+      <mesh position={[0, 0.06, ZONE.southSidewalkTop + 0.06]}>
+        <boxGeometry args={[WORLD_WIDTH, 0.12, 0.12]} />
+        <meshStandardMaterial color="#c0b8a0" roughness={0.85} />
       </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Building — proper height, sits on ground                  */
+/*  Building — detailed low-poly with windows + door          */
 /* ═══════════════════════════════════════════════════════════ */
 
 function Building({ def }: { def: BuildingDef }) {
-  const w3d = def.w / S;   // width in 3D
-  const h3d = def.h * BUILDING_HEIGHT_SCALE; // height in 3D (2-4 units)
-  const d3d = 1.5;         // depth into scene
-
-  const x = sX(def.x + def.w / 2);
-  const z = sZ(470) - d3d / 2 - 0.5; // behind sidewalk
-
-  const storyH = h3d / def.floors;
-  const winW = Math.min(0.35, (w3d - 0.4) / def.windows * 0.6);
-  const winH = storyH * 0.4;
+  const storyH = def.h / def.floors;
+  const winW = Math.min(0.4, ((def.w - 0.5) / def.windows) * 0.55);
+  const winH = storyH * 0.35;
 
   return (
-    <group position={[x, h3d / 2, z]}>
+    <group position={[def.x, def.h / 2, def.frontZ - def.d / 2]}>
       {/* Main body */}
       <mesh castShadow receiveShadow>
-        <boxGeometry args={[w3d, h3d, d3d]} />
+        <boxGeometry args={[def.w, def.h, def.d]} />
         <meshStandardMaterial color={def.front} roughness={0.8} />
       </mesh>
 
-      {/* Roof slab */}
-      <mesh position={[0, h3d / 2 + 0.05, 0]} castShadow>
-        <boxGeometry args={[w3d + 0.1, 0.1, d3d + 0.1]} />
-        <meshStandardMaterial color={def.top} roughness={0.6} />
+      {/* Roof slab — slightly overhanging */}
+      <mesh position={[0, def.h / 2 + 0.06, 0]} castShadow>
+        <boxGeometry args={[def.w + 0.15, 0.12, def.d + 0.15]} />
+        <meshStandardMaterial color={def.roof} roughness={0.7} />
       </mesh>
 
-      {/* Windows */}
+      {/* Door — centered on front face */}
+      <mesh position={[0, -def.h / 2 + 0.35, def.d / 2 + 0.01]}>
+        <planeGeometry args={[0.45, 0.7]} />
+        <meshStandardMaterial color="#6b4830" roughness={0.85} />
+      </mesh>
+
+      {/* Windows — arranged in grid on front face */}
       {Array.from({ length: def.floors }).map((_, floor) =>
         Array.from({ length: def.windows }).map((_, win) => {
-          const wx = -w3d / 2 + (win + 1) * (w3d / (def.windows + 1));
-          const wy = -h3d / 2 + (floor + 0.5) * storyH;
+          const wx = -def.w / 2 + (win + 1) * (def.w / (def.windows + 1));
+          const wy = -def.h / 2 + (floor + 1) * storyH - storyH * 0.15;
           return (
-            <mesh key={`${floor}-${win}`} position={[wx, wy, d3d / 2 + 0.01]}>
+            <mesh key={`${floor}-${win}`} position={[wx, wy, def.d / 2 + 0.01]}>
               <planeGeometry args={[winW, winH]} />
-              <meshStandardMaterial color="#38b8f8" roughness={0.3} metalness={0.2} />
+              <meshStandardMaterial
+                color="#38b8f8"
+                roughness={0.3}
+                metalness={0.15}
+                emissive="#1a4060"
+                emissiveIntensity={0.1}
+              />
             </mesh>
           );
         })
       )}
+
+      {/* Side shadow — darker side face */}
+      <mesh position={[def.w / 2 + 0.005, 0, 0]}>
+        <planeGeometry args={[def.d, def.h]} />
+        <meshStandardMaterial color={def.side} roughness={0.85} />
+      </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Tree — low-poly with wind sway                           */
+/*  Tree — low-poly with gentle wind sway                     */
 /* ═══════════════════════════════════════════════════════════ */
 
-function Tree3D({ def }: { def: TreePos }) {
-  const x = sX(def.x);
-  const z = sZ(def.y);
-  const s = def.scale * 0.6; // scale down trees a bit
+function Tree3D({ def }: { def: TreeDef }) {
   const colors = TREE_FOLIAGE_COLORS[def.variant] ?? TREE_FOLIAGE_COLORS[0];
   const timeRef = useRef(Math.random() * 100);
   const groupRef = useRef<THREE.Group>(null);
@@ -246,26 +233,32 @@ function Tree3D({ def }: { def: TreePos }) {
   useFrame((_, dt) => {
     timeRef.current += dt;
     if (groupRef.current) {
-      groupRef.current.rotation.z = Math.sin(timeRef.current * 0.8) * 0.02 * s;
+      // Gentle sway — subtle and natural
+      groupRef.current.rotation.z = Math.sin(timeRef.current * 0.7) * 0.015;
+      groupRef.current.rotation.x = Math.sin(timeRef.current * 0.5 + 1.2) * 0.008;
     }
   });
 
   return (
-    <group ref={groupRef} position={[x, 0, z]} scale={[s, s, s]}>
-      <mesh position={[0, 0.4, 0]} castShadow>
-        <cylinderGeometry args={[0.06, 0.1, 0.8, 6]} />
+    <group ref={groupRef} position={[def.x, 0, def.z]} scale={[def.scale, def.scale, def.scale]}>
+      {/* Trunk */}
+      <mesh position={[0, 0.6, 0]} castShadow>
+        <cylinderGeometry args={[0.08, 0.12, 1.2, 6]} />
         <meshStandardMaterial color={TREE_TRUNK_COLOR} roughness={0.9} />
       </mesh>
-      <mesh position={[0, 1.0, 0]} castShadow>
-        <sphereGeometry args={[0.35, 8, 6]} />
+      {/* Main canopy */}
+      <mesh position={[0, 1.5, 0]} castShadow>
+        <sphereGeometry args={[0.5, 8, 6]} />
         <meshStandardMaterial color={colors[0]} roughness={0.95} />
       </mesh>
-      <mesh position={[0.05, 1.3, 0.05]} castShadow>
-        <sphereGeometry args={[0.28, 8, 6]} />
+      {/* Top canopy cluster */}
+      <mesh position={[0.06, 1.85, 0.04]} castShadow>
+        <sphereGeometry args={[0.35, 8, 6]} />
         <meshStandardMaterial color={colors[1]} roughness={0.95} />
       </mesh>
-      <mesh position={[-0.03, 1.55, -0.03]} castShadow>
-        <sphereGeometry args={[0.2, 8, 6]} />
+      {/* Side canopy cluster */}
+      <mesh position={[-0.08, 1.35, -0.05]} castShadow>
+        <sphereGeometry args={[0.3, 8, 6]} />
         <meshStandardMaterial color={colors[0]} roughness={0.95} />
       </mesh>
     </group>
@@ -273,90 +266,57 @@ function Tree3D({ def }: { def: TreePos }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Lamp                                                     */
+/*  Lamp Post — simple stylized street lamp                    */
 /* ═══════════════════════════════════════════════════════════ */
 
-function Lamp3D({ def }: { def: LampPos }) {
+function Lamp3D({ def }: { def: LampDef }) {
   return (
-    <group position={[sX(def.x), 0, sZ(def.y)]}>
+    <group position={[def.x, 0, def.z]}>
+      {/* Pole */}
       <mesh position={[0, 0.9, 0]} castShadow>
         <cylinderGeometry args={[0.03, 0.04, 1.8, 6]} />
         <meshStandardMaterial color="#555555" roughness={0.5} />
       </mesh>
-      <mesh position={[0, 1.85, 0]}>
-        <sphereGeometry args={[0.1, 8, 8]} />
-        <meshStandardMaterial color="#fff4d0" emissive="#fff4d0" emissiveIntensity={0.6} roughness={0.2} />
+      {/* Arm */}
+      <mesh position={[0.12, 1.75, 0]} rotation={[0, 0, -0.4]}>
+        <cylinderGeometry args={[0.02, 0.02, 0.3, 4]} />
+        <meshStandardMaterial color="#555555" roughness={0.5} />
+      </mesh>
+      {/* Light globe */}
+      <mesh position={[0.2, 1.7, 0]}>
+        <sphereGeometry args={[0.08, 8, 8]} />
+        <meshStandardMaterial
+          color="#fff4d0"
+          emissive="#fff4d0"
+          emissiveIntensity={0.5}
+          roughness={0.2}
+        />
       </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Stall                                                    */
+/*  Bench — wooden park bench                                  */
 /* ═══════════════════════════════════════════════════════════ */
 
-function Stall3D({ def }: { def: StallDef }) {
+function Bench3D({ def }: { def: BenchDef }) {
   return (
-    <group position={[sX(def.x), 0, sZ(def.y)]}>
-      <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
-        <boxGeometry args={[1.6, 0.12, 0.6]} />
-        <meshStandardMaterial color="#8b6848" roughness={0.85} />
-      </mesh>
-      {[-0.65, 0.65].map((lx) =>
-        [-0.2, 0.2].map((lz) => (
-          <mesh key={`${lx}-${lz}`} position={[lx, 0.17, lz]}>
-            <boxGeometry args={[0.06, 0.34, 0.06]} />
-            <meshStandardMaterial color="#6b4830" roughness={0.9} />
-          </mesh>
-        ))
-      )}
-      <mesh position={[0, 0.9, -0.15]} rotation={[0.3, 0, 0]} castShadow>
-        <boxGeometry args={[1.8, 0.06, 0.9]} />
-        <meshStandardMaterial color={def.color} roughness={0.7} />
-      </mesh>
-    </group>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  Flower Box                                               */
-/* ═══════════════════════════════════════════════════════════ */
-
-function FlowerBox3D({ def }: { def: PosXY }) {
-  return (
-    <group position={[sX(def.x), 0, sZ(def.y)]}>
-      <mesh position={[0, 0.12, 0]} castShadow>
-        <boxGeometry args={[0.4, 0.24, 0.24]} />
-        <meshStandardMaterial color="#8b6848" roughness={0.85} />
-      </mesh>
-      {[[-0.1, 0.3, 0], [0, 0.32, 0.05], [0.1, 0.28, -0.03]].map((pos, i) => (
-        <mesh key={i} position={pos as [number, number, number]}>
-          <sphereGeometry args={[0.06, 6, 6]} />
-          <meshStandardMaterial color={i % 2 === 0 ? "#ff6b8a" : "#ffb347"} roughness={0.9} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  Bench                                                    */
-/* ═══════════════════════════════════════════════════════════ */
-
-function Bench3D({ def }: { def: PosXY }) {
-  return (
-    <group position={[sX(def.x), 0, sZ(def.y)]}>
+    <group position={[def.x, 0, def.z]}>
+      {/* Seat */}
       <mesh position={[0, 0.22, 0]} castShadow>
-        <boxGeometry args={[0.5, 0.04, 0.18]} />
+        <boxGeometry args={[0.55, 0.04, 0.2]} />
         <meshStandardMaterial color="#c9a06c" roughness={0.8} />
       </mesh>
-      <mesh position={[0, 0.35, -0.07]} castShadow>
-        <boxGeometry args={[0.5, 0.22, 0.04]} />
+      {/* Backrest */}
+      <mesh position={[0, 0.35, -0.08]} castShadow>
+        <boxGeometry args={[0.55, 0.22, 0.04]} />
         <meshStandardMaterial color="#c9a06c" roughness={0.8} />
       </mesh>
-      {[-0.2, 0.2].map((lx) => (
+      {/* Legs */}
+      {[-0.22, 0.22].map((lx) => (
         <mesh key={lx} position={[lx, 0.11, 0]}>
-          <boxGeometry args={[0.04, 0.22, 0.16]} />
+          <boxGeometry args={[0.04, 0.22, 0.18]} />
           <meshStandardMaterial color="#6b4830" roughness={0.9} />
         </mesh>
       ))}
@@ -365,47 +325,70 @@ function Bench3D({ def }: { def: PosXY }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Gift Box — floating                                      */
+/*  Flower Box — colorful planter box                          */
 /* ═══════════════════════════════════════════════════════════ */
 
-function GiftBox3D() {
-  const timeRef = useRef(0);
-  const groupRef = useRef<THREE.Group>(null);
-
-  useFrame((_, dt) => {
-    timeRef.current += dt;
-    if (groupRef.current) {
-      groupRef.current.position.y = Math.sin(timeRef.current * 2) * 0.05 + 0.25;
-      groupRef.current.rotation.y = timeRef.current * 0.5;
-    }
-  });
-
+function FlowerBox3D({ def }: { def: FlowerBoxDef }) {
   return (
-    <group position={[sX(800), 0, sZ(852)]}>
-      <group ref={groupRef}>
-        <mesh castShadow>
-          <boxGeometry args={[0.45, 0.45, 0.45]} />
-          <meshStandardMaterial color="#ef4444" roughness={0.6} />
+    <group position={[def.x, 0, def.z]}>
+      {/* Box */}
+      <mesh position={[0, 0.12, 0]} castShadow>
+        <boxGeometry args={[0.45, 0.24, 0.24]} />
+        <meshStandardMaterial color="#8b6848" roughness={0.85} />
+      </mesh>
+      {/* Flowers */}
+      {[[-0.12, 0.3, 0], [0, 0.32, 0.04], [0.12, 0.29, -0.03]].map((pos, i) => (
+        <mesh key={i} position={pos as [number, number, number]}>
+          <sphereGeometry args={[0.065, 6, 6]} />
+          <meshStandardMaterial
+            color={i % 3 === 0 ? "#ff6b8a" : i % 3 === 1 ? "#ffb347" : "#a855f7"}
+            roughness={0.9}
+          />
         </mesh>
-        <mesh>
-          <boxGeometry args={[0.08, 0.47, 0.47]} />
-          <meshStandardMaterial color="#fbbf24" roughness={0.5} />
-        </mesh>
-        <mesh>
-          <boxGeometry args={[0.47, 0.08, 0.47]} />
-          <meshStandardMaterial color="#fbbf24" roughness={0.5} />
-        </mesh>
-        <mesh position={[0, 0.28, 0]}>
-          <sphereGeometry args={[0.08, 6, 6]} />
-          <meshStandardMaterial color="#fbbf24" roughness={0.4} />
-        </mesh>
-      </group>
+      ))}
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Move Target Marker                                       */
+/*  Stall — vendor market stall with awning                    */
+/* ═══════════════════════════════════════════════════════════ */
+
+function Stall3D({ def }: { def: StallDef }) {
+  return (
+    <group position={[def.x, 0, def.z]}>
+      {/* Table surface */}
+      <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
+        <boxGeometry args={[1.6, 0.1, 0.6]} />
+        <meshStandardMaterial color="#8b6848" roughness={0.85} />
+      </mesh>
+      {/* Table legs */}
+      {[-0.65, 0.65].map((lx) =>
+        [-0.2, 0.2].map((lz) => (
+          <mesh key={`${lx}-${lz}`} position={[lx, 0.17, lz]}>
+            <boxGeometry args={[0.06, 0.34, 0.06]} />
+            <meshStandardMaterial color="#6b4830" roughness={0.9} />
+          </mesh>
+        ))
+      )}
+      {/* Awning — tilted shade */}
+      <mesh position={[0, 0.85, -0.2]} rotation={[0.3, 0, 0]} castShadow>
+        <boxGeometry args={[1.8, 0.05, 0.9]} />
+        <meshStandardMaterial color={def.color} roughness={0.7} />
+      </mesh>
+      {/* Back support poles */}
+      {[-0.7, 0.7].map((lx) => (
+        <mesh key={lx} position={[lx, 0.6, -0.4]}>
+          <cylinderGeometry args={[0.025, 0.025, 1.0, 4]} />
+          <meshStandardMaterial color="#6b4830" roughness={0.9} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  Move Target Marker — pulsing ring                          */
 /* ═══════════════════════════════════════════════════════════ */
 
 function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
@@ -430,7 +413,7 @@ function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Player Avatar3D — billboard with facing flip             */
+/*  Player Avatar3D — billboard with facing flip + walk anim  */
 /* ═══════════════════════════════════════════════════════════ */
 
 function PlayerAvatar3D({
@@ -452,8 +435,8 @@ function PlayerAvatar3D({
   useFrame(() => {
     if (!groupRef.current || !posRef.current) return;
     const p = posRef.current;
-    const wx = p.x / S - WORLD_CX;
-    const wz = -(p.y / S - WORLD_CZ);
+    const wx = p.x / S - WORLD_WIDTH / 2;
+    const wz = -(p.y / S - WORLD_DEPTH / 2);
     groupRef.current.position.set(wx, 0.02, wz);
 
     // Detect movement from position delta
@@ -466,7 +449,7 @@ function PlayerAvatar3D({
     }
     prevPos.current = { x: p.x, y: p.y };
 
-    // Update facing flip via DOM
+    // Facing flip via DOM
     if (divRef.current) {
       const flip = (facingRef.current ?? 1) < 0 ? -1 : 1;
       divRef.current.style.transform = `scaleX(${flip})`;
@@ -494,7 +477,7 @@ function PlayerAvatar3D({
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Bot Avatar3D                                             */
+/*  Bot Avatar3D                                               */
 /* ═══════════════════════════════════════════════════════════ */
 
 function BotAvatar3D({
@@ -510,9 +493,8 @@ function BotAvatar3D({
 
   useFrame(() => {
     if (!groupRef.current) return;
-    groupRef.current.position.set(x / S - WORLD_CX, 0.02, -(y / S - WORLD_CZ));
+    groupRef.current.position.set(x / S - WORLD_WIDTH / 2, 0.02, -(y / S - WORLD_DEPTH / 2));
 
-    // Detect movement from position delta
     const dx = Math.abs(x - prevPos.current.x);
     const dy = Math.abs(y - prevPos.current.y);
     const moving = dx > 0.1 || dy > 0.1;
@@ -548,43 +530,66 @@ function BotAvatar3D({
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Player Info HUD — debug position display                 */
+/*  Player Info HUD — debug position display                   */
 /* ═══════════════════════════════════════════════════════════ */
 
 function PlayerInfoHUD({ posRef }: { posRef: React.RefObject<{ x: number; y: number }> }) {
-  const groupRef = useRef<THREE.Group>(null);
   const posText = useRef("...");
 
   useFrame(() => {
     if (!posRef.current) return;
     const p = posRef.current;
-    const x3 = (p.x / S - WORLD_CX).toFixed(1);
-    const z3 = (-(p.y / S - WORLD_CZ)).toFixed(1);
-    posText.current = `SVG(${p.x.toFixed(0)},${p.y.toFixed(0)}) 3D(${x3},0,${z3})`;
+    const x3 = (p.x / S - WORLD_WIDTH / 2).toFixed(1);
+    const z3 = (-(p.y / S - WORLD_DEPTH / 2)).toFixed(1);
+    posText.current = `3D(${x3}, 0, ${z3})`;
   });
 
   return (
-    <group ref={groupRef}>
-      <Html center distanceFactor={10} style={{ pointerEvents: "none" }} position={[0, PLAYER_3D_HEIGHT + 0.6, 0]} zIndexRange={[10, 0]}>
-        <div style={{
-          background: "rgba(0,0,0,0.75)",
-          color: "#0f0",
-          fontSize: "9px",
-          fontFamily: "monospace",
-          padding: "2px 4px",
-          borderRadius: "3px",
-          whiteSpace: "nowrap",
-          textAlign: "center",
-        }}>
-          {posText.current}
-        </div>
-      </Html>
+    <Html center distanceFactor={10} style={{ pointerEvents: "none" }} position={[0, PLAYER_3D_HEIGHT + 0.5, 0]} zIndexRange={[10, 0]}>
+      <div style={{
+        background: "rgba(0,0,0,0.7)",
+        color: "#0f0",
+        fontSize: "9px",
+        fontFamily: "monospace",
+        padding: "2px 4px",
+        borderRadius: "3px",
+        whiteSpace: "nowrap",
+        textAlign: "center",
+      }}>
+        {posText.current}
+      </div>
+    </Html>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  Debug Axes — X=red, Y=green, Z=blue                       */
+/* ═══════════════════════════════════════════════════════════ */
+
+function DebugAxes() {
+  return (
+    <group>
+      {/* X axis — red */}
+      <mesh position={[0, 0.015, 0]}>
+        <boxGeometry args={[30, 0.03, 0.03]} />
+        <meshBasicMaterial color="#ff3333" transparent opacity={0.25} />
+      </mesh>
+      {/* Z axis — blue */}
+      <mesh position={[0, 0.015, 0]}>
+        <boxGeometry args={[0.03, 0.03, 30]} />
+        <meshBasicMaterial color="#3333ff" transparent opacity={0.25} />
+      </mesh>
+      {/* Origin marker */}
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.15, 0.2, 12]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.4} side={THREE.DoubleSide} />
+      </mesh>
     </group>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Main GameEngine3D                                        */
+/*  Main GameEngine3D                                          */
 /* ═══════════════════════════════════════════════════════════ */
 
 export interface GameEngine3DProps {
@@ -614,7 +619,6 @@ export function GameEngine3D({
   moveTarget,
   isMobile,
 }: GameEngine3DProps) {
-  // Initial camera position — matches the follow camera start
   const initCamY = Math.sin(CAMERA_ELEVATION) * CAMERA_ZOOM;
   const initCamZ = Math.cos(CAMERA_ELEVATION) * CAMERA_ZOOM;
 
@@ -624,7 +628,7 @@ export function GameEngine3D({
       shadows={!isMobile}
       camera={{
         position: [sX(SPAWN_SVG.x), initCamY, sZ(SPAWN_SVG.y) + initCamZ],
-        fov: 60,
+        fov: 70,
         near: 0.1,
         far: 200,
       }}
@@ -633,31 +637,31 @@ export function GameEngine3D({
     >
       <FollowCamera posRef={playerPosRef} />
 
-      {/* Sky — light blue background */}
-      <color attach="background" args={["#87ceeb"]} />
+      {/* Sky — clean gradient blue */}
+      <color attach="background" args={["#7ec8e3"]} />
 
-      {/* Lighting — simple, clear */}
-      <ambientLight intensity={0.7} />
-      <hemisphereLight args={["#cfe9ff", "#4c9a3a", 0.4]} />
+      {/* Lighting — warm, clear, mobile-friendly */}
+      <ambientLight intensity={0.75} />
+      <hemisphereLight args={["#d4ecff", "#5a9a40", 0.35]} />
       <directionalLight
-        position={[8, 10, 4]}
-        intensity={1.5}
+        position={[6, 10, 5]}
+        intensity={1.4}
         castShadow={!isMobile}
         shadow-mapSize-width={isMobile ? 512 : 1024}
         shadow-mapSize-height={isMobile ? 512 : 1024}
-        shadow-camera-left={-12}
-        shadow-camera-right={12}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
+        shadow-camera-left={-14}
+        shadow-camera-right={14}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
       />
 
-      {/* Sun — small sphere in the sky */}
-      <mesh position={[10, 8, -8]}>
-        <sphereGeometry args={[0.4, 12, 12]} />
-        <meshBasicMaterial color="#ffe066" />
+      {/* Sun — subtle in sky */}
+      <mesh position={[12, 9, -8]}>
+        <sphereGeometry args={[0.35, 10, 10]} />
+        <meshBasicMaterial color="#ffe870" />
       </mesh>
 
-      {/* === DEBUG AXES === */}
+      {/* === DEBUG === */}
       <DebugAxes />
 
       {/* === GROUND === */}
@@ -693,10 +697,7 @@ export function GameEngine3D({
         <Bench3D key={i} def={def} />
       ))}
 
-      {/* === GIFT BOX === */}
-      <GiftBox3D />
-
-      {/* === MOVE TARGET MARKER === */}
+      {/* === MOVE TARGET === */}
       <MoveTarget3D target={moveTarget} />
 
       {/* === LOCAL PLAYER === */}
