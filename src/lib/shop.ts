@@ -503,14 +503,12 @@ export interface Rect {
  */
 export const OBSTACLES: Rect[] = [
   // Vendor stall tables (south sidewalk, matching 3D stall positions)
-  // 3D(-11,-0.6) → SVG(250,480), table 80×30
   { x: 210, y: 465, w: 80, h: 30 },
-  // 3D(-6,-0.6) → SVG(500,480)
   { x: 460, y: 465, w: 80, h: 30 },
-  // 3D(-1,-0.6) → SVG(750,480)
   { x: 710, y: 465, w: 80, h: 30 },
-  // 3D(4,-0.6) → SVG(1000,480)
   { x: 960, y: 465, w: 80, h: 30 },
-  // 3D(9,-0.6) → SVG(1250,480)
   { x: 1210, y: 465, w: 80, h: 30 },
+  // Tree trunks (converted from 3D positions — near walkable zones)
+  { x: 1020, y: 580, w: 30, h: 30 },  // 3D(5.0,-3.2) — on road
+  { x: 1220, y: 490, w: 30, h: 30 },  // 3D(9.0,-1.4) — near sidewalk edge
 ];

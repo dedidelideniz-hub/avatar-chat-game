@@ -1,7 +1,7 @@
 // The Sanalika street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { GameEngine3D } from "@/engine/GameEngine3D";
+import { GameEngine3D, raycastScreenToSVG } from "@/engine/GameEngine3D";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -1898,17 +1898,9 @@ export default function World() {
    * curb (or slightly off due to rendering rounding) always results in a walk.
    */
   const pickTarget = useCallback((wx: number, wy: number) => {
-    // Find the closest walkable zone to clamp into
-    let bestDist = Infinity;
-    let bestZone = WALKABLE_ZONES[0];
-    for (const z of WALKABLE_ZONES) {
-      const cx = Math.max(z.x, Math.min(wx, z.x + z.w));
-      const cy = Math.max(z.y, Math.min(wy, z.y + z.h));
-      const d = Math.hypot(cx - wx, cy - wy);
-      if (d < bestDist) { bestDist = d; bestZone = z; }
-    }
-    const x = Math.max(bestZone.x, Math.min(wx, bestZone.x + bestZone.w));
-    const y = Math.max(bestZone.y, Math.min(wy, bestZone.y + bestZone.h));
+    // Clamp to world bounds only — no zone clamping
+    const x = Math.max(WORLD_BOUNDS.minX, Math.min(wx, WORLD_BOUNDS.maxX));
+    const y = Math.max(WORLD_BOUNDS.minY, Math.min(wy, WORLD_BOUNDS.maxY));
     const p = posRef.current;
     const path = findPath(p.x, p.y, x, y);
     if (path.length > 1) {
@@ -1968,11 +1960,21 @@ export default function World() {
       const rect = container.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
-      const cs = viewRef.current;
-      const cx = camRef.current.x >= 0 ? camRef.current.x : 0;
-      const cy = camRef.current.y >= 0 ? camRef.current.y : 0;
-      const wx = cx + (screenX / rect.width) * cs.vw;
-      const wy = cy + (screenY / rect.height) * cs.vh;
+      // Raycast: project screen click through 3D camera onto ground plane
+      const rayResult = raycastScreenToSVG(e.clientX, e.clientY, container);
+      let wx: number;
+      let wy: number;
+      if (rayResult) {
+        wx = rayResult.x;
+        wy = rayResult.y;
+      } else {
+        // Fallback: linear SVG conversion if raycast fails
+        const cs = viewRef.current;
+        const cx = camRef.current.x >= 0 ? camRef.current.x : 0;
+        const cy = camRef.current.y >= 0 ? camRef.current.y : 0;
+        wx = cx + (screenX / rect.width) * cs.vw;
+        wy = cy + (screenY / rect.height) * cs.vh;
+      }
       // Tapping a character (player or bot) opens their profile card.
       const p = posRef.current;
       if (

@@ -48,6 +48,43 @@ function sX(svgX: number): number {
 function sZ(svgY: number): number {
   return -(svgY / S - WORLD_DEPTH / 2);
 }
+/** Inverse: 3D X → SVG X */
+function toSvgX(x3: number): number {
+  return (x3 + WORLD_WIDTH / 2) * S;
+}
+/** Inverse: 3D Z → SVG Y */
+function toSvgY(z3: number): number {
+  return (-(z3) + WORLD_DEPTH / 2) * S;
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  Raycast API — exported for World.tsx click handling         */
+/* ═══════════════════════════════════════════════════════════ */
+
+let _engineCamera: THREE.PerspectiveCamera | null = null;
+const _raycaster = new THREE.Raycaster();
+const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _screenVec = new THREE.Vector2();
+
+/** Convert screen pixel position to SVG world coordinates via 3D raycast.
+ *  Call from World.tsx click handler: raycastScreenToSVG(e.clientX, e.clientY, containerEl)
+ *  Returns null if the ray doesn't hit the ground. */
+export function raycastScreenToSVG(
+  clientX: number,
+  clientY: number,
+  container: HTMLElement,
+): { x: number; y: number } | null {
+  if (!_engineCamera) return null;
+  const rect = container.getBoundingClientRect();
+  // Normalized device coordinates (-1..+1)
+  _screenVec.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  _screenVec.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  _raycaster.setFromCamera(_screenVec, _engineCamera);
+  const hit = new THREE.Vector3();
+  const intersected = _raycaster.ray.intersectPlane(_groundPlane, hit);
+  if (!intersected) return null;
+  return { x: toSvgX(hit.x), y: toSvgY(hit.z) };
+}
 
 
 
@@ -57,6 +94,8 @@ function sZ(svgY: number): number {
 
 function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: number }> }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
+  // Expose camera for raycastScreenToSVG
+  React.useEffect(() => { _engineCamera = camera; return () => { _engineCamera = null; }; }, [camera]);
   const target = useRef(new THREE.Vector3());
   const cur = useRef(new THREE.Vector3(sX(SPAWN_SVG.x), 0, sZ(SPAWN_SVG.y)));
 
