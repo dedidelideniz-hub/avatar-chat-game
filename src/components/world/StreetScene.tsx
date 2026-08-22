@@ -1509,22 +1509,22 @@ export function StreetScene({ giftClaimed }: { giftClaimed: boolean }) {
       })}      {/* ═══ LOW-POLY TREES (with wind sway) ═══ */}
 
       {/* Top sidewalk trees — between buildings */}
-      <LowPolyTree x={310} y={548} scale={3.2} variant={0} />
-      <LowPolyTree x={550} y={548} scale={3.0} variant={1} />
-      <LowPolyTree x={820} y={548} scale={3.4} variant={2} />
-      <LowPolyTree x={1180} y={548} scale={3.1} variant={0} />
-      <LowPolyTree x={1490} y={548} scale={3.3} variant={1} />
+      <LowPolyTree x={310} y={548} scale={1.6} variant={0} />
+      <LowPolyTree x={550} y={548} scale={1.5} variant={1} />
+      <LowPolyTree x={820} y={548} scale={1.7} variant={2} />
+      <LowPolyTree x={1180} y={548} scale={1.5} variant={0} />
+      <LowPolyTree x={1490} y={548} scale={1.6} variant={1} />
 
       {/* Bottom grass trees */}
-      <LowPolyTree x={100} y={890} scale={4.0} variant={0} />
-      <LowPolyTree x={300} y={895} scale={3.8} variant={2} />
-      <LowPolyTree x={500} y={888} scale={4.2} variant={1} />
-      <LowPolyTree x={700} y={892} scale={3.7} variant={0} />
-      <LowPolyTree x={900} y={888} scale={4.0} variant={2} />
-      <LowPolyTree x={1100} y={894} scale={3.9} variant={1} />
-      <LowPolyTree x={1300} y={890} scale={4.1} variant={0} />
-      <LowPolyTree x={1500} y={893} scale={3.8} variant={2} />
-      <LowPolyTree x={1500} y={889} scale={3.8} variant={1} />
+      <LowPolyTree x={100} y={890} scale={2.0} variant={0} />
+      <LowPolyTree x={300} y={895} scale={1.9} variant={2} />
+      <LowPolyTree x={500} y={888} scale={2.0} variant={1} />
+      <LowPolyTree x={700} y={892} scale={1.8} variant={0} />
+      <LowPolyTree x={900} y={888} scale={2.0} variant={2} />
+      <LowPolyTree x={1100} y={894} scale={1.9} variant={1} />
+      <LowPolyTree x={1300} y={890} scale={2.0} variant={0} />
+      <LowPolyTree x={1500} y={893} scale={1.9} variant={2} />
+      <LowPolyTree x={1500} y={889} scale={2.0} variant={1} />
 
       {/* ═══ VENDOR STALLS ═══ */}
       {VENDORS.map((vendor, index) => (
