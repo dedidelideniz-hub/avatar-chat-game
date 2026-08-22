@@ -141,7 +141,7 @@ function WorldScene({ className }: { className?: string }) {
 }
 
 const MARQUEE_ITEMS = [
-  "Sohbet et",
+  "Sohbet etetme",
   "Avatarını özelleştir",
   "Dünyayı keşfet",
   "Arkadaş edin",
