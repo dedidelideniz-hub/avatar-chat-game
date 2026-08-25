@@ -2745,12 +2745,21 @@ export default function World() {
         </div>
       )}
 
-      {/* Visual Debug Panel — Ctrl+Shift+D */}
+      {/* Visual Debug — always-visible DEV button + conditional panel */}
+      <button
+        onPointerDown={(e) => { e.stopPropagation(); setDebugOpen(true); }}
+        onClick={() => setDebugOpen(true)}
+        className="fixed bottom-4 right-4 z-[99999] flex size-11 items-center justify-center rounded-full border border-white/20 bg-black/70 text-sm font-bold text-white shadow-lg backdrop-blur-sm active:scale-95"
+        style={{ WebkitTapHighlightColor: "transparent" }}
+      >
+        🔧
+      </button>
       {debugOpen && (
         <VisualDebug
           containerRef={containerRef}
           equipped={equipped}
           username={username}
+          onClose={() => setDebugOpen(false)}
         />
       )}
     </div>

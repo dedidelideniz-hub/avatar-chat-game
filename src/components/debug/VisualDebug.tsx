@@ -14,6 +14,8 @@ interface VisualDebugProps {
   equipped: string[];
   /** Player username. */
   username: string;
+  /** Close callback — called when user taps ✕. */
+  onClose: () => void;
 }
 
 /** Head geometry constants (from AvatarPreview.tsx SVG viewBox 0 0 140 180). */
@@ -36,8 +38,8 @@ export function VisualDebug({
   containerRef,
   equipped,
   username,
+  onClose,
 }: VisualDebugProps) {
-  const [open, setOpen] = useState(false);
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -67,22 +69,11 @@ export function VisualDebug({
     a.remove();
   }, [screenshot, username]);
 
-  if (!open) {
-    return (
-      <button
-        onTouchEnd={(e) => { e.preventDefault(); setOpen(true); }}
-        onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-[99999] flex size-11 items-center justify-center rounded-full border border-white/20 bg-black/70 text-sm font-bold text-white shadow-lg backdrop-blur-sm active:scale-95"
-        style={{ WebkitTapHighlightColor: "transparent" }}
-        title="Visual Debug"
-      >
-        🔧
-      </button>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 z-[99999] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-4 backdrop-blur-sm">
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-[99999] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-4 backdrop-blur-sm"
+    >
       <div className="relative max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-white/20 bg-gray-950 p-4 shadow-2xl">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
@@ -90,8 +81,8 @@ export function VisualDebug({
             🔧 DEV — {username}
           </h2>
           <button
-            onTouchEnd={(e) => { e.preventDefault(); setOpen(false); }}
-            onClick={() => setOpen(false)}
+            onTouchEnd={(e) => { e.preventDefault(); onClose(); }}
+            onClick={() => onClose()}
             className="flex size-9 items-center justify-center rounded-lg bg-white/10 text-sm font-bold text-white active:bg-white/20"
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
