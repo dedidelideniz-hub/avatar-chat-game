@@ -2055,36 +2055,52 @@ export default function World() {
         wy = cy + (screenY / rect.height) * cs.vh;
       }
       // ── Screen-space character hit testing ──
-      // Project each character's world position to screen space and compare
-      // pixel distances to the click point. This avoids the ground-plane
-      // perspective offset that causes click misalignment with 3D characters.
-      // Screen-space character hit testing
+      // Uses a tight rectangular (AABB) hit test matching the visible avatar size
+      // instead of a large circle that catches clicks beside the character.
       let closestId: string | null = null;
       let closestDist = Infinity;
-      const PLAYER_HIT_RADIUS = 80; // generous for player/bots
-      const VENDOR_HIT_RADIUS = 35; // tight for vendors — must click ON the character
+      // Half-extents for the rectangular hit area (tight to visible avatar ~70×96 SVG)
+      const HIT_HW = 30; // half-width  → total width ~60 px
+      const HIT_HH = 42; // half-height → total height ~84 px
+      const VENDOR_HIT_HW = 22;
+      const VENDOR_HIT_HH = 34;
 
-      const checkChar = (id: string, svgX: number, svgY: number, radius: number) => {
+      const checkChar = (
+        id: string,
+        svgX: number,
+        svgY: number,
+        hw: number,
+        hh: number,
+      ) => {
         const wp = svgToWorld(svgX, svgY);
         const sp = worldToScreen(wp.x, PLAYER_3D_HEIGHT / 2, wp.z, container);
         if (!sp) return;
-        const dx = screenX - sp.sx;
-        const dy = screenY - sp.sy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < radius && dist < closestDist) {
-          closestDist = dist;
-          closestId = id;
+        const dx = Math.abs(screenX - sp.sx);
+        const dy = Math.abs(screenY - sp.sy);
+        // Tight rectangle test — click must be inside the avatar bounds
+        if (dx <= hw && dy <= hh) {
+          const dist = dx + dy; // Manhattan distance as tiebreaker
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestId = id;
+          }
         }
       };
 
       // Check local player
       const p = posRef.current;
-      checkChar("me", p.x, p.y, PLAYER_HIT_RADIUS);
+      checkChar("me", p.x, p.y, HIT_HW, HIT_HH);
 
-      // Check bots/vendors — vendors get a tighter hit radius
+      // Check bots/vendors — vendors get a tighter hit area
       for (const bot of botsRef.current) {
         const isV = "isVendor" in bot.def && !!(bot.def as { isVendor?: boolean }).isVendor;
-        checkChar(bot.def.id, bot.pos.x, bot.pos.y, isV ? VENDOR_HIT_RADIUS : PLAYER_HIT_RADIUS);
+        checkChar(
+          bot.def.id,
+          bot.pos.x,
+          bot.pos.y,
+          isV ? VENDOR_HIT_HW : HIT_HW,
+          isV ? VENDOR_HIT_HH : HIT_HH,
+        );
       }
 
       // Check remote players
@@ -2094,7 +2110,7 @@ export default function World() {
         const st = remoteStatesRef.current.get(remote.sessionId);
         const rx = st ? st.x : d.x;
         const ry = st ? st.y : d.y;
-        checkChar(`remote:${remote.sessionId}`, rx, ry, PLAYER_HIT_RADIUS);
+        checkChar(`remote:${remote.sessionId}`, rx, ry, HIT_HW, HIT_HH);
       }
 
       if (closestId) {
