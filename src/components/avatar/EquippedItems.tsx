@@ -18,15 +18,16 @@ interface EquippedItemsProps {
 const SLOT_POS: Record<WearSlot, { x: number; y: number; size: number }> = {
   head: { x: 70, y: 24, size: 32 },
   face: { x: 70, y: 68, size: 24 },
-  neck: { x: 70, y: 106, size: 26 },
-  hand: { x: 34, y: 90, size: 26 },
+  neck: { x: 70, y: 90, size: 22 },
+  hand: { x: 38, y: 126, size: 22 },
 };
 
 /** Position used for the Nth item worn in a hand slot (left, right, ...).
- *  Aligned with the avatar arm rects which span y=42..98. */
+ *  Derived from the actual IdlePose hand circles:
+ *  Left hand circle: cx=38 cy=126  Right hand circle: cx=102 cy=126 */
 const HAND_OFFSETS = [
-  { x: 34, y: 90 },
-  { x: 106, y: 90 },
+  { x: 38, y: 126 },
+  { x: 102, y: 126 },
 ];
 
 export function EquippedItems({
