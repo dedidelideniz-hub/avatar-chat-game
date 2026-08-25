@@ -46,6 +46,46 @@ function handConfig(product: Product): HandItemConfig {
   };
 }
 
+/* ── Head/face/neck item attachment ───────────────────────── */
+
+/**
+ * Per-item absolute SVG placement. Rendered INSIDE AvatarPreview's single
+ * SVG (painter's order → hat renders ABOVE hair, no cross-SVG misalignment).
+ *
+ * Anchor semantics: x/y = visual CENTER of the item glyph
+ * (dominantBaseline="central"). Rotation is intentionally 0.
+ *
+ * Head geometry — idle/back: circle c(70,56) r36, crown y=20.
+ *                 walk-side: ellipse c(62,52) rx34 ry36, crown y≈16.
+ */
+interface HeadItemPlacement {
+  size: number;
+  idle: { x: number; y: number };   // front + back poses
+  walk: { x: number; y: number };   // side-view pose
+}
+
+const HEAD_ITEM_PLACEMENT: Record<string, HeadItemPlacement> = {
+  // 👒 Straw hat: visible width ≈ 0.65×fontSize. Target ≈130% of head (72u)
+  //   → fontSize 145 ⇒ ~94u visible. Brim bottom sits ON crown (slight overlap).
+  "moda-sapka": {
+    size: 145,
+    idle: { x: 70, y: -29 },  // center = brimBottom(18) − halfVisible(~47)
+    walk: { x: 62, y: -33 },
+  },
+  // 🕶️ Sunglasses: spans both eyes (idle eyes at y=63; walk eye at y≈48-52)
+  "moda-gozluk": {
+    size: 52,
+    idle: { x: 70, y: 63 },
+    walk: { x: 68, y: 50 },
+  },
+  // 🧣 Scarf: neck base / collar junction
+  "moda-atki": {
+    size: 46,
+    idle: { x: 70, y: 96 },
+    walk: { x: 62, y: 92 },
+  },
+};
+
 /**
  * Cartoon chibi avatar with FOUR directional poses:
  *  • data-pose="idle"      → front-facing (standing still, OR walking down)
@@ -154,7 +194,7 @@ function HandItemText({ item }: { item: HandItemConfig }) {
   );
 }
 
-function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig } }) {
+function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems, _headItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig }; _headItems?: Array<{ id: string; emoji: string; placement: HeadItemPlacement }> }) {
   return (
     <g>
       <IdleHairBack style={hair} color={hairColor} />
@@ -212,13 +252,16 @@ function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
       </g>
 
       <IdleHairFront style={hair} color={hairColor} />
+
+      {/* Equipped head/face/neck items — LAST so hat renders above hair */}
+      <HeadItems items={_headItems ?? []} pose="idle" />
     </g>
   );
 }
 
 /* ── Back pose (WALKING UP — only back of head with hair) ───── */
 
-function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig } }) {
+function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems, _headItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig }; _headItems?: Array<{ id: string; emoji: string; placement: HeadItemPlacement }> }) {
   return (
     <g>
       {/* Hair back — covers the entire head from behind */}
@@ -260,6 +303,9 @@ function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
 
       {/* Hair on top — no face visible */}
       <BackHair style={hair} color={hairColor} />
+
+      {/* Equipped head items — hat above hair from behind too */}
+      <HeadItems items={_headItems ?? []} pose="idle" />
     </g>
   );
 }
@@ -389,7 +435,7 @@ function WalkHairFront({ style, color }: { style: string; color: string }) {
   }
 }
 
-function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig } }) {
+function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems, _headItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig }; _headItems?: Array<{ id: string; emoji: string; placement: HeadItemPlacement }> }) {
   return (
     <g>
       <WalkHairBack style={hair} color={hairColor} />
@@ -490,6 +536,53 @@ function computeHandItems(equipped: string[]): { left?: HandItemConfig; right?: 
     left: handProducts[0] ? handConfig(handProducts[0]) : undefined,
     right: handProducts[1] ? handConfig(handProducts[1]) : undefined,
   };
+}
+
+/** Compute head/face/neck items with their placement config. */
+function computeHeadItems(equipped: string[]): Array<{ id: string; emoji: string; placement: HeadItemPlacement }> {
+  return equipped
+    .map((id) => getProduct(id))
+    .filter((p): p is NonNullable<typeof p> => p !== undefined && (p.slot === "head" || p.slot === "face" || p.slot === "neck"))
+    .flatMap((p) => {
+      const placement = HEAD_ITEM_PLACEMENT[p.id];
+      if (!placement) return []; // unknown item — skip rather than misplace
+      return [{ id: p.id, emoji: wearEmojiOf(p), placement }];
+    });
+}
+
+/**
+ * Renders head/face/neck items INSIDE the avatar SVG.
+ * Must be placed LAST in a pose group → painter's order puts the hat
+ * above hair, glasses above eyes, scarf above torso. No rotation applied.
+ */
+function HeadItems({
+  items,
+  pose,
+}: {
+  items: Array<{ id: string; emoji: string; placement: HeadItemPlacement }>;
+  pose: "idle" | "walk";
+}) {
+  if (items.length === 0) return null;
+  return (
+    <g className="avatar-head-items">
+      {items.map((it) => {
+        const pos = pose === "walk" ? it.placement.walk : it.placement.idle;
+        return (
+          <text
+            key={it.id}
+            x={pos.x}
+            y={pos.y}
+            fontSize={it.placement.size}
+            textAnchor="middle"
+            dominantBaseline="central"
+            style={{ pointerEvents: "none" }}
+          >
+            {it.emoji}
+          </text>
+        );
+      })}
+    </g>
+  );
 }
 
 export function AvatarPreview({
