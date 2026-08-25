@@ -70,46 +70,55 @@ export function VisualDebug({
   if (!open) {
     return (
       <button
+        onTouchEnd={(e) => { e.preventDefault(); setOpen(true); }}
         onClick={() => setOpen(true)}
-        className="fixed bottom-2 right-2 z-[99999] rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm hover:bg-black/90"
-        title="Open Visual Debug (Ctrl+Shift+D)"
+        className="fixed bottom-4 right-4 z-[99999] flex size-11 items-center justify-center rounded-full border border-white/20 bg-black/70 text-sm font-bold text-white shadow-lg backdrop-blur-sm active:scale-95"
+        style={{ WebkitTapHighlightColor: "transparent" }}
+        title="Visual Debug"
       >
-        🔍 Debug
+        🔧
       </button>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="relative max-h-[95vh] w-full max-w-4xl overflow-auto rounded-2xl border border-white/20 bg-gray-950 p-4 shadow-2xl">
+    <div className="fixed inset-0 z-[99999] flex items-end justify-center bg-black/80 p-3 sm:items-center sm:p-4 backdrop-blur-sm">
+      <div className="relative max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-white/20 bg-gray-950 p-4 shadow-2xl">
         {/* Header */}
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-bold text-white">
-            🔍 Visual Debug — {username}
+            🔧 DEV — {username}
           </h2>
-          <div className="flex gap-2">
+          <button
+            onTouchEnd={(e) => { e.preventDefault(); setOpen(false); }}
+            onClick={() => setOpen(false)}
+            className="flex size-9 items-center justify-center rounded-lg bg-white/10 text-sm font-bold text-white active:bg-white/20"
+            style={{ WebkitTapHighlightColor: "transparent" }}
+          >
+            ✕
+          </button>
+        </div>
+        {/* Touch-friendly action buttons */}
+        <div className="mb-3 flex gap-2">
+          <button
+            onTouchEnd={(e) => { e.preventDefault(); capture(); }}
+            onClick={capture}
+            disabled={capturing}
+            className="flex-1 rounded-xl bg-blue-600 py-3 text-sm font-bold text-white active:bg-blue-500 disabled:opacity-50"
+            style={{ WebkitTapHighlightColor: "transparent" }}
+          >
+            {capturing ? "⏳ Capturing..." : "📸 CAPTURE SCREEN"}
+          </button>
+          {screenshot && (
             <button
-              onClick={capture}
-              disabled={capturing}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+              onTouchEnd={(e) => { e.preventDefault(); download(); }}
+              onClick={download}
+              className="rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white active:bg-green-500"
+              style={{ WebkitTapHighlightColor: "transparent" }}
             >
-              {capturing ? "Capturing..." : "📸 Capture"}
+              💾
             </button>
-            {screenshot && (
-              <button
-                onClick={download}
-                className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-500"
-              >
-                💾 Download
-              </button>
-            )}
-            <button
-              onClick={() => setOpen(false)}
-              className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/20"
-            >
-              ✕ Close
-            </button>
-          </div>
+          )}
         </div>
 
         {/* Screenshot display */}
@@ -265,9 +274,7 @@ export function VisualDebug({
 
         {/* Instructions */}
         <div className="mt-3 rounded-lg bg-white/5 p-2 text-center text-[10px] text-white/40">
-          Toggle: <kbd className="rounded bg-white/10 px-1.5 py-0.5 font-mono">Ctrl+Shift+D</kbd> —
-          Capture the game viewport, then visually inspect hat/head alignment.
-          Download the screenshot for AI analysis.
+          Tap 🔧 to open · 📸 to capture · 💾 to download for AI analysis.
         </div>
       </div>
     </div>
