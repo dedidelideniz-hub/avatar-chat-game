@@ -34,7 +34,7 @@ const SLOT_POS: Record<WearSlot, SlotConfig> = {
 
 /** Per-product overrides for non-hand items. */
 const ITEM_SLOT_OVERRIDE: Record<string, Partial<SlotConfig>> = {
-  "moda-sapka": { y: 16, size: 40 },   // hat — larger, sits on crown
+  "moda-sapka": { y: 16, size: 80 },   // hat — head-width, brim at crown (y≈20), crown extends above head
   "moda-gozluk": { y: 64, size: 22 },  // glasses — centered between eyes
   "moda-atki": { y: 94, size: 24 },    // scarf — at neck base
 };
