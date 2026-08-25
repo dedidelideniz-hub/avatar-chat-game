@@ -34,7 +34,7 @@ const SLOT_POS: Record<WearSlot, SlotConfig> = {
 
 /** Per-product overrides for non-hand items. */
 const ITEM_SLOT_OVERRIDE: Record<string, Partial<SlotConfig>> = {
-  "moda-sapka": { y: 16, size: 80 },   // hat — head-width, brim at crown (y≈20), crown extends above head
+  "moda-sapka": { y: 20, size: 80 },   // hat — head-width, baseline-aligned brim sits at crown (y=20)
   "moda-gozluk": { y: 64, size: 22 },  // glasses — centered between eyes
   "moda-atki": { y: 94, size: 24 },    // scarf — at neck base
 };
@@ -70,6 +70,7 @@ export function EquippedItems({
     >
       {worn.map((product) => {
         const pos = slotConfig(product);
+        const isHat = product.id === "moda-sapka";
         return (
           <text
             key={product.id}
@@ -77,7 +78,9 @@ export function EquippedItems({
             y={pos.y}
             fontSize={pos.size}
             textAnchor="middle"
-            dominantBaseline="central"
+            /* Hat uses baseline-aligned so the brim lands exactly at y.
+               Other items use central for vertical centering. */
+            dominantBaseline={isHat ? "auto" : "central"}
           >
             {wearEmojiOf(product)}
           </text>
