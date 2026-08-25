@@ -27,7 +27,7 @@ const HEAD = {
   chinY: 92,
   eyesY: 63,
   /** Hat slot config from EquippedItems.tsx */
-  hat: { x: 70, y: 20, fontSize: 80 },
+  hat: { x: 70, y: 31, fontSize: 145 },
   /** Face/glasses slot config */
   face: { x: 70, y: 64, fontSize: 22 },
   /** Neck/scarf slot config */
