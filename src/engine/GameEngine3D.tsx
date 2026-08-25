@@ -655,6 +655,7 @@ function PlayerAvatar3D({
         <div
           ref={divRef}
           style={{
+            position: "relative",
             width: 70,
             height: 96,
             transform: `scaleX(${(facingRef.current ?? 1) < 0 ? -1 : 1})`,
@@ -662,7 +663,7 @@ function PlayerAvatar3D({
           }}
         >
           <AvatarPreview width={70} height={96} config={config} />
-          <EquippedItems equipped={equipped} width={70} height={96} />
+          <EquippedItems equipped={equipped} width={70} height={96} className="absolute inset-0 pointer-events-none" />
         </div>
       </Html>
     </group>
@@ -741,6 +742,7 @@ function BotAvatar3D({
         <div
           ref={divRef}
           style={{
+            position: "relative",
             width: 70,
             height: 96,
             transform: "scaleX(1)",
@@ -748,7 +750,7 @@ function BotAvatar3D({
           }}
         >
           <AvatarPreview width={70} height={96} config={config} />
-          <EquippedItems equipped={equipped} width={70} height={96} />
+          <EquippedItems equipped={equipped} width={70} height={96} className="absolute inset-0 pointer-events-none" />
         </div>
       </Html>
     </group>
