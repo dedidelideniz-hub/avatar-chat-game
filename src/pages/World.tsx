@@ -66,6 +66,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
+import { VisualDebug } from "@/components/debug/VisualDebug";
 
 const WORLD_W = 1600;
 const WORLD_H = 900;
@@ -813,7 +814,20 @@ export default function World() {
   const finishBattle = useMutation(api.battles.finishBattle);
   const cancelBattle = useMutation(api.battles.cancelBattle);
 
+  // Visual Debug toggle — Ctrl+Shift+D
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        setDebugOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const worldGroupRef = useRef<SVGGElement>(null);
   const playerSvgRef = useRef<SVGSVGElement>(null);
@@ -2729,6 +2743,15 @@ export default function World() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Visual Debug Panel — Ctrl+Shift+D */}
+      {debugOpen && (
+        <VisualDebug
+          containerRef={containerRef}
+          equipped={equipped}
+          username={username}
+        />
       )}
     </div>
   );
