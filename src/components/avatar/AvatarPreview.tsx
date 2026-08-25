@@ -1,4 +1,5 @@
 import type { AvatarConfig } from "@/lib/avatar";
+import { getProduct, wearEmojiOf } from "@/lib/shop";
 
 /**
  * Cartoon chibi avatar with FOUR directional poses:
@@ -94,7 +95,7 @@ function IdleHairFront({ style, color }: { style: string; color: string }) {
   }
 }
 
-function IdlePose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) {
+function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: string; right?: string } }) {
   return (
     <g>
       <IdleHairBack style={hair} color={hairColor} />
@@ -113,10 +114,16 @@ function IdlePose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) 
       <g className="avatar-arm-l">
         <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
+        {_handItems?.left && (
+          <text x="38" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.left}</text>
+        )}
       </g>
       <g className="avatar-arm-r">
         <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
+        {_handItems?.right && (
+          <text x="102" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.right}</text>
+        )}
       </g>
 
       {/* Torso */}
@@ -152,7 +159,7 @@ function IdlePose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) 
 
 /* ── Back pose (WALKING UP — only back of head with hair) ───── */
 
-function BackPose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) {
+function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: string; right?: string } }) {
   return (
     <g>
       {/* Hair back — covers the entire head from behind */}
@@ -172,10 +179,16 @@ function BackPose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) 
       <g className="avatar-arm-l">
         <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
+        {_handItems?.left && (
+          <text x="38" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.left}</text>
+        )}
       </g>
       <g className="avatar-arm-r">
         <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
+        {_handItems?.right && (
+          <text x="102" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.right}</text>
+        )}
       </g>
 
       {/* Torso — back view (no collar detail) */}
@@ -317,7 +330,7 @@ function WalkHairFront({ style, color }: { style: string; color: string }) {
   }
 }
 
-function WalkPose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) {
+function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: string; right?: string } }) {
   return (
     <g>
       <WalkHairBack style={hair} color={hairColor} />
@@ -338,6 +351,9 @@ function WalkPose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) 
       <g className="avatar-arm-r">
         <rect x="72" y="88" width="12" height="34" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="78" cy="122" r="6" fill={skin} {...OUTLINE} />
+        {_handItems?.right && (
+          <text x="78" y="122" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.right}</text>
+        )}
       </g>
 
       {/* Torso (side-view) */}
@@ -348,6 +364,9 @@ function WalkPose({ skin, hair, hairColor, shirt, pants, shoes }: AvatarConfig) 
       <g className="avatar-arm-l">
         <rect x="36" y="88" width="12" height="34" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="42" cy="122" r="6" fill={skin} {...OUTLINE} />
+        {_handItems?.left && (
+          <text x="42" y="122" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.left}</text>
+        )}
       </g>
 
       {/* Head (side-view) */}
@@ -399,6 +418,19 @@ interface AvatarPreviewProps {
   /** Explicit pixel dimensions — required when nested inside another SVG. */
   width?: number;
   height?: number;
+  /** Equipped product ids — hand items render inside arm groups for animation. */
+  equipped?: string[];
+}
+
+/** Compute hand item emojis from equipped array. */
+function computeHandItems(equipped: string[]): { left?: string; right?: string } {
+  const handProducts = equipped
+    .map((id) => getProduct(id))
+    .filter((p): p is NonNullable<typeof p> => p !== undefined && p.slot === "hand");
+  return {
+    left: handProducts[0] ? wearEmojiOf(handProducts[0]) : undefined,
+    right: handProducts[1] ? wearEmojiOf(handProducts[1]) : undefined,
+  };
 }
 
 export function AvatarPreview({
@@ -406,7 +438,10 @@ export function AvatarPreview({
   className,
   width,
   height,
+  equipped,
 }: AvatarPreviewProps) {
+  const handItems = equipped ? computeHandItems(equipped) : undefined;
+
   return (
     <svg
       viewBox="0 0 140 180"
@@ -422,17 +457,17 @@ export function AvatarPreview({
 
       {/* Front-facing idle pose (also used for walking DOWN) */}
       <g className="avatar-pose-idle">
-        <IdlePose {...config} />
+        <IdlePose {...config} _handItems={handItems} />
       </g>
 
       {/* Back view (walking UP) */}
       <g className="avatar-pose-back">
-        <BackPose {...config} />
+        <BackPose {...config} _handItems={handItems} />
       </g>
 
       {/* Side-view walking pose (LEFT / RIGHT — game loop handles flip) */}
       <g className="avatar-pose-side">
-        <WalkPose {...config} />
+        <WalkPose {...config} _handItems={handItems} />
       </g>
     </svg>
   );

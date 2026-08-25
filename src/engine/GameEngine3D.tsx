@@ -662,7 +662,7 @@ function PlayerAvatar3D({
             transformOrigin: "center bottom",
           }}
         >
-          <AvatarPreview width={70} height={96} config={config} />
+          <AvatarPreview width={70} height={96} config={config} equipped={equipped} />
           <EquippedItems equipped={equipped} width={70} height={96} className="absolute inset-0 pointer-events-none" />
         </div>
       </Html>
@@ -749,7 +749,7 @@ function BotAvatar3D({
             transformOrigin: "center bottom",
           }}
         >
-          <AvatarPreview width={70} height={96} config={config} />
+          <AvatarPreview width={70} height={96} config={config} equipped={equipped} />
           <EquippedItems equipped={equipped} width={70} height={96} className="absolute inset-0 pointer-events-none" />
         </div>
       </Html>

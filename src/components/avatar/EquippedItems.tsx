@@ -15,20 +15,14 @@ interface EquippedItemsProps {
   className?: string;
 }
 
+/** Hand items are rendered inline inside AvatarPreview arm groups (for animation).
+ *  Only face, head, and neck items are rendered here as an overlay. */
 const SLOT_POS: Record<WearSlot, { x: number; y: number; size: number }> = {
-  head: { x: 70, y: 24, size: 32 },
+  head: { x: 70, y: 24, size: 36 },
   face: { x: 70, y: 68, size: 24 },
   neck: { x: 70, y: 90, size: 22 },
-  hand: { x: 38, y: 126, size: 22 },
+  hand: { x: 0, y: 0, size: 0 }, // unused — hand items are in AvatarPreview
 };
-
-/** Position used for the Nth item worn in a hand slot (left, right, ...).
- *  Derived from the actual IdlePose hand circles:
- *  Left hand circle: cx=38 cy=126  Right hand circle: cx=102 cy=126 */
-const HAND_OFFSETS = [
-  { x: 38, y: 126 },
-  { x: 102, y: 126 },
-];
 
 export function EquippedItems({
   equipped,
@@ -38,7 +32,7 @@ export function EquippedItems({
 }: EquippedItemsProps) {
   const worn = equipped
     .map((id) => getProduct(id))
-    .filter((p): p is NonNullable<typeof p> => p !== undefined);
+    .filter((p): p is NonNullable<typeof p> => p !== undefined && p.slot !== "hand");
 
   if (worn.length === 0) {
     return null;
@@ -56,19 +50,12 @@ export function EquippedItems({
       {worn.map((product) => {
         const { slot } = product;
         const base = SLOT_POS[slot];
-        const handIndex = worn
-          .filter((p) => p.slot === "hand")
-          .findIndex((p) => p.id === product.id);
-        const pos =
-          slot === "hand" && handIndex >= 0
-            ? { ...base, ...HAND_OFFSETS[handIndex % HAND_OFFSETS.length] }
-            : base;
         return (
           <text
             key={product.id}
-            x={pos.x}
-            y={pos.y}
-            fontSize={pos.size}
+            x={base.x}
+            y={base.y}
+            fontSize={base.size}
             textAnchor="middle"
             dominantBaseline="central"
           >
