@@ -1,28 +1,49 @@
-import { getProduct, wearEmojiOf, type WearSlot } from "@/lib/shop";
+import { getProduct, wearEmojiOf, type WearSlot, type Product } from "@/lib/shop";
 
 /**
- * Overlays the player's equipped items on top of the AvatarPreview.
- * Uses the same 140x180 space as the avatar; slot positions were chosen to
- * line up with the character's head, face, neck and hands.
+ * Overlays non-hand equipped items (face, head, neck) on the avatar.
+ * Hand items are rendered inline inside AvatarPreview arm groups.
  */
 
 interface EquippedItemsProps {
-  /** Product ids currently worn (order matters: first hand item = left hand). */
   equipped: string[];
-  /** Explicit pixel dimensions — required when nested inside another SVG. */
   width?: number;
   height?: number;
   className?: string;
 }
 
-/** Hand items are rendered inline inside AvatarPreview arm groups (for animation).
- *  Only face, head, and neck items are rendered here as an overlay. */
-const SLOT_POS: Record<WearSlot, { x: number; y: number; size: number }> = {
-  head: { x: 70, y: 24, size: 36 },
-  face: { x: 70, y: 68, size: 24 },
-  neck: { x: 70, y: 90, size: 22 },
-  hand: { x: 0, y: 0, size: 0 }, // unused — hand items are in AvatarPreview
+interface SlotConfig {
+  x: number;
+  y: number;
+  size: number;
+}
+
+/**
+ * Avatar head geometry:
+ *   center = (70, 56), radius = 36
+ *   crown  = y 20,     chin  = y 92
+ *   eyes   = y 63
+ *   neck   = y ~88-94
+ */
+const SLOT_POS: Record<WearSlot, SlotConfig> = {
+  head: { x: 70, y: 18, size: 38 },   // crown anchor — hat sits on top of head
+  face: { x: 70, y: 66, size: 24 },   // between the eyes
+  neck: { x: 70, y: 92, size: 22 },   // collar junction
+  hand: { x: 0, y: 0, size: 0 },      // unused — in AvatarPreview arm groups
 };
+
+/** Per-product overrides for non-hand items. */
+const ITEM_SLOT_OVERRIDE: Record<string, Partial<SlotConfig>> = {
+  "moda-sapka": { y: 16, size: 40 },   // hat — larger, sits on crown
+  "moda-gozluk": { y: 64, size: 22 },  // glasses — centered between eyes
+  "moda-atki": { y: 94, size: 24 },    // scarf — at neck base
+};
+
+function slotConfig(product: Product): SlotConfig {
+  const base = SLOT_POS[product.slot];
+  const override = ITEM_SLOT_OVERRIDE[product.id] ?? {};
+  return { ...base, ...override };
+}
 
 export function EquippedItems({
   equipped,
@@ -48,14 +69,13 @@ export function EquippedItems({
       pointerEvents="none"
     >
       {worn.map((product) => {
-        const { slot } = product;
-        const base = SLOT_POS[slot];
+        const pos = slotConfig(product);
         return (
           <text
             key={product.id}
-            x={base.x}
-            y={base.y}
-            fontSize={base.size}
+            x={pos.x}
+            y={pos.y}
+            fontSize={pos.size}
             textAnchor="middle"
             dominantBaseline="central"
           >

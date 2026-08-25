@@ -1,5 +1,50 @@
 import type { AvatarConfig } from "@/lib/avatar";
-import { getProduct, wearEmojiOf } from "@/lib/shop";
+import { getProduct, wearEmojiOf, type Product } from "@/lib/shop";
+
+/* ── Per-item visual config ───────────────────────────────── */
+
+interface HandItemConfig {
+  emoji: string;
+  /** Scale multiplier relative to base fontSize 22. */
+  scale: number;
+  /** Offset from hand center (grip adjustment). */
+  gripDx: number;
+  gripDy: number;
+}
+
+/** Per-product hand-item tuning. Items not listed get sensible defaults. */
+const HAND_ITEM_CONFIG: Record<string, Partial<HandItemConfig>> = {
+  // Ice creams — held upright, slightly above hand
+  "dondurma-cilek":   { scale: 1.15, gripDy: -4 },
+  "dondurma-cikolata":{ scale: 1.15, gripDy: -4 },
+  "dondurma-mix":     { scale: 1.25, gripDy: -5 },
+  // Balloons — float above the hand on a string
+  "balon-kirmizi":    { scale: 1.2, gripDy: -10 },
+  "balon-gokkusagi":  { scale: 1.2, gripDy: -10 },
+  "balon-yildiz":     { scale: 1.2, gripDy: -10 },
+  // Teddy bear — large, held to the side
+  "oyuncak-ayi":      { scale: 1.5, gripDx: -3, gripDy: -2 },
+  // Toy car — small, in palm
+  "oyuncak-araba":    { scale: 1.05, gripDy: 1 },
+  // Ball — medium, centered in palm
+  "oyuncak-top":      { scale: 1.15, gripDy: 0 },
+};
+
+const DEFAULT_HAND_CONFIG: HandItemConfig = {
+  emoji: "",
+  scale: 1.0,
+  gripDx: 0,
+  gripDy: 0,
+};
+
+function handConfig(product: Product): HandItemConfig {
+  const override = HAND_ITEM_CONFIG[product.id] ?? {};
+  return {
+    ...DEFAULT_HAND_CONFIG,
+    emoji: wearEmojiOf(product),
+    ...override,
+  };
+}
 
 /**
  * Cartoon chibi avatar with FOUR directional poses:
@@ -95,7 +140,21 @@ function IdleHairFront({ style, color }: { style: string; color: string }) {
   }
 }
 
-function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: string; right?: string } }) {
+function HandItemText({ item }: { item: HandItemConfig }) {
+  return (
+    <text
+      className="hand-item"
+      x={item.gripDx}
+      y={item.gripDy}
+      fontSize={22 * item.scale}
+      textAnchor="middle"
+      dominantBaseline="central"
+      style={{ pointerEvents: "none" }}
+    >{item.emoji}</text>
+  );
+}
+
+function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig } }) {
   return (
     <g>
       <IdleHairBack style={hair} color={hairColor} />
@@ -115,14 +174,14 @@ function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
         <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
         {_handItems?.left && (
-          <text x="38" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.left}</text>
+          <g transform="translate(38,126)"><HandItemText item={_handItems.left} /></g>
         )}
       </g>
       <g className="avatar-arm-r">
         <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
         {_handItems?.right && (
-          <text x="102" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.right}</text>
+          <g transform="translate(102,126)"><HandItemText item={_handItems.right} /></g>
         )}
       </g>
 
@@ -159,7 +218,7 @@ function IdlePose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
 
 /* ── Back pose (WALKING UP — only back of head with hair) ───── */
 
-function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: string; right?: string } }) {
+function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig } }) {
   return (
     <g>
       {/* Hair back — covers the entire head from behind */}
@@ -180,14 +239,14 @@ function BackPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
         <rect x="32" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="38" cy="126" r="7" fill={skin} {...OUTLINE} />
         {_handItems?.left && (
-          <text x="38" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.left}</text>
+          <g transform="translate(38,126)"><HandItemText item={_handItems.left} /></g>
         )}
       </g>
       <g className="avatar-arm-r">
         <rect x="96" y="94" width="12" height="32" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="102" cy="126" r="7" fill={skin} {...OUTLINE} />
         {_handItems?.right && (
-          <text x="102" y="126" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.right}</text>
+          <g transform="translate(102,126)"><HandItemText item={_handItems.right} /></g>
         )}
       </g>
 
@@ -330,7 +389,7 @@ function WalkHairFront({ style, color }: { style: string; color: string }) {
   }
 }
 
-function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: string; right?: string } }) {
+function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: AvatarConfig & { _handItems?: { left?: HandItemConfig; right?: HandItemConfig } }) {
   return (
     <g>
       <WalkHairBack style={hair} color={hairColor} />
@@ -352,7 +411,7 @@ function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
         <rect x="72" y="88" width="12" height="34" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="78" cy="122" r="6" fill={skin} {...OUTLINE} />
         {_handItems?.right && (
-          <text x="78" y="122" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.right}</text>
+          <g transform="translate(78,122)"><HandItemText item={_handItems.right} /></g>
         )}
       </g>
 
@@ -365,7 +424,7 @@ function WalkPose({ skin, hair, hairColor, shirt, pants, shoes, _handItems }: Av
         <rect x="36" y="88" width="12" height="34" rx="6" fill={shirt} {...OUTLINE} />
         <circle cx="42" cy="122" r="6" fill={skin} {...OUTLINE} />
         {_handItems?.left && (
-          <text x="42" y="122" fontSize="22" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{_handItems.left}</text>
+          <g transform="translate(42,122)"><HandItemText item={_handItems.left} /></g>
         )}
       </g>
 
@@ -422,14 +481,14 @@ interface AvatarPreviewProps {
   equipped?: string[];
 }
 
-/** Compute hand item emojis from equipped array. */
-function computeHandItems(equipped: string[]): { left?: string; right?: string } {
+/** Compute hand item configs from equipped array. */
+function computeHandItems(equipped: string[]): { left?: HandItemConfig; right?: HandItemConfig } {
   const handProducts = equipped
     .map((id) => getProduct(id))
     .filter((p): p is NonNullable<typeof p> => p !== undefined && p.slot === "hand");
   return {
-    left: handProducts[0] ? wearEmojiOf(handProducts[0]) : undefined,
-    right: handProducts[1] ? wearEmojiOf(handProducts[1]) : undefined,
+    left: handProducts[0] ? handConfig(handProducts[0]) : undefined,
+    right: handProducts[1] ? handConfig(handProducts[1]) : undefined,
   };
 }
 

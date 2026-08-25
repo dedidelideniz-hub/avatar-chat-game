@@ -434,6 +434,17 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   animation: walk-bob 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Hand-held items get subtle follow-through motion while walking. */
+@keyframes hand-item-sway {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  25% { transform: rotate(3deg) translateY(-0.5px); }
+  50% { transform: rotate(0deg) translateY(0); }
+  75% { transform: rotate(-3deg) translateY(-0.5px); }
+}
+.walking .hand-item {
+  animation: hand-item-sway 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 /* Speech bubbles pop in above characters and stalls. */
 @keyframes bubble-pop {
   from {
