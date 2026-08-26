@@ -773,17 +773,35 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     }
   });
 
-  // Bone-based equipment attachment. Re-apply the current fade so items
-  // attached mid-fade don't pop in fully opaque.
-  const equippedKey = equipped.join(",");
-  useEffect(() => {
-    const cleanup = attachEquippedToModel(clone, equipped, modelHeight);
-    if (fadeRef.current < 1 && groupRef.current) {
-      applyFade(groupRef.current, fadeRef.current);
+  // Bone-based equipment attachment.
+  // CRITICAL: We defer the first attachment to useFrame so the clone is
+  // guaranteed to be in the Three.js scene graph and world matrices are
+  // computable. A useEffect fires before <primitive> commits, so bones
+  // report zero scale and nothing gets attached.
+  const equippedRef = useRef(equipped.join(","));
+  const cleanupEquipRef = useRef<(() => void) | null>(null);
+  const equipAttachedFrame = useRef(false);
+
+  useFrame(() => {
+    const key = equipped.join(",");
+    if (key !== equippedRef.current || !equipAttachedFrame.current) {
+      // Clean up old equipment.
+      cleanupEquipRef.current?.();
+      // Attach new equipment — model is in the scene by now.
+      cleanupEquipRef.current = attachEquippedToModel(clone, equipped, modelHeight);
+      equippedRef.current = key;
+      equipAttachedFrame.current = true;
+      // Re-apply fade so items attached mid-fade don't pop in fully opaque.
+      if (fadeRef.current < 1 && groupRef.current) {
+        applyFade(groupRef.current, fadeRef.current);
+      }
     }
-    return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clone, equippedKey, modelHeight]);
+  });
+
+  // Cleanup equipment on unmount.
+  useEffect(() => {
+    return () => { cleanupEquipRef.current?.(); };
+  }, []);
 
   return (
     <group ref={groupRef} scale={normScale}>
@@ -868,12 +886,10 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
     };
   }, [actions]);
 
-  // Bone-based equipment.
-  const equippedKey = equipped.join(",");
-  useEffect(() => {
-    return attachEquippedToModel(clone, equipped, modelHeight);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clone, equippedKey, modelHeight]);
+  // Bone-based equipment — deferred to useFrame so model is in the scene.
+  const equippedRef = useRef(equipped.join(","));
+  const cleanupEquipRef = useRef<(() => void) | null>(null);
+  const equipAttachedFrame = useRef(false);
 
   // Sanity guard: broken normalization must never render a giant mesh.
   if (!Number.isFinite(normScale) || normScale <= 0 || normScale > 10) {
@@ -882,6 +898,14 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
 
   // Gentle turntable so the whole character can be inspected.
   useFrame((_, dt) => {
+    // Attach equipment on first frame (model is in scene by then).
+    const key = equipped.join(",");
+    if (key !== equippedRef.current || !equipAttachedFrame.current) {
+      cleanupEquipRef.current?.();
+      cleanupEquipRef.current = attachEquippedToModel(clone, equipped, modelHeight);
+      equippedRef.current = key;
+      equipAttachedFrame.current = true;
+    }
     if (spin && groupRef.current) {
       groupRef.current.rotation.y += dt * 0.6;
     }
@@ -992,12 +1016,10 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
     };
   }, [actions]);
 
-  // Bone-based equipment.
-  const equippedKey = equipped.join(",");
-  useEffect(() => {
-    return attachEquippedToModel(clone, equipped, modelHeight);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clone, equippedKey, modelHeight]);
+  // Bone-based equipment — deferred to useFrame so model is in the scene.
+  const equippedRef = useRef(equipped.join(","));
+  const cleanupEquipRef = useRef<(() => void) | null>(null);
+  const equipAttachedFrame = useRef(false);
 
   // Sanity guard: broken normalization must never render a giant mesh.
   if (!Number.isFinite(normScale) || normScale <= 0 || normScale > 10) {
@@ -1008,11 +1030,24 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
   // (±~28°) with occasional off-beat drift, like the character is curious.
   const head = useMemo(() => findBoneRegistry(clone, "HEAD"), [clone]);
   useFrame((state, dt) => {
+    // Attach equipment on first frame (model is in scene by then).
+    const key = equipped.join(",");
+    if (key !== equippedRef.current || !equipAttachedFrame.current) {
+      cleanupEquipRef.current?.();
+      cleanupEquipRef.current = attachEquippedToModel(clone, equipped, modelHeight);
+      equippedRef.current = key;
+      equipAttachedFrame.current = true;
+    }
     if (!head) return;
     const t = state.clock.elapsedTime;
     const target = Math.sin(t * 0.8) * 0.3 + Math.sin(t * 0.27) * 0.18;
     head.rotation.y += (target - head.rotation.y) * Math.min(1, 5 * dt);
   });
+
+  // Cleanup equipment on unmount.
+  useEffect(() => {
+    return () => { cleanupEquipRef.current?.(); };
+  }, []);
 
   return (
     <group ref={groupRef} position={[0, -height / 2, 0]} scale={normScale}>
