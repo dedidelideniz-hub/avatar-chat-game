@@ -175,11 +175,12 @@ export const FLOWER_BOXES: FlowerBoxDef[] = [
 export interface StallDef { x: number; z: number; color: string; accent: string; }
 
 export const STALLS: StallDef[] = [
-  { x: -11, z: -0.6, color: "#ff8fb3", accent: "#ffffff" },
-  { x: -6,  z: -0.6, color: "#14b8a6", accent: "#ffffff" },
-  { x: -1,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },
-  { x: 4,   z: -0.6, color: "#a855f7", accent: "#ffd166" },
-  { x: 9,   z: -0.6, color: "#f59e0b", accent: "#ffd166" },
+  { x: -11, z: -0.6, color: "#ff8fb3", accent: "#ffffff" },  // Dondurma
+  { x: -6,  z: -0.6, color: "#14b8a6", accent: "#ffffff" },  // Balon
+  { x: -1,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },  // Oyuncakçı
+  { x: 4,   z: -0.6, color: "#a855f7", accent: "#ffd166" },  // Moda
+  { x: 9,   z: -0.6, color: "#b91c1c", accent: "#fbbf24" },  // Silahçı
+  { x: 14,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },  // VIP
 ];
 
 // ─── SVG WORLD DIMENSIONS (for backward compatibility) ───

@@ -296,19 +296,29 @@ export const VENDORS: Vendor[] = [
     y: 495,
   },
   {
+    id: "silahci",
+    name: "Kemal'in Silah Dükkanı",
+    short: "Silahçı",
+    emoji: "⚔️",
+    color: "#b91c1c",
+    accent: "#fbbf24",
+    x: 1250,
+    y: 495,
+  },
+  {
     id: VIP_VENDOR_ID,
     name: "Kraliyet VIP Köşesi",
     short: "VIP Üyelik",
     emoji: "👑",
     color: "#f59e0b",
     accent: "#ffd166",
-    x: 1250,
+    x: 1500,
     y: 495,
   },
 ];
 
 export const PRODUCTS: Product[] = [
-  // Dondurma tezgâhı
+  // ═══ DONDURMA TEZGÂHI (legacy — kept for backward compatibility) ═══
   {
     id: "dondurma-cilek",
     name: "Çilekli Dondurma",
@@ -339,7 +349,7 @@ export const PRODUCTS: Product[] = [
     slot: "hand",
     wearEmoji: "🍨",
   },
-  // Balon standı
+  // ═══ BALON STANDI (legacy) ═══
   {
     id: "balon-kirmizi",
     name: "Kırmızı Balon",
@@ -367,7 +377,7 @@ export const PRODUCTS: Product[] = [
     vendorId: "balon",
     slot: "hand",
   },
-  // Oyuncakçı
+  // ═══ OYUNCAKÇI (legacy) ═══
   {
     id: "oyuncak-ayi",
     name: "Oyuncak Ayı",
@@ -395,7 +405,7 @@ export const PRODUCTS: Product[] = [
     vendorId: "oyuncak",
     slot: "hand",
   },
-  // Moda standı
+  // ═══ MODA STANDI — fashion + accessories ═══
   {
     id: "moda-gozluk",
     name: "Güneş Gözlüğü",
@@ -476,6 +486,45 @@ export const PRODUCTS: Product[] = [
     description: "Sol ele takılır — savunma tamamdır!",
     vendorId: "moda",
     slot: "hand",
+  },
+  // ═══ SİLAHÇI — real weapons & armor ═══
+  {
+    id: "demir-kilic",
+    name: "Demir Kılıç",
+    emoji: "⚔️",
+    price: 450,
+    description: "Sağlam demirden dövülmüş, keskin bir kılıç.",
+    vendorId: "silahci",
+    slot: "hand",
+    wearEmoji: "⚔️",
+  },
+  {
+    id: "demir-kalkan",
+    name: "Demir Kalkan",
+    emoji: "🛡️",
+    price: 380,
+    description: "Sol ele takılan, ağır ama güvenilir kalkan.",
+    vendorId: "silahci",
+    slot: "hand",
+    wearEmoji: "🛡️",
+  },
+  {
+    id: "demir-miğfer",
+    name: "Demir Miğfer",
+    emoji: "⛑️",
+    price: 500,
+    description: "Başını koruyan sağlam demir miğfer.",
+    vendorId: "silahci",
+    slot: "head",
+  },
+  {
+    id: "demir-zirh",
+    name: "Demir Zırh",
+    emoji: "🦺",
+    price: 600,
+    description: "Tam gövde zırhı — saldırılara karşı kalkan.",
+    vendorId: "silahci",
+    slot: "chest",
   },
 ];
 
@@ -578,5 +627,5 @@ export const OBSTACLES: Rect[] = [
   { x: 710, y: 465, w: 80, h: 30 },
   { x: 960, y: 465, w: 80, h: 30 },
   { x: 1210, y: 465, w: 80, h: 30 },
-
+  { x: 1460, y: 465, w: 80, h: 30 }, // Silahçı stall
 ];

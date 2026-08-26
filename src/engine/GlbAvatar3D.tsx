@@ -271,6 +271,141 @@ registerEquipmentBatch([
       return g;
     },
   },
+  // ═══ SİLAHÇI — real weapons & armor ═══
+  // Iron Sword — MAIN_HAND
+  {
+    id: "demir-kilic",
+    slot: "MAIN_HAND",
+    build: (H) => {
+      const g = new THREE.Group();
+      // Blade
+      const blade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.025 * H, 0.35 * H, 0.008 * H),
+        mat("#9ca3af", { metalness: 0.8, roughness: 0.2 }),
+      );
+      blade.position.y = 0.22 * H;
+      // Guard
+      const guard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08 * H, 0.018 * H, 0.025 * H),
+        mat("#d97706", { metalness: 0.7, roughness: 0.3 }),
+      );
+      guard.position.y = 0.045 * H;
+      // Grip
+      const grip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012 * H, 0.012 * H, 0.09 * H, 8),
+        mat("#78350f"),
+      );
+      grip.position.y = 0.005 * H;
+      // Pommel
+      const pommel = new THREE.Mesh(
+        new THREE.SphereGeometry(0.015 * H, 8, 6),
+        mat("#d97706", { metalness: 0.6, roughness: 0.3 }),
+      );
+      pommel.position.y = -0.04 * H;
+      g.add(blade, guard, grip, pommel);
+      return g;
+    },
+  },
+  // Iron Shield — OFF_HAND
+  {
+    id: "demir-kalkan",
+    slot: "OFF_HAND",
+    build: (H) => {
+      const g = new THREE.Group();
+      // Shield body
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1 * H, 0.1 * H, 0.022 * H, 20),
+        mat("#6b7280", { metalness: 0.6, roughness: 0.35 }),
+      );
+      disc.rotation.x = Math.PI / 2;
+      // Central boss
+      const boss = new THREE.Mesh(
+        new THREE.SphereGeometry(0.028 * H, 10, 8),
+        mat("#d97706", { metalness: 0.7, roughness: 0.25 }),
+      );
+      boss.position.z = 0.022 * H;
+      // Cross emblem
+      const crossH = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1 * H, 0.015 * H, 0.005 * H),
+        mat("#d97706", { metalness: 0.5, roughness: 0.3 }),
+      );
+      crossH.position.z = 0.012 * H;
+      const crossV = new THREE.Mesh(
+        new THREE.BoxGeometry(0.015 * H, 0.1 * H, 0.005 * H),
+        mat("#d97706", { metalness: 0.5, roughness: 0.3 }),
+      );
+      crossV.position.z = 0.012 * H;
+      g.add(disc, boss, crossH, crossV);
+      g.position.z = 0.05 * H;
+      return g;
+    },
+  },
+  // Iron Helmet — HEAD
+  {
+    id: "demir-miğfer",
+    slot: "HEAD",
+    build: (H) => {
+      const g = new THREE.Group();
+      // Helmet dome
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.09 * H, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6),
+        mat("#6b7280", { metalness: 0.6, roughness: 0.35 }),
+      );
+      // Rim
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.088 * H, 0.012 * H, 8, 20),
+        mat("#4b5563", { metalness: 0.5, roughness: 0.4 }),
+      );
+      rim.rotation.x = Math.PI / 2;
+      // Nose guard
+      const nose = new THREE.Mesh(
+        new THREE.BoxGeometry(0.015 * H, 0.06 * H, 0.02 * H),
+        mat("#4b5563", { metalness: 0.5, roughness: 0.4 }),
+      );
+      nose.position.set(0, -0.02 * H, 0.07 * H);
+      g.add(dome, rim, nose);
+      g.position.y = 0.06 * H;
+      return g;
+    },
+  },
+  // Iron Armor — CHEST
+  {
+    id: "demir-zirh",
+    slot: "CHEST",
+    build: (H) => {
+      const g = new THREE.Group();
+      // Chest plate
+      const plate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16 * H, 0.13 * H, 0.26 * H, 16),
+        mat("#6b7280", { metalness: 0.5, roughness: 0.4 }),
+      );
+      plate.position.y = 0.1 * H;
+      // Belt
+      const belt = new THREE.Mesh(
+        new THREE.TorusGeometry(0.145 * H, 0.012 * H, 8, 20),
+        mat("#78350f", { roughness: 0.8 }),
+      );
+      belt.rotation.x = Math.PI / 2;
+      belt.position.y = 0.0 * H;
+      // Shoulder pads
+      const shoulderL = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04 * H, 10, 8),
+        mat("#4b5563", { metalness: 0.5, roughness: 0.4 }),
+      );
+      shoulderL.position.set(-0.16 * H, 0.18 * H, 0);
+      const shoulderR = shoulderL.clone();
+      shoulderR.position.x = 0.16 * H;
+      // Gold trim at top
+      const trim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.155 * H, 0.01 * H, 8, 20),
+        mat("#d97706", { metalness: 0.6, roughness: 0.3 }),
+      );
+      trim.rotation.x = Math.PI / 2;
+      trim.position.y = 0.2 * H;
+      g.add(plate, belt, shoulderL, shoulderR, trim);
+      return g;
+    },
+  },
   // ── HAND items (auto: first → MAIN_HAND, second → OFF_HAND) ──
   { id: "dondurma-cilek", slot: "HAND", build: makeHandCone("#ff8fa3") },
   { id: "dondurma-cikolata", slot: "HAND", build: makeHandCone("#8a5a3b") },

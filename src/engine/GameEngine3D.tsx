@@ -521,13 +521,14 @@ function FlowerBox3D({ def }: { def: FlowerBoxDef }) {
 /*  Stall — vendor market stall                                */
 /* ═══════════════════════════════════════════════════════════ */
 
-function Stall3D({ def }: { def: StallDef }) {
+function Stall3D({ def, index }: { def: StallDef; index: number }) {
+  const isWeaponStall = def.color === "#b91c1c"; // Silahçı unique look
   return (
     <group position={[def.x, 0, def.z]}>
       {/* Table surface — dark wood */}
       <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
         <boxGeometry args={[1.4, 0.08, 0.5]} />
-        <meshStandardMaterial color="#7a5838" roughness={0.85} />
+        <meshStandardMaterial color={isWeaponStall ? "#5c3018" : "#7a5838"} roughness={0.85} />
       </mesh>
       {/* Table edge trim */}
       <mesh position={[0, 0.395, 0.25]}>
@@ -560,13 +561,36 @@ function Stall3D({ def }: { def: StallDef }) {
           <meshStandardMaterial color="#5c3820" roughness={0.9} />
         </mesh>
       ))}
-      {/* Items on table — small colored spheres representing goods */}
-      {[-0.35, 0, 0.35].map((ix, i) => (
-        <mesh key={i} position={[ix, 0.42, 0]}>
-          <sphereGeometry args={[0.06, 6, 6]} />
-          <meshStandardMaterial color={i === 0 ? "#ff6b6b" : i === 1 ? "#4ecdc4" : "#ffe66d"} roughness={0.7} />
-        </mesh>
-      ))}
+      {/* Items on table — per-stall themed goods */}
+      {isWeaponStall ? (
+        // Weapon stall: sword, shield, helmet display
+        <>
+          {/* Sword on table */}
+          <mesh position={[-0.35, 0.42, 0]} rotation={[0, 0, Math.PI / 2]}
+            castShadow>
+            <boxGeometry args={[0.02, 0.3, 0.008]} />
+            <meshStandardMaterial color="#cfd6dd" metalness={0.7} roughness={0.25} />
+          </mesh>
+          {/* Shield on table */}
+          <mesh position={[0, 0.42, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.06, 0.06, 0.015, 16]} />
+            <meshStandardMaterial color="#3f6fd0" metalness={0.3} roughness={0.45} />
+          </mesh>
+          {/* Helmet on table */}
+          <mesh position={[0.35, 0.42, 0]}>
+            <sphereGeometry args={[0.055, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshStandardMaterial color="#8a8a8a" metalness={0.5} roughness={0.4} />
+          </mesh>
+        </>
+      ) : (
+        // Default: colorful goods
+        [-0.35, 0, 0.35].map((ix, i) => (
+          <mesh key={i} position={[ix, 0.42, 0]}>
+            <sphereGeometry args={[0.06, 6, 6]} />
+            <meshStandardMaterial color={i === 0 ? "#ff6b6b" : i === 1 ? "#4ecdc4" : "#ffe66d"} roughness={0.7} />
+          </mesh>
+        ))
+      )}
     </group>
   );
 }
@@ -947,7 +971,7 @@ export function GameEngine3D({
 
       {/* === STALLS === */}
       {STALLS.map((def, i) => (
-        <Stall3D key={i} def={def} />
+        <Stall3D key={i} def={def} index={i} />
       ))}
 
       {/* === FLOWER BOXES === */}

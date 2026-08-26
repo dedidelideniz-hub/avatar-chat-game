@@ -89,6 +89,7 @@ const VENDOR_PHRASES: Record<string, string[]> = {
   balon: ["Balon alır mısın? 🎈", "Gökkuşağı balonu kalmadı!", "Rengârenk balonlar!"],
   oyuncak: ["Oyuncaklarım çok tatlı 🧸", "Ayıcık sana sarılmak ister!", "Zıpzıp topu kaçırma!"],
   moda: ["Yeni sezon burada! 🕶️", "Şapka sana çok yakışır!", "Caddede şıklık önemli!"],
+  silahci: ["Kılıçlar burada! ⚔️", "Savaşa hazır mısın?", "En sağlam zırhlar benim tezgâhta!"],
   vip: ["Sana özel fırsat! 👑", "Balonun rengârenk olsun!", "VIP üyelikle her renk senin!"],
 };
 
