@@ -43,19 +43,47 @@ export function characterModelUrl(): string {
 
 /* ── Bone lookup / attachment ─────────────────────────────────── */
 
-export const BONE_ALIASES: Record<string, string[]> = {
+/* ── Equipment slot system ─────────────────────────────────── */
+
+/**
+ * One slot per body location. Items declare their slot; the slot maps to
+ * one or many bones (HANDS/FEET attach to BOTH bones, one item instance
+ * per bone — clones share geometry/material so it stays cheap).
+ */
+export type EquipSlot =
+  | "HEAD"
+  | "FACE"
+  | "NECK"
+  | "CHEST"
+  | "HANDS"
+  | "MAIN_HAND"
+  | "OFF_HAND"
+  | "BACK"
+  | "LEGS"
+  | "FEET";
+
+/** Bone name aliases per slot (case-insensitive substring match).
+ *  Works with Mixamo / Blender / custom rig names. */
+export const BONE_ALIASES: Record<EquipSlot, string[]> = {
   HEAD: ["head", "mixamorig:head"],
   FACE: ["head", "mixamorig:head"],
   NECK: ["neck", "mixamorig:neck"],
-  BODY: ["spine", "chest", "mixamorig:spine"],
-  HAND_L: ["lefthand", "hand_l", "handleft", "mixamorig:lefthand"],
-  HAND_R: ["righthand", "hand_r", "handright", "mixamorig:righthand"],
-  FOOT_L: ["leftfoot", "foot_l", "mixamorig:leftfoot"],
-  FOOT_R: ["rightfoot", "foot_r", "mixamorig:rightfoot"],
+  CHEST: ["chest", "spine", "mixamorig:spine"],
+  HANDS: [
+    "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
+    "righthand", "hand_r", "handright", "mixamorig:righthand",
+  ],
+  MAIN_HAND: ["righthand", "hand_r", "handright", "mixamorig:righthand"],
+  OFF_HAND: ["lefthand", "hand_l", "handleft", "mixamorig:lefthand"],
   BACK: ["spine", "chest", "mixamorig:spine"],
+  LEGS: ["hip", "upleg", "mixamorig:leftupleg", "mixamorig:rightupleg"],
+  FEET: [
+    "leftfoot", "foot_l", "mixamorig:leftfoot",
+    "rightfoot", "foot_r", "mixamorig:rightfoot",
+  ],
 };
 
-export type BoneSlot = keyof typeof BONE_ALIASES;
+export type BoneSlot = EquipSlot;
 
 /** Finds the first object whose name matches any alias (case-insensitive). */
 export function findBone(
@@ -68,6 +96,20 @@ export function findBone(
     if (found) return;
     const name = obj.name.toLowerCase();
     if (aliases.some((a) => name.includes(a))) found = obj;
+  });
+  return found;
+}
+
+/** Finds ALL bones for a slot — used by paired slots (HANDS, FEET, LEGS). */
+export function findBones(
+  root: THREE.Object3D,
+  slot: BoneSlot,
+): THREE.Object3D[] {
+  const aliases = BONE_ALIASES[slot];
+  const found: THREE.Object3D[] = [];
+  root.traverse((obj) => {
+    const name = obj.name.toLowerCase();
+    if (aliases.some((a) => name.includes(a))) found.push(obj);
   });
   return found;
 }
@@ -93,10 +135,12 @@ function mat(color: string, opts?: Partial<THREE.MeshStandardMaterialParameters>
   return new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...opts });
 }
 
-/** Maps an equipped product id → (bone slot, mesh factory). */
+/** Maps an equipped product id → (equipment slot, mesh factory).
+ *  `slot: "HAND"` = auto-assign: first item → MAIN_HAND, second → OFF_HAND
+ *  (matches the shop's hand-slot capacity of 2). */
 const EQUIPMENT_BUILDERS: Record<
   string,
-  { slot: BoneSlot; build: (H: number) => THREE.Object3D }
+  { slot: EquipSlot | "HAND"; build: (H: number) => THREE.Object3D }
 > = {
   // ── HEAD ──
   "moda-sapka": {
@@ -157,14 +201,130 @@ const EQUIPMENT_BUILDERS: Record<
       return g;
     },
   },
-  // ── HAND items (right hand) ──
+  // ── CHEST — armor plate fitted to the torso via the chest/spine bone.
+  //  Attaching to the bone (not world space) means it follows breathing,
+  //  idle sway and every animation frame automatically.
+  "moda-zirh": {
+    slot: "CHEST",
+    build: (H) => {
+      const g = new THREE.Group();
+      const plate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.17 * H, 0.14 * H, 0.24 * H, 14),
+        mat("#3f6fd0", { metalness: 0.35, roughness: 0.4 }),
+      );
+      plate.position.y = 0.1 * H;
+      const trim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.155 * H, 0.012 * H, 8, 20),
+        mat("#c8a23a", { metalness: 0.6, roughness: 0.3 }),
+      );
+      trim.rotation.x = Math.PI / 2;
+      trim.position.y = 0.2 * H;
+      g.add(plate, trim);
+      return g;
+    },
+  },
+  // ── BACK — backpack offset behind the upper spine (model forward = +Z).
+  "moda-canta": {
+    slot: "BACK",
+    build: (H) => {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15 * H, 0.19 * H, 0.08 * H),
+        mat("#c2571f"),
+      );
+      const flap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15 * H, 0.07 * H, 0.085 * H),
+        mat("#8a3c12"),
+      );
+      flap.position.y = 0.06 * H;
+      g.add(body, flap);
+      g.position.set(0, 0.12 * H, -0.12 * H); // behind the torso
+      return g;
+    },
+  },
+  // ── HANDS — gloves: one instance per hand bone (both hands).
+  "moda-eldiven": {
+    slot: "HANDS",
+    build: (H) => {
+      const glove = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05 * H, 12, 10),
+        mat("#d0483a"),
+      );
+      glove.scale.set(1, 1.25, 1);
+      return glove;
+    },
+  },
+  // ── FEET — boots: one instance per foot bone.
+  "moda-bot": {
+    slot: "FEET",
+    build: (H) => {
+      const boot = new THREE.Group();
+      const shaft = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09 * H, 0.1 * H, 0.1 * H),
+        mat("#5a3a1e"),
+      );
+      shaft.position.y = 0.05 * H;
+      const toe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09 * H, 0.05 * H, 0.12 * H),
+        mat("#4a2f18"),
+      );
+      toe.position.set(0, 0.012 * H, 0.03 * H);
+      boot.add(shaft, toe);
+      return boot;
+    },
+  },
+  // ── MAIN_HAND — weapon held in the right hand.
+  "moda-kilic": {
+    slot: "MAIN_HAND",
+    build: (H) => {
+      const g = new THREE.Group();
+      const blade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.028 * H, 0.3 * H, 0.01 * H),
+        mat("#cfd6dd", { metalness: 0.7, roughness: 0.25 }),
+      );
+      blade.position.y = 0.2 * H;
+      const guard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09 * H, 0.02 * H, 0.03 * H),
+        mat("#c8a23a", { metalness: 0.6, roughness: 0.3 }),
+      );
+      guard.position.y = 0.045 * H;
+      const grip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014 * H, 0.014 * H, 0.08 * H, 8),
+        mat("#6b4423"),
+      );
+      grip.position.y = 0.005 * H;
+      g.add(blade, guard, grip);
+      return g;
+    },
+  },
+  // ── OFF_HAND — shield held in the left hand.
+  "moda-kalkan": {
+    slot: "OFF_HAND",
+    build: (H) => {
+      const g = new THREE.Group();
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09 * H, 0.09 * H, 0.02 * H, 18),
+        mat("#3f6fd0", { metalness: 0.3, roughness: 0.45 }),
+      );
+      disc.rotation.x = Math.PI / 2;
+      const boss = new THREE.Mesh(
+        new THREE.SphereGeometry(0.025 * H, 10, 8),
+        mat("#c8a23a", { metalness: 0.6, roughness: 0.3 }),
+      );
+      boss.position.z = 0.02 * H;
+      g.add(disc, boss);
+      g.position.z = 0.05 * H; // in front of the palm
+      return g;
+    },
+  },
+  // ── HAND items (auto: first → MAIN_HAND, second → OFF_HAND) ──
   "dondurma-cilek": handCone("#ff8fa3"),
   "dondurma-cikolata": handCone("#8a5a3b"),
   "dondurma-mix": handCone("#f2c9a0"),
   "balon-kirmizi": handBalloon("#e83a3a"),
   "balon-gokkusagi": handBalloon("#4ad0e8"),
   "balon-yildiz": handBalloon("#ffd94a"),
-  "oyuncak-ayi": handItem("HAND_R", (H) => {
+  "oyuncak-ayi": handItem("HAND", (H) => {
     const bear = new THREE.Mesh(
       new THREE.SphereGeometry(0.045 * H, 14, 12),
       mat("#a5714f"),
@@ -172,7 +332,7 @@ const EQUIPMENT_BUILDERS: Record<
     bear.position.y = 0.04 * H;
     return bear;
   }),
-  "oyuncak-araba": handItem("HAND_R", (H) => {
+  "oyuncak-araba": handItem("HAND", (H) => {
     const car = new THREE.Mesh(
       new THREE.BoxGeometry(0.08 * H, 0.03 * H, 0.045 * H),
       mat("#e03a3a"),
@@ -180,7 +340,7 @@ const EQUIPMENT_BUILDERS: Record<
     car.position.y = 0.015 * H;
     return car;
   }),
-  "oyuncak-top": handItem("HAND_R", (H) => {
+  "oyuncak-top": handItem("HAND", (H) => {
     const ball = new THREE.Mesh(
       new THREE.SphereGeometry(0.04 * H, 14, 12),
       mat("#f5f5f5"),
@@ -191,7 +351,7 @@ const EQUIPMENT_BUILDERS: Record<
 };
 
 function handCone(color: string) {
-  return handItem("HAND_R", (H) => {
+  return handItem("HAND", (H) => {
     const g = new THREE.Group();
     const cone = new THREE.Mesh(
       new THREE.ConeGeometry(0.028 * H, 0.07 * H, 12),
@@ -209,7 +369,7 @@ function handCone(color: string) {
 }
 
 function handBalloon(color: string) {
-  return handItem("HAND_R", (H) => {
+  return handItem("HAND", (H) => {
     const g = new THREE.Group();
     const balloon = new THREE.Mesh(
       new THREE.SphereGeometry(0.055 * H, 14, 12),
@@ -227,7 +387,7 @@ function handBalloon(color: string) {
 }
 
 function handItem(
-  slot: BoneSlot,
+  slot: EquipSlot | "HAND",
   build: (H: number) => THREE.Object3D,
 ) {
   return { slot, build };
@@ -248,14 +408,34 @@ export function attachEquippedToModel(
   modelHeight: number,
 ): () => void {
   const attached: THREE.Object3D[] = [];
+  const usedSlots = new Set<EquipSlot>();
+
   for (const id of equipped) {
     const def = EQUIPMENT_BUILDERS[id];
-    if (!def) continue;
-    const item = def.build(modelHeight);
-    if (attachToBone(clone, def.slot, item)) {
-      attached.push(item);
+    if (!def) continue; // graceful fallback: no 3D asset for this item yet
+
+    let slot = def.slot;
+    if (slot === "HAND") {
+      // Auto-assign: first hand item → MAIN_HAND, second → OFF_HAND.
+      if (!usedSlots.has("MAIN_HAND")) slot = "MAIN_HAND";
+      else if (!usedSlots.has("OFF_HAND")) slot = "OFF_HAND";
+      else continue; // both hands full — don't stack a third item
     }
+
+    const item = def.build(modelHeight);
+    const bones = findBones(clone, slot);
+    if (bones.length === 0) continue; // rig has no bone for this slot
+
+    // Paired slots (HANDS/FEET) get one instance per bone — clones share
+    // geometry + material, so the extra instances are nearly free.
+    bones.forEach((bone, i) => {
+      const inst = i === 0 ? item : item.clone();
+      bone.add(inst); // inherits bone position/rotation/animation
+      attached.push(inst);
+    });
+    usedSlots.add(slot);
   }
+
   return () => {
     for (const item of attached) item.removeFromParent();
   };

@@ -193,14 +193,26 @@ export function formatCoins(amount: number): string {
   return amount.toLocaleString("tr-TR");
 }
 
-export type WearSlot = "head" | "face" | "neck" | "hand";
+export type WearSlot =
+  | "head"
+  | "face"
+  | "neck"
+  | "hand"
+  | "chest"
+  | "back"
+  | "hands"
+  | "feet";
 
 /** How many items can be worn at once in each slot. */
 export const WEAR_SLOT_CAPACITY: Record<WearSlot, number> = {
   head: 1,
   face: 1,
   neck: 1,
-  hand: 2, // both hands
+  hand: 2, // both hands (main + off-hand)
+  chest: 1,
+  back: 1,
+  hands: 1,
+  feet: 1,
 };
 
 export const WEAR_SLOT_LABELS: Record<WearSlot, string> = {
@@ -208,6 +220,10 @@ export const WEAR_SLOT_LABELS: Record<WearSlot, string> = {
   face: "Yüz",
   neck: "Boyun",
   hand: "El",
+  chest: "Gövde",
+  back: "Sırt",
+  hands: "Eller",
+  feet: "Ayaklar",
 };
 
 export interface Product {
@@ -406,6 +422,60 @@ export const PRODUCTS: Product[] = [
     description: "Serin akşam yürüyüşlerine merhaba.",
     vendorId: "moda",
     slot: "neck",
+  },
+  {
+    id: "moda-zirh",
+    name: "Macera Zırhı",
+    emoji: "🦺",
+    price: 320,
+    description: "Göğüse oturan parlak zırh — caddeyi fethet.",
+    vendorId: "moda",
+    slot: "chest",
+  },
+  {
+    id: "moda-canta",
+    name: "Sırt Çantası",
+    emoji: "🎒",
+    price: 220,
+    description: "Macere malzemelerinin tamamı sığar.",
+    vendorId: "moda",
+    slot: "back",
+  },
+  {
+    id: "moda-eldiven",
+    name: "Kışlık Eldiven",
+    emoji: "🧤",
+    price: 160,
+    description: "İki el de sıcacık kalır.",
+    vendorId: "moda",
+    slot: "hands",
+  },
+  {
+    id: "moda-bot",
+    name: "Macera Botu",
+    emoji: "🥾",
+    price: 190,
+    description: "Kaldırımda da dağda da aynı konfor.",
+    vendorId: "moda",
+    slot: "feet",
+  },
+  {
+    id: "moda-kilic",
+    name: "Oyuncak Kılıç",
+    emoji: "⚔️",
+    price: 350,
+    description: "Sağ ele takılır — saldırıya hazır!",
+    vendorId: "moda",
+    slot: "hand",
+  },
+  {
+    id: "moda-kalkan",
+    name: "Minik Kalkan",
+    emoji: "🛡️",
+    price: 280,
+    description: "Sol ele takılır — savunma tamamdır!",
+    vendorId: "moda",
+    slot: "hand",
   },
 ];
 

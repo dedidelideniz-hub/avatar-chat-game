@@ -30,6 +30,10 @@ const SLOT_POS: Record<WearSlot, SlotConfig> = {
   face: { x: 70, y: 66, size: 24 },   // between the eyes
   neck: { x: 70, y: 92, size: 22 },   // collar junction
   hand: { x: 0, y: 0, size: 0 },      // unused — in AvatarPreview arm groups
+  chest: { x: 70, y: 108, size: 26 }, // torso center
+  back: { x: 70, y: 100, size: 24 },  // debug-only front-view approximation
+  hands: { x: 38, y: 126, size: 18 }, // left hand (debug shows one glove)
+  feet: { x: 70, y: 168, size: 22 },  // between the feet
 };
 
 /** Per-product overrides for non-hand items. */
