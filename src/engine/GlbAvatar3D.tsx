@@ -513,15 +513,24 @@ export function attachEquippedToModel(
   const attached: THREE.Object3D[] = [];
   const usedSlots = new Set<EquipSlot>();
 
+  console.log('[Equip] attachEquippedToModel called — equipped:', equipped, 'modelHeight:', modelHeight);
+
+  if (equipped.length === 0) {
+    console.log('[Equip] No equipped items — skipping');
+    return () => {};
+  }
+
   // Fresh world matrices so getWorldScale readings are accurate.
   clone.updateWorldMatrix(true, true);
   const rootWs = clone.getWorldScale(new THREE.Vector3());
   const expected = (rootWs.x + rootWs.y + rootWs.z) / 3 || 1;
   const boneWs = new THREE.Vector3();
+  console.log('[Equip] rootWs:', rootWs.toArray(), 'expected scale:', expected);
 
-  if (equipped.length > 0) {
-    console.log('[Equip] Equipped items:', equipped);
-  }
+  // Log all bone names for debugging.
+  const allBoneNames: string[] = [];
+  clone.traverse((obj: THREE.Object3D) => { if (obj.name) allBoneNames.push(obj.name); });
+  console.log('[Equip] All bones:', allBoneNames.join(', '));
 
   for (const id of equipped) {
     const def = getEquipmentDef(id);
@@ -530,15 +539,14 @@ export function attachEquippedToModel(
 
     let slot = def.slot;
     if (slot === "HAND") {
-      // Auto-assign: first hand item → MAIN_HAND, second → OFF_HAND.
       if (!usedSlots.has("MAIN_HAND")) slot = "MAIN_HAND";
       else if (!usedSlots.has("OFF_HAND")) slot = "OFF_HAND";
-      else continue; // both hands full — don't stack a third item
+      else continue;
     }
 
+    console.log('[Equip] Processing', id, '→ slot:', slot);
     const item = def.build(modelHeight);
 
-    // Apply registry offsets if defined.
     if (def.positionOffset) {
       item.position.set(
         item.position.x + def.positionOffset[0],
@@ -558,23 +566,32 @@ export function attachEquippedToModel(
     }
 
     const bones = findBonesRegistry(clone, slot);
-    if (bones.length === 0) { console.warn('[Equip] No bone found for slot:', slot, 'item:', id); continue; }
-    console.log('[Equip] Attaching', id, '→ slot:', slot, '→ bones:', bones.map(b => b.name));
+    if (bones.length === 0) {
+      console.warn('[Equip] ❌ No bone found for slot:', slot, 'item:', id);
+      continue;
+    }
+    console.log('[Equip] ✅ Found bones:', bones.map(b => b.name), 'for slot:', slot);
 
-    // Paired slots (HANDS/FEET) get one instance per bone — clones share
-    // geometry + material, so the extra instances are nearly free.
     bones.forEach((bone, i) => {
       const inst = i === 0 ? item : item.clone();
-      // Compensate for rigs whose bone space ≠ model-native units.
       bone.getWorldScale(boneWs);
       const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3;
-      if (boneAvg > 1e-6) inst.scale.setScalar(expected / boneAvg);
-      bone.add(inst); // inherits bone position/rotation/animation
+      const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
+      // Only compensate if ratio is drastically off (>2x or <0.5x).
+      // Builders already size relative to modelHeight so close-to-1 ratios
+      // should NOT be compensated (it makes items invisible).
+      if (ratio > 2 || ratio < 0.5) {
+        inst.scale.setScalar(ratio);
+        console.warn('[Equip] Scale fix applied:', ratio.toFixed(3));
+      }
+      bone.add(inst);
       attached.push(inst);
+      console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4));
     });
     usedSlots.add(slot);
   }
 
+  console.log('[Equip] Total attached:', attached.length);
   return () => {
     for (const item of attached) item.removeFromParent();
   };
@@ -785,13 +802,11 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   useFrame(() => {
     const key = equipped.join(",");
     if (key !== equippedRef.current || !equipAttachedFrame.current) {
-      // Clean up old equipment.
+      console.log('[Equip] useFrame re-attaching. prev:', equippedRef.current, 'new:', key, 'firstFrame:', !equipAttachedFrame.current);
       cleanupEquipRef.current?.();
-      // Attach new equipment — model is in the scene by now.
       cleanupEquipRef.current = attachEquippedToModel(clone, equipped, modelHeight);
       equippedRef.current = key;
       equipAttachedFrame.current = true;
-      // Re-apply fade so items attached mid-fade don't pop in fully opaque.
       if (fadeRef.current < 1 && groupRef.current) {
         applyFade(groupRef.current, fadeRef.current);
       }
