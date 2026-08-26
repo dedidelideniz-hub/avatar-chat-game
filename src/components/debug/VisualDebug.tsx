@@ -27,7 +27,9 @@ const HEAD = {
   chinY: 92,
   eyesY: 63,
   /** Hat slot config from EquippedItems.tsx */
-  hat: { x: 70, y: 31, fontSize: 145 },
+  /** Hat slot — precise SVG geometry (EquippedItems HatSvg).
+   *  Brim ellipse: cx=70, cy=30, rx=48, ry=9 → width 96 (133% of head). */
+  hat: { cx: 70, brimRx: 48, brimWidth: 96, brimBottomY: 39 },
   /** Face/glasses slot config */
   face: { x: 70, y: 64, fontSize: 22 },
   /** Neck/scarf slot config */
@@ -165,9 +167,9 @@ export function VisualDebug({
             </h3>
             <div className="space-y-1 text-[11px] text-white/60">
               <div>
-                Hat:{" "}
+                Hat (SVG geom):{" "}
                 <span className="text-white/90">
-                  ({HEAD.hat.x}, {HEAD.hat.y}) size={HEAD.hat.fontSize}
+                  cx={HEAD.hat.cx}, brim {HEAD.hat.brimWidth}w, bottom y={HEAD.hat.brimBottomY}
                 </span>
               </div>
               <div>
@@ -198,65 +200,67 @@ export function VisualDebug({
             </h3>
             <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
               <div className="rounded bg-white/5 p-2">
-                <div className="text-white/50">Hat X</div>
-                <div className="font-mono text-white/90">{HEAD.hat.x}</div>
+                <div className="text-white/50">Brim Center X</div>
+                <div className="font-mono text-white/90">{HEAD.hat.cx}</div>
                 <div className="text-white/40">Head X: {HEAD.cx}</div>
                 <div
                   className={
-                    HEAD.hat.x === HEAD.cx ? "text-green-400" : "text-red-400"
+                    HEAD.hat.cx === HEAD.cx ? "text-green-400" : "text-red-400"
                   }
                 >
-                  {HEAD.hat.x === HEAD.cx ? "✓ CENTERED" : "✗ OFF-CENTER"}
+                  {HEAD.hat.cx === HEAD.cx ? "✓ CENTERED" : "✗ OFF-CENTER"}
                 </div>
               </div>
               <div className="rounded bg-white/5 p-2">
-                <div className="text-white/50">Hat Y</div>
-                <div className="font-mono text-white/90">{HEAD.hat.y}</div>
-                <div className="text-white/40">Crown: {HEAD.crownY}</div>
+                <div className="text-white/50">Brim Bottom Y</div>
+                <div className="font-mono text-white/90">{HEAD.hat.brimBottomY}</div>
+                <div className="text-white/40">Crown: y={HEAD.crownY}</div>
                 <div
                   className={
-                    Math.abs(HEAD.hat.y - HEAD.crownY) <= 5
+                    HEAD.hat.brimBottomY > HEAD.crownY
                       ? "text-green-400"
                       : "text-yellow-400"
                   }
                 >
-                  {Math.abs(HEAD.hat.y - HEAD.crownY) <= 5
-                    ? "✓ AT CROWN"
-                    : `✗ Δ${Math.abs(HEAD.hat.y - HEAD.crownY)}`}
+                  {HEAD.hat.brimBottomY > HEAD.crownY
+                    ? `✓ SEATED (+${HEAD.hat.brimBottomY - HEAD.crownY})`
+                    : "✗ FLOATING"}
                 </div>
               </div>
               <div className="rounded bg-white/5 p-2">
-                <div className="text-white/50">Hat Size</div>
-                <div className="font-mono text-white/90">{HEAD.hat.fontSize}</div>
+                <div className="text-white/50">Brim Width</div>
+                <div className="font-mono text-white/90">{HEAD.hat.brimWidth}</div>
                 <div className="text-white/40">Head: {HEAD.r * 2}</div>
                 <div
                   className={
-                    HEAD.hat.fontSize >= HEAD.r * 1.5
+                    HEAD.hat.brimWidth >= HEAD.r * 1.5
                       ? "text-green-400"
                       : "text-red-400"
                   }
                 >
-                  {HEAD.hat.fontSize >= HEAD.r * 1.5
-                    ? "✓ HEAD-WIDTH"
+                  {HEAD.hat.brimWidth >= HEAD.r * 1.5
+                    ? "✓ OVERSIZED BRIM"
                     : "✗ TOO SMALL"}
                 </div>
               </div>
               <div className="rounded bg-white/5 p-2">
-                <div className="text-white/50">Hat Scale</div>
+                <div className="text-white/50">Hat / Head Ratio</div>
                 <div className="font-mono text-white/90">
-                  {(HEAD.hat.fontSize / (HEAD.r * 2) * 100).toFixed(0)}%
+                  {(HEAD.hat.brimWidth / (HEAD.r * 2) * 100).toFixed(0)}%
                 </div>
-                <div className="text-white/40">of head width</div>
+                <div className="text-white/40">target 120-140%</div>
                 <div
                   className={
-                    HEAD.hat.fontSize >= HEAD.r * 1.8
+                    HEAD.hat.brimWidth >= HEAD.r * 2.4 &&
+                    HEAD.hat.brimWidth <= HEAD.r * 2.8
                       ? "text-green-400"
                       : "text-yellow-400"
                   }
                 >
-                  {HEAD.hat.fontSize >= HEAD.r * 1.8
-                    ? "✓ FULL COVERAGE"
-                    : "⚠ PARTIAL"}
+                  {HEAD.hat.brimWidth >= HEAD.r * 2.4 &&
+                  HEAD.hat.brimWidth <= HEAD.r * 2.8
+                    ? "✓ ON TARGET"
+                    : "⚠ OFF TARGET"}
                 </div>
               </div>
             </div>
