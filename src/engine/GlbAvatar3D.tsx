@@ -406,6 +406,51 @@ registerEquipmentBatch([
       return g;
     },
   },
+  // ═══ TEST ZIRH — CHEST/Spine bone'a bagli test zırhı ═══
+  {
+    id: "test-zirh",
+    slot: "CHEST",
+    build: (H) => {
+      const g = new THREE.Group();
+      // Main chest plate — cylindrical body armor
+      const plate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18 * H, 0.14 * H, 0.28 * H, 20),
+        mat("#4a5568", { metalness: 0.65, roughness: 0.3 }),
+      );
+      plate.position.y = 0.1 * H;
+      // Gold collar ring at top
+      const collar = new THREE.Mesh(
+        new THREE.TorusGeometry(0.175 * H, 0.012 * H, 10, 24),
+        mat("#d69e2e", { metalness: 0.7, roughness: 0.25 }),
+      );
+      collar.rotation.x = Math.PI / 2;
+      collar.position.y = 0.22 * H;
+      // Belt ring at waist
+      const belt = new THREE.Mesh(
+        new THREE.TorusGeometry(0.15 * H, 0.014 * H, 10, 24),
+        mat("#744210", { roughness: 0.7 }),
+      );
+      belt.rotation.x = Math.PI / 2;
+      belt.position.y = 0.0 * H;
+      // Left shoulder pad
+      const shoulderL = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045 * H, 12, 10),
+        mat("#4a5568", { metalness: 0.6, roughness: 0.35 }),
+      );
+      shoulderL.position.set(-0.17 * H, 0.2 * H, 0);
+      // Right shoulder pad
+      const shoulderR = shoulderL.clone();
+      shoulderR.position.x = 0.17 * H;
+      // Gold emblem on chest
+      const emblem = new THREE.Mesh(
+        new THREE.SphereGeometry(0.02 * H, 10, 8),
+        mat("#d69e2e", { metalness: 0.8, roughness: 0.2 }),
+      );
+      emblem.position.set(0, 0.16 * H, 0.15 * H);
+      g.add(plate, collar, belt, shoulderL, shoulderR, emblem);
+      return g;
+    },
+  },
   // NOTE: Legacy dondurma/balon/oyuncak procedural items removed.
   // New GLB equipment items will be registered here via the new asset pipeline.
 ]);

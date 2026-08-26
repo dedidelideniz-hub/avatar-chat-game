@@ -324,7 +324,18 @@ export const VENDORS: Vendor[] = [
  *
  * VENDORS (stall references) are preserved for the 3D world layout.
  */
-export const PRODUCTS: Product[] = [];
+export const PRODUCTS: Product[] = [
+  // ═══ TEST — 1 adet test zırh (CHEST slot, spine bone'a bağlı) ═══
+  {
+    id: "test-zirh",
+    name: "Test Zırhı",
+    emoji: "🛡️",
+    price: 400,
+    description: "Yeni GLB karakter sistemi için test zırhı — spine bone'una bağlı.",
+    vendorId: "moda",
+    slot: "chest",
+  },
+];
 
 /** Product lookup helpers. */
 export function getProduct(id: string): Product | undefined {
