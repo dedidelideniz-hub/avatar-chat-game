@@ -10,6 +10,7 @@ import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
+import { GlbAvatarTest } from "./GlbAvatarTest";
 import type { AvatarConfig } from "@/lib/avatar";
 import {
   WORLD_WIDTH,
@@ -893,6 +894,9 @@ export function GameEngine3D({
       {Array.from({ length: botsLen }, (_, i) => (
         <BotAvatar3D key={botsRef.current[i]?.def.id ?? `bot-${i}`} index={i} botsDataRef={botsRef} />
       ))}
+
+      {/* === PHASE 1 GLB AVATAR TEST (dev-only, ?glbtest=1) === */}
+      {glbTest && <GlbAvatarTest />}
 
       {/* === DEBUG OVERLAY (temporary — shows coordinate pipeline state) === */}
     </Canvas>
