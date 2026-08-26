@@ -345,7 +345,10 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const smoothPos = useRef<{ x: number; y: number } | null>(null);
   const movingRef = useRef(false);
   const currentClip = useRef<"idle" | "walk">("idle");
-  const targetYaw = useRef(Math.PI / 2);
+  // Initial yaw from the ±1 facing flag; afterwards yaw follows movement.
+  const targetYaw = useRef(
+    (facingRef.current ?? 1) < 0 ? -Math.PI / 2 : Math.PI / 2,
+  );
   const initDone = useRef(false);
 
   useFrame((_, dt) => {
@@ -384,9 +387,22 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       }
     }
 
-    // Facing: ±1 → smooth yaw. facing=1 (right/+X) → yaw=π/2, facing=-1 → -π/2.
-    const f = facingRef.current ?? 1;
-    targetYaw.current = f < 0 ? -Math.PI / 2 : Math.PI / 2;
+    // Facing: derive yaw from the ACTUAL movement direction on the X/Z
+    // plane (not just the ±1 left/right facing flag). World conversion:
+    //   worldX = svgX / S - W/2,  worldZ = -(svgY / S - D/2)
+    // The model's natural forward axis is +Z, so the target yaw for a
+    // movement direction (dx, dz) is atan2(dx, dz):
+    //   right  (dx=+1, dz=0)  → yaw=+π/2  (faces +X)
+    //   left   (dx=-1, dz=0)  → yaw=-π/2  (faces -X)
+    //   up     (dx=0,  dz=-1) → yaw=π     (faces -Z, back to camera)
+    //   down   (dx=0,  dz=+1) → yaw=0     (faces +Z, toward camera)
+    // Diagonals interpolate naturally. When idle we KEEP the last yaw so
+    // the character doesn't snap back to a default facing.
+    if (moving) {
+      const dxw = (p.x - sp.x) / S;
+      const dzw = -(p.y - sp.y) / S;
+      targetYaw.current = Math.atan2(dxw, dzw);
+    }
     let diff = targetYaw.current - group.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
