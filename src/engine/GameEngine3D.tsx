@@ -887,6 +887,16 @@ export function GameEngine3D({
       }}
       className="absolute inset-0"
       style={{ pointerEvents: "none" }}
+      onCreated={({ gl }) => {
+        // Mobile browsers evict the OLDEST WebGL context when a new one is
+        // created (e.g. the profile-card canvas). Without preventDefault the
+        // main canvas never restores and shows a large corrupted/blank
+        // region covering part of the map. With it, THREE re-initializes
+        // automatically on "webglcontextrestored".
+        gl.domElement.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+        });
+      }}
     >
       <FollowCamera posRef={playerPosRef} />
 

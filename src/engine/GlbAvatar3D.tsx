@@ -531,7 +531,35 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   );
   const initDone = useRef(false);
 
-  useFrame((_, dt) => {
+  // ── Near-camera fade ─────────────────────────────────────────
+  // A character that slips between the camera and the action (bot walking
+  // past, or the player while the follow-camera lags) would otherwise fill
+  // the whole screen. Fade it out smoothly instead. Materials are cloned
+  // per instance (cached by original) so other characters are unaffected.
+  const FADE_START = 4.5; // begin fading inside this distance
+  const FADE_END = 2.5;   // fully invisible at this distance
+  const fadeRef = useRef(1);
+  const matCache = useRef(new Map<THREE.Material, THREE.Material>());
+
+  const applyFade = (root: THREE.Object3D, opacity: number) => {
+    root.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const orig = mesh.material as THREE.Material | undefined;
+      if (!orig) return;
+      let m = matCache.current.get(orig);
+      if (!m) {
+        m = orig.clone();
+        matCache.current.set(orig, m);
+      }
+      mesh.material = m;
+      m.transparent = opacity < 0.999;
+      m.opacity = opacity;
+      m.depthWrite = opacity > 0.6;
+    });
+  };
+
+  useFrame((state, dt) => {
     const group = groupRef.current;
     const p = posRef.current;
     if (!group || !p) return;
@@ -587,12 +615,34 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     group.rotation.y += diff * Math.min(1, 10 * dt);
+
+    // Fade near-camera characters (see applyFade above). Only touch
+    // materials when the opacity actually changes — not every frame.
+    const dist = state.camera.position.distanceTo(group.position);
+    let targetOpacity = 1;
+    if (dist < FADE_START) {
+      targetOpacity = THREE.MathUtils.clamp(
+        (dist - FADE_END) / (FADE_START - FADE_END),
+        0,
+        1,
+      );
+    }
+    if (Math.abs(targetOpacity - fadeRef.current) > 0.03) {
+      fadeRef.current = targetOpacity;
+      applyFade(group, targetOpacity);
+      group.visible = targetOpacity > 0.02;
+    }
   });
 
-  // Bone-based equipment attachment.
+  // Bone-based equipment attachment. Re-apply the current fade so items
+  // attached mid-fade don't pop in fully opaque.
   const equippedKey = equipped.join(",");
   useEffect(() => {
-    return attachEquippedToModel(clone, equipped, modelHeight);
+    const cleanup = attachEquippedToModel(clone, equipped, modelHeight);
+    if (fadeRef.current < 1 && groupRef.current) {
+      applyFade(groupRef.current, fadeRef.current);
+    }
+    return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clone, equippedKey, modelHeight]);
 
@@ -685,6 +735,11 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
     return attachEquippedToModel(clone, equipped, modelHeight);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clone, equippedKey, modelHeight]);
+
+  // Sanity guard: broken normalization must never render a giant mesh.
+  if (!Number.isFinite(normScale) || normScale <= 0 || normScale > 10) {
+    return null;
+  }
 
   // Gentle turntable so the whole character can be inspected.
   useFrame((_, dt) => {
@@ -805,6 +860,11 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clone, equippedKey, modelHeight]);
 
+  // Sanity guard: broken normalization must never render a giant mesh.
+  if (!Number.isFinite(normScale) || normScale <= 0 || normScale > 10) {
+    return null;
+  }
+
   // Look around: smooth layered sine produces natural left/right glances
   // (±~28°) with occasional off-beat drift, like the character is curious.
   const head = useMemo(() => findBone(clone, "HEAD"), [clone]);
@@ -849,6 +909,13 @@ export function GlbProfileAvatar({
       camera={{ position: [0, 0, height * 1.7], fov: 35 }}
       gl={{ alpha: true, antialias: true }}
       style={{ background: "transparent" }}
+      onCreated={({ gl }) => {
+        // This second canvas can cause the browser to evict the main game
+        // context — allow clean restore for both directions.
+        gl.domElement.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+        });
+      }}
     >
       <ambientLight intensity={1.1} />
       <directionalLight position={[2, 3, 4]} intensity={1.4} />
