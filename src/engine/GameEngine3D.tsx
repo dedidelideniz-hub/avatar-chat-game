@@ -11,6 +11,7 @@ import * as THREE from "three";
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
+import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
 import type { AvatarConfig } from "@/lib/avatar";
 import {
   WORLD_WIDTH,
@@ -613,7 +614,23 @@ function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
 /*  Player Avatar3D                                            */
 /* ═══════════════════════════════════════════════════════════ */
 
+/** Normal gameplay: real 3D GLB avatar (skeleton + animations). ?svg=1 restores legacy SVG. */
 function PlayerAvatar3D({
+  posRef, config, equipped, facingRef,
+}: {
+  posRef: React.RefObject<{ x: number; y: number }>;
+  config: AvatarConfig;
+  equipped: string[];
+  facingRef: React.RefObject<number>;
+}) {
+  if (SVG_DEBUG_MODE) {
+    return <SvgPlayerAvatar3D posRef={posRef} config={config} equipped={equipped} facingRef={facingRef} />;
+  }
+  return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={equipped} />;
+}
+
+/** Legacy SVG avatar (debug only — ?svg=1). */
+function SvgPlayerAvatar3D({
   posRef, config, equipped, facingRef,
 }: {
   posRef: React.RefObject<{ x: number; y: number }>;
@@ -679,6 +696,61 @@ function PlayerAvatar3D({
  *  This avoids stale props — the ref is mutated by the game loop and read
  *  directly in useFrame, so positions update without React re-renders. */
 function BotAvatar3D({
+  index,
+  botsDataRef,
+}: {
+  index: number;
+  botsDataRef: React.RefObject<Array<{
+    def: { id: string; config: AvatarConfig; equipped: string[] };
+    pos: { x: number; y: number };
+    facing: number;
+    moving: boolean;
+  }>>;
+}) {
+  if (SVG_DEBUG_MODE) {
+    return <SvgBotAvatar3D index={index} botsDataRef={botsDataRef} />;
+  }
+  return <GlbBotAvatar3D index={index} botsDataRef={botsDataRef} />;
+}
+
+/** GLB bot/vendor avatar — feeds the shared ref into GlbAvatar3D. */
+function GlbBotAvatar3D({
+  index,
+  botsDataRef,
+}: {
+  index: number;
+  botsDataRef: React.RefObject<Array<{
+    def: { id: string; config: AvatarConfig; equipped: string[] };
+    pos: { x: number; y: number };
+    facing: number;
+    moving: boolean;
+  }>>;
+}) {
+  const posRef = useRef({ x: 0, y: 0 });
+  const facingRef = useRef(1);
+  const initRef = useRef(false);
+
+  useFrame(() => {
+    const bot = botsDataRef.current?.[index];
+    if (!bot) return;
+    if (!initRef.current) {
+      initRef.current = true;
+      posRef.current = { x: bot.pos.x, y: bot.pos.y };
+      facingRef.current = bot.facing || 1;
+    }
+    posRef.current = bot.pos;
+    if (bot.moving) facingRef.current = bot.facing;
+  });
+
+  // Read config from ref (only used at mount — bots don't change equipment).
+  const bot = botsDataRef.current?.[index];
+  const equipped = bot?.def.equipped ?? [];
+
+  return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={equipped} lerpSpeed={12} />;
+}
+
+/** Legacy SVG bot avatar (debug only — ?svg=1). */
+function SvgBotAvatar3D({
   index,
   botsDataRef,
 }: {
