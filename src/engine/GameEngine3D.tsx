@@ -522,47 +522,46 @@ function FlowerBox3D({ def }: { def: FlowerBoxDef }) {
 /* ═══════════════════════════════════════════════════════════ */
 
 function Stall3D({ def }: { def: StallDef }) {
-  const awningMat = useMemo(() => new THREE.MeshStandardMaterial({ color: def.color, roughness: 0.7 }), [def.color]);
   return (
     <group position={[def.x, 0, def.z]}>
       {/* Table surface — dark wood */}
       <mesh position={[0, 0.35, 0]} castShadow receiveShadow>
-        <boxGeometry args={[1.6, 0.08, 0.6]} />
+        <boxGeometry args={[1.4, 0.08, 0.5]} />
         <meshStandardMaterial color="#7a5838" roughness={0.85} />
       </mesh>
       {/* Table edge trim */}
-      <mesh position={[0, 0.395, 0.3]}>
-        <boxGeometry args={[1.6, 0.02, 0.02]} />
+      <mesh position={[0, 0.395, 0.25]}>
+        <boxGeometry args={[1.4, 0.02, 0.02]} />
         <meshStandardMaterial color="#a08060" roughness={0.8} />
       </mesh>
       {/* Table legs — dark wood */}
-      {[-0.65, 0.65].map((lx) =>
-        [-0.2, 0.2].map((lz) => (
+      {[-0.55, 0.55].map((lx) =>
+        [-0.15, 0.15].map((lz) => (
           <mesh key={`${lx}-${lz}`} position={[lx, 0.17, lz]}>
             <boxGeometry args={[0.06, 0.34, 0.06]} />
             <meshStandardMaterial color="#5c3820" roughness={0.9} />
           </mesh>
         ))
       )}
-      {/* Awning — striped fabric */}
-      <mesh position={[0, 0.88, -0.2]} rotation={[0.28, 0, 0]} castShadow>
-        <boxGeometry args={[1.8, 0.04, 0.85]} />
+      {/* Awning — striped fabric (compact, low tilt) */}
+      <mesh position={[0, 0.78, -0.15]} rotation={[0.15, 0, 0]} castShadow>
+        <boxGeometry args={[1.5, 0.04, 0.6]} />
         <meshStandardMaterial color={def.color} roughness={0.7} />
       </mesh>
       {/* Awning underside — darker */}
-      <mesh position={[0, 0.86, -0.18]} rotation={[0.28, 0, 0]}>
-        <boxGeometry args={[1.76, 0.02, 0.8]} />
+      <mesh position={[0, 0.76, -0.14]} rotation={[0.15, 0, 0]}>
+        <boxGeometry args={[1.46, 0.02, 0.56]} />
         <meshStandardMaterial color={def.accent} roughness={0.75} />
       </mesh>
       {/* Support poles — dark wood */}
-      {[-0.7, 0.7].map((lx) => (
-        <mesh key={lx} position={[lx, 0.6, -0.4]}>
-          <cylinderGeometry args={[0.022, 0.022, 1.0, 4]} />
+      {[-0.6, 0.6].map((lx) => (
+        <mesh key={lx} position={[lx, 0.55, -0.3]}>
+          <cylinderGeometry args={[0.022, 0.022, 0.85, 4]} />
           <meshStandardMaterial color="#5c3820" roughness={0.9} />
         </mesh>
       ))}
       {/* Items on table — small colored spheres representing goods */}
-      {[-0.4, 0, 0.4].map((ix, i) => (
+      {[-0.35, 0, 0.35].map((ix, i) => (
         <mesh key={i} position={[ix, 0.42, 0]}>
           <sphereGeometry args={[0.06, 6, 6]} />
           <meshStandardMaterial color={i === 0 ? "#ff6b6b" : i === 1 ? "#4ecdc4" : "#ffe66d"} roughness={0.7} />
