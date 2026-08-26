@@ -452,7 +452,18 @@ function FighterRig({
     const f = fighter.current;
     if (!root.current) return;
     root.current.position.set(f.x / S, 0, f.y / S);
-    root.current.rotation.y = f.facing >= 0 ? 0 : Math.PI;
+    // ── 4-direction facing ──
+    // right → look right (+X), left → look left (−X),
+    // up-screen → back view (faces away from camera),
+    // down-screen / standing → front view (faces the camera).
+    let targetYaw: number;
+    if (!f.moving) targetYaw = 0;
+    else if ((f.vy ?? 0) !== 0) targetYaw = f.vy < 0 ? Math.PI : 0;
+    else targetYaw = f.facing >= 0 ? Math.PI / 2 : -Math.PI / 2;
+    let yawDiff = targetYaw - root.current.rotation.y;
+    while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+    while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+    root.current.rotation.y += yawDiff * Math.min(1, 12 * dt);
     if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
     // spinning identity ring under the player's feet — dashed ring + orbit
     // dot turning around them, with a soft pulsing glow disc
