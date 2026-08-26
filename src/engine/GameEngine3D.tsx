@@ -776,42 +776,6 @@ export interface GameEngine3DProps {
   isMobile: boolean;
 }
 
-/** Temporary debug overlay showing coordinate pipeline state. */
-function DebugOverlay({
-  playerPosRef,
-  botsRef,
-}: {
-  playerPosRef: React.RefObject<{ x: number; y: number }>;
-  botsRef: React.RefObject<Array<{
-    def: { id: string };
-    pos: { x: number; y: number };
-  }>>;
-}) {
-  const [info, setInfo] = useState("");
-  useFrame(() => {
-    const p = playerPosRef.current;
-    if (!p) return;
-    const px = (p.x / S - WORLD_WIDTH / 2).toFixed(1);
-    const pz = (-(p.y / S - WORLD_DEPTH / 2)).toFixed(1);
-    const bots = botsRef.current;
-    const botCount = bots?.length ?? 0;
-    const cam = _engineCamera;
-    const cx = cam ? cam.position.x.toFixed(1) : "?";
-    const cz = cam ? cam.position.z.toFixed(1) : "?";
-    setInfo(`P(${px},${pz}) C(${cx},${cz}) Bots:${botCount}`);
-  });
-  return (
-    <Html position={[0, 0, 0]} center style={{ pointerEvents: "none" }} zIndexRange={[100, 0]}>
-      <div style={{
-        position: "fixed", top: 4, left: 4, zIndex: 9999,
-        background: "rgba(0,0,0,0.7)", color: "#0f0",
-        fontFamily: "monospace", fontSize: 11, padding: "3px 6px",
-        borderRadius: 4, whiteSpace: "pre",
-      }}>{info}</div>
-    </Html>
-  );
-}
-
 export function GameEngine3D({
   playerPosRef,
   playerConfig,
@@ -928,7 +892,6 @@ export function GameEngine3D({
       ))}
 
       {/* === DEBUG OVERLAY (temporary — shows coordinate pipeline state) === */}
-      <DebugOverlay playerPosRef={playerPosRef} botsRef={botsRef} />
     </Canvas>
   );
 }
