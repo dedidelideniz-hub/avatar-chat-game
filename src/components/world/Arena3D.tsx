@@ -10,10 +10,17 @@
 // symmetric layout, with a golden ball in the center.
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
-import { RoundedBox } from "@react-three/drei";
+import { RoundedBox, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  FALLBACK_MODEL_URL,
+  GlbModelBoundary,
+  characterModelUrl,
+  resolveIdleWalk,
+} from "@/engine/GlbAvatar3D";
+import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
-import { useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
 /** Game-space (px) obstacle list — shared with the simulation in BattleScene. */
@@ -189,8 +196,72 @@ const BEAM_POOL = 2;
 const SMOKE_POOL = 22;
 
 /* ------------------------------------------------------------------ */
-/* Fighters — procedural low-poly humanoid built from avatar colors.   */
+/* Fighters — the same rigged GLB character used in the street world.  */
+/* While the GLB streams in (or if it can't be fetched) the fighter is  */
+/* drawn as a procedural low-poly humanoid built from avatar colors.   */
 /* ------------------------------------------------------------------ */
+
+/** GLB normalized height inside the 0.72-scaled rig root — matches the
+ *  procedural body's ~1.5-unit silhouette so scale never jumps. */
+const FIGHTER_MODEL_H = 1.5;
+
+/** One rigged GLB character instance driven by a battle-fighter ref. */
+function GlbFighterBody({
+  fighter,
+}: {
+  fighter: MutableRefObject<BattleFighter>;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF(characterModelUrl());
+  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const { actions } = useAnimations(animations, groupRef);
+
+  // Normalize to FIGHTER_MODEL_H — never trust the authored scale.
+  const normScale = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    return FIGHTER_MODEL_H / Math.max(size.y, 0.0001);
+  }, [scene]);
+
+  useEffect(() => {
+    clone.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) obj.castShadow = true;
+    });
+  }, [clone]);
+
+  const clips = useMemo(() => resolveIdleWalk(actions), [actions]);
+
+  // Start with the idle clip (or the first clip if none is named idle).
+  useEffect(() => {
+    const key = clips.idle ?? Object.keys(actions)[0];
+    const action = key ? actions[key] : undefined;
+    if (!action) return;
+    action.reset().fadeIn(0.2).play();
+    return () => {
+      action.fadeOut(0.2);
+    };
+  }, [actions, clips]);
+
+  // Crossfade idle ↔ walk from the simulation's moving flag (no re-renders).
+  const currentClip = useRef<"idle" | "walk">("idle");
+  useFrame(() => {
+    const next: "idle" | "walk" = fighter.current.moving ? "walk" : "idle";
+    if (next === currentClip.current) return;
+    const from =
+      actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
+    const to = actions[next === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
+    if (from) from.fadeOut(0.15);
+    if (to) to.reset().fadeIn(0.15).play();
+    currentClip.current = next;
+  });
+
+  return (
+    <group ref={groupRef} scale={normScale}>
+      <primitive object={clone} />
+    </group>
+  );
+}
 
 function makeBarTex() {
   const c = document.createElement("canvas");
@@ -479,10 +550,10 @@ function FighterRig({
     }
   });
 
-  return (
-    <>
-    <group ref={root} scale={0.72}>
-      <group ref={bob}>
+  // Procedural low-poly body — shown while the GLB streams in and used as
+  // the permanent fallback if no character GLB can be fetched.
+  const proceduralBody = (
+    <group ref={bob}>
         {/* legs + shoes */}
         <group ref={legL} position={[0, 0.5, 0.1]}>
           <RoundedBox args={[0.18, 0.52, 0.2]} radius={0.06} position={[0, -0.26, 0]}>
@@ -601,18 +672,30 @@ function FighterRig({
             </group>
           )}
         </group>
-        {/* white hit-flash overlay */}
-        <RoundedBox args={[0.78, 1.7, 0.55]} radius={0.22} position={[0, 0.85, 0]}>
-          <meshStandardMaterial
-            ref={flashMat}
-            color="#ffffff"
-            transparent
-            opacity={0}
-            roughness={1}
-            depthWrite={false}
-          />
-        </RoundedBox>
-      </group>
+    </group>
+  );
+
+  return (
+    <>
+    <group ref={root} scale={0.72}>
+      {/* rigged GLB character (same model as the street world); the
+          procedural body renders while it loads and stays as fallback */}
+      <GlbModelBoundary fallback={proceduralBody}>
+        <Suspense fallback={proceduralBody}>
+          <GlbFighterBody fighter={fighter} />
+        </Suspense>
+      </GlbModelBoundary>
+      {/* white hit-flash overlay */}
+      <RoundedBox args={[0.78, 1.7, 0.55]} radius={0.22} position={[0, 0.85, 0]}>
+        <meshStandardMaterial
+          ref={flashMat}
+          color="#ffffff"
+          transparent
+          opacity={0}
+          roughness={1}
+          depthWrite={false}
+        />
+      </RoundedBox>
     </group>
       {/* spinning "this is you" ring under the player's feet */}
       {isPlayer && (

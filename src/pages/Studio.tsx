@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { HairThumb, AvatarPreview } from "@/components/avatar/AvatarPreview";
-import { EquippedItems } from "@/components/avatar/EquippedItems";
+import { HairThumb } from "@/components/avatar/AvatarPreview";
+import { Canvas } from "@react-three/fiber";
+import { GlbCharacterPortrait } from "@/engine/GlbAvatar3D";
 import {
   DEFAULT_AVATAR,
   HAIR_STYLE_LABELS,
@@ -211,15 +212,21 @@ export default function Studio() {
                     <div className="size-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
                   </div>
                 ) : (
-                  <div className="relative animate-float">
-                    <AvatarPreview
-                      config={config}
-                      className="block h-auto w-full max-w-[240px]"
-                    />
-                    <EquippedItems
-                      equipped={profile?.equipped ?? []}
-                      className="pointer-events-none absolute inset-0 h-auto w-full max-w-[240px]"
-                    />
+                  <div className="relative h-[300px] w-full max-w-[280px] sm:h-[340px]">
+                    {/* Real 3D character preview — same rigged GLB model used
+                        in gameplay, with equipped items attached to bones. */}
+                    <Canvas
+                      dpr={[1, 2]}
+                      camera={{ position: [0, 0.2, 4.6], fov: 40 }}
+                    >
+                      <ambientLight intensity={0.85} />
+                      <hemisphereLight args={["#cfe9ff", "#e8d4b5", 0.5]} />
+                      <directionalLight position={[3, 5, 4]} intensity={1.6} />
+                      <GlbCharacterPortrait
+                        equipped={profile?.equipped ?? []}
+                        height={2.2}
+                      />
+                    </Canvas>
                   </div>
                 )}
                 <div className="relative mb-2 mt-1 rounded-full border border-border bg-card px-5 py-1.5 shadow-sm">

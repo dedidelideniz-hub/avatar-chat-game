@@ -1018,15 +1018,29 @@ export default function BattleScene({
           ref={arenaRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
         >
-          {/* Always use 2D renderer for consistent walking style with street */}
-          <FallbackArena2D
-            playerRef={player}
-            botRef={bot}
-            projsRef={projs}
-            fxsRef={fxs}
-            aimRef={aimRef}
-            onWorldClick={(x, y) => actionsRef.current.click(x, y)}
-          />
+          {/* 3D arena with the rigged GLB characters; falls back to the
+              2D SVG arena if WebGL/3D rendering is unavailable */}
+          <ArenaBoundary
+            fallback={
+              <FallbackArena2D
+                playerRef={player}
+                botRef={bot}
+                projsRef={projs}
+                fxsRef={fxs}
+                aimRef={aimRef}
+                onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+              />
+            }
+          >
+            <Arena3D
+              playerRef={player}
+              botRef={bot}
+              projsRef={projs}
+              fxsRef={fxs}
+              aimRef={aimRef}
+              onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+            />
+          </ArenaBoundary>
 
           {/* cinematic vignette — pulls the eye to the action */}
           <div className="arena-vignette pointer-events-none absolute inset-0 z-[6]" />

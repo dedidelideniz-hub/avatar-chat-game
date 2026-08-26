@@ -35,7 +35,7 @@ export const SVG_DEBUG_MODE =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).has("svg");
 
-function characterUrl(): string {
+export function characterModelUrl(): string {
   if (typeof window === "undefined") return FALLBACK_MODEL_URL;
   const param = new URLSearchParams(window.location.search).get("glb");
   return param || CHARACTER_MODEL_URL;
@@ -237,9 +237,47 @@ function handItem(
 const WORLD_W = WORLD_WIDTH / 2;
 const WORLD_D = WORLD_DEPTH / 2;
 
+/**
+ * Attaches all equipped items to the model's bones. Returns a cleanup
+ * function that removes every attached item. Shared by the gameplay
+ * avatar and the Studio portrait.
+ */
+export function attachEquippedToModel(
+  clone: THREE.Object3D,
+  equipped: string[],
+  modelHeight: number,
+): () => void {
+  const attached: THREE.Object3D[] = [];
+  for (const id of equipped) {
+    const def = EQUIPMENT_BUILDERS[id];
+    if (!def) continue;
+    const item = def.build(modelHeight);
+    if (attachToBone(clone, def.slot, item)) {
+      attached.push(item);
+    }
+  }
+  return () => {
+    for (const item of attached) item.removeFromParent();
+  };
+}
+
+/** Resolves the idle/walk clip keys from an actions map (case-insensitive). */
+export function resolveIdleWalk(
+  actions: Record<string, THREE.AnimationAction | null>,
+) {
+  let idle: string | undefined;
+  let walk: string | undefined;
+  for (const k of Object.keys(actions)) {
+    const lk = k.toLowerCase();
+    if (!idle && lk.includes("idle")) idle = k;
+    if (!walk && (lk.includes("walk") || lk.includes("run"))) walk = k;
+  }
+  return { idle, walk };
+}
+
 /* ── Error boundary with fallback-model retry ─────────────────── */
 
-class GlbErrorBoundary extends Component<
+export class GlbModelBoundary extends Component<
   { children: ReactNode; fallback: ReactNode },
   { failed: boolean }
 > {
@@ -290,16 +328,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   }, [clone]);
 
   // Resolve idle/walk clips once.
-  const clips = useMemo(() => {
-    let idle: string | undefined;
-    let walk: string | undefined;
-    for (const k of Object.keys(actions)) {
-      const lk = k.toLowerCase();
-      if (!idle && lk.includes("idle")) idle = k;
-      if (!walk && (lk.includes("walk") || lk.includes("run"))) walk = k;
-    }
-    return { idle, walk };
-  }, [actions]);
+  const clips = useMemo(() => resolveIdleWalk(actions), [actions]);
 
   // Play idle initially.
   useEffect(() => {
@@ -367,18 +396,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   // Bone-based equipment attachment.
   const equippedKey = equipped.join(",");
   useEffect(() => {
-    const attached: THREE.Object3D[] = [];
-    for (const id of equipped) {
-      const def = EQUIPMENT_BUILDERS[id];
-      if (!def) continue;
-      const item = def.build(modelHeight);
-      if (attachToBone(clone, def.slot, item)) {
-        attached.push(item);
-      }
-    }
-    return () => {
-      for (const item of attached) item.removeFromParent();
-    };
+    return attachEquippedToModel(clone, equipped, modelHeight);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clone, equippedKey, modelHeight]);
 
@@ -400,7 +418,7 @@ export interface GlbAvatar3DProps {
 
 /** Primary URL can be overridden per-instance (used by the fallback). */
 export function GlbAvatar3D({ url, ...props }: GlbAvatar3DProps & { url?: string }) {
-  const primary = url ?? characterUrl();
+  const primary = url ?? characterModelUrl();
 
   // If already on the fallback model, render directly (no retry loop).
   if (primary === FALLBACK_MODEL_URL) {
@@ -412,7 +430,7 @@ export function GlbAvatar3D({ url, ...props }: GlbAvatar3DProps & { url?: string
   }
 
   return (
-    <GlbErrorBoundary
+    <GlbModelBoundary
       fallback={
         <Suspense fallback={null}>
           <GlbAvatarCore url={FALLBACK_MODEL_URL} {...props} />
@@ -422,9 +440,114 @@ export function GlbAvatar3D({ url, ...props }: GlbAvatar3DProps & { url?: string
       <Suspense fallback={null}>
         <GlbAvatarCore url={primary} {...props} />
       </Suspense>
-    </GlbErrorBoundary>
+    </GlbModelBoundary>
   );
 }
 
 // Warm the cache for the fallback so the retry is instant.
 useGLTF.preload(FALLBACK_MODEL_URL);
+
+/* ── Character portrait (Studio / selection screens) ──────────── */
+
+interface PortraitCoreProps {
+  url: string;
+  equipped: string[];
+  height: number;
+  spin: boolean;
+}
+
+/** Static character shown facing the camera with its idle animation. */
+function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
+  const groupRef = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF(url);
+  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const { actions } = useAnimations(animations, groupRef);
+
+  const { normScale, modelHeight } = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const h = Math.max(size.y, 0.0001);
+    return { normScale: height / h, modelHeight: h };
+  }, [scene, height]);
+
+  // Play the idle clip (or the first clip as a fallback).
+  useEffect(() => {
+    const { idle } = resolveIdleWalk(actions);
+    const key = idle ?? Object.keys(actions)[0];
+    const action = key ? actions[key] : undefined;
+    if (!action) return;
+    action.reset().fadeIn(0.3).play();
+    return () => {
+      action.fadeOut(0.3);
+    };
+  }, [actions]);
+
+  // Bone-based equipment.
+  const equippedKey = equipped.join(",");
+  useEffect(() => {
+    return attachEquippedToModel(clone, equipped, modelHeight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clone, equippedKey, modelHeight]);
+
+  // Gentle turntable so the whole character can be inspected.
+  useFrame((_, dt) => {
+    if (spin && groupRef.current) {
+      groupRef.current.rotation.y += dt * 0.6;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={[0, -height / 2, 0]} scale={normScale}>
+      <primitive object={clone} />
+    </group>
+  );
+}
+
+export interface GlbCharacterPortraitProps {
+  equipped?: string[];
+  /** Rendered height in world units. */
+  height?: number;
+  /** Slow turntable rotation (default true). */
+  spin?: boolean;
+}
+
+/**
+ * 3D character portrait for the character-selection screen. Renders the
+ * same GLB character used in gameplay, with idle animation and equipped
+ * items attached to bones. Must be placed inside a <Canvas>.
+ */
+export function GlbCharacterPortrait({
+  equipped = [],
+  height = 2.2,
+  spin = true,
+}: GlbCharacterPortraitProps) {
+  const primary = characterModelUrl();
+
+  if (primary === FALLBACK_MODEL_URL) {
+    return (
+      <Suspense fallback={null}>
+        <GlbPortraitCore url={primary} equipped={equipped} height={height} spin={spin} />
+      </Suspense>
+    );
+  }
+
+  return (
+    <GlbModelBoundary
+      fallback={
+        <Suspense fallback={null}>
+          <GlbPortraitCore
+            url={FALLBACK_MODEL_URL}
+            equipped={equipped}
+            height={height}
+            spin={spin}
+          />
+        </Suspense>
+      }
+    >
+      <Suspense fallback={null}>
+        <GlbPortraitCore url={primary} equipped={equipped} height={height} spin={spin} />
+      </Suspense>
+    </GlbModelBoundary>
+  );
+}
