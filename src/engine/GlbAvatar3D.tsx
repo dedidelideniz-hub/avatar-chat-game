@@ -519,10 +519,14 @@ export function attachEquippedToModel(
   const expected = (rootWs.x + rootWs.y + rootWs.z) / 3 || 1;
   const boneWs = new THREE.Vector3();
 
+  if (equipped.length > 0) {
+    console.log('[Equip] Equipped items:', equipped);
+  }
+
   for (const id of equipped) {
     const def = getEquipmentDef(id);
-    if (!def) continue; // graceful fallback: no 3D asset for this item yet
-    if (!def.build) continue; // GLB-only items need React layer (useGLTF)
+    if (!def) { console.warn('[Equip] No registry def for:', id); continue; }
+    if (!def.build) { console.warn('[Equip] No builder for (GLB-only?):', id); continue; }
 
     let slot = def.slot;
     if (slot === "HAND") {
@@ -554,7 +558,8 @@ export function attachEquippedToModel(
     }
 
     const bones = findBonesRegistry(clone, slot);
-    if (bones.length === 0) continue; // rig has no bone for this slot
+    if (bones.length === 0) { console.warn('[Equip] No bone found for slot:', slot, 'item:', id); continue; }
+    console.log('[Equip] Attaching', id, '→ slot:', slot, '→ bones:', bones.map(b => b.name));
 
     // Paired slots (HANDS/FEET) get one instance per bone — clones share
     // geometry + material, so the extra instances are nearly free.
