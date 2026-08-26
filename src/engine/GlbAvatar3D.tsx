@@ -401,6 +401,12 @@ const WORLD_D = WORLD_DEPTH / 2;
  * Attaches all equipped items to the model's bones. Returns a cleanup
  * function that removes every attached item. Shared by the gameplay
  * avatar and the Studio portrait.
+ *
+ * BONE-SCALE COMPENSATION: procedural items are sized in model-native
+ * units, but some rigs use a scaled bone hierarchy (e.g. armature 0.01×
+ * with bones 100×). An item added to such a bone inherits the inflated
+ * scale and renders as a GIANT mesh covering the map. We measure each
+ * bone's world scale vs the clone root's and compensate per item.
  */
 export function attachEquippedToModel(
   clone: THREE.Object3D,
@@ -409,6 +415,12 @@ export function attachEquippedToModel(
 ): () => void {
   const attached: THREE.Object3D[] = [];
   const usedSlots = new Set<EquipSlot>();
+
+  // Fresh world matrices so getWorldScale readings are accurate.
+  clone.updateWorldMatrix(true, true);
+  const rootWs = clone.getWorldScale(new THREE.Vector3());
+  const expected = (rootWs.x + rootWs.y + rootWs.z) / 3 || 1;
+  const boneWs = new THREE.Vector3();
 
   for (const id of equipped) {
     const def = EQUIPMENT_BUILDERS[id];
@@ -430,6 +442,10 @@ export function attachEquippedToModel(
     // geometry + material, so the extra instances are nearly free.
     bones.forEach((bone, i) => {
       const inst = i === 0 ? item : item.clone();
+      // Compensate for rigs whose bone space ≠ model-native units.
+      bone.getWorldScale(boneWs);
+      const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3;
+      if (boneAvg > 1e-6) inst.scale.setScalar(expected / boneAvg);
       bone.add(inst); // inherits bone position/rotation/animation
       attached.push(inst);
     });
