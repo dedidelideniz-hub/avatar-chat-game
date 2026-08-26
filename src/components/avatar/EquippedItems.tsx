@@ -35,8 +35,7 @@ const SLOT_POS: Record<WearSlot, SlotConfig> = {
 /** Per-product overrides for non-hand items. */
 const ITEM_SLOT_OVERRIDE: Record<string, Partial<SlotConfig>> = {
   "moda-gozluk": { y: 64, size: 22 },  // glasses — centered between eyes
-  "moda-atki": { y: 94, size: 24 },    // scarf — at neck base
-  // moda-sapka (hat) is drawn as precise SVG geometry — see HatSvg below.
+  // moda-sapka (hat) and moda-atki (scarf) are drawn as precise SVG geometry.
 };
 
 /* ─────────────────────────────────────────────────────────────
@@ -103,6 +102,54 @@ function HatSvg() {
   );
 }
 
+/* ─────────────────────────────────────────────────────────────
+ * Knitted Scarf — precise SVG geometry (NOT emoji).
+ *
+ * Body geometry (AvatarPreview):
+ *   • Torso: x=46..94, top y=86 (rx=14)
+ *   • Head circle bottom: y=92 at center (chin)
+ *   • Mouth: y≈76-82
+ *
+ * Design targets:
+ *   • Wrap band across the collar/shoulders (y=88..102)
+ *     — below the mouth, slightly overlapping chin bottom (natural)
+ *   • Band width 40 units ≈ shoulder span, centered x=70
+ *   • Front tail hangs down over the chest (y=100..124) with fringe
+ *   • Pivot/anchor = top-center of band (70, 88) = collarbone point
+ *   • Follows whole-sprite movement/flip automatically (overlay)
+ * ───────────────────────────────────────────────────────────── */
+function ScarfSvg() {
+  return (
+    <g>
+      {/* Wrap band around the neck/collar */}
+      <path
+        d="M50 90 Q70 84 90 90 L90 102 Q70 108 50 102 Z"
+        fill="#dc2626"
+        stroke="#b91c1c"
+        strokeWidth={1.5}
+      />
+      {/* Knit stripes on the band */}
+      <path d="M51 95 Q70 90 89 95" fill="none" stroke="#b91c1c" strokeWidth={1.5} opacity={0.7} />
+      <path d="M51 99 Q70 94 89 99" fill="none" stroke="#b91c1c" strokeWidth={1.5} opacity={0.7} />
+      {/* Front tail hanging over the chest */}
+      <path
+        d="M61 102 L79 102 L81 122 Q70 127 59 122 Z"
+        fill="#dc2626"
+        stroke="#b91c1c"
+        strokeWidth={1.5}
+      />
+      {/* Tail stripes */}
+      <path d="M61 108 L80 108" stroke="#b91c1c" strokeWidth={1.5} opacity={0.7} />
+      <path d="M60 114 L80.5 114" stroke="#b91c1c" strokeWidth={1.5} opacity={0.7} />
+      {/* Fringe at the tail bottom */}
+      <path d="M62 124 L61 130" stroke="#dc2626" strokeWidth={2.5} strokeLinecap="round" />
+      <path d="M67 126 L66.5 132" stroke="#dc2626" strokeWidth={2.5} strokeLinecap="round" />
+      <path d="M72 126.5 L72 132.5" stroke="#dc2626" strokeWidth={2.5} strokeLinecap="round" />
+      <path d="M77 126 L77.5 132" stroke="#dc2626" strokeWidth={2.5} strokeLinecap="round" />
+    </g>
+  );
+}
+
 function slotConfig(product: Product): SlotConfig {
   const base = SLOT_POS[product.slot];
   const override = ITEM_SLOT_OVERRIDE[product.id] ?? {};
@@ -133,9 +180,12 @@ export function EquippedItems({
       pointerEvents="none"
     >
       {worn.map((product) => {
-        // Hat renders as precise SVG geometry — no emoji baseline variance.
+        // Hat & scarf render as precise SVG geometry — no emoji baseline variance.
         if (product.id === "moda-sapka") {
           return <HatSvg key={product.id} />;
+        }
+        if (product.id === "moda-atki") {
+          return <ScarfSvg key={product.id} />;
         }
         const pos = slotConfig(product);
         return (
