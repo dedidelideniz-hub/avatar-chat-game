@@ -8,6 +8,7 @@ const glbTestParam =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).has("glbtest");
 import { PLAYER_3D_HEIGHT } from "@/engine/constants";
+import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -2264,16 +2265,10 @@ export default function World() {
                   ) : null
                 }
                 avatar={
-                  <>
-                    <AvatarPreview
-                      config={config}
-                      className="block h-24 w-auto"
-                    />
-                    <EquippedItems
-                      equipped={equipped}
-                      className="pointer-events-none absolute inset-0 h-24 w-auto"
-                    />
-                  </>
+                  <GlbProfileAvatar
+                    equipped={equipped}
+                    className="block size-24"
+                  />
                 }
                 stats={
                   <>
@@ -2302,16 +2297,10 @@ export default function World() {
                 name={viewedBot.name}
                 subtitle="Sanalika Caddesi sakini"
                 avatar={
-                  <>
-                    <AvatarPreview
-                      config={viewedBot.config}
-                      className="block h-24 w-auto"
-                    />
-                    <EquippedItems
-                      equipped={viewedBot.equipped}
-                      className="pointer-events-none absolute inset-0 h-24 w-auto"
-                    />
-                  </>
+                  <GlbProfileAvatar
+                    equipped={viewedBot.equipped}
+                    className="block size-24"
+                  />
                 }
                 stats={
                   <>
@@ -2360,16 +2349,10 @@ export default function World() {
                   ) : null
                 }
                 avatar={
-                  <>
-                    <AvatarPreview
-                      config={viewedRemote.data?.config ?? DEFAULT_AVATAR}
-                      className="block h-24 w-auto"
-                    />
-                    <EquippedItems
-                      equipped={viewedRemote.data?.equipped ?? []}
-                      className="pointer-events-none absolute inset-0 h-24 w-auto"
-                    />
-                  </>
+                  <GlbProfileAvatar
+                    equipped={viewedRemote.data?.equipped ?? []}
+                    className="block size-24"
+                  />
                 }
                 stats={
                   <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">

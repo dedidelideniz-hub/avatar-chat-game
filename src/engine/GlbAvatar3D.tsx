@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
 import { useGLTF, useAnimations } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { PLAYER_3D_HEIGHT, WORLD_WIDTH, WORLD_DEPTH, S } from "./constants";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -564,18 +564,11 @@ export function GlbCharacterPortrait({
         <GlbPortraitCore url={primary} equipped={equipped} height={height} spin={spin} />
       </Suspense>
     );
-  }
-
-  return (
+  }  return (
     <GlbModelBoundary
       fallback={
         <Suspense fallback={null}>
-          <GlbPortraitCore
-            url={FALLBACK_MODEL_URL}
-            equipped={equipped}
-            height={height}
-            spin={spin}
-          />
+          <GlbPortraitCore url={FALLBACK_MODEL_URL} equipped={equipped} height={height} spin={spin} />
         </Suspense>
       }
     >
@@ -583,5 +576,117 @@ export function GlbCharacterPortrait({
         <GlbPortraitCore url={primary} equipped={equipped} height={height} spin={spin} />
       </Suspense>
     </GlbModelBoundary>
+  );
+}
+
+/* ── Profile card avatar (self-contained mini Canvas) ──────────── */
+
+interface ProfileModelProps {
+  url: string;
+  equipped: string[];
+  height: number;
+}
+
+/**
+ * Character shown in the profile card: plays the idle animation and
+ * periodically looks left/right (head/eye motion) instead of staring
+ * straight ahead. Faces the camera at all times.
+ */
+function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
+  const groupRef = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF(url);
+  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const { actions } = useAnimations(animations, groupRef);
+
+  const { normScale, modelHeight } = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const h = Math.max(size.y, 0.0001);
+    return { normScale: height / h, modelHeight: h };
+  }, [scene, height]);
+
+  // Idle animation.
+  useEffect(() => {
+    const { idle } = resolveIdleWalk(actions);
+    const key = idle ?? Object.keys(actions)[0];
+    const action = key ? actions[key] : undefined;
+    if (!action) return;
+    action.reset().fadeIn(0.3).play();
+    return () => {
+      action.fadeOut(0.3);
+    };
+  }, [actions]);
+
+  // Bone-based equipment.
+  const equippedKey = equipped.join(",");
+  useEffect(() => {
+    return attachEquippedToModel(clone, equipped, modelHeight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clone, equippedKey, modelHeight]);
+
+  // Look around: smooth layered sine produces natural left/right glances
+  // (±~28°) with occasional off-beat drift, like the character is curious.
+  const head = useMemo(() => findBone(clone, "HEAD"), [clone]);
+  useFrame((state, dt) => {
+    if (!head) return;
+    const t = state.clock.elapsedTime;
+    const target = Math.sin(t * 0.8) * 0.3 + Math.sin(t * 0.27) * 0.18;
+    head.rotation.y += (target - head.rotation.y) * Math.min(1, 5 * dt);
+  });
+
+  return (
+    <group ref={groupRef} position={[0, -height / 2, 0]} scale={normScale}>
+      <primitive object={clone} />
+    </group>
+  );
+}
+
+export interface GlbProfileAvatarProps {
+  equipped?: string[];
+  /** Character height in world units inside the mini scene. */
+  height?: number;
+  /** Wrapper className — size it here (e.g. "h-24 w-24"). */
+  className?: string;
+}
+
+/**
+ * Animated 3D character for the profile card. Fully self-contained
+ * (own transparent Canvas) — drop it anywhere in JSX. Uses the SAME
+ * cached GLB as the game, idle animation + left/right eye/head motion,
+ * equipment attached to bones.
+ */
+export function GlbProfileAvatar({
+  equipped = [],
+  height = 2,
+  className,
+}: GlbProfileAvatarProps) {
+  const primary = characterModelUrl();
+
+  const sceneFor = (url: string) => (
+    <Canvas
+      dpr={[1, 1.5]}
+      camera={{ position: [0, 0, height * 1.7], fov: 35 }}
+      gl={{ alpha: true, antialias: true }}
+      style={{ background: "transparent" }}
+    >
+      <ambientLight intensity={1.1} />
+      <directionalLight position={[2, 3, 4]} intensity={1.4} />
+      <Suspense fallback={null}>
+        <GlbProfileModel url={url} equipped={equipped} height={height} />
+      </Suspense>
+    </Canvas>
+  );
+
+  return (
+    <div className={className}>
+      {primary === FALLBACK_MODEL_URL ? (
+        sceneFor(primary)
+      ) : (
+        <GlbModelBoundary fallback={sceneFor(FALLBACK_MODEL_URL)}>
+          {sceneFor(primary)}
+        </GlbModelBoundary>
+      )}
+    </div>
   );
 }
