@@ -774,6 +774,8 @@ export interface GameEngine3DProps {
   }>>;
   moveTarget: { x: number; y: number } | null;
   isMobile: boolean;
+  /** Dev-only: render the Phase 1 GLB avatar test next to spawn. */
+  glbTest?: boolean;
 }
 
 export function GameEngine3D({
@@ -784,6 +786,7 @@ export function GameEngine3D({
   botsRef,
   moveTarget,
   isMobile,
+  glbTest,
 }: GameEngine3DProps) {
   const initCamY = Math.sin(CAMERA_ELEVATION) * CAMERA_ZOOM;
   const initCamZ = Math.cos(CAMERA_ELEVATION) * CAMERA_ZOOM;
