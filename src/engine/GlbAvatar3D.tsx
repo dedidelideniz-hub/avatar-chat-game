@@ -514,8 +514,24 @@ export function attachEquippedToModel(
       else continue;
     }
 
-    console.log('[Equip] Processing', id, '→ slot:', slot);
+    console.log('[Equip] ═══ Processing item:', id, '→ slot:', slot);
+
+    // ── DEBUG 1: getEquipmentDef sonucu ──
+    console.log('[Equip] DEBUG def:', JSON.stringify({ id: def.id, slot: def.slot, hasBuild: !!def.build, hasGlb: !!def.glbPath }));
+
     const item = def.build(modelHeight);
+
+    // ── DEBUG 2: build(modelHeight) sonucu ──
+    console.log('[Equip] DEBUG build result:', {
+      type: item.type,
+      name: item.name,
+      childrenCount: item.children.length,
+      position: item.position.toArray(),
+      rotation: [item.rotation.x, item.rotation.y, item.rotation.z],
+      scale: item.scale.toArray(),
+      visible: item.visible,
+      modelHeight,
+    });
 
     if (def.positionOffset) {
       item.position.set(
@@ -547,15 +563,28 @@ export function attachEquippedToModel(
       bone.getWorldScale(boneWs);
       const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3;
       const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
+
+      // ── DEBUG 3: Bone bilgileri ──
+      const bonePos = new THREE.Vector3();
+      bone.getWorldPosition(bonePos);
+      console.log('[Equip] DEBUG bone:', {
+        name: bone.name,
+        uuid: bone.uuid,
+        parentName: bone.parent?.name ?? 'null',
+        parentUuid: bone.parent?.uuid ?? 'null',
+        worldScale: boneWs.toArray(),
+        boneAvg: boneAvg.toFixed(6),
+        worldPosition: bonePos.toArray(),
+        childrenCount: bone.children.length,
+        type: bone.type,
+      });
+
       // Only compensate if ratio is drastically off (>2x or <0.5x).
-      // Builders already size relative to modelHeight so close-to-1 ratios
-      // should NOT be compensated (it makes items invisible).
       if (ratio > 2 || ratio < 0.5) {
         inst.scale.setScalar(ratio);
         console.warn('[Equip] Scale fix applied:', ratio.toFixed(3));
       }
-      // Ensure equipment is always visible: set renderOrder above the
-      // character mesh and force depthWrite/depthTest on all child meshes.
+      // Ensure equipment is always visible.
       inst.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (mesh.isMesh) {
@@ -571,6 +600,51 @@ export function attachEquippedToModel(
       });
       bone.add(inst);
       attached.push(inst);
+
+      // ── DEBUG 4: Equipment bone'a eklendikten SONRA ──
+      const eqWorldPos = new THREE.Vector3();
+      inst.getWorldPosition(eqWorldPos);
+      const eqWorldScale = new THREE.Vector3();
+      inst.getWorldScale(eqWorldScale);
+      const eqBbox = new THREE.Box3().setFromObject(inst);
+      const eqBboxMin = eqBbox.min.clone();
+      const eqBboxMax = eqBbox.max.clone();
+      console.log('[Equip] DEBUG attached:', {
+        itemId: id,
+        equipmentUuid: inst.uuid,
+        equipmentScale: inst.scale.toArray(),
+        equipmentPosition: inst.position.toArray(),
+        equipmentVisible: inst.visible,
+        equipmentWorldPosition: eqWorldPos.toArray(),
+        equipmentWorldScale: eqWorldScale.toArray(),
+        parentName: inst.parent?.name ?? 'null',
+        parentUuid: inst.parent?.uuid ?? 'null',
+        bboxMin: eqBboxMin.toArray(),
+        bboxMax: eqBboxMax.toArray(),
+        bboxSize: new THREE.Vector3().subVectors(eqBboxMax, eqBboxMin).toArray(),
+      });
+
+      // ── DEBUG 5: Bone'a geçici görsel marker ekle ──
+      // Bu, mixamorig:Spine'ın gerçekten gövde bölgesinde olup olmadığını doğrular.
+      // Sadece CHEST slotu için ve sadece ilk item için ekle.
+      if (slot === 'CHEST' && i === 0 && !bone.getObjectByName('_debugMarker')) {
+        const debugMarker = new THREE.Group();
+        debugMarker.name = '_debugMarker';
+        // Küçük eksen göstergeci
+        const axes = new THREE.AxesHelper(0.15);
+        axes.name = '_debugAxes';
+        debugMarker.add(axes);
+        // Küçük küp — bone'un merkezinde
+        const cube = new THREE.Mesh(
+          new THREE.BoxGeometry(0.05, 0.05, 0.05),
+          new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: false, transparent: false }),
+        );
+        cube.name = '_debugCube';
+        debugMarker.add(cube);
+        bone.add(debugMarker);
+        console.log('[Equip] DEBUG: Added AxesHelper + red cube marker to bone:', bone.name);
+      }
+
       console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4));
     });
     usedSlots.add(slot);
