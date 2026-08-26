@@ -218,6 +218,19 @@ export default function Studio() {
                     <Canvas
                       dpr={[1, 2]}
                       camera={{ position: [0, 0.2, 4.6], fov: 40 }}
+                      onCreated={({ gl }) => {
+                        // Prevent mobile browsers from permanently killing
+                        // other canvases' contexts (e.g. the world map) when
+                        // this preview canvas is created — without this the
+                        // evicted canvas shows a corrupted region covering
+                        // the map and never restores.
+                        gl.domElement.addEventListener(
+                          "webglcontextlost",
+                          (e) => {
+                            e.preventDefault();
+                          },
+                        );
+                      }}
                     >
                       <ambientLight intensity={0.85} />
                       <hemisphereLight args={["#cfe9ff", "#e8d4b5", 0.5]} />
