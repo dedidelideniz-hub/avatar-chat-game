@@ -2,6 +2,11 @@
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
 import { GameEngine3D, raycastScreenToSVG, svgToWorld, worldToScreen } from "@/engine/GameEngine3D";
+
+/** Dev-only Phase 1 GLB avatar test toggle: add ?glbtest=1 to the URL. */
+const glbTestParam =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("glbtest");
 import { PLAYER_3D_HEIGHT } from "@/engine/constants";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -2240,6 +2245,7 @@ export default function World() {
           botsRef={botsRef}
           moveTarget={targetMarker}
           isMobile={isMobile}
+          glbTest={glbTestParam}
         />
 
         {/* character profile card — tapping a character opens it here */}
