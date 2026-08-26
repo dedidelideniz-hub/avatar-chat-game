@@ -406,86 +406,11 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── HAND items (auto: first → MAIN_HAND, second → OFF_HAND) ──
-  { id: "dondurma-cilek", slot: "HAND", build: makeHandCone("#ff8fa3") },
-  { id: "dondurma-cikolata", slot: "HAND", build: makeHandCone("#8a5a3b") },
-  { id: "dondurma-mix", slot: "HAND", build: makeHandCone("#f2c9a0") },
-  { id: "balon-kirmizi", slot: "HAND", build: makeHandBalloon("#e83a3a") },
-  { id: "balon-gokkusagi", slot: "HAND", build: makeHandBalloon("#4ad0e8") },
-  { id: "balon-yildiz", slot: "HAND", build: makeHandBalloon("#ffd94a") },
-  {
-    id: "oyuncak-ayi",
-    slot: "HAND",
-    build: (H) => {
-      const bear = new THREE.Mesh(
-        new THREE.SphereGeometry(0.045 * H, 14, 12),
-        mat("#a5714f"),
-      );
-      bear.position.y = 0.04 * H;
-      return bear;
-    },
-  },
-  {
-    id: "oyuncak-araba",
-    slot: "HAND",
-    build: (H) => {
-      const car = new THREE.Mesh(
-        new THREE.BoxGeometry(0.08 * H, 0.03 * H, 0.045 * H),
-        mat("#e03a3a"),
-      );
-      car.position.y = 0.015 * H;
-      return car;
-    },
-  },
-  {
-    id: "oyuncak-top",
-    slot: "HAND",
-    build: (H) => {
-      const ball = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04 * H, 14, 12),
-        mat("#f5f5f5"),
-      );
-      ball.position.y = 0.04 * H;
-      return ball;
-    },
-  },
+  // NOTE: Legacy dondurma/balon/oyuncak procedural items removed.
+  // New GLB equipment items will be registered here via the new asset pipeline.
 ]);
 
-function makeHandCone(color: string) {
-  return (H: number) => {
-    const g = new THREE.Group();
-    const cone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.028 * H, 0.07 * H, 12),
-      mat("#e8b87a"),
-    );
-    cone.position.y = 0.035 * H;
-    const scoop = new THREE.Mesh(
-      new THREE.SphereGeometry(0.03 * H, 12, 10),
-      mat(color),
-    );
-    scoop.position.y = 0.08 * H;
-    g.add(cone, scoop);
-    return g;
-  };
-}
 
-function makeHandBalloon(color: string) {
-  return (H: number) => {
-    const g = new THREE.Group();
-    const balloon = new THREE.Mesh(
-      new THREE.SphereGeometry(0.055 * H, 14, 12),
-      mat(color, { roughness: 0.35 }),
-    );
-    balloon.position.y = 0.22 * H;
-    const string = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.002 * H, 0.002 * H, 0.16 * H, 6),
-      mat("#dddddd"),
-    );
-    string.position.y = 0.08 * H;
-    g.add(balloon, string);
-    return g;
-  };
-}
 
 // Position conversion constants (mirror GameEngine3D's sX/sZ helpers).
 const WORLD_W = WORLD_WIDTH / 2;
