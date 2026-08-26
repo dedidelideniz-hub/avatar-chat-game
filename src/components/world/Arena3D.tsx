@@ -15,6 +15,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   FALLBACK_MODEL_URL,
   GlbModelBoundary,
+  GlbModelRetry,
   characterModelUrl,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
@@ -206,13 +207,15 @@ const SMOKE_POOL = 22;
 const FIGHTER_MODEL_H = 1.5;
 
 /** One rigged GLB character instance driven by a battle-fighter ref. */
-function GlbFighterBody({
+function GlbFighterBodyCore({
   fighter,
+  url,
 }: {
   fighter: MutableRefObject<BattleFighter>;
+  url: string;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(characterModelUrl());
+  const { scene, animations } = useGLTF(url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
@@ -260,6 +263,26 @@ function GlbFighterBody({
     <group ref={groupRef} scale={normScale}>
       <primitive object={clone} />
     </group>
+  );
+}
+
+/** Battle fighter body with the SAME fallback chain as the street world:
+ *  primary model URL → RobotExpressive fallback (so the battle always
+ *  shows the same character as the street). Only if even that fails does
+ *  the procedural low-poly body take over (rig's boundary). */
+function GlbFighterBody({
+  fighter,
+}: {
+  fighter: MutableRefObject<BattleFighter>;
+}) {
+  return (
+    <GlbModelRetry
+      fallback={
+        <GlbFighterBodyCore fighter={fighter} url={FALLBACK_MODEL_URL} />
+      }
+    >
+      <GlbFighterBodyCore fighter={fighter} url={characterModelUrl()} />
+    </GlbModelRetry>
   );
 }
 

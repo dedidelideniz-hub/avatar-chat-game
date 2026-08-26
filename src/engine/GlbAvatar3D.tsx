@@ -513,6 +513,24 @@ export interface GlbCharacterPortraitProps {
 }
 
 /**
+ * Retry wrapper shared by every GLB consumer: renders `children` with the
+ * primary model URL, and if that model can't be fetched, re-renders
+ * `fallback` (which should load FALLBACK_MODEL_URL) instead. If the primary
+ * URL already IS the fallback, children render without a boundary.
+ */
+export function GlbModelRetry({
+  children,
+  fallback,
+}: {
+  children: ReactNode;
+  fallback: ReactNode;
+}) {
+  const primary = characterModelUrl();
+  if (primary === FALLBACK_MODEL_URL) return <>{children}</>;
+  return <GlbModelBoundary fallback={fallback}>{children}</GlbModelBoundary>;
+}
+
+/**
  * 3D character portrait for the character-selection screen. Renders the
  * same GLB character used in gameplay, with idle animation and equipped
  * items attached to bones. Must be placed inside a <Canvas>.
