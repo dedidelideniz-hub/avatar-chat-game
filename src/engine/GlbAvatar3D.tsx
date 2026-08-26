@@ -584,6 +584,21 @@ export function attachEquippedToModel(
         inst.scale.setScalar(ratio);
         console.warn('[Equip] Scale fix applied:', ratio.toFixed(3));
       }
+      // Ensure equipment is always visible: set renderOrder above the
+      // character mesh and force depthWrite/depthTest on all child meshes.
+      inst.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh) {
+          mesh.renderOrder = 999;
+          const m = mesh.material as THREE.Material;
+          if (m) {
+            m.depthWrite = true;
+            m.depthTest = true;
+            m.transparent = false;
+            if ('side' in m) (m as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+          }
+        }
+      });
       bone.add(inst);
       attached.push(inst);
       console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4));
