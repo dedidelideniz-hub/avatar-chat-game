@@ -135,6 +135,17 @@ export const BONE_ALIASES: Record<EquipSlot, string[]> = {
   ],
 };
 
+/**
+ * Slots that genuinely need equipment on multiple bones (paired limbs).
+ * All other slots are single-target: only the first matching bone is used
+ * to avoid duplicate equipment instances (e.g. Spine + Spine1 + Spine2).
+ */
+export const MULTI_BONE_SLOTS: ReadonlySet<EquipSlot> = new Set([
+  "HANDS",
+  "LEGS",
+  "FEET",
+]);
+
 /** Finds the first object whose name matches any alias (case-insensitive). */
 export function findBone(
   root: THREE.Object3D,

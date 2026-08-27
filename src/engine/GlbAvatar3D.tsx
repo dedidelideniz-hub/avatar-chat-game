@@ -13,6 +13,7 @@ import {
   equipMat,
   findBone as findBoneRegistry,
   findBones as findBonesRegistry,
+  MULTI_BONE_SLOTS,
 } from "./EquipmentRegistry";
 
 // Re-export for backward compatibility
@@ -551,10 +552,17 @@ export function attachEquippedToModel(
       item.scale.multiplyScalar(def.scale);
     }
 
-    const bones = findBonesRegistry(clone, slot);
+    let bones = findBonesRegistry(clone, slot);
     if (bones.length === 0) {
       console.warn('[Equip] ❌ No bone found for slot:', slot, 'item:', id);
       continue;
+    }
+    // Single-target slots (CHEST, HEAD, etc.) should only use the first
+    // matching bone to avoid duplicate equipment on child bones
+    // (e.g. Spine → Spine1 → Spine2 would create 3 overlapping copies).
+    if (!MULTI_BONE_SLOTS.has(slot) && bones.length > 1) {
+      console.log('[Equip] Single-target slot', slot, ':', bones.length, 'bones found, using only first:', bones[0].name);
+      bones = [bones[0]];
     }
     console.log('[Equip] ✅ Found bones:', bones.map(b => b.name), 'for slot:', slot);
 
