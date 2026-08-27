@@ -201,7 +201,8 @@ export type WearSlot =
   | "chest"
   | "back"
   | "hands"
-  | "feet";
+  | "feet"
+  | "legs";
 
 /** How many items can be worn at once in each slot. */
 export const WEAR_SLOT_CAPACITY: Record<WearSlot, number> = {
@@ -213,6 +214,7 @@ export const WEAR_SLOT_CAPACITY: Record<WearSlot, number> = {
   back: 1,
   hands: 1,
   feet: 1,
+  legs: 1,
 };
 
 export const WEAR_SLOT_LABELS: Record<WearSlot, string> = {
@@ -224,6 +226,7 @@ export const WEAR_SLOT_LABELS: Record<WearSlot, string> = {
   back: "Sırt",
   hands: "Eller",
   feet: "Ayaklar",
+  legs: "Bacaklar",
 };
 
 export interface Product {
@@ -319,19 +322,142 @@ export const VENDORS: Vendor[] = [
 
 /**
  * All old legacy products (balloon, ice cream, toy, etc.) have been removed.
- * New 3D GLB equipment items will be registered here as the new
- * asset pipeline is built.
+ * Each product here maps 1:1 to an EquipmentDef in GlbAvatar3D.tsx.
+ * The `id` must match the EquipmentRegistry item ID exactly.
+ *
+ * Slot rules:
+ *   head/face/neck/chest/back/hands/feet/legs → 1 item per slot
+ *   hand → up to 2 items (main + off-hand)
  *
  * VENDORS (stall references) are preserved for the 3D world layout.
  */
 export const PRODUCTS: Product[] = [
-  // ═══ TEST — 1 adet test zırh (CHEST slot, spine bone'a bağlı) ═══
+  // ═══ MODA TEZGÂHI — şapka, gözlük, atkı, zırh, çanta, eldiven, bot, kılıç, kalkan ═══
+  {
+    id: "moda-sapka",
+    name: "Hasır Şapka",
+    emoji: "👒",
+    price: 100,
+    description: "Güneşten koruyan şık bir hasır şapka.",
+    vendorId: "moda",
+    slot: "head",
+  },
+  {
+    id: "moda-gozluk",
+    name: "Güneş Gözlüğü",
+    emoji: "🕶️",
+    price: 120,
+    description: "Karanlık camlı havalı güneş gözlüğü.",
+    vendorId: "moda",
+    slot: "face",
+  },
+  {
+    id: "moda-atki",
+    name: "Kırmızı Atkı",
+    emoji: "🧣",
+    price: 80,
+    description: "Boynunu sıcak tutan örgü atkı.",
+    vendorId: "moda",
+    slot: "neck",
+  },
+  {
+    id: "moda-zirh",
+    name: "Mavi Zırh",
+    emoji: "🛡️",
+    price: 300,
+    description: "Mavi renkli hafif göğüs zırhı.",
+    vendorId: "moda",
+    slot: "chest",
+  },
+  {
+    id: "moda-canta",
+    name: "Deri Çanta",
+    emoji: "🎒",
+    price: 150,
+    description: "Sırta takılan deri çanta.",
+    vendorId: "moda",
+    slot: "back",
+  },
+  {
+    id: "moda-eldiven",
+    name: "Kırmızı Eldiven",
+    emoji: "🧤",
+    price: 90,
+    description: "Her iki ele takılan sıcak eldiven.",
+    vendorId: "moda",
+    slot: "hands",
+  },
+  {
+    id: "moda-bot",
+    name: "Deri Bot",
+    emoji: "🥾",
+    price: 130,
+    description: "Sağlam deri yürüyüş botları.",
+    vendorId: "moda",
+    slot: "feet",
+  },
+  {
+    id: "moda-kilic",
+    name: "Altın Kılıç",
+    emoji: "⚔️",
+    price: 250,
+    description: "Altın kabzalı parlak kılıç.",
+    vendorId: "moda",
+    slot: "hand",
+  },
+  {
+    id: "moda-kalkan",
+    name: "Mavi Kalkan",
+    emoji: "🛡️",
+    price: 200,
+    description: "Mavi renkli yuvarlak kalkan.",
+    vendorId: "moda",
+    slot: "hand",
+  },
+  // ═══ SİLAHÇI TEZGÂHI — demir kılıç, kalkan, miğfer, zırh ═══
+  {
+    id: "demir-kilic",
+    name: "Demir Kılıç",
+    emoji: "🗡️",
+    price: 350,
+    description: "Sağlam demirden dövülmüş kılıç.",
+    vendorId: "silahci",
+    slot: "hand",
+  },
+  {
+    id: "demir-kalkan",
+    name: "Demir Kalkan",
+    emoji: "🛡️",
+    price: 300,
+    description: "Ağır demir kalkan.",
+    vendorId: "silahci",
+    slot: "hand",
+  },
+  {
+    id: "demir-miğfer",
+    name: "Demir Miğfer",
+    emoji: "⛑️",
+    price: 280,
+    description: "Başını koruyan demir miğfer.",
+    vendorId: "silahci",
+    slot: "head",
+  },
+  {
+    id: "demir-zirh",
+    name: "Demir Zırh",
+    emoji: "🛡️",
+    price: 450,
+    description: "Tam gövde demir zırh.",
+    vendorId: "silahci",
+    slot: "chest",
+  },
+  // ═══ TEST ═══
   {
     id: "test-zirh",
     name: "Test Zırhı",
-    emoji: "🛡️",
-    price: 400,
-    description: "Yeni GLB karakter sistemi için test zırhı — spine bone'una bağlı.",
+    emoji: "🧪",
+    price: 10,
+    description: "Test zırhı — spine bone'una bağlı.",
     vendorId: "moda",
     slot: "chest",
   },

@@ -226,10 +226,11 @@ registerEquipmentBatch([
       return boot;
     },
   },
-  // ── MAIN_HAND — weapon held in the right hand.
+  // ── HAND → MAIN_HAND — weapon held in the right hand.
   {
     id: "moda-kilic",
-    slot: "MAIN_HAND",
+    slot: "HAND",
+    handSlot: "MAIN_HAND",
     build: (H) => {
       const g = new THREE.Group();
       const blade = new THREE.Mesh(
@@ -251,10 +252,11 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── OFF_HAND — shield held in the left hand.
+  // ── HAND → OFF_HAND — shield held in the left hand.
   {
     id: "moda-kalkan",
-    slot: "OFF_HAND",
+    slot: "HAND",
+    handSlot: "OFF_HAND",
     build: (H) => {
       const g = new THREE.Group();
       const disc = new THREE.Mesh(
@@ -273,10 +275,11 @@ registerEquipmentBatch([
     },
   },
   // ═══ SİLAHÇI — real weapons & armor ═══
-  // Iron Sword — MAIN_HAND
+  // Iron Sword — HAND → MAIN_HAND
   {
     id: "demir-kilic",
-    slot: "MAIN_HAND",
+    slot: "HAND",
+    handSlot: "MAIN_HAND",
     build: (H) => {
       const g = new THREE.Group();
       // Blade
@@ -307,10 +310,11 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // Iron Shield — OFF_HAND
+  // Iron Shield — HAND → OFF_HAND
   {
     id: "demir-kalkan",
-    slot: "OFF_HAND",
+    slot: "HAND",
+    handSlot: "OFF_HAND",
     build: (H) => {
       const g = new THREE.Group();
       // Shield body
@@ -510,9 +514,17 @@ export function attachEquippedToModel(
 
     let slot = def.slot;
     if (slot === "HAND") {
-      if (!usedSlots.has("MAIN_HAND")) slot = "MAIN_HAND";
-      else if (!usedSlots.has("OFF_HAND")) slot = "OFF_HAND";
-      else continue;
+      // Use the item's explicit handSlot, or auto-assign.
+      if (def.handSlot) {
+        if (usedSlots.has(def.handSlot)) continue;
+        slot = def.handSlot;
+      } else if (!usedSlots.has("MAIN_HAND")) {
+        slot = "MAIN_HAND";
+      } else if (!usedSlots.has("OFF_HAND")) {
+        slot = "OFF_HAND";
+      } else {
+        continue;
+      }
     }
 
     console.log('[Equip] ═══ Processing item:', id, '→ slot:', slot);
@@ -633,8 +645,8 @@ export function attachEquippedToModel(
       });
 
       // ── DEBUG 5: Bone'a geçici görsel marker ekle ──
-      // Bu, mixamorig:Spine'ın gerçekten gövde bölgesinde olup olmadığını doğrular.
-      // Sadece CHEST slotu için ve sadece ilk item için ekle.
+      // This confirms whether mixamorig:Spine is really in the body region.
+      // Only for CHEST slot and only the first item.
       if (slot === 'CHEST' && i === 0 && !bone.getObjectByName('_debugMarker')) {
         const debugMarker = new THREE.Group();
         debugMarker.name = '_debugMarker';

@@ -34,6 +34,7 @@ const SLOT_POS: Record<WearSlot, SlotConfig> = {
   back: { x: 70, y: 100, size: 24 },  // debug-only front-view approximation
   hands: { x: 38, y: 126, size: 18 }, // left hand (debug shows one glove)
   feet: { x: 70, y: 168, size: 22 },  // between the feet
+  legs: { x: 54, y: 145, size: 16 },  // upper leg area
 };
 
 /** Per-product overrides for non-hand items. */

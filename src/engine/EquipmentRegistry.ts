@@ -32,7 +32,8 @@ export type EquipSlot =
   | "OFF_HAND"
   | "BACK"
   | "LEGS"
-  | "FEET";
+  | "FEET"
+  | "HAND";
 
 /**
  * Describes one equipment item — either a procedural mesh factory or a
@@ -43,7 +44,14 @@ export interface EquipmentDef {
   id: string;
 
   /** Body slot this item occupies. */
-  slot: EquipSlot | "HAND"; // "HAND" = auto-assign MAIN_HAND / OFF_HAND
+  slot: EquipSlot;
+
+  /**
+   * For `slot: "HAND"` items, which hand should this item occupy?
+   * Determines MAIN_HAND vs OFF_HAND assignment in attachEquippedToModel.
+   * Only used when slot is "hand" (case-insensitive).
+   */
+  handSlot?: "MAIN_HAND" | "OFF_HAND";
 
   /**
    * Procedural mesh factory. Called with the character's model height
@@ -127,6 +135,10 @@ export const BONE_ALIASES: Record<EquipSlot, string[]> = {
   ],
   MAIN_HAND: ["righthand", "hand_r", "handright", "mixamorig:righthand"],
   OFF_HAND: ["lefthand", "hand_l", "handleft", "mixamorig:lefthand"],
+  HAND: [
+    "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
+    "righthand", "hand_r", "handright", "mixamorig:righthand",
+  ],
   BACK: ["spine", "chest", "mixamorig:spine"],
   LEGS: ["hip", "upleg", "mixamorig:leftupleg", "mixamorig:rightupleg"],
   FEET: [
