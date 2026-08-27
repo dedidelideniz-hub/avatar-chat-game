@@ -604,8 +604,12 @@ export function attachEquippedToModel(
         inst.scale.setScalar(ratio);
         console.warn('[Equip] Scale fix applied:', ratio.toFixed(3));
       }
-      // Ensure equipment is always visible.
+      // Mark all objects in this equipment subtree so applyFade skips them,
+      // and disable frustum culling so the equipment is always rendered.
+      inst.userData.isEquipment = true;
       inst.traverse((obj) => {
+        obj.userData.isEquipment = true;
+        obj.frustumCulled = false;
         const mesh = obj as THREE.Mesh;
         if (mesh.isMesh) {
           mesh.renderOrder = 999;
@@ -778,6 +782,9 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
 
   const applyFade = (root: THREE.Object3D, opacity: number) => {
     root.traverse((obj) => {
+      // Skip equipment meshes — they have their own materials and should
+      // never be faded (they would become invisible).
+      if (obj.userData?.isEquipment) return;
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
       const orig = mesh.material as THREE.Material | undefined;
