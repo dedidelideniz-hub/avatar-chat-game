@@ -128,7 +128,7 @@ export const BONE_ALIASES: Record<EquipSlot, string[]> = {
   HEAD: ["head", "mixamorig:head"],
   FACE: ["head", "mixamorig:head"],
   NECK: ["neck", "mixamorig:neck"],
-  CHEST: ["chest", "spine", "mixamorig:spine"],
+  CHEST: ["chest", "spine", "torso", "mixamorig:spine"],
   HANDS: [
     "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
     "righthand", "hand_r", "handright", "mixamorig:righthand",
@@ -139,7 +139,7 @@ export const BONE_ALIASES: Record<EquipSlot, string[]> = {
     "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
     "righthand", "hand_r", "handright", "mixamorig:righthand",
   ],
-  BACK: ["spine", "chest", "mixamorig:spine"],
+  BACK: ["spine", "chest", "torso", "mixamorig:spine"],
   LEGS: ["hip", "upleg", "mixamorig:leftupleg", "mixamorig:rightupleg"],
   FEET: [
     "leftfoot", "foot_l", "mixamorig:leftfoot",
