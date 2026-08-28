@@ -231,8 +231,10 @@ function GlbFighterBodyCore({
   const normScale = useMemo(() => {
     scene.updateMatrixWorld(true);
     if (skinUrl) {
-      const skel = computeSkeletonHeight(scene);
-      return FIGHTER_MODEL_H / Math.max(skel.height, 0.0001);
+      // Include the actual soles, not only bone endpoints; external GLB
+      // walking rigs often place foot geometry below the foot bones.
+      const box = new THREE.Box3().setFromObject(scene);
+      return FIGHTER_MODEL_H / Math.max(box.max.y - box.min.y, 0.0001);
     }
     const box = new THREE.Box3().setFromObject(scene);
     const size = new THREE.Vector3();

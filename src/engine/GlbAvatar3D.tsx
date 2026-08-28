@@ -1034,11 +1034,12 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const { normScale, modelHeight, feetOffset } = useMemo(() => {
     clone.updateMatrixWorld(true);
     if (skinUrl) {
-      // Skin model: use skeleton bones to avoid armor mesh inflation.
-      const skel = computeSkeletonHeight(clone);
-      const h = skel.height;
-      const feetY = -skel.feetY;
-      return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: feetY };
+      // Use the complete rendered mesh for skin ground alignment. Bone-only
+      // bounds can sit above the actual soles, which makes feet sink during
+      // locomotion animations (especially on external GLB rigs).
+      const box = new THREE.Box3().setFromObject(clone);
+      const h = Math.max(box.max.y - box.min.y, 0.0001);
+      return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: -box.min.y };
     }
     // Default model: bounding box is accurate.
     const box = new THREE.Box3().setFromObject(clone);
