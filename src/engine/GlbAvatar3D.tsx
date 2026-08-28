@@ -1090,6 +1090,32 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   );
   const initDone = useRef(false);
 
+  // Warrior-only trail: small pooled smoke puffs, kept lightweight for mobile.
+  const warriorSmoke = useRef<THREE.Mesh[]>([]);
+  const warriorSmokeClock = useRef(0);
+  const isWarriorSkin = skinUrl === "/models/moda-savasci.glb";
+  useEffect(() => {
+    if (!isWarriorSkin || !groupRef.current) return;
+    const smokeMat = new THREE.MeshBasicMaterial({
+      color: "#111827",
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    });
+    const puffs = Array.from({ length: 5 }, () => {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 5), smokeMat.clone());
+      puff.visible = false;
+      groupRef.current!.add(puff);
+      warriorSmoke.current.push(puff);
+      return puff;
+    });
+    return () => {
+      puffs.forEach((puff) => puff.removeFromParent());
+      warriorSmoke.current = [];
+      smokeMat.dispose();
+    };
+  }, [isWarriorSkin]);
+
   // ── Near-camera fade ─────────────────────────────────────────
   // A character that slips between the camera and the action (bot walking
   // past, or the player while the follow-camera lags) would otherwise fill
@@ -1177,6 +1203,30 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     group.rotation.y += diff * Math.min(1, 10 * dt);
+
+    if (isWarriorSkin && moving) {
+      warriorSmokeClock.current += dt;
+      if (warriorSmokeClock.current > 0.09) {
+        warriorSmokeClock.current = 0;
+        const puff = warriorSmoke.current.find((item) => !item.visible) ?? warriorSmoke.current[0];
+        if (puff) {
+          puff.visible = true;
+          puff.position.set(0, -0.72, 0.12);
+          puff.scale.setScalar(0.55);
+          (puff.material as THREE.MeshBasicMaterial).opacity = 0.3;
+          puff.userData.smokeAge = 0;
+        }
+      }
+    }
+    for (const puff of warriorSmoke.current) {
+      if (!puff.visible) continue;
+      const age = (puff.userData.smokeAge ?? 0) + dt;
+      puff.userData.smokeAge = age;
+      puff.position.y += dt * 0.18;
+      puff.scale.addScalar(dt * 0.35);
+      (puff.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.3 * (1 - age / 0.55));
+      if (age >= 0.55) puff.visible = false;
+    }
 
     // Fade near-camera characters (see applyFade above). Only touch
     // materials when the opacity actually changes — not every frame.
