@@ -968,19 +968,25 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
 
   const { scene, animations } = useGLTF(effectiveUrl);
 
+  // Ensure all world matrices are computed before cloning or measuring.
+  useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
+
   // Per-instance clone with independent skeleton (shares GPU resources).
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
 
   const { actions } = useAnimations(animations, groupRef);
 
   // Normalize to exactly PLAYER_3D_HEIGHT — never trust authored scale.
+  // Compute bounding box from the CLONE (not original) after matrix update,
+  // so nested transforms (Sketchfab_model → Armature) are fully baked.
   const { normScale, modelHeight } = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(scene);
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
     const size = new THREE.Vector3();
     box.getSize(size);
     const h = Math.max(size.y, 0.0001);
     return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h };
-  }, [scene]);
+  }, [clone]);
 
   // Shadow casting on every mesh.
   useEffect(() => {
@@ -1210,16 +1216,18 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
   const { scene, animations } = useGLTF(skinUrl || url);
+  useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
   const { normScale, modelHeight } = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(scene);
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
     const size = new THREE.Vector3();
     box.getSize(size);
     const h = Math.max(size.y, 0.0001);
     return { normScale: height / h, modelHeight: h };
-  }, [scene, height]);
+  }, [clone, height]);
 
   // Play the idle clip (or the first clip as a fallback).
   useEffect(() => {
@@ -1341,16 +1349,18 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
   const { scene, animations } = useGLTF(skinUrl || url);
+  useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
   const { normScale, modelHeight } = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(scene);
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
     const size = new THREE.Vector3();
     box.getSize(size);
     const h = Math.max(size.y, 0.0001);
     return { normScale: height / h, modelHeight: h };
-  }, [scene, height]);
+  }, [clone, height]);
 
   // Idle animation.
   useEffect(() => {
