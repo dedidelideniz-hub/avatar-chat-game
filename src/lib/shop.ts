@@ -342,13 +342,23 @@ export const PRODUCTS: Product[] = [
     vendorId: "moda",
     slot: "chest",
   },
-  // ═══ Kral Zırh — Tam Vücut ═══
+  // ═══ Savaşçı Zırhı — Fantasy Warrior ═══
   {
-    id: "kral-zirh",
-    name: "Kral Zırhı",
-    emoji: "👑",
-    price: 800,
-    description: "Koyu metal + altın detaylı kraliyet zırhı.",
+    id: "savasci-zirh",
+    name: "Savaşçı Zırhı",
+    emoji: "⚔️",
+    price: 600,
+    description: "Fantastik savaşçı zırhı —low-poly stylized.",
+    vendorId: "moda",
+    slot: "chest",
+  },
+  // ═══ Şövalye Zırhı — Sable Knight ═══
+  {
+    id: "sovalye-zirh",
+    name: "Şövalye Zırhı",
+    emoji: "🛡️",
+    price: 900,
+    description: "Detaylı metal şövalye zırhı — Substance Painter.",
     vendorId: "moda",
     slot: "chest",
   },

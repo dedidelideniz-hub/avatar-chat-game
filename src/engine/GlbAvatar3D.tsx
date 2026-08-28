@@ -84,14 +84,42 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
         url,
         (gltf) => {
           const scene = gltf.scene;
-          // Simple cache: store the raw scene as-is.
-          // Centering and scaling happen at attachment time.
+          // ── Normalize: center at origin + height=1.0 ──
+          // Works for any orientation — flattens transforms, then normalizes.
+          scene.updateMatrixWorld(true);
+          // Flatten: bake world transforms into geometry vertices.
+          const meshes: THREE.Mesh[] = [];
+          scene.traverse((obj) => { if ((obj as THREE.Mesh).isMesh) meshes.push(obj as THREE.Mesh); });
+          for (const mesh of meshes) {
+            mesh.updateMatrixWorld(true);
+            mesh.geometry.applyMatrix4(mesh.matrixWorld);
+            mesh.position.set(0, 0, 0);
+            mesh.rotation.set(0, 0, 0);
+            mesh.scale.set(1, 1, 1);
+            scene.add(mesh);
+          }
+          // Remove old hierarchy.
+          const toRemove: THREE.Object3D[] = [];
+          scene.children.forEach(c => { if (!(c as THREE.Mesh).isMesh) toRemove.push(c); });
+          for (const c of toRemove) scene.remove(c);
+          // Center at origin.
           scene.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(scene);
+          const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
-          scene.userData._equipmentSize = size;
+          for (const mesh of meshes) {
+            mesh.geometry.translate(-center.x, -center.y, -center.z);
+          }
+          scene.position.set(0, 0, 0);
+          // Normalize geometry to height=1.0 (use largest dim for uniform scale).
+          const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+          const nf = 1.0 / maxDim;
+          for (const mesh of meshes) {
+            mesh.geometry.scale(nf, nf, nf);
+          }
+          scene.userData._equipmentSize = new THREE.Vector3(size.x * nf, size.y * nf, size.z * nf);
           _equipmentGlbCache.set(url, scene);
-          console.log('[Equip] GLB cached:', url, '| size:', size.toArray().map(v => v.toFixed(2)));
+          console.log('[Equip] GLB cached+normalized:', url, '| origSize:', size.toArray().map((v: number) => v.toFixed(2)), '| normalized:', (scene.userData._equipmentSize as THREE.Vector3).toArray().map((v: number) => v.toFixed(2)));
           resolve(scene);
         },
         undefined,
@@ -107,8 +135,9 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
   return placeholder;
 }
 
-// Equipment GLB preloads can be added here when needed.
-// Example: loadEquipmentGlbCached('/models/some-item.glb');
+// Equipment GLB preloads — triggered at module init.
+loadEquipmentGlbCached('/models/savasci-zirh.glb');
+loadEquipmentGlbCached('/models/sovalye-zirh.glb');
 
 /** Attaches `item` to the bone for `slot`. Returns false if bone missing. */
 export function attachToBone(
@@ -638,78 +667,26 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ═══ Kral Zırh — Tam Vücut Procedural ═══
-  // Kral Henry VIII tarzı: koyu metal + altın detaylar, tam gövde
+  // ═══ Savaşçı Zırhı — Fantasy Warrior (Sketchfab, GLB) ═══
   {
-    id: "kral-zirh",
+    id: "savasci-zirh",
     slot: "CHEST",
+    glbPath: "/models/savasci-zirh.glb",
     build: (H) => {
       const g = new THREE.Group();
-      const dark = "#2a2a2e";
-      const metal = "#3a3a42";
-      const gold = "#c9a82c";
-      const leather = "#3d2414";
-      const s = { metalness: 0.7, roughness: 0.25 };
-      const ds = { metalness: 0.6, roughness: 0.3 };
-
-      // ── 1. Ön göğüs plakası ──
-      const front = new THREE.Mesh(new THREE.BoxGeometry(0.18 * H, 0.22 * H, 0.03 * H), mat(dark, s));
-      front.position.set(0, 0.01 * H, 0.068 * H);
-
-      // ── 2. Arka plaka ──
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H), mat(metal, ds));
-      back.position.set(0, 0.01 * H, -0.058 * H);
-
-      // ── 3. Sol yan plaka ──
-      const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.03 * H, 0.20 * H, 0.09 * H), mat(metal, ds));
-      sideL.position.set(-0.135 * H, 0.01 * H, -0.005 * H);
-      const sideR = sideL.clone(); sideR.position.x = 0.135 * H;
-
-      // ── 4. Sol omuz zırhı (kubbe) ──
-      const shL = new THREE.Mesh(new THREE.SphereGeometry(0.045 * H, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), mat(dark, { ...s, metalness: 0.75 }));
-      shL.position.set(-0.115 * H, 0.12 * H, 0.01 * H);
-      const shR = shL.clone(); shR.position.x = 0.115 * H;
-
-      // ── 5. Altın omuz kenarları ──
-      const shRimL = new THREE.Mesh(new THREE.TorusGeometry(0.045 * H, 0.005 * H, 8, 16, Math.PI), mat(gold, { metalness: 0.8, roughness: 0.15 }));
-      shRimL.position.set(-0.115 * H, 0.12 * H, 0.01 * H);
-      shRimL.rotation.x = Math.PI / 2;
-      const shRimR = shRimL.clone(); shRimR.position.x = 0.115 * H;
-
-      // ── 6. Omuz askıları ──
-      const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.02 * H, 0.12 * H, 0.018 * H), mat(leather, { roughness: 0.85 }));
-      strapL.position.set(-0.085 * H, 0.10 * H, 0.068 * H);
-      const strapR = strapL.clone(); strapR.position.x = 0.085 * H;
-
-      // ── 7. Altın yaka ──
-      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.055 * H, 0.01 * H, 8, 18), mat(gold, { metalness: 0.85, roughness: 0.1 }));
-      collar.rotation.x = Math.PI / 2;
-      collar.position.set(0, 0.13 * H, 0.01 * H);
-
-      // ── 8. Kemer ──
-      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.22 * H, 0.018 * H, 0.13 * H), mat(leather, { roughness: 0.9 }));
-      belt.position.set(0, -0.10 * H, 0.005 * H);
-
-      // ── 9. Altın kemer tokası ──
-      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.03 * H, 0.03 * H, 0.018 * H), mat(gold, { metalness: 0.8, roughness: 0.1 }));
-      buckle.position.set(0, -0.10 * H, 0.07 * H);
-
-      // ── 10. Ön göğüs detayları (dikey altın şeritler) ──
-      const stripL = new THREE.Mesh(new THREE.BoxGeometry(0.008 * H, 0.16 * H, 0.005 * H), mat(gold, { metalness: 0.75, roughness: 0.15 }));
-      stripL.position.set(-0.05 * H, 0.02 * H, 0.085 * H);
-      const stripR = stripL.clone(); stripR.position.x = 0.05 * H;
-
-      // ── 11. Altın göğüs amblemi (taç) ──
-      const emblem = new THREE.Mesh(new THREE.CylinderGeometry(0.018 * H, 0.018 * H, 0.006 * H, 6), mat(gold, { metalness: 0.9, roughness: 0.05 }));
-      emblem.rotation.x = Math.PI / 2;
-      emblem.position.set(0, 0.08 * H, 0.085 * H);
-
-      // ── 12. Alt karın koruması ──
-      const belly = new THREE.Mesh(new THREE.BoxGeometry(0.16 * H, 0.06 * H, 0.03 * H), mat(metal, ds));
-      belly.position.set(0, -0.06 * H, 0.06 * H);
-
-      g.add(front, back, sideL, sideR, shL, shR, shRimL, shRimR, strapL, strapR, collar, belt, buckle, stripL, stripR, emblem, belly);
-      return g;
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#6b4423", { metalness: 0.5, roughness: 0.4 }));
+      p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
+    },
+  },
+  // ═══ Şövalye Zırhı — Sable Knight (Sketchfab, GLB) ═══
+  {
+    id: "sovalye-zirh",
+    slot: "CHEST",
+    glbPath: "/models/sovalye-zirh.glb",
+    build: (H) => {
+      const g = new THREE.Group();
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#4a5568", { metalness: 0.6, roughness: 0.3 }));
+      p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
     },
   },
   // NOTE: test-zirh removed — use moda-zirh or demir-zirh instead.
@@ -849,31 +826,14 @@ export function attachEquippedToModel(
       console.log('[Equip] bone:', bone.name, '| parent:', bone.parent?.name, '| worldScale:', boneAvg.toFixed(2));
 
       if (def.glbPath && boneAvg > 1e-6) {
-        // GLB equipment: normalize GEOMETRY (vertex positions), not just object scale.
-        // 1. Translate geometry so bounding box center is at origin
-        const bbox = new THREE.Box3().setFromObject(inst);
-        const bboxCenter = bbox.getCenter(new THREE.Vector3());
-        const bboxSize = bbox.getSize(new THREE.Vector3());
-        inst.traverse((obj) => {
-          if ((obj as THREE.Mesh).isMesh) {
-            (obj as THREE.Mesh).geometry.translate(-bboxCenter.x, -bboxCenter.y, -bboxCenter.z);
-          }
-        });
-        // 2. Normalize geometry so height = 1.0 (scale vertex positions)
-        const geoHeight = Math.max(bboxSize.y, 0.001);
-        const nf = 1.0 / geoHeight;
-        inst.traverse((obj) => {
-          if ((obj as THREE.Mesh).isMesh) {
-            (obj as THREE.Mesh).geometry.scale(nf, nf, nf);
-          }
-        });
-        // 3. Object scale: target world height = 55% of character.
-        //    worldH = localScale × boneAvg
+        // GLB equipment: geometry already normalized to height≈1.0 in cache.
+        // Just scale to match character proportions.
+        // worldH = localScale × boneAvg → localScale = targetWorldH / boneAvg
         const charWorldH = modelHeight * expected;
         const targetWorldH = charWorldH * 0.55;
         const localScale = targetWorldH / boneAvg;
         inst.scale.setScalar(localScale);
-        console.log('[Equip] GLB geo-normalized:', bboxSize.toArray().map(v => v.toFixed(1)), '| nf:', nf.toFixed(6), '| scale:', localScale.toFixed(4));
+        console.log('[Equip] GLB scale:', localScale.toFixed(4), '| targetH:', targetWorldH.toFixed(2));
       } else {
         // Procedural equipment: compensate for bone scale mismatch.
         const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
