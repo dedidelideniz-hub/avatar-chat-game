@@ -163,26 +163,15 @@ function EnergySparks() {
 function PreviewCharacter({ url }: { url: string }) {
   const groupRef = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF(url);
+  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
-  const { clone, normScale, yOff } = useMemo(() => {
-    const c = SkeletonUtils.clone(scene);
-    // Compute bounding box of the clone (not original scene)
-    c.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(c);
+  const normScale = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(scene);
     const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
     box.getSize(size);
-    box.getCenter(center);
     const h = Math.max(size.y, 0.001);
-    // Target height: 2.2 units (same for all characters)
-    const TARGET_H = 2.2;
-    const s = TARGET_H / h;
-    // Translate clone so its feet sit at Y=0 (bottom of box at origin)
-    // After scaling, the bottom of the box is at (box.min.y - center.y) * s
-    // We want that to be 0, so translate by -(box.min.y - center.y)
-    const feetOffset = -(box.min.y - center.y);
-    return { clone: c, normScale: s, yOff: feetOffset };
+    return 2.2 / h;
   }, [scene]);
 
   // Play idle
@@ -200,25 +189,9 @@ function PreviewCharacter({ url }: { url: string }) {
   });
 
   return (
-    <group ref={groupRef} scale={normScale} position={[0, yOff * normScale, 0]}>
+    <group ref={groupRef} scale={normScale} position={[0, -0.2, 0]}>
       <primitive object={clone} />
     </group>
-  );
-}
-
-/* ── Compact card preview (turntable, no floor/effects) ────── */
-
-function CardPreviewScene({ url }: { url: string }) {
-  return (
-    <>
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[2, 4, 3]} intensity={1.6} color="#e0e7ff" />
-      <pointLight position={[-1.5, 1.5, -1]} intensity={0.6} color="#818cf8" />
-      <pointLight position={[1.5, 0.5, 1.5]} intensity={0.5} color="#c4b5fd" />
-      <Suspense fallback={null}>
-        <PreviewCharacter url={url} />
-      </Suspense>
-    </>
   );
 }
 
@@ -555,27 +528,13 @@ export function ShopSheet({
                   />
                 )}
 
-                {/* 3D character preview for skin products, emoji for equipment */}
-                {product.skinUrl ? (
-                  <div className="relative z-10 -mx-1 -mt-1 flex h-28 w-[calc(100%+0.5rem)] items-center justify-center overflow-hidden rounded-t-xl">
-                    <Canvas
-                      dpr={[1, 1.2]}
-                      camera={{ position: [0, 0.3, 2.6], fov: 32 }}
-                      gl={{ alpha: true }}
-                      style={{ background: "transparent" }}
-                    >
-                      <CardPreviewScene url={product.skinUrl} />
-                    </Canvas>
-                    {/* Bottom gradient fade into card */}
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent" />
-                  </div>
-                ) : (
-                  <motion.span
-                    className="relative z-10 text-3xl leading-none"
-                  >
-                    {product.emoji}
-                  </motion.span>
-                )}
+                <motion.span
+                  className="relative z-10 text-3xl leading-none"
+                  animate={product.skinUrl && !isOwned ? { y: [0, -3, 0] } : {}}
+                  transition={product.skinUrl ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}}
+                >
+                  {product.emoji}
+                </motion.span>
                 <p className="relative z-10 mt-2 text-sm font-extrabold leading-tight">
                   {product.name}
                 </p>
