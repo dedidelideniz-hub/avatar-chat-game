@@ -120,13 +120,8 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
   return placeholder;
 }
 
-// Preload equipment GLBs on module init so they're ready when needed.
-if (typeof window !== 'undefined') {
-  // Fire-and-forget preload for moda-zirh GLB.
-  fetch('/models/moda-zirh.glb', { method: 'HEAD' }).then(() => {
-    loadEquipmentGlbCached('/models/moda-zirh.glb');
-  }).catch(() => { /* GLB not available, will use procedural fallback */ });
-}
+// Equipment GLB preloads can be added here when needed.
+// Example: loadEquipmentGlbCached('/models/some-item.glb');
 
 /** Attaches `item` to the bone for `slot`. Returns false if bone missing. */
 export function attachToBone(
@@ -240,15 +235,16 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── CHEST — Moda Zırh: Sketchfab GLB model ──
-  // Torso bone local space: Y=dikey, Z=ön, X=sol/sağ.
-  // GLB model dosyası: /models/moda-zirh.glb
+  // ── CHEST — Moda Zırh: Vücuda oturan yelek tarzı zırh ──
+  // Torso bone local space: world_scale ≈ 40, root_scale ≈ 0.40.
+  // Conversion: world_value = builder_value × 0.01 × 40 ≈ builder_value × 0.40
+  // So builder_value = world_value / 0.40.
+  // Character body: ~0.38w × 0.50h × 0.25d in world units.
+  // Front surface ≈ 0.12 world units from Torso bone.
   {
     id: "moda-zirh",
     slot: "CHEST",
-    glbPath: "/models/moda-zirh.glb",
     build: (H) => {
-      // GLB yüklenene kadar geçici procedural fallback
       const g = new THREE.Group();
       const blue = "#3f6fd0";
       const darkBlue = "#2a4a8a";
@@ -256,82 +252,88 @@ registerEquipmentBatch([
       const leather = "#5a3a1e";
       const metal = { metalness: 0.5, roughness: 0.3 } as const;
 
-      // ── 1. Ön göğüs plakası — geniş, vücudu tam örten ──
+      // ── 1. Ön göğüs plakası ──
+      // World target: 0.34w × 0.42h × 0.05d at Z=0.13 (sitting on body surface)
       const frontPlate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34 * H, 0.28 * H, 0.05 * H),
+        new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H),
         mat(blue, metal),
       );
-      frontPlate.position.set(0, 0, 0.18 * H);
+      frontPlate.position.set(0, 0.01 * H, 0.065 * H);
 
-      // ── 2. Arka plaka — arka tam koruma ──
+      // ── 2. Arka plaka ──
+      // World target: 0.32w × 0.40h × 0.04d at Z=-0.11
       const backPlate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.32 * H, 0.26 * H, 0.04 * H),
+        new THREE.BoxGeometry(0.16 * H, 0.20 * H, 0.020 * H),
         mat(darkBlue, metal),
       );
-      backPlate.position.set(0, 0, -0.14 * H);
+      backPlate.position.set(0, 0.01 * H, -0.055 * H);
 
-      // ── 3. Sol yan plaka — göğüsü sararak öne uzanır ──
+      // ── 3. Sol yan plaka — vücudu sarar ──
+      // World target: 0.05w × 0.40h × 0.16d at X=-0.16
       const sideL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.06 * H, 0.24 * H, 0.20 * H),
+        new THREE.BoxGeometry(0.025 * H, 0.20 * H, 0.08 * H),
         mat(darkBlue, metal),
       );
-      sideL.position.set(-0.16 * H, 0, 0.02 * H);
+      sideL.position.set(-0.13 * H, 0.01 * H, -0.005 * H);
 
       // ── 4. Sağ yan plaka ──
       const sideR = sideL.clone();
-      sideR.position.x = 0.16 * H;
+      sideR.position.x = 0.13 * H;
 
-      // ── 5. Sol omuz plakası — geniş, üstten koruma ──
+      // ── 5. Sol omuz zırhı — kubbe şeklinde ──
+      // World target: 0.15w × 0.06h × 0.15d at Y=0.22, X=-0.21
       const shoulderL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.10 * H, 0.05 * H, 0.12 * H),
+        new THREE.SphereGeometry(0.04 * H, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
         mat(blue, { ...metal, metalness: 0.55 }),
       );
-      shoulderL.position.set(-0.14 * H, 0.14 * H, 0.04 * H);
+      shoulderL.position.set(-0.11 * H, 0.12 * H, 0.01 * H);
 
-      // ── 6. Sağ omuz plakası ──
+      // ── 6. Sağ omuz zırhı ──
       const shoulderR = shoulderL.clone();
-      shoulderR.position.x = 0.14 * H;
+      shoulderR.position.x = 0.11 * H;
 
-      // ── 7. Sol omuz askısı ──
+      // ── 7. Sol omuz askısı — deri bant ──
       const strapL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.025 * H, 0.14 * H, 0.015 * H),
+        new THREE.BoxGeometry(0.02 * H, 0.12 * H, 0.015 * H),
         mat(leather, { roughness: 0.8 }),
       );
-      strapL.position.set(-0.10 * H, 0.12 * H, 0.17 * H);
+      strapL.position.set(-0.08 * H, 0.10 * H, 0.065 * H);
 
       // ── 8. Sağ omuz askısı ──
       const strapR = strapL.clone();
-      strapR.position.x = 0.10 * H;
+      strapR.position.x = 0.08 * H;
 
       // ── 9. Boyun yaka — altın halka ──
+      // World: Y≈0.24 from bone
       const collar = new THREE.Mesh(
-        new THREE.TorusGeometry(0.08 * H, 0.012 * H, 8, 18),
+        new THREE.TorusGeometry(0.06 * H, 0.01 * H, 8, 18),
         mat(gold, { metalness: 0.65, roughness: 0.2 }),
       );
       collar.rotation.x = Math.PI / 2;
-      collar.position.set(0, 0.14 * H, 0.02 * H);
+      collar.position.set(0, 0.14 * H, 0.01 * H);
 
-      // ── 10. Kemer — bel hizasında deri bant ──
+      // ── 10. Kemer — bel hizasında ──
+      // World: Y≈-0.20, wrapping around body
       const belt = new THREE.Mesh(
-        new THREE.BoxGeometry(0.36 * H, 0.03 * H, 0.24 * H),
+        new THREE.BoxGeometry(0.20 * H, 0.015 * H, 0.12 * H),
         mat(leather, { roughness: 0.85 }),
       );
-      belt.position.set(0, -0.10 * H, 0.02 * H);
+      belt.position.set(0, -0.10 * H, 0.005 * H);
 
       // ── 11. Kemer tokası — altın ──
       const buckle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.03 * H, 0.03 * H, 0.02 * H),
+        new THREE.BoxGeometry(0.025 * H, 0.025 * H, 0.015 * H),
         mat(gold, { metalness: 0.75, roughness: 0.15 }),
       );
-      buckle.position.set(0, -0.10 * H, 0.18 * H);
+      buckle.position.set(0, -0.10 * H, 0.065 * H);
 
       // ── 12. Göğüs amblemi — altın daire ──
       const emblem = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.018 * H, 0.018 * H, 0.008 * H, 14),
+        new THREE.CylinderGeometry(0.015 * H, 0.015 * H, 0.006 * H, 14),
         mat(gold, { metalness: 0.8, roughness: 0.1 }),
       );
       emblem.rotation.x = Math.PI / 2;
-      emblem.position.set(0, 0.06 * H, 0.21 * H);
+      emblem.position.set(0, 0.04 * H, 0.078 * H);
 
       g.add(
         frontPlate, backPlate, sideL, sideR,
