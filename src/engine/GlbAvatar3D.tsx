@@ -84,11 +84,27 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
         url,
         (gltf) => {
           const scene = gltf.scene;
-          // Center the model and compute its bounding box.
+          // Update world matrices to compute accurate bounding box.
+          scene.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(scene);
           const center = box.getCenter(new THREE.Vector3());
-          scene.position.sub(center);
+          const size = box.getSize(new THREE.Vector3());
+          // Center the geometry at origin and normalize scale.
+          // Move all mesh geometries so the model is centered.
+          scene.traverse((obj) => {
+            if ((obj as THREE.Mesh).isMesh) {
+              const mesh = obj as THREE.Mesh;
+              if (mesh.geometry) {
+                mesh.geometry.translate(-center.x, -center.y, -center.z);
+              }
+            }
+          });
+          // Also adjust the scene root to compensate for any non-mesh transforms.
+          scene.position.set(0, 0, 0);
+          // Store the original size so we can scale to fit the character.
+          scene.userData._equipmentSize = size;
           _equipmentGlbCache.set(url, scene);
+          console.log('[Equip] GLB cached:', url, '| center:', center.toArray().map(v => v.toFixed(2)), '| size:', size.toArray().map(v => v.toFixed(2)));
           resolve(scene);
         },
         undefined,
