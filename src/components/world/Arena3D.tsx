@@ -17,6 +17,7 @@ import {
   GlbModelBoundary,
   GlbModelRetry,
   characterModelUrl,
+  computeSkeletonHeight,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
@@ -224,12 +225,12 @@ function GlbFighterBodyCore({
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
-  // Normalize to FIGHTER_MODEL_H — never trust the authored scale.
+  // Normalize to FIGHTER_MODEL_H — use skeleton bone heights for
+  // character skins (avoids inflation from armor/accessory meshes).
   const normScale = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(scene);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    return FIGHTER_MODEL_H / Math.max(size.y, 0.0001);
+    scene.updateMatrixWorld(true);
+    const skel = computeSkeletonHeight(scene);
+    return FIGHTER_MODEL_H / Math.max(skel.height, 0.0001);
   }, [scene]);
 
   useEffect(() => {

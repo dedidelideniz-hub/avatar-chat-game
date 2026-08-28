@@ -950,6 +950,45 @@ export class GlbModelBoundary extends Component<
   }
 }
 
+/**
+ * Computes character height from skeleton bones instead of bounding box.
+ * More robust for Sketchfab models with armor/accessory meshes that
+ * inflate the bounding box (e.g. knight models with floating armor pieces
+ * at Y=800-1179cm that make the bounding box 5x larger than the body).
+ *
+ * Walks up from leaf bones to find the lowest (feet) and highest (head)
+ * bone positions in world space, then returns the height difference.
+ * Falls back to bounding box if no bones are found.
+ */
+export function computeSkeletonHeight(root: THREE.Object3D): {
+  height: number;
+  feetY: number;
+  headY: number;
+} {
+  let minY = Infinity;
+  let maxY = -Infinity;
+  const pos = new THREE.Vector3();
+
+  root.traverse((obj) => {
+    if ((obj as THREE.Bone).isBone) {
+      obj.getWorldPosition(pos);
+      if (pos.y < minY) minY = pos.y;
+      if (pos.y > maxY) maxY = pos.y;
+    }
+  });
+
+  // If we found bones, use skeleton height.
+  if (isFinite(minY) && isFinite(maxY) && maxY - minY > 0.01) {
+    return { height: maxY - minY, feetY: minY, headY: maxY };
+  }
+
+  // Fallback: use bounding box (for models without a skeleton).
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  return { height: Math.max(size.y, 0.0001), feetY: box.min.y, headY: box.max.y };
+}
+
 /* ── Core avatar (one instance per character) ─────────────────── */
 
 interface GlbAvatarCoreProps {
@@ -978,17 +1017,15 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const { actions } = useAnimations(animations, groupRef);
 
   // Normalize to exactly PLAYER_3D_HEIGHT — never trust authored scale.
-  // Compute bounding box from the CLONE (not original) after matrix update,
-  // so nested transforms (Sketchfab_model → Armature) are fully baked.
+  // Use skeleton bone heights for character skins (avoids inflation from
+  // armor/accessory meshes that extend far above the body). Falls back
+  // to bounding box for models without a skeleton.
   const { normScale, modelHeight, feetOffset } = useMemo(() => {
     clone.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const h = Math.max(size.y, 0.0001);
-    // Translate model up so its bottom (feet) sits at Y=0.
-    // box.min.y is the lowest point of the model in its local space.
-    const feetY = -box.min.y;
+    const skel = computeSkeletonHeight(clone);
+    const h = skel.height;
+    // Translate model up so its feet sit at Y=0.
+    const feetY = -skel.feetY;
     return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: feetY };
   }, [clone]);
 
@@ -1226,10 +1263,8 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
 
   const { normScale, modelHeight } = useMemo(() => {
     clone.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const h = Math.max(size.y, 0.0001);
+    const skel = computeSkeletonHeight(clone);
+    const h = skel.height;
     return { normScale: height / h, modelHeight: h };
   }, [clone, height]);
 
@@ -1359,10 +1394,8 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
 
   const { normScale, modelHeight } = useMemo(() => {
     clone.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(clone);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const h = Math.max(size.y, 0.0001);
+    const skel = computeSkeletonHeight(clone);
+    const h = skel.height;
     return { normScale: height / h, modelHeight: h };
   }, [clone, height]);
 
