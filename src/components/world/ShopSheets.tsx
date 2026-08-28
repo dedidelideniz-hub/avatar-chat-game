@@ -457,7 +457,62 @@ export function ShopSheet({
   );
 }
 
-/** The player's bag — every owned product, with wear/take-off controls. */
+/* ── BagSheet Framer-motion variants ───────────────────────── */
+
+const bagPanelVariants = {
+  hidden: { opacity: 0, scale: 0.5, y: 60 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 320, damping: 24, mass: 0.9 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.92,
+    y: 30,
+    transition: { duration: 0.18, ease: "easeIn" as const },
+  },
+};
+
+const bagHeaderVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: { delay: 0.12, duration: 0.35, ease: "easeOut" as const },
+  },
+};
+
+const bagGridVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.065, delayChildren: 0.18 },
+  },
+};
+
+const bagItemVariants = {
+  hidden: { opacity: 0, scale: 0.6, y: 24 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 400, damping: 26 },
+  },
+};
+
+const bagEmptyVariants = {
+  hidden: { opacity: 0, scale: 0.8, y: 16 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { delay: 0.15, duration: 0.4, ease: "easeOut" as const },
+  },
+};
+
+/** The player's bag — every owned product, with wear/take-off controls.
+ * Cinematic gaming-style opening with staggered item reveal. */
 export function BagSheet({
   items,
   equipped,
@@ -473,6 +528,7 @@ export function BagSheet({
 }) {
   const setEquipped = useMutation(api.profiles.setEquipped);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
   const owned = items
     .map((id) => getProduct(id))
     .filter((p): p is NonNullable<typeof p> => p !== undefined);
@@ -482,6 +538,11 @@ export function BagSheet({
     try {
       await setEquipped({ productId, equip });
       const product = getProduct(productId);
+      if (equip) {
+        setFlashId(productId);
+        setTimeout(() => setFlashId(null), 500);
+      }
+      playSound(equip ? "buy" : "click");
       toast.success(
         equip
           ? `${product?.wearEmoji ?? product?.emoji ?? ""} ${product?.name ?? "Ürün"} giyildi! Avatarda görünüyor.`
@@ -499,12 +560,35 @@ export function BagSheet({
 
   return (
     <>
-      <SheetBackdrop onClose={onClose} />
+      {/* Cinematic backdrop — darker and more dramatic */}
       <motion.div
-        {...sheetPanel}
-        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg rounded-t-3xl border border-b-0 border-border bg-card p-5 shadow-2xl sm:p-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.25 }}
+        onClick={onClose}
+        className="fixed inset-0 z-30 bg-black/60 backdrop-blur-[4px]"
+      />
+
+      {/* Main panel with cinematic scale-in */}
+      <motion.div
+        key="bag-panel"
+        variants={bagPanelVariants}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg rounded-t-3xl border border-b-0 border-border/60 bg-card/95 p-5 shadow-2xl backdrop-blur-sm sm:p-6"
       >
-        <div className="flex items-start justify-between gap-3">
+        {/* Top glow accent line */}
+        <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+
+        {/* Header with staggered entrance */}
+        <motion.div
+          variants={bagHeaderVariants}
+          initial="hidden"
+          animate="visible"
+          className="flex items-start justify-between gap-3"
+        >
           <div>
             <h2 className="text-lg font-extrabold tracking-tight">
               🎒 Çantam{" "}
@@ -517,12 +601,15 @@ export function BagSheet({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <span
+            <motion.span
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2, duration: 0.3 }}
               className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-extrabold"
               title="Sanalika Parası"
             >
               {CURRENCY_EMOJI} {formatCoins(coins)} SP
-            </span>
+            </motion.span>
             <Button
               variant="ghost"
               size="icon"
@@ -533,11 +620,23 @@ export function BagSheet({
               <X className="size-4" />
             </Button>
           </div>
-        </div>
+        </motion.div>
 
         {owned.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <span className="text-5xl">🥺</span>
+          <motion.div
+            variants={bagEmptyVariants}
+            initial="hidden"
+            animate="visible"
+            className="flex flex-col items-center gap-3 py-10 text-center"
+          >
+            <motion.span
+              className="text-5xl"
+              initial={{ rotate: -10, scale: 0 }}
+              animate={{ rotate: 0, scale: 1 }}
+              transition={{ delay: 0.25, type: "spring" as const, stiffness: 300, damping: 15 }}
+            >
+              🥺
+            </motion.span>
             <p className="text-base font-extrabold">Çantan şimdilik boş</p>
             <p className="max-w-xs text-sm text-muted-foreground">
               Caddedeki tezgâhlara uğra, sevdiğin ürünleri Sanalika Paranla
@@ -546,29 +645,58 @@ export function BagSheet({
             <Button className="mt-1 rounded-full" onClick={onBrowseStalls}>
               Tezgâhlara git
             </Button>
-          </div>
+          </motion.div>
         ) : (
-          <div className="mt-5 grid max-h-[46vh] grid-cols-2 gap-3 overflow-y-auto pb-1 sm:grid-cols-3">
+          <motion.div
+            variants={bagGridVariants}
+            initial="hidden"
+            animate="visible"
+            className="mt-5 grid max-h-[46vh] grid-cols-2 gap-3 overflow-y-auto pb-1 sm:grid-cols-3"
+          >
             {owned.map((product) => {
               const isEquipped = equipped.includes(product.id);
               const isToggling = togglingId === product.id;
+              const isFlashing = flashId === product.id;
               return (
-                <div
+                <motion.div
                   key={product.id}
-                  className={`flex flex-col rounded-2xl border p-3 ${
+                  variants={bagItemVariants}
+                  whileTap={{ scale: 0.95 }}
+                  className={`relative flex flex-col rounded-2xl border p-3 transition-colors ${
                     isEquipped
-                      ? "border-primary/40 bg-primary/5"
+                      ? "border-primary/50 bg-primary/8 shadow-sm shadow-primary/10"
                       : "border-border/70 bg-background"
+                  } ${
+                    isFlashing ? "ring-2 ring-green-400/60" : ""
                   }`}
                 >
+                  {/* Equip flash overlay */}
+                  {isFlashing && (
+                    <motion.div
+                      initial={{ opacity: 0.7 }}
+                      animate={{ opacity: 0 }}
+                      transition={{ duration: 0.5 }}
+                      className="pointer-events-none absolute inset-0 rounded-2xl bg-green-400/20"
+                    />
+                  )}
+
                   <div className="flex items-start justify-between">
-                    <span className="text-3xl leading-none">
+                    <motion.span
+                      className="text-3xl leading-none"
+                      animate={isFlashing ? { scale: [1, 1.3, 1] } : {} }
+                      transition={{ duration: 0.35 }}
+                    >
                       {product.emoji}
-                    </span>
+                    </motion.span>
                     {isEquipped && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-extrabold text-primary-foreground">
+                      <motion.span
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring" as const, stiffness: 500, damping: 20 }}
+                        className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-extrabold text-primary-foreground"
+                      >
                         <Check className="size-2.5" /> Giyili
-                      </span>
+                      </motion.span>
                     )}
                   </div>
                   <p className="mt-2 text-sm font-extrabold leading-tight">
@@ -607,10 +735,10 @@ export function BagSheet({
                       </>
                     )}
                   </Button>
-                </div>
+                </motion.div>
               );
             })}
-          </div>
+          </motion.div>
         )}
       </motion.div>
     </>
