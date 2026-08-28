@@ -175,9 +175,9 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── CHEST — Moda Zırh: Robot gövdesine oturan çok parçalı zırh ──
-  // RobotExpressive torso yaklaşık 0.4w x 0.5h x 0.3d dünya birimi.
-  // Zırh bu boyutlara tam oturacak şekilde tasarlandı.
+  // ── CHEST — Moda Zırh: Vücuda oturan yelek tarzı zırh ──
+  // Torso bone local space: Y=dikey, Z=ön, X=sol/sağ.
+  // Builder boyutları modelHeight (H) ile orantılı.
   {
     id: "moda-zirh",
     slot: "CHEST",
@@ -186,75 +186,118 @@ registerEquipmentBatch([
       const blue = "#3f6fd0";
       const darkBlue = "#2a4a8a";
       const gold = "#c8a23a";
-      const brown = "#5a3a1e";
+      const leather = "#5a3a1e";
+      const metal = { metalness: 0.5, roughness: 0.3 } as const;
 
-      // ── 1. Ön göğüs plakası (ana koruma — geniş ve kalın) ──
+      // ── 1. Ön göğüs plakası — eğimli (LatheGeometry ile yuvarlak) ──
+      // Üstten alta daralan, göğüs hattını takip eden plaka
+      const frontProfile = [
+        new THREE.Vector2(0.17 * H, -0.14 * H),  // alt kenar — dar
+        new THREE.Vector2(0.18 * H, -0.08 * H),
+        new THREE.Vector2(0.19 * H, -0.02 * H),  // bel hizası
+        new THREE.Vector2(0.195 * H, 0.04 * H),  // göğüs genişliği
+        new THREE.Vector2(0.18 * H, 0.10 * H),
+        new THREE.Vector2(0.15 * H, 0.16 * H),  // üst — omuzlara doğru dar
+        new THREE.Vector2(0.10 * H, 0.19 * H),  // boyun girişi
+      ];
       const frontPlate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.36 * H, 0.32 * H, 0.045 * H),
-        mat(blue, { metalness: 0.45, roughness: 0.3 }),
+        new THREE.LatheGeometry(frontProfile, 24, -Math.PI * 0.38, Math.PI * 0.76),
+        mat(blue, metal),
       );
-      frontPlate.position.set(0, 0.04 * H, 0.145 * H);
+      frontPlate.position.set(0, 0, 0.07 * H);
 
-      // ── 2. Üst göğüs plakası (boyun altı koruma) ──
-      const upperPlate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.30 * H, 0.08 * H, 0.04 * H),
-        mat(darkBlue, { metalness: 0.4, roughness: 0.35 }),
+      // ── 2. Arka plaka — benzer eğimli form ──
+      const backProfile = [
+        new THREE.Vector2(0.16 * H, -0.13 * H),
+        new THREE.Vector2(0.17 * H, -0.06 * H),
+        new THREE.Vector2(0.18 * H, 0.02 * H),
+        new THREE.Vector2(0.17 * H, 0.09 * H),
+        new THREE.Vector2(0.14 * H, 0.15 * H),
+        new THREE.Vector2(0.10 * H, 0.18 * H),
+      ];
+      const backPlate = new THREE.Mesh(
+        new THREE.LatheGeometry(backProfile, 24, Math.PI * 0.62, Math.PI * 0.76),
+        mat(darkBlue, metal),
       );
-      upperPlate.position.set(0, 0.2 * H, 0.13 * H);
+      backPlate.position.set(0, 0, -0.06 * H);
 
-      // ── 3. Sol yan plaka ──
+      // ── 3. Sol yan plaka — göğüs ve karın arasını bağlayan kemer ──
       const sideL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.045 * H, 0.28 * H, 0.18 * H),
-        mat(darkBlue, { metalness: 0.4, roughness: 0.35 }),
+        new THREE.BoxGeometry(0.035 * H, 0.28 * H, 0.13 * H),
+        mat(darkBlue, metal),
       );
-      sideL.position.set(-0.18 * H, 0.03 * H, 0.04 * H);
+      sideL.position.set(-0.18 * H, 0.02 * H, 0.01 * H);
 
       // ── 4. Sağ yan plaka ──
       const sideR = sideL.clone();
       sideR.position.x = 0.18 * H;
 
-      // ── 5. Sol omuz zırhı (geniş ve açılı) ──
+      // ── 5. Sol omuz guard — kubbe şeklinde, omzu sarmalayan ──
       const shoulderL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12 * H, 0.07 * H, 0.12 * H),
-        mat(blue, { metalness: 0.5, roughness: 0.25 }),
+        new THREE.SphereGeometry(0.065 * H, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        mat(blue, { ...metal, metalness: 0.55 }),
       );
-      shoulderL.position.set(-0.2 * H, 0.2 * H, 0.06 * H);
+      shoulderL.position.set(-0.17 * H, 0.20 * H, 0.02 * H);
+      shoulderL.scale.set(1.1, 0.7, 1.0);
 
-      // ── 6. Sağ omuz zırhı ──
+      // ── 6. Sağ omuz guard ──
       const shoulderR = shoulderL.clone();
-      shoulderR.position.x = 0.2 * H;
+      shoulderR.position.x = 0.17 * H;
 
-      // ── 7. Boyun halkası (altın yaka) ──
+      // ── 7. Sol omuz askısı — omuzdan göğüse inen bant ──
+      const strapL = new THREE.Mesh(
+        new THREE.BoxGeometry(0.025 * H, 0.12 * H, 0.015 * H),
+        mat(leather, { roughness: 0.8 }),
+      );
+      strapL.position.set(-0.12 * H, 0.16 * H, 0.10 * H);
+
+      // ── 8. Sağ omuz askısı ──
+      const strapR = strapL.clone();
+      strapR.position.x = 0.12 * H;
+
+      // ── 9. Boyun yaka — yumuşak halka ──
       const collar = new THREE.Mesh(
-        new THREE.TorusGeometry(0.09 * H, 0.012 * H, 8, 16),
+        new THREE.TorusGeometry(0.09 * H, 0.015 * H, 8, 20),
         mat(gold, { metalness: 0.65, roughness: 0.2 }),
       );
       collar.rotation.x = Math.PI / 2;
-      collar.position.set(0, 0.22 * H, 0.06 * H);
+      collar.position.set(0, 0.20 * H, 0.02 * H);
 
-      // ── 8. Kemer (deri bant) ──
+      // ── 10. Kemer — bel hizasında deri bant ──
       const belt = new THREE.Mesh(
-        new THREE.BoxGeometry(0.38 * H, 0.03 * H, 0.2 * H),
-        mat(brown, { roughness: 0.85 }),
+        new THREE.TorusGeometry(0.19 * H, 0.012 * H, 8, 24),
+        mat(leather, { roughness: 0.85 }),
       );
-      belt.position.set(0, -0.1 * H, 0.04 * H);
+      belt.rotation.x = Math.PI / 2;
+      belt.position.set(0, -0.02 * H, 0.01 * H);
 
-      // ── 9. Kemer tokası (altın) ──
+      // ── 11. Kemer tokası — altın ──
       const buckle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.04 * H, 0.04 * H, 0.025 * H),
+        new THREE.BoxGeometry(0.035 * H, 0.035 * H, 0.02 * H),
         mat(gold, { metalness: 0.75, roughness: 0.15 }),
       );
-      buckle.position.set(0, -0.1 * H, 0.15 * H);
+      buckle.position.set(0, -0.02 * H, 0.19 * H);
 
-      // ── 10. Göğüs amblemi (altın daire) ──
+      // ── 12. Göğüs amblemi — altın daire ──
       const emblem = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025 * H, 0.025 * H, 0.01 * H, 16),
+        new THREE.CylinderGeometry(0.02 * H, 0.02 * H, 0.008 * H, 16),
         mat(gold, { metalness: 0.8, roughness: 0.1 }),
       );
       emblem.rotation.x = Math.PI / 2;
-      emblem.position.set(0, 0.1 * H, 0.17 * H);
+      emblem.position.set(0, 0.08 * H, 0.17 * H);
 
-      g.add(frontPlate, upperPlate, sideL, sideR, shoulderL, shoulderR, collar, belt, buckle, emblem);
+      // ── 13. Alt göğüs koruması — karın bölgesi ──
+      const lowerGuard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22 * H, 0.06 * H, 0.03 * H),
+        mat(darkBlue, metal),
+      );
+      lowerGuard.position.set(0, -0.08 * H, 0.12 * H);
+
+      g.add(
+        frontPlate, backPlate, sideL, sideR,
+        shoulderL, shoulderR, strapL, strapR,
+        collar, belt, buckle, emblem, lowerGuard,
+      );
       return g;
     },
   },
