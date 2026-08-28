@@ -490,6 +490,13 @@ export function attachEquippedToModel(
 
   console.log('[Equip] attachEquippedToModel called — equipped:', equipped, 'modelHeight:', modelHeight);
 
+  // Clean up any leftover debug markers from previous tests.
+  clone.traverse((obj: THREE.Object3D) => {
+    if (obj.name === '_debugMarker' || obj.name === '_debugAxes' || obj.name === '_debugCube') {
+      obj.removeFromParent();
+    }
+  });
+
   if (equipped.length === 0) {
     console.log('[Equip] No equipped items — skipping');
     return () => {};
@@ -648,33 +655,12 @@ export function attachEquippedToModel(
         bboxSize: new THREE.Vector3().subVectors(eqBboxMax, eqBboxMin).toArray(),
       });
 
-      // ── DEBUG 5: Bone'a geçici görsel marker ekle ──
-      // This confirms whether mixamorig:Spine is really in the body region.
-      // Only for CHEST slot and only the first item.
-      if (slot === 'CHEST' && i === 0 && !bone.getObjectByName('_debugMarker')) {
-        const debugMarker = new THREE.Group();
-        debugMarker.name = '_debugMarker';
-        // Küçük eksen göstergeci
-        const axes = new THREE.AxesHelper(0.15);
-        axes.name = '_debugAxes';
-        debugMarker.add(axes);
-        // Küçük küp — bone'un merkezinde
-        const cube = new THREE.Mesh(
-          new THREE.BoxGeometry(0.05, 0.05, 0.05),
-          new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: false, transparent: false }),
-        );
-        cube.name = '_debugCube';
-        debugMarker.add(cube);
-        bone.add(debugMarker);
-        console.log('[Equip] DEBUG: Added AxesHelper + red cube marker to bone:', bone.name);
-      }
-
-      console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4));
+      console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4), 'worldPos:', eqWorldPos.toArray().map(v => v.toFixed(2)));
     });
     usedSlots.add(slot);
   }
 
-  console.log('[Equip] Total attached:', attached.length);
+  console.log('[Equip] Total attached:', attached.length, 'items:', equipped.join(', '));
   return () => {
     for (const item of attached) item.removeFromParent();
   };
