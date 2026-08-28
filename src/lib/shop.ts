@@ -334,15 +334,26 @@ export const VENDORS: Vendor[] = [
  * VENDORS (stall references) are preserved for the 3D world layout.
  */
 export const PRODUCTS: Product[] = [
-  // ═══ Selin'in Moda Standı ═══
+  // ═══ Selin'in Moda Standı — Karakter Skinleri ═══
   {
-    id: "krystal-asa",
-    name: "Kristal Büyücü Asası",
-    emoji: "🔮",
-    price: 750,
-    description: "Koyu fantezi büyücü asası — mor kristal ucu parlar.",
+    id: "skin-samuray",
+    name: "Samuray Savaşçı",
+    emoji: "⚔️",
+    price: 1200,
+    description: "Stilize düşük poligon samuray — idle/walk/run/jump animasyonları dahil.",
     vendorId: "moda",
-    slot: "hand",
+    slot: "chest",
+    skinUrl: "/models/skin-samuray.glb",
+  },
+  {
+    id: "skin-sevalye",
+    name: "Şövalye Karakter",
+    emoji: "🛡️",
+    price: 1500,
+    description: "Detaylı şövalye zırhlı karakter — idle/walk animasyonları dahil.",
+    vendorId: "moda",
+    slot: "chest",
+    skinUrl: "/models/skin-sevalye.glb",
   },
 ];
 
