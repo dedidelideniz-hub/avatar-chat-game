@@ -190,33 +190,30 @@ registerEquipmentBatch([
       const leather = "#5a3a1e";
       const metal = { metalness: 0.5, roughness: 0.3 } as const;
 
-      // ── 1. Ön göğüs plakası — CylinderGeometry ile eğimli göğüs ──
-      // radiusTop > radiusBottom → üstten dar, alttan geniş (göğüs formu)
+      // ── 1. Ön göğüs plakası — geniş ve vücudu saran box ──
       const frontPlate = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.14 * H, 0.17 * H, 0.18 * H, 16, 1, true, -Math.PI * 0.35, Math.PI * 0.7),
+        new THREE.BoxGeometry(0.28 * H, 0.20 * H, 0.06 * H),
         mat(blue, metal),
       );
-      frontPlate.rotation.x = Math.PI / 2;
-      frontPlate.position.set(0, 0, 0.08 * H);
+      frontPlate.position.set(0, 0, 0.10 * H);
 
-      // ── 2. Arka plaka — düz koruma ──
+      // ── 2. Arka plaka — arka koruma ──
       const backPlate = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.13 * H, 0.16 * H, 0.16 * H, 16, 1, true, Math.PI * 0.65, Math.PI * 0.7),
+        new THREE.BoxGeometry(0.24 * H, 0.17 * H, 0.035 * H),
         mat(darkBlue, metal),
       );
-      backPlate.rotation.x = Math.PI / 2;
-      backPlate.position.set(0, 0, -0.07 * H);
+      backPlate.position.set(0, 0, -0.08 * H);
 
-      // ── 3. Sol yan plaka — gövdeyi saran ince levha ──
+      // ── 3. Sol yan plaka — gövdeyi saran levha ──
       const sideL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.03 * H, 0.16 * H, 0.12 * H),
+        new THREE.BoxGeometry(0.04 * H, 0.18 * H, 0.14 * H),
         mat(darkBlue, metal),
       );
-      sideL.position.set(-0.15 * H, 0, 0);
+      sideL.position.set(-0.14 * H, 0, 0.01 * H);
 
       // ── 4. Sağ yan plaka ──
       const sideR = sideL.clone();
-      sideR.position.x = 0.15 * H;
+      sideR.position.x = 0.14 * H;
 
       // ── 5. Sol omuz askısı — omuzdan göğüse inen deri bant ──
       const strapL = new THREE.Mesh(
