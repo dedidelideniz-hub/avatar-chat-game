@@ -84,27 +84,43 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
         url,
         (gltf) => {
           const scene = gltf.scene;
-          // Update world matrices to compute accurate bounding box.
+          // ── Flatten: bake world transforms into geometry ──
+          scene.updateMatrixWorld(true);
+          const meshes: THREE.Mesh[] = [];
+          scene.traverse((obj) => { if ((obj as THREE.Mesh).isMesh) meshes.push(obj as THREE.Mesh); });
+          for (const mesh of meshes) {
+            mesh.updateMatrixWorld(true);
+            mesh.geometry.applyMatrix4(mesh.matrixWorld);
+            mesh.position.set(0, 0, 0);
+            mesh.rotation.set(0, 0, 0);
+            mesh.scale.set(1, 1, 1);
+            mesh.updateMatrix();
+            scene.add(mesh);
+          }
+          // Remove old hierarchy nodes.
+          const toRemove: THREE.Object3D[] = [];
+          scene.children.forEach(c => { if (!(c as THREE.Mesh).isMesh) toRemove.push(c); });
+          for (const c of toRemove) scene.remove(c);
+          // ── Center at origin ──
           scene.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(scene);
           const center = box.getCenter(new THREE.Vector3());
           const size = box.getSize(new THREE.Vector3());
-          // Center the geometry at origin and normalize scale.
-          // Move all mesh geometries so the model is centered.
-          scene.traverse((obj) => {
-            if ((obj as THREE.Mesh).isMesh) {
-              const mesh = obj as THREE.Mesh;
-              if (mesh.geometry) {
-                mesh.geometry.translate(-center.x, -center.y, -center.z);
-              }
-            }
-          });
-          // Also adjust the scene root to compensate for any non-mesh transforms.
+          for (const mesh of meshes) {
+            mesh.geometry.translate(-center.x, -center.y, -center.z);
+          }
           scene.position.set(0, 0, 0);
-          // Store the original size so we can scale to fit the character.
-          scene.userData._equipmentSize = size;
+          // ── Normalize: scale geometry so height = 1.0 ──
+          // Use Y dimension specifically so armor is oriented correctly.
+          const height = Math.max(size.y, 0.001);
+          const nf = 1.0 / height;
+          for (const mesh of meshes) {
+            mesh.geometry.scale(nf, nf, nf);
+          }
+          const normSize = new THREE.Vector3(size.x * nf, 1.0, size.z * nf);
+          scene.userData._equipmentSize = normSize;
           _equipmentGlbCache.set(url, scene);
-          console.log('[Equip] GLB cached:', url, '| center:', center.toArray().map(v => v.toFixed(2)), '| size:', size.toArray().map(v => v.toFixed(2)));
+          console.log('[Equip] GLB cached:', url, '| origSize:', size.toArray().map(v => v.toFixed(2)), '| normSize:', normSize.toArray().map(v => v.toFixed(2)));
           resolve(scene);
         },
         undefined,
@@ -805,12 +821,21 @@ export function attachEquippedToModel(
       const inst = i === 0 ? item : item.clone();
       bone.getWorldScale(boneWs);
       const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3;
-      const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
 
       console.log('[Equip] bone:', bone.name, '| parent:', bone.parent?.name, '| worldScale:', boneAvg.toFixed(2));
 
-      // Only compensate if ratio is drastically off (>2x or <0.5x).
-      if (ratio > 2 || ratio < 0.5) {
+      const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
+
+      if (def.glbPath && boneAvg > 1e-6) {
+        // GLB equipment: geometry normalized to height=1.0 in cache.
+        // Scale so armor covers the character body proportionally.
+        // boneAvg already includes the root normScale (~0.40).
+        const charWorldH = modelHeight * expected;
+        const targetH = charWorldH * 0.55;
+        const localScale = targetH / boneAvg;
+        inst.scale.setScalar(localScale);
+        console.log('[Equip] GLB scale:', localScale.toFixed(4), '| targetWorldH:', targetH.toFixed(2), '| boneWs:', boneAvg.toFixed(2));
+      } else if (ratio > 2 || ratio < 0.5) {
         inst.scale.setScalar(ratio);
         console.warn('[Equip] Scale fix applied:', ratio.toFixed(3));
       }
