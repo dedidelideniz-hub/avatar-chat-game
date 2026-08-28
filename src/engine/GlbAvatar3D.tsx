@@ -1059,8 +1059,15 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     });
   }, [clone]);
 
-  // Resolve idle/walk clips once.
-  const clips = useMemo(() => resolveIdleWalk(actions), [actions]);
+  // Resolve idle/walk clips once. Prefer a real walk cycle over run so the
+  // feet visibly alternate while the avatar moves through the world.
+  const clips = useMemo(() => {
+    const keys = Object.keys(actions);
+    const walk = keys.find((key) => key.toLowerCase().includes("walk"));
+    const run = keys.find((key) => key.toLowerCase().includes("run"));
+    const idle = keys.find((key) => key.toLowerCase().includes("idle"));
+    return { idle, walk: walk ?? run };
+  }, [actions]);
 
   // Play idle initially.
   useEffect(() => {

@@ -248,7 +248,13 @@ function GlbFighterBodyCore({
     });
   }, [clone]);
 
-  const clips = useMemo(() => resolveIdleWalk(actions), [actions]);
+  const clips = useMemo(() => {
+    const keys = Object.keys(actions);
+    const walk = keys.find((key) => key.toLowerCase().includes("walk"));
+    const run = keys.find((key) => key.toLowerCase().includes("run"));
+    const idle = keys.find((key) => key.toLowerCase().includes("idle"));
+    return { idle, walk: walk ?? run };
+  }, [actions]);
 
   // Start with the idle clip (or the first clip if none is named idle).
   useEffect(() => {
