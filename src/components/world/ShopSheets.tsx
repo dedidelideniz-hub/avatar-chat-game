@@ -195,6 +195,22 @@ function PreviewCharacter({ url }: { url: string }) {
   );
 }
 
+/* ── Compact card preview (turntable, no floor/effects) ────── */
+
+function CardPreviewScene({ url }: { url: string }) {
+  return (
+    <>
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[2, 4, 3]} intensity={1.6} color="#e0e7ff" />
+      <pointLight position={[-1.5, 1.5, -1]} intensity={0.6} color="#818cf8" />
+      <pointLight position={[1.5, 0.5, 1.5]} intensity={0.5} color="#c4b5fd" />
+      <Suspense fallback={null}>
+        <PreviewCharacter url={url} />
+      </Suspense>
+    </>
+  );
+}
+
 /* ── Full preview scene ────────────────────────────────────── */
 
 function SkinPreviewScene({ url }: { url: string }) {
@@ -528,14 +544,27 @@ export function ShopSheet({
                   />
                 )}
 
-                {/* Emoji with bounce on skin items */}
-                <motion.span
-                  className="relative z-10 text-3xl leading-none"
-                  animate={product.skinUrl && !isOwned ? { y: [0, -3, 0] } : {}}
-                  transition={product.skinUrl ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}}
-                >
-                  {product.emoji}
-                </motion.span>
+                {/* 3D character preview for skin products, emoji for equipment */}
+                {product.skinUrl ? (
+                  <div className="relative z-10 -mx-1 -mt-1 flex h-28 w-[calc(100%+0.5rem)] items-center justify-center overflow-hidden rounded-t-xl">
+                    <Canvas
+                      dpr={[1, 1.2]}
+                      camera={{ position: [0, 0.3, 2.6], fov: 32 }}
+                      gl={{ alpha: true }}
+                      style={{ background: "transparent" }}
+                    >
+                      <CardPreviewScene url={product.skinUrl} />
+                    </Canvas>
+                    {/* Bottom gradient fade into card */}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent" />
+                  </div>
+                ) : (
+                  <motion.span
+                    className="relative z-10 text-3xl leading-none"
+                  >
+                    {product.emoji}
+                  </motion.span>
+                )}
                 <p className="relative z-10 mt-2 text-sm font-extrabold leading-tight">
                   {product.name}
                 </p>
