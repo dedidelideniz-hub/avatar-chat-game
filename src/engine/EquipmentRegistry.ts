@@ -130,20 +130,38 @@ export const BONE_ALIASES: Record<EquipSlot, string[]> = {
   NECK: ["neck", "mixamorig:neck"],
   CHEST: ["chest", "spine", "torso", "mixamorig:spine"],
   HANDS: [
+    // Mixamo
     "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
     "righthand", "hand_r", "handright", "mixamorig:righthand",
+    // Rigify (Blender) — HandR, HandL
+    "handr", "handl",
   ],
-  MAIN_HAND: ["righthand", "hand_r", "handright", "mixamorig:righthand"],
-  OFF_HAND: ["lefthand", "hand_l", "handleft", "mixamorig:lefthand"],
+  MAIN_HAND: [
+    "righthand", "hand_r", "handright", "mixamorig:righthand",
+    "handr", // Rigify: HandR
+  ],
+  OFF_HAND: [
+    "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
+    "handl", // Rigify: HandL
+  ],
   HAND: [
     "lefthand", "hand_l", "handleft", "mixamorig:lefthand",
     "righthand", "hand_r", "handright", "mixamorig:righthand",
+    "handr", "handl", // Rigify
   ],
   BACK: ["spine", "chest", "torso", "mixamorig:spine"],
-  LEGS: ["hip", "upleg", "mixamorig:leftupleg", "mixamorig:rightupleg"],
+  LEGS: [
+    // Mixamo
+    "hip", "upleg", "mixamorig:leftupleg", "mixamorig:rightupleg",
+    // Rigify — UpperLegL, LowerLegL, etc.
+    "upperleg", "lowerleg",
+  ],
   FEET: [
+    // Mixamo
     "leftfoot", "foot_l", "mixamorig:leftfoot",
     "rightfoot", "foot_r", "mixamorig:rightfoot",
+    // Rigify — FootL, FootR
+    "footl", "footr",
   ],
 };
 
