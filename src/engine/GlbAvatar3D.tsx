@@ -594,17 +594,7 @@ export function attachEquippedToModel(
       // ── DEBUG 3: Bone bilgileri ──
       const bonePos = new THREE.Vector3();
       bone.getWorldPosition(bonePos);
-      console.log('[Equip] DEBUG bone:', {
-        name: bone.name,
-        uuid: bone.uuid,
-        parentName: bone.parent?.name ?? 'null',
-        parentUuid: bone.parent?.uuid ?? 'null',
-        worldScale: boneWs.toArray(),
-        boneAvg: boneAvg.toFixed(6),
-        worldPosition: bonePos.toArray(),
-        childrenCount: bone.children.length,
-        type: bone.type,
-      });
+      console.log('[Equip] DEBUG bone:', bone.name, '| parent:', bone.parent?.name, '| worldScale:', boneAvg.toFixed(2), '| pos:', bonePos.toArray().map(v => v.toFixed(2)).join(','));
 
       // Only compensate if ratio is drastically off (>2x or <0.5x).
       if (ratio > 2 || ratio < 0.5) {
@@ -640,22 +630,35 @@ export function attachEquippedToModel(
       const eqBbox = new THREE.Box3().setFromObject(inst);
       const eqBboxMin = eqBbox.min.clone();
       const eqBboxMax = eqBbox.max.clone();
-      console.log('[Equip] DEBUG attached:', {
-        itemId: id,
-        equipmentUuid: inst.uuid,
-        equipmentScale: inst.scale.toArray(),
-        equipmentPosition: inst.position.toArray(),
-        equipmentVisible: inst.visible,
-        equipmentWorldPosition: eqWorldPos.toArray(),
-        equipmentWorldScale: eqWorldScale.toArray(),
-        parentName: inst.parent?.name ?? 'null',
-        parentUuid: inst.parent?.uuid ?? 'null',
-        bboxMin: eqBboxMin.toArray(),
-        bboxMax: eqBboxMax.toArray(),
-        bboxSize: new THREE.Vector3().subVectors(eqBboxMax, eqBboxMin).toArray(),
-      });
+      const bboxSize = new THREE.Vector3().subVectors(eqBboxMax, eqBboxMin);
+      console.log('[Equip] DEBUG attached:', id, '| parent:', inst.parent?.name, '| worldPos:', eqWorldPos.toArray().map(v => v.toFixed(2)).join(','), '| worldScale:', eqWorldScale.toArray().map(v => v.toFixed(2)).join(','), '| bboxSize:', bboxSize.toArray().map(v => v.toFixed(3)).join(','), '| visible:', inst.visible);
 
       console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4), 'worldPos:', eqWorldPos.toArray().map(v => v.toFixed(2)));
+
+      // ── VISUAL DEBUG MARKER: Large colored sphere at bone position ──
+      // This confirms whether the bone is in the visible area of the screen.
+      if (i === 0 && !bone.getObjectByName('_debugMarker')) {
+        const marker = new THREE.Group();
+        marker.name = '_debugMarker';
+        // Large sphere — visible even on mobile
+        const colors: Record<string, number> = {
+          CHEST: 0xff4400, HEAD: 0x00ff44, HAND: 0x4400ff, FEET: 0xffff00,
+          MAIN_HAND: 0x4400ff, OFF_HAND: 0xff00ff, HANDS: 0x00ffff, NECK: 0xff8800,
+          BACK: 0x8800ff, LEGS: 0x0088ff, FACE: 0x00ffff,
+        };
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(0.08, 12, 10),
+          new THREE.MeshBasicMaterial({ color: colors[slot] ?? 0xff0000, transparent: false }),
+        );
+        sphere.name = '_debugCube';
+        marker.add(sphere);
+        // Axes helper for direction reference
+        const axes = new THREE.AxesHelper(0.15);
+        axes.name = '_debugAxes';
+        marker.add(axes);
+        bone.add(marker);
+        console.log('[Equip] 🎯 DEBUG MARKER added to bone:', bone.name, 'slot:', slot, 'color:', (colors[slot] ?? 0xff0000).toString(16));
+      }
     });
     usedSlots.add(slot);
   }
