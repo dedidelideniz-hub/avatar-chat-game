@@ -152,24 +152,72 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── CHEST
+  // ── CHEST — Moda Zırh: Vücuda oturan çok parçalı zırh ──
   {
     id: "moda-zirh",
     slot: "CHEST",
     build: (H) => {
       const g = new THREE.Group();
-      const plate = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.17 * H, 0.14 * H, 0.24 * H, 14),
-        mat("#3f6fd0", { metalness: 0.35, roughness: 0.4 }),
+      const armorColor = "#3f6fd0";
+      const trimColor = "#c8a23a";
+      const darkColor = "#2a4a8a";
+
+      // ── Ön göğüs plakası (ana koruma) ──
+      const frontPlate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32 * H, 0.28 * H, 0.04 * H),
+        mat(armorColor, { metalness: 0.4, roughness: 0.35 }),
       );
-      plate.position.y = 0.1 * H;
-      const trim = new THREE.Mesh(
-        new THREE.TorusGeometry(0.155 * H, 0.012 * H, 8, 20),
-        mat("#c8a23a", { metalness: 0.6, roughness: 0.3 }),
+      frontPlate.position.set(0, 0.05 * H, 0.14 * H);
+
+      // ── Yan plakalar (sol ve sağ) ──
+      const sideL = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04 * H, 0.24 * H, 0.16 * H),
+        mat(darkColor, { metalness: 0.35, roughness: 0.4 }),
       );
-      trim.rotation.x = Math.PI / 2;
-      trim.position.y = 0.2 * H;
-      g.add(plate, trim);
+      sideL.position.set(-0.16 * H, 0.04 * H, 0.06 * H);
+      const sideR = sideL.clone();
+      sideR.position.x = 0.16 * H;
+
+      // ── Omuz korumaları (sol ve sağ) ──
+      const shoulderL = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1 * H, 0.06 * H, 0.1 * H),
+        mat(armorColor, { metalness: 0.45, roughness: 0.3 }),
+      );
+      shoulderL.position.set(-0.18 * H, 0.18 * H, 0.08 * H);
+      const shoulderR = shoulderL.clone();
+      shoulderR.position.x = 0.18 * H;
+
+      // ── Boyun koruması (yaka) ──
+      const collar = new THREE.Mesh(
+        new THREE.TorusGeometry(0.08 * H, 0.015 * H, 8, 16),
+        mat(trimColor, { metalness: 0.6, roughness: 0.25 }),
+      );
+      collar.rotation.x = Math.PI / 2;
+      collar.position.set(0, 0.2 * H, 0.08 * H);
+
+      // ── Kemer bandı ──
+      const belt = new THREE.Mesh(
+        new THREE.TorusGeometry(0.15 * H, 0.01 * H, 8, 20),
+        mat("#78350f", { roughness: 0.8 }),
+      );
+      belt.rotation.x = Math.PI / 2;
+      belt.position.set(0, -0.1 * H, 0.08 * H);
+
+      // ── Kemer tokası (ön orta) ──
+      const buckle = new THREE.Mesh(
+        new THREE.BoxGeometry(0.03 * H, 0.03 * H, 0.02 * H),
+        mat(trimColor, { metalness: 0.7, roughness: 0.2 }),
+      );
+      buckle.position.set(0, -0.1 * H, 0.15 * H);
+
+      // ── Göğüs amblemi (detay) ──
+      const emblem = new THREE.Mesh(
+        new THREE.SphereGeometry(0.02 * H, 10, 8),
+        mat(trimColor, { metalness: 0.8, roughness: 0.15 }),
+      );
+      emblem.position.set(0, 0.12 * H, 0.16 * H);
+
+      g.add(frontPlate, sideL, sideR, shoulderL, shoulderR, collar, belt, buckle, emblem);
       return g;
     },
   },
@@ -373,91 +421,65 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // Iron Armor — CHEST
+  // ═══ Iron Armor — CHEST: Demir Zırh ═══
   {
     id: "demir-zirh",
     slot: "CHEST",
     build: (H) => {
       const g = new THREE.Group();
-      // Chest plate
-      const plate = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.16 * H, 0.13 * H, 0.26 * H, 16),
-        mat("#6b7280", { metalness: 0.5, roughness: 0.4 }),
+      const iron = "#6b7280";
+      const dark = "#4b5563";
+      const gold = "#d97706";
+      // Front plate
+      const front = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34 * H, 0.3 * H, 0.05 * H),
+        mat(iron, { metalness: 0.55, roughness: 0.35 }),
       );
-      plate.position.y = 0.1 * H;
+      front.position.set(0, 0.04 * H, 0.14 * H);
+      // Side panels
+      const sideL = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04 * H, 0.26 * H, 0.16 * H),
+        mat(dark, { metalness: 0.5, roughness: 0.4 }),
+      );
+      sideL.position.set(-0.17 * H, 0.03 * H, 0.06 * H);
+      const sideR = sideL.clone(); sideR.position.x = 0.17 * H;
+      // Shoulder guards
+      const shL = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1 * H, 0.06 * H, 0.1 * H),
+        mat(iron, { metalness: 0.55, roughness: 0.35 }),
+      );
+      shL.position.set(-0.19 * H, 0.18 * H, 0.08 * H);
+      const shR = shL.clone(); shR.position.x = 0.19 * H;
+      // Collar
+      const collar = new THREE.Mesh(
+        new THREE.TorusGeometry(0.08 * H, 0.014 * H, 8, 16),
+        mat(gold, { metalness: 0.65, roughness: 0.25 }),
+      );
+      collar.rotation.x = Math.PI / 2;
+      collar.position.set(0, 0.2 * H, 0.08 * H);
       // Belt
       const belt = new THREE.Mesh(
-        new THREE.TorusGeometry(0.145 * H, 0.012 * H, 8, 20),
+        new THREE.TorusGeometry(0.16 * H, 0.01 * H, 8, 20),
         mat("#78350f", { roughness: 0.8 }),
       );
       belt.rotation.x = Math.PI / 2;
-      belt.position.y = 0.0 * H;
-      // Shoulder pads
-      const shoulderL = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04 * H, 10, 8),
-        mat("#4b5563", { metalness: 0.5, roughness: 0.4 }),
+      belt.position.set(0, -0.1 * H, 0.08 * H);
+      // Cross emblem
+      const crossH = new THREE.Mesh(
+        new THREE.BoxGeometry(0.06 * H, 0.01 * H, 0.01 * H),
+        mat(gold, { metalness: 0.7, roughness: 0.2 }),
       );
-      shoulderL.position.set(-0.16 * H, 0.18 * H, 0);
-      const shoulderR = shoulderL.clone();
-      shoulderR.position.x = 0.16 * H;
-      // Gold trim at top
-      const trim = new THREE.Mesh(
-        new THREE.TorusGeometry(0.155 * H, 0.01 * H, 8, 20),
-        mat("#d97706", { metalness: 0.6, roughness: 0.3 }),
+      crossH.position.set(0, 0.1 * H, 0.17 * H);
+      const crossV = new THREE.Mesh(
+        new THREE.BoxGeometry(0.01 * H, 0.06 * H, 0.01 * H),
+        mat(gold, { metalness: 0.7, roughness: 0.2 }),
       );
-      trim.rotation.x = Math.PI / 2;
-      trim.position.y = 0.2 * H;
-      g.add(plate, belt, shoulderL, shoulderR, trim);
+      crossV.position.set(0, 0.1 * H, 0.17 * H);
+      g.add(front, sideL, sideR, shL, shR, collar, belt, crossH, crossV);
       return g;
     },
   },
-  // ═══ TEST ZIRH — CHEST/Spine bone'a bagli test zırhı ═══
-  {
-    id: "test-zirh",
-    slot: "CHEST",
-    build: (H) => {
-      const g = new THREE.Group();
-      // Main chest plate — cylindrical body armor
-      const plate = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.18 * H, 0.14 * H, 0.28 * H, 20),
-        mat("#4a5568", { metalness: 0.65, roughness: 0.3 }),
-      );
-      plate.position.y = 0.1 * H;
-      // Gold collar ring at top
-      const collar = new THREE.Mesh(
-        new THREE.TorusGeometry(0.175 * H, 0.012 * H, 10, 24),
-        mat("#d69e2e", { metalness: 0.7, roughness: 0.25 }),
-      );
-      collar.rotation.x = Math.PI / 2;
-      collar.position.y = 0.22 * H;
-      // Belt ring at waist
-      const belt = new THREE.Mesh(
-        new THREE.TorusGeometry(0.15 * H, 0.014 * H, 10, 24),
-        mat("#744210", { roughness: 0.7 }),
-      );
-      belt.rotation.x = Math.PI / 2;
-      belt.position.y = 0.0 * H;
-      // Left shoulder pad
-      const shoulderL = new THREE.Mesh(
-        new THREE.SphereGeometry(0.045 * H, 12, 10),
-        mat("#4a5568", { metalness: 0.6, roughness: 0.35 }),
-      );
-      shoulderL.position.set(-0.17 * H, 0.2 * H, 0);
-      // Right shoulder pad
-      const shoulderR = shoulderL.clone();
-      shoulderR.position.x = 0.17 * H;
-      // Gold emblem on chest
-      const emblem = new THREE.Mesh(
-        new THREE.SphereGeometry(0.02 * H, 10, 8),
-        mat("#d69e2e", { metalness: 0.8, roughness: 0.2 }),
-      );
-      emblem.position.set(0, 0.16 * H, 0.15 * H);
-      g.add(plate, collar, belt, shoulderL, shoulderR, emblem);
-      return g;
-    },
-  },
-  // NOTE: Legacy dondurma/balon/oyuncak procedural items removed.
-  // New GLB equipment items will be registered here via the new asset pipeline.
+  // NOTE: test-zirh removed — use moda-zirh or demir-zirh instead.
 ]);
 
 
