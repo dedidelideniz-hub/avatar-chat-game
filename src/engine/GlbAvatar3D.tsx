@@ -152,72 +152,86 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── CHEST — Moda Zırh: Vücuda oturan çok parçalı zırh ──
+  // ── CHEST — Moda Zırh: Robot gövdesine oturan çok parçalı zırh ──
+  // RobotExpressive torso yaklaşık 0.4w x 0.5h x 0.3d dünya birimi.
+  // Zırh bu boyutlara tam oturacak şekilde tasarlandı.
   {
     id: "moda-zirh",
     slot: "CHEST",
     build: (H) => {
       const g = new THREE.Group();
-      const armorColor = "#3f6fd0";
-      const trimColor = "#c8a23a";
-      const darkColor = "#2a4a8a";
+      const blue = "#3f6fd0";
+      const darkBlue = "#2a4a8a";
+      const gold = "#c8a23a";
+      const brown = "#5a3a1e";
 
-      // ── Ön göğüs plakası (ana koruma) ──
+      // ── 1. Ön göğüs plakası (ana koruma — geniş ve kalın) ──
       const frontPlate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.32 * H, 0.28 * H, 0.04 * H),
-        mat(armorColor, { metalness: 0.4, roughness: 0.35 }),
+        new THREE.BoxGeometry(0.36 * H, 0.32 * H, 0.045 * H),
+        mat(blue, { metalness: 0.45, roughness: 0.3 }),
       );
-      frontPlate.position.set(0, 0.05 * H, 0.14 * H);
+      frontPlate.position.set(0, 0.04 * H, 0.145 * H);
 
-      // ── Yan plakalar (sol ve sağ) ──
+      // ── 2. Üst göğüs plakası (boyun altı koruma) ──
+      const upperPlate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.30 * H, 0.08 * H, 0.04 * H),
+        mat(darkBlue, { metalness: 0.4, roughness: 0.35 }),
+      );
+      upperPlate.position.set(0, 0.2 * H, 0.13 * H);
+
+      // ── 3. Sol yan plaka ──
       const sideL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.04 * H, 0.24 * H, 0.16 * H),
-        mat(darkColor, { metalness: 0.35, roughness: 0.4 }),
+        new THREE.BoxGeometry(0.045 * H, 0.28 * H, 0.18 * H),
+        mat(darkBlue, { metalness: 0.4, roughness: 0.35 }),
       );
-      sideL.position.set(-0.16 * H, 0.04 * H, 0.06 * H);
+      sideL.position.set(-0.18 * H, 0.03 * H, 0.04 * H);
+
+      // ── 4. Sağ yan plaka ──
       const sideR = sideL.clone();
-      sideR.position.x = 0.16 * H;
+      sideR.position.x = 0.18 * H;
 
-      // ── Omuz korumaları (sol ve sağ) ──
+      // ── 5. Sol omuz zırhı (geniş ve açılı) ──
       const shoulderL = new THREE.Mesh(
-        new THREE.BoxGeometry(0.1 * H, 0.06 * H, 0.1 * H),
-        mat(armorColor, { metalness: 0.45, roughness: 0.3 }),
+        new THREE.BoxGeometry(0.12 * H, 0.07 * H, 0.12 * H),
+        mat(blue, { metalness: 0.5, roughness: 0.25 }),
       );
-      shoulderL.position.set(-0.18 * H, 0.18 * H, 0.08 * H);
-      const shoulderR = shoulderL.clone();
-      shoulderR.position.x = 0.18 * H;
+      shoulderL.position.set(-0.2 * H, 0.2 * H, 0.06 * H);
 
-      // ── Boyun koruması (yaka) ──
+      // ── 6. Sağ omuz zırhı ──
+      const shoulderR = shoulderL.clone();
+      shoulderR.position.x = 0.2 * H;
+
+      // ── 7. Boyun halkası (altın yaka) ──
       const collar = new THREE.Mesh(
-        new THREE.TorusGeometry(0.08 * H, 0.015 * H, 8, 16),
-        mat(trimColor, { metalness: 0.6, roughness: 0.25 }),
+        new THREE.TorusGeometry(0.09 * H, 0.012 * H, 8, 16),
+        mat(gold, { metalness: 0.65, roughness: 0.2 }),
       );
       collar.rotation.x = Math.PI / 2;
-      collar.position.set(0, 0.2 * H, 0.08 * H);
+      collar.position.set(0, 0.22 * H, 0.06 * H);
 
-      // ── Kemer bandı ──
+      // ── 8. Kemer (deri bant) ──
       const belt = new THREE.Mesh(
-        new THREE.TorusGeometry(0.15 * H, 0.01 * H, 8, 20),
-        mat("#78350f", { roughness: 0.8 }),
+        new THREE.BoxGeometry(0.38 * H, 0.03 * H, 0.2 * H),
+        mat(brown, { roughness: 0.85 }),
       );
-      belt.rotation.x = Math.PI / 2;
-      belt.position.set(0, -0.1 * H, 0.08 * H);
+      belt.position.set(0, -0.1 * H, 0.04 * H);
 
-      // ── Kemer tokası (ön orta) ──
+      // ── 9. Kemer tokası (altın) ──
       const buckle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.03 * H, 0.03 * H, 0.02 * H),
-        mat(trimColor, { metalness: 0.7, roughness: 0.2 }),
+        new THREE.BoxGeometry(0.04 * H, 0.04 * H, 0.025 * H),
+        mat(gold, { metalness: 0.75, roughness: 0.15 }),
       );
       buckle.position.set(0, -0.1 * H, 0.15 * H);
 
-      // ── Göğüs amblemi (detay) ──
+      // ── 10. Göğüs amblemi (altın daire) ──
       const emblem = new THREE.Mesh(
-        new THREE.SphereGeometry(0.02 * H, 10, 8),
-        mat(trimColor, { metalness: 0.8, roughness: 0.15 }),
+        new THREE.CylinderGeometry(0.025 * H, 0.025 * H, 0.01 * H, 16),
+        mat(gold, { metalness: 0.8, roughness: 0.1 }),
       );
-      emblem.position.set(0, 0.12 * H, 0.16 * H);
+      emblem.rotation.x = Math.PI / 2;
+      emblem.position.set(0, 0.1 * H, 0.17 * H);
 
-      g.add(frontPlate, sideL, sideR, shoulderL, shoulderR, collar, belt, buckle, emblem);
+      g.add(frontPlate, upperPlate, sideL, sideR, shoulderL, shoulderR, collar, belt, buckle, emblem);
       return g;
     },
   },
@@ -519,38 +533,7 @@ export function attachEquippedToModel(
     }
   });
 
-  // ── ONE-TIME BONE DIMENSION DIAGNOSTIC ──
-  // Logs the world bounding box of each key bone's subtree.
-  if (!(clone as any)._boneDiagDone) {
-    (clone as any)._boneDiagDone = true;
-    const keyBones = ['Torso','Head','Neck','HandR','HandL','FootL','FootR','UpperLegL','UpperLegR','ShoulderL','ShoulderR','Hips','Body','Abdomen','Bone'];
-    clone.updateWorldMatrix(true, true);
-    for (const boneName of keyBones) {
-      clone.traverse((obj) => {
-        if (obj.name !== boneName) return;
-        const wp = new THREE.Vector3();
-        obj.getWorldPosition(wp);
-        // Compute bounding box of this bone's direct mesh children
-        const box = new THREE.Box3();
-        let hasMesh = false;
-        obj.traverse((child) => {
-          if (child === obj) return; // skip the bone itself
-          if ((child as THREE.Mesh).isMesh) {
-            const childBox = new THREE.Box3().setFromObject(child);
-            if (!hasMesh) { box.copy(childBox); hasMesh = true; }
-            else box.union(childBox);
-          }
-        });
-        if (hasMesh) {
-          const size = new THREE.Vector3();
-          box.getSize(size);
-          console.log('[Bone] ═══', boneName, '| pos:', wp.toArray().map(v=>v.toFixed(3)).join(','), '| bboxMin:', box.min.toArray().map(v=>v.toFixed(3)).join(','), '| bboxMax:', box.max.toArray().map(v=>v.toFixed(3)).join(','), '| size:', size.toArray().map(v=>v.toFixed(3)).join(','));
-        } else {
-          console.log('[Bone] ═══', boneName, '| pos:', wp.toArray().map(v=>v.toFixed(3)).join(','), '| no mesh children');
-        }
-      });
-    }
-  }
+
 
   if (equipped.length === 0) {
     console.log('[Equip] No equipped items — skipping');
