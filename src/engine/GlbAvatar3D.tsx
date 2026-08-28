@@ -15,6 +15,7 @@ import {
   findBone as findBoneRegistry,
   findBones as findBonesRegistry,
   MULTI_BONE_SLOTS,
+  resolveSkinUrl,
 } from "./EquipmentRegistry";
 
 // Re-export for backward compatibility
@@ -692,6 +693,35 @@ registerEquipmentBatch([
     },
   },
   // NOTE: test-zirh removed — use moda-zirh or demir-zirh instead.
+
+  // ═══ SKIN SYSTEM — Character model swaps ═══
+  // When a skin is equipped, the entire character GLB is replaced.
+  // The GLB must include skeleton + animations (idle, walk).
+  // Slot "CHEST" is used for skins (they replace the whole body).
+
+  // Samuray Savaşçı — Stylized low-poly character with idle/walk/run/jump animations
+  {
+    id: "skin-samuray",
+    slot: "CHEST",
+    skinUrl: "/models/skin-samuray.glb",
+    build: (H) => {
+      const g = new THREE.Group();
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#8B4513", { metalness: 0.3, roughness: 0.5 }));
+      p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
+    },
+  },
+
+  // Şövalye — Low-poly knight with idle/walk animations
+  {
+    id: "skin-sevalye",
+    slot: "CHEST",
+    skinUrl: "/models/skin-sevalye.glb",
+    build: (H) => {
+      const g = new THREE.Group();
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#708090", { metalness: 0.5, roughness: 0.3 }));
+      p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
+    },
+  },
 ]);
 
 
@@ -931,7 +961,12 @@ interface GlbAvatarCoreProps {
 
 function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(url);
+
+  // Skin system: if any equipped item has a skinUrl, use that character model instead.
+  const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
+  const effectiveUrl = skinUrl || url;
+
+  const { scene, animations } = useGLTF(effectiveUrl);
 
   // Per-instance clone with independent skeleton (shares GPU resources).
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
@@ -1173,7 +1208,8 @@ interface PortraitCoreProps {
 /** Static character shown facing the camera with its idle animation. */
 function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(url);
+  const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
+  const { scene, animations } = useGLTF(skinUrl || url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
@@ -1303,7 +1339,8 @@ interface ProfileModelProps {
  */
 function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(url);
+  const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
+  const { scene, animations } = useGLTF(skinUrl || url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 

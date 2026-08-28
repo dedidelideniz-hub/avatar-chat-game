@@ -362,6 +362,25 @@ export const PRODUCTS: Product[] = [
     vendorId: "moda",
     slot: "chest",
   },
+  // ═══ SKIN SYSTEM — Character model swaps ═══
+  {
+    id: "skin-samuray",
+    name: "Samuray Savaşçı",
+    emoji: "⚔️",
+    price: 1200,
+    description: "Stilize düşük poligon samuray karakter — idle, walk, run animasyonları.",
+    vendorId: "moda",
+    slot: "chest",
+  },
+  {
+    id: "skin-sevalye",
+    name: "Şövalye Karakter",
+    emoji: "🗡️",
+    price: 1500,
+    description: "Düşük poligon şövalye karakter — idle, walk animasyonları.",
+    vendorId: "moda",
+    slot: "chest",
+  },
   // ═══ GELECEKTE EKLENECEKLER ═══
   // { id: "moda-sapka", name: "Hasır Şapka", emoji: "👒", price: 100, description: "Güneşten koruyan şık bir hasır şapka.", vendorId: "moda", slot: "head" },
   // { id: "moda-gozluk", name: "Güneş Gözlüğü", emoji: "🕶️", price: 120, description: "Karanlık camlı havalı güneş gözlüğü.", vendorId: "moda", slot: "face" },

@@ -62,6 +62,14 @@ export interface EquipmentDef {
   fullBody?: boolean;
 
   /**
+   * Path to a full character GLB that replaces the entire character model
+   * when this item is equipped ("skin" system). The GLB must include
+   * skeleton + animations (idle, walk). When set, the character's GLB URL
+   * is swapped to this path instead of attaching equipment to bones.
+   */
+  skinUrl?: string;
+
+  /**
    * Procedural mesh factory. Called with the character's model height
    * (in native units) and returns a THREE.Object3D to attach to the bone.
    * If both `build` and `glbPath` are set, `build` takes priority.
@@ -254,4 +262,21 @@ export function equipMat(
   opts?: Partial<THREE.MeshStandardMaterialParameters>,
 ): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...opts });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ *  Skin System — character model swapping
+ * ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * Checks the equipped items list for a skin definition.
+ * Returns the skinUrl if found, otherwise null.
+ * Only the first skin in the equipped list is used.
+ */
+export function resolveSkinUrl(equipped: string[]): string | null {
+  for (const id of equipped) {
+    const def = registry.get(id);
+    if (def?.skinUrl) return def.skinUrl;
+  }
+  return null;
 }
