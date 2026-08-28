@@ -134,9 +134,7 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
   const placeholder = new THREE.Group();
   placeholder.userData._pendingGlb = url;
   return placeholder;
-}
-
-// Equipment GLB preloads — triggered at module init.
+}  // Equipment GLB preloads — triggered at module init.
 loadEquipmentGlbCached('/models/savasci-zirh.glb');
 loadEquipmentGlbCached('/models/sovalye-zirh.glb');
 
@@ -724,9 +722,20 @@ registerEquipmentBatch([
       p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
     },
   },
+  // Poly Pizza / Quaternius Soldier — CC Attribution, full-body GLB.
+  {
+    id: "skin-savasci-glb",
+    slot: "CHEST",
+    skinUrl: "/models/moda-savasci.glb",
+    build: (H) => {
+      const g = new THREE.Group();
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H), mat("#8b4513", { metalness: 0.3, roughness: 0.5 }));
+      p.position.set(0, 0.01 * H, 0.065 * H);
+      g.add(p);
+      return g;
+    },
+  },
 ]);
-
-
 
 // Position conversion constants (mirror GameEngine3D's sX/sZ helpers).
 const WORLD_W = WORLD_WIDTH / 2;

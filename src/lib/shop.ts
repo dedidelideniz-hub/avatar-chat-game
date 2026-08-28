@@ -355,6 +355,16 @@ export const PRODUCTS: Product[] = [
     slot: "chest",
     skinUrl: "/models/skin-sevalye.glb",
   },
+  {
+    id: "skin-savasci-glb",
+    name: "Kraliyet Savaşçısı",
+    emoji: "⚔️",
+    price: 1350,
+    description: "Tam gövdeli, ayakları görünür savaşçı karakter — animasyonlu GLB skin.",
+    vendorId: "moda",
+    slot: "chest",
+    skinUrl: "/models/moda-savasci.glb",
+  },
 ];
 
 /** Product lookup helpers. */
