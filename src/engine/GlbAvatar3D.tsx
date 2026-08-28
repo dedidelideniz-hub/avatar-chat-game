@@ -519,6 +519,39 @@ export function attachEquippedToModel(
     }
   });
 
+  // ── ONE-TIME BONE DIMENSION DIAGNOSTIC ──
+  // Logs the world bounding box of each key bone's subtree.
+  if (!(clone as any)._boneDiagDone) {
+    (clone as any)._boneDiagDone = true;
+    const keyBones = ['Torso','Head','Neck','HandR','HandL','FootL','FootR','UpperLegL','UpperLegR','ShoulderL','ShoulderR','Hips','Body','Abdomen','Bone'];
+    clone.updateWorldMatrix(true, true);
+    for (const boneName of keyBones) {
+      clone.traverse((obj) => {
+        if (obj.name !== boneName) return;
+        const wp = new THREE.Vector3();
+        obj.getWorldPosition(wp);
+        // Compute bounding box of this bone's direct mesh children
+        const box = new THREE.Box3();
+        let hasMesh = false;
+        obj.traverse((child) => {
+          if (child === obj) return; // skip the bone itself
+          if ((child as THREE.Mesh).isMesh) {
+            const childBox = new THREE.Box3().setFromObject(child);
+            if (!hasMesh) { box.copy(childBox); hasMesh = true; }
+            else box.union(childBox);
+          }
+        });
+        if (hasMesh) {
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          console.log('[Bone] ═══', boneName, '| pos:', wp.toArray().map(v=>v.toFixed(3)).join(','), '| bboxMin:', box.min.toArray().map(v=>v.toFixed(3)).join(','), '| bboxMax:', box.max.toArray().map(v=>v.toFixed(3)).join(','), '| size:', size.toArray().map(v=>v.toFixed(3)).join(','));
+        } else {
+          console.log('[Bone] ═══', boneName, '| pos:', wp.toArray().map(v=>v.toFixed(3)).join(','), '| no mesh children');
+        }
+      });
+    }
+  }
+
   if (equipped.length === 0) {
     console.log('[Equip] No equipped items — skipping');
     return () => {};
