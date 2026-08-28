@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, Component } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SkeletonUtils } from "three-stdlib";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -61,7 +62,55 @@ export function characterModelUrl(): string {
 
 
 
+/* ── Equipment GLB cache (lazy, non-React) ───────────────────── */
 
+const _equipmentGlbCache = new Map<string, THREE.Group>();
+const _equipmentGlbLoading = new Map<string, Promise<THREE.Group>>();
+
+/**
+ * Loads an equipment GLB and returns a clone ready for bone attachment.
+ * The original scene is cached per URL; each call returns an independent
+ * clone so multiple characters can wear the same item.
+ */
+function loadEquipmentGlbCached(url: string): THREE.Object3D {
+  const cached = _equipmentGlbCache.get(url);
+  if (cached) return SkeletonUtils.clone(cached) as THREE.Object3D;
+
+  let loading = _equipmentGlbLoading.get(url);
+  if (!loading) {
+    loading = new Promise<THREE.Group>((resolve, reject) => {
+      const loader = new GLTFLoader();
+      loader.load(
+        url,
+        (gltf) => {
+          const scene = gltf.scene;
+          // Center the model and compute its bounding box.
+          const box = new THREE.Box3().setFromObject(scene);
+          const center = box.getCenter(new THREE.Vector3());
+          scene.position.sub(center);
+          _equipmentGlbCache.set(url, scene);
+          resolve(scene);
+        },
+        undefined,
+        (err) => reject(err),
+      );
+    });
+    _equipmentGlbLoading.set(url, loading);
+  }
+  // Synchronously return a placeholder — the real model loads async.
+  // attachEquippedToModel will re-attach once loaded.
+  const placeholder = new THREE.Group();
+  placeholder.userData._pendingGlb = url;
+  return placeholder;
+}
+
+// Preload equipment GLBs on module init so they're ready when needed.
+if (typeof window !== 'undefined') {
+  // Fire-and-forget preload for moda-zirh GLB.
+  fetch('/models/moda-zirh.glb', { method: 'HEAD' }).then(() => {
+    loadEquipmentGlbCached('/models/moda-zirh.glb');
+  }).catch(() => { /* GLB not available, will use procedural fallback */ });
+}
 
 /** Attaches `item` to the bone for `slot`. Returns false if bone missing. */
 export function attachToBone(
@@ -175,13 +224,15 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ── CHEST — Moda Zırh: Tam üst vücut zırhı ──
+  // ── CHEST — Moda Zırh: Sketchfab GLB model ──
   // Torso bone local space: Y=dikey, Z=ön, X=sol/sağ.
-  // Tüm üst gövdeyi (omuzdan bele) saran entegre zırh.
+  // GLB model dosyası: /models/moda-zirh.glb
   {
     id: "moda-zirh",
     slot: "CHEST",
+    glbPath: "/models/moda-zirh.glb",
     build: (H) => {
+      // GLB yüklenene kadar geçici procedural fallback
       const g = new THREE.Group();
       const blue = "#3f6fd0";
       const darkBlue = "#2a4a8a";
@@ -661,9 +712,23 @@ export function attachEquippedToModel(
       }
     }
 
-    console.log('[Equip] ═══', id, '→ slot:', slot, '| hasBuild:', !!def.build);
+    console.log('[Equip] ═══', id, '→ slot:', slot, '| hasBuild:', !!def.build, '| glbPath:', def.glbPath ?? 'none');
 
-    const item = def.build(modelHeight);
+    // Use GLB model if available, otherwise fall back to procedural builder.
+    let item: THREE.Object3D;
+    if (def.glbPath) {
+      const cached = _equipmentGlbCache.get(def.glbPath);
+      if (cached) {
+        item = SkeletonUtils.clone(cached);
+        console.log('[Equip] Loaded GLB from cache:', def.glbPath);
+      } else {
+        item = def.build(modelHeight); // fallback while GLB loads
+        loadEquipmentGlbCached(def.glbPath); // trigger async load
+        console.log('[Equip] GLB loading async, using procedural fallback:', def.glbPath);
+      }
+    } else {
+      item = def.build(modelHeight);
+    }
 
     if (def.positionOffset) {
       item.position.set(
