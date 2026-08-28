@@ -796,8 +796,8 @@ export function attachEquippedToModel(
       console.log('[Equip] bone:', bone.name, '| parent:', bone.parent?.name, '| worldScale:', boneAvg.toFixed(2));
 
       if (def.glbPath && boneAvg > 1e-6) {
-        // GLB equipment: center geometry at origin, then scale to fit.
-        // 1. Compute bounding box and translate geometry so center is at (0,0,0)
+        // GLB equipment: normalize GEOMETRY (vertex positions), not just object scale.
+        // 1. Translate geometry so bounding box center is at origin
         const bbox = new THREE.Box3().setFromObject(inst);
         const bboxCenter = bbox.getCenter(new THREE.Vector3());
         const bboxSize = bbox.getSize(new THREE.Vector3());
@@ -806,14 +806,21 @@ export function attachEquippedToModel(
             (obj as THREE.Mesh).geometry.translate(-bboxCenter.x, -bboxCenter.y, -bboxCenter.z);
           }
         });
-        // 2. Scale: target world height = 55% of character height.
-        //    localScale × boneAvg = targetWorldH
-        //    So localScale = targetWorldH / boneAvg
-        const charWorldH = modelHeight * expected; // ≈ PLAYER_3D_HEIGHT
+        // 2. Normalize geometry so height = 1.0 (scale vertex positions)
+        const geoHeight = Math.max(bboxSize.y, 0.001);
+        const nf = 1.0 / geoHeight;
+        inst.traverse((obj) => {
+          if ((obj as THREE.Mesh).isMesh) {
+            (obj as THREE.Mesh).geometry.scale(nf, nf, nf);
+          }
+        });
+        // 3. Object scale: target world height = 55% of character.
+        //    worldH = localScale × boneAvg
+        const charWorldH = modelHeight * expected;
         const targetWorldH = charWorldH * 0.55;
         const localScale = targetWorldH / boneAvg;
         inst.scale.setScalar(localScale);
-        console.log('[Equip] GLB centered+bbox:', bboxSize.toArray().map(v => v.toFixed(1)), '| scale:', localScale.toFixed(4), '| targetH:', targetWorldH.toFixed(2));
+        console.log('[Equip] GLB geo-normalized:', bboxSize.toArray().map(v => v.toFixed(1)), '| nf:', nf.toFixed(6), '| scale:', localScale.toFixed(4));
       } else {
         // Procedural equipment: compensate for bone scale mismatch.
         const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
