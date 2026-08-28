@@ -979,13 +979,16 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   // Normalize to exactly PLAYER_3D_HEIGHT — never trust authored scale.
   // Compute bounding box from the CLONE (not original) after matrix update,
   // so nested transforms (Sketchfab_model → Armature) are fully baked.
-  const { normScale, modelHeight } = useMemo(() => {
+  const { normScale, modelHeight, feetOffset } = useMemo(() => {
     clone.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(clone);
     const size = new THREE.Vector3();
     box.getSize(size);
     const h = Math.max(size.y, 0.0001);
-    return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h };
+    // Translate model up so its bottom (feet) sits at Y=0.
+    // box.min.y is the lowest point of the model in its local space.
+    const feetY = -box.min.y;
+    return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: feetY };
   }, [clone]);
 
   // Shadow casting on every mesh.
@@ -1156,7 +1159,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   }, []);
 
   return (
-    <group ref={groupRef} scale={normScale}>
+    <group ref={groupRef} scale={normScale} position={[0, feetOffset * normScale, 0]}>
       <primitive object={clone} />
     </group>
   );
