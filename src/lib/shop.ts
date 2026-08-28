@@ -334,70 +334,7 @@ export const VENDORS: Vendor[] = [
  * VENDORS (stall references) are preserved for the 3D world layout.
  */
 export const PRODUCTS: Product[] = [
-  // ═══ TEK ÜRÜN: Mavi Zırh ═══
-  {
-    id: "moda-zirh",
-    name: "Mavi Zırh",
-    emoji: "🛡️",
-    price: 300,
-    description: "Mavi renkli hafif göğüs zırhı.",
-    vendorId: "moda",
-    slot: "chest",
-  },
-  // ═══ Savaşçı Zırhı — Fantasy Warrior ═══
-  {
-    id: "savasci-zirh",
-    name: "Savaşçı Zırhı",
-    emoji: "⚔️",
-    price: 600,
-    description: "Fantastik savaşçı zırhı —low-poly stylized.",
-    vendorId: "moda",
-    slot: "chest",
-  },
-  // ═══ Şövalye Zırhı — Sable Knight ═══
-  {
-    id: "sovalye-zirh",
-    name: "Şövalye Zırhı",
-    emoji: "🛡️",
-    price: 900,
-    description: "Detaylı metal şövalye zırhı — Substance Painter.",
-    vendorId: "moda",
-    slot: "chest",
-  },
-  // ═══ SKIN SYSTEM — Character model swaps ═══
-  {
-    id: "skin-samuray",
-    name: "Samuray Savaşçı",
-    emoji: "⚔️",
-    price: 1200,
-    description: "Stilize düşük poligon samuray karakter — idle, walk, run animasyonları.",
-    vendorId: "moda",
-    slot: "chest",
-    skinUrl: "/models/skin-samuray.glb",
-  },
-  {
-    id: "skin-sevalye",
-    name: "Şövalye Karakter",
-    emoji: "🗡️",
-    price: 1500,
-    description: "Düşük poligon şövalye karakter — idle, walk animasyonları.",
-    vendorId: "moda",
-    slot: "chest",
-    skinUrl: "/models/skin-sevalye.glb",
-  },
-  // ═══ GELECEKTE EKLENECEKLER ═══
-  // { id: "moda-sapka", name: "Hasır Şapka", emoji: "👒", price: 100, description: "Güneşten koruyan şık bir hasır şapka.", vendorId: "moda", slot: "head" },
-  // { id: "moda-gozluk", name: "Güneş Gözlüğü", emoji: "🕶️", price: 120, description: "Karanlık camlı havalı güneş gözlüğü.", vendorId: "moda", slot: "face" },
-  // { id: "moda-atki", name: "Kırmızı Atkı", emoji: "🧣", price: 80, description: "Boynunu sıcak tutan örgü atkı.", vendorId: "moda", slot: "neck" },
-  // { id: "moda-canta", name: "Deri Çanta", emoji: "🎒", price: 150, description: "Sırta takılan deri çanta.", vendorId: "moda", slot: "back" },
-  // { id: "moda-eldiven", name: "Kırmızı Eldiven", emoji: "🧤", price: 90, description: "Her iki ele takılan sıcak eldiven.", vendorId: "moda", slot: "hands" },
-  // { id: "moda-bot", name: "Deri Bot", emoji: "🥾", price: 130, description: "Sağlam deri yürüyüş botları.", vendorId: "moda", slot: "feet" },
-  // { id: "moda-kilic", name: "Altın Kılıç", emoji: "⚔️", price: 250, description: "Altın kabzalı parlak kılıç.", vendorId: "moda", slot: "hand" },
-  // { id: "moda-kalkan", name: "Mavi Kalkan", emoji: "🛡️", price: 200, description: "Mavi renkli yuvarlak kalkan.", vendorId: "moda", slot: "hand" },
-  // { id: "demir-kilic", name: "Demir Kılıç", emoji: "🗡️", price: 350, description: "Sağlam demirden dövülmüş kılıç.", vendorId: "silahci", slot: "hand" },
-  // { id: "demir-kalkan", name: "Demir Kalkan", emoji: "🛡️", price: 300, description: "Ağır demir kalkan.", vendorId: "silahci", slot: "hand" },
-  // { id: "demir-miğfer", name: "Demir Miğfer", emoji: "⛑️", price: 280, description: "Başını koruyan demir miğfer.", vendorId: "silahci", slot: "head" },
-  // { id: "demir-zirh", name: "Demir Zırh", emoji: "🛡️", price: 450, description: "Tam gövde demir zırh.", vendorId: "silahci", slot: "chest" },
+  // ═══ Selin'in Moda Standı — ürünler tek tek eklenecek ═══
 ];
 
 /** Product lookup helpers. */
