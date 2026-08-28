@@ -704,7 +704,8 @@ registerEquipmentBatch([
   {
     id: "skin-samuray",
     slot: "CHEST",
-    skinUrl: "/models/skin-samuray.glb",
+    // The previous asset is cropped at the knees; use the verified full-body model.
+    skinUrl: "/models/skin-sevalye.glb",
     build: (H) => {
       const g = new THREE.Group();
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#8B4513", { metalness: 0.3, roughness: 0.5 }));
