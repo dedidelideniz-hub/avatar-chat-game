@@ -342,6 +342,16 @@ export const PRODUCTS: Product[] = [
     vendorId: "moda",
     slot: "chest",
   },
+  // ═══ Kral Zırh — Tam Vücut ═══
+  {
+    id: "kral-zirh",
+    name: "Kral Zırhı",
+    emoji: "👑",
+    price: 800,
+    description: "Kral Henry VIII'in efsanevi tam vücut zırhı.",
+    vendorId: "moda",
+    slot: "chest",
+  },
   // ═══ GELECEKTE EKLENECEKLER ═══
   // { id: "moda-sapka", name: "Hasır Şapka", emoji: "👒", price: 100, description: "Güneşten koruyan şık bir hasır şapka.", vendorId: "moda", slot: "head" },
   // { id: "moda-gozluk", name: "Güneş Gözlüğü", emoji: "🕶️", price: 120, description: "Karanlık camlı havalı güneş gözlüğü.", vendorId: "moda", slot: "face" },

@@ -120,8 +120,9 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
   return placeholder;
 }
 
-// Equipment GLB preloads can be added here when needed.
-// Example: loadEquipmentGlbCached('/models/some-item.glb');
+// Equipment GLB preloads — triggered at module init so the model is
+// ready by the time the player opens the shop or equips the item.
+loadEquipmentGlbCached('/models/old-king-armor.glb');
 
 /** Attaches `item` to the bone for `slot`. Returns false if bone missing. */
 export function attachToBone(
@@ -650,6 +651,26 @@ registerEquipmentBatch([
       g.add(front, sideL, sideR, shL, shR, collar, belt, buckle, crossH, crossV);
       return g;
     },
+  },
+  // ═══ Kral Zırh — Tam Vücut GLB ═══
+  // Sketchfab: Old King Armor by Pedro B. Goulart (CC Attribution)
+  // Full-body armor loaded from GLB, centered and scaled to fit.
+  {
+    id: "kral-zirh",
+    slot: "CHEST",
+    glbPath: "/models/old-king-armor.glb",
+    build: (H) => {
+      // Procedural fallback while GLB loads (simple chest plate).
+      const g = new THREE.Group();
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H),
+        mat("#8B7355", { metalness: 0.6, roughness: 0.3 }),
+      );
+      plate.position.set(0, 0.01 * H, 0.065 * H);
+      g.add(plate);
+      return g;
+    },
+    scale: 1.0,
   },
   // NOTE: test-zirh removed — use moda-zirh or demir-zirh instead.
 ]);
