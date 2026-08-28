@@ -334,7 +334,16 @@ export const VENDORS: Vendor[] = [
  * VENDORS (stall references) are preserved for the 3D world layout.
  */
 export const PRODUCTS: Product[] = [
-  // ═══ Selin'in Moda Standı — ürünler tek tek eklenecek ═══
+  // ═══ Selin'in Moda Standı ═══
+  {
+    id: "krystal-asa",
+    name: "Kristal Büyücü Asası",
+    emoji: "🔮",
+    price: 750,
+    description: "Koyu fantezi büyücü asası — mor kristal ucu parlar.",
+    vendorId: "moda",
+    slot: "hand",
+  },
 ];
 
 /** Product lookup helpers. */

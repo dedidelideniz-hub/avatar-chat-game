@@ -139,6 +139,7 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
 // Equipment GLB preloads — triggered at module init.
 loadEquipmentGlbCached('/models/savasci-zirh.glb');
 loadEquipmentGlbCached('/models/sovalye-zirh.glb');
+loadEquipmentGlbCached('/models/crystal-staff.glb');
 
 /** Attaches `item` to the bone for `slot`. Returns false if bone missing. */
 export function attachToBone(
@@ -693,6 +694,30 @@ registerEquipmentBatch([
     },
   },
   // NOTE: test-zirh removed — use moda-zirh or demir-zirh instead.
+
+  // ═══ Dark Fantasy Sorceress Crystal Staff (Sketchfab GLB, MAIN_HAND) ═══
+  {
+    id: "krystal-asa",
+    slot: "HAND",
+    handSlot: "MAIN_HAND",
+    glbPath: "/models/crystal-staff.glb",
+    build: (H) => {
+      const g = new THREE.Group();
+      // Minimal procedural fallback — pole + crystal top
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012 * H, 0.012 * H, 0.45 * H, 8),
+        mat("#4a3a2a", { roughness: 0.8 }),
+      );
+      pole.position.y = 0.2 * H;
+      const crystal = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.03 * H, 0),
+        mat("#7c3aed", { metalness: 0.7, roughness: 0.2, emissive: 0x4c1d95, emissiveIntensity: 0.4 }),
+      );
+      crystal.position.y = 0.42 * H;
+      g.add(pole, crystal);
+      return g;
+    },
+  },
 
   // ═══ SKIN SYSTEM — Character model swaps ═══
   // When a skin is equipped, the entire character GLB is replaced.
