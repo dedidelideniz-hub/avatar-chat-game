@@ -316,6 +316,49 @@ export function SkinPreviewModal({
 }
 
 /** Vendor stall — browse & buy products with Sanalika Parası. */
+/* ── ShopSheet cinematic variants ────────────────────────── */
+
+const shopBackdropVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.3 } },
+  exit: { opacity: 0, transition: { duration: 0.2 } },
+};
+
+const shopPanelVariants = {
+  hidden: { opacity: 0, scale: 0.45, y: 80 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: "spring" as const, stiffness: 280, damping: 22, mass: 1.0, delay: 0.15 },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.9,
+    y: 40,
+    transition: { duration: 0.15, ease: "easeIn" as const },
+  },
+};
+
+const shopGridVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.08, delayChildren: 0.35 },
+  },
+};
+
+const shopItemVariants = {
+  hidden: { opacity: 0, scale: 0.5, y: 30, rotateX: -15 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    rotateX: 0,
+    transition: { type: "spring" as const, stiffness: 360, damping: 24 },
+  },
+};
+
+/** Vendor stall — cinematic gaming-style opening with sound + glowing items. */
 export function ShopSheet({
   vendor,
   coins,
@@ -331,6 +374,10 @@ export function ShopSheet({
   const [buyingId, setBuyingId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const products = productsOf(vendor.id);
+
+  // Cinematic opening: play shop sound on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useState(() => { playSound("coin"); });
 
   const handleBuy = async (productId: string) => {
     setBuyingId(productId);
@@ -354,7 +401,15 @@ export function ShopSheet({
 
   return (
     <>
-      <SheetBackdrop onClose={onClose} />
+      {/* Cinematic backdrop — dark + blurred, delayed entrance */}
+      <motion.div
+        variants={shopBackdropVariants}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        onClick={onClose}
+        className="fixed inset-0 z-30 bg-black/65 backdrop-blur-[3px]"
+      />
 
       {/* Skin preview modal */}
       <AnimatePresence>
@@ -374,26 +429,48 @@ export function ShopSheet({
         })()}
       </AnimatePresence>
 
+      {/* Main panel — cinematic scale-in from bottom center */}
       <motion.div
-        {...sheetPanel}
-        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg rounded-t-3xl border border-b-0 border-border bg-card p-5 shadow-2xl sm:p-6"
+        key="shop-panel"
+        variants={shopPanelVariants}
+        initial="hidden"
+        animate="visible"
+        exit="exit"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-lg rounded-t-3xl border border-b-0 border-border/60 bg-card/95 p-5 shadow-2xl shadow-primary/5 backdrop-blur-sm sm:p-6"
       >
+        {/* Top glow accent line */}
+        <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
+
+        {/* Header with coin badge entrance */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-extrabold tracking-tight">
+            <motion.h2
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.25, duration: 0.35 }}
+              className="text-lg font-extrabold tracking-tight"
+            >
               {vendor.emoji} {vendor.name}
-            </h2>
-            <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+            </motion.h2>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.35, duration: 0.3 }}
+              className="mt-0.5 text-xs font-semibold text-muted-foreground"
+            >
               Tezgâhtan bir şey al — hepsi çantanda birikir.
-            </p>
+            </motion.p>
           </div>
           <div className="flex items-center gap-2">
-            <span
-              className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-extrabold"
+            <motion.span
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3, type: "spring" as const, stiffness: 400, damping: 20 }}
+              className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-sm font-extrabold text-amber-600 dark:text-amber-400"
               title="Sanalika Parası"
             >
               {CURRENCY_EMOJI} {formatCoins(coins)} SP
-            </span>
+            </motion.span>
             <Button
               variant="ghost"
               size="icon"
@@ -406,52 +483,106 @@ export function ShopSheet({
           </div>
         </div>
 
-        <div className="mt-5 grid max-h-[46vh] grid-cols-2 gap-3 overflow-y-auto pb-1 sm:grid-cols-3">
+        {/* Product grid with staggered entrance + glowing cards */}
+        <motion.div
+          variants={shopGridVariants}
+          initial="hidden"
+          animate="visible"
+          className="mt-5 grid max-h-[46vh] grid-cols-2 gap-3 overflow-y-auto pb-1 sm:grid-cols-3"
+        >
           {products.map((product) => {
             const isOwned = owned.includes(product.id);
             const isBuying = buyingId === product.id;
             const cantAfford = coins < product.price;
             return (
-              <div
+              <motion.div
                 key={product.id}
-                className={`flex flex-col rounded-2xl border border-border/70 bg-background p-3 ${product.skinUrl ? "cursor-pointer transition hover:border-indigo-500/40 hover:shadow-md hover:shadow-indigo-500/10" : ""}`}
+                variants={shopItemVariants}
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                className={`relative flex flex-col rounded-2xl border p-3 ${
+                  product.skinUrl
+                    ? "cursor-pointer border-indigo-500/20 bg-gradient-to-b from-indigo-950/30 to-background hover:border-indigo-400/50 hover:shadow-lg hover:shadow-indigo-500/20"
+                    : "border-border/70 bg-background"
+                }`}
                 onClick={() => {
                   if (product.skinUrl) setPreviewId(product.id);
                 }}
               >
-                <span className="text-3xl leading-none">{product.emoji}</span>
-                <p className="mt-2 text-sm font-extrabold leading-tight">
+                {/* Animated shimmer for skin products */}
+                {product.skinUrl && !isOwned && (
+                  <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
+                    <motion.div
+                      className="absolute -inset-1 bg-gradient-to-r from-transparent via-amber-400/15 to-transparent"
+                      animate={{ x: ["-100%", "200%"] }}
+                      transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 3, ease: "easeInOut" }}
+                    />
+                  </div>
+                )}
+                {/* Skin glow ring */}
+                {product.skinUrl && !isOwned && (
+                  <motion.div
+                    className="pointer-events-none absolute -inset-px rounded-2xl border border-amber-400/30"
+                    animate={{ opacity: [0.3, 0.7, 0.3] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                )}
+
+                {/* Emoji with bounce on skin items */}
+                <motion.span
+                  className="relative z-10 text-3xl leading-none"
+                  animate={product.skinUrl && !isOwned ? { y: [0, -3, 0] } : {}}
+                  transition={product.skinUrl ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}}
+                >
+                  {product.emoji}
+                </motion.span>
+                <p className="relative z-10 mt-2 text-sm font-extrabold leading-tight">
                   {product.name}
                 </p>
-                <p className="mt-1 line-clamp-2 flex-1 text-[11px] leading-4 text-muted-foreground">
+                <p className="relative z-10 mt-1 line-clamp-2 flex-1 text-[11px] leading-4 text-muted-foreground">
                   {product.description}
                 </p>
                 {isOwned ? (
-                  <span className="mt-2.5 inline-flex w-fit items-center gap-1 rounded-full bg-secondary/60 px-2.5 py-1 text-[11px] font-extrabold text-secondary-foreground">
-                    <Check className="size-3" /> Sahipsin
-                  </span>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="mt-2.5 w-full rounded-full"
-                    disabled={isBuying || cantAfford}
-                    onClick={(e) => { e.stopPropagation(); handleBuy(product.id); }}
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring" as const, stiffness: 500, damping: 20 }}
+                    className="relative z-10 mt-2.5 inline-flex w-fit items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-[11px] font-extrabold text-green-600 dark:text-green-400"
                   >
-                    {isBuying ? (
-                      <span className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                    ) : (
-                      <>
-                        <Coins className="size-3.5" />
-                        {product.price} SP
-                      </>
-                    )}
-                  </Button>
+                    <Check className="size-3" /> Sahipsin
+                  </motion.span>
+                ) : (
+                  <motion.div
+                    className="relative z-10 mt-2.5"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <Button
+                      type="button"
+                      size="sm"
+                      className={`w-full rounded-full ${
+                        product.skinUrl
+                          ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/25 hover:from-indigo-500 hover:to-purple-500"
+                          : ""
+                      }`}
+                      disabled={isBuying || cantAfford}
+                      onClick={(e) => { e.stopPropagation(); handleBuy(product.id); }}
+                    >
+                      {isBuying ? (
+                        <span className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+                      ) : (
+                        <>
+                          <Coins className="size-3.5" />
+                          {product.price} SP
+                        </>
+                      )}
+                    </Button>
+                  </motion.div>
                 )}
-              </div>
+              </motion.div>
             );
           })}
-        </div>
+        </motion.div>
       </motion.div>
     </>
   );
