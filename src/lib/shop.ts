@@ -348,7 +348,7 @@ export const PRODUCTS: Product[] = [
     name: "Kral Zırhı",
     emoji: "👑",
     price: 800,
-    description: "Kral Henry VIII'in efsanevi tam vücut zırhı.",
+    description: "Koyu metal + altın detaylı kraliyet zırhı.",
     vendorId: "moda",
     slot: "chest",
   },

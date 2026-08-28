@@ -107,9 +107,8 @@ function loadEquipmentGlbCached(url: string): THREE.Object3D {
   return placeholder;
 }
 
-// Equipment GLB preloads — triggered at module init so the model is
-// ready by the time the player opens the shop or equips the item.
-loadEquipmentGlbCached('/models/old-king-armor.glb');
+// Equipment GLB preloads can be added here when needed.
+// Example: loadEquipmentGlbCached('/models/some-item.glb');
 
 /** Attaches `item` to the bone for `slot`. Returns false if bone missing. */
 export function attachToBone(
@@ -639,25 +638,79 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ═══ Kral Zırh — Tam Vücut GLB ═══
-  // Sketchfab: Old King Armor by Pedro B. Goulart (CC Attribution)
-  // Full-body armor loaded from GLB, centered and scaled to fit.
+  // ═══ Kral Zırh — Tam Vücut Procedural ═══
+  // Kral Henry VIII tarzı: koyu metal + altın detaylar, tam gövde
   {
     id: "kral-zirh",
     slot: "CHEST",
-    glbPath: "/models/old-king-armor.glb",
     build: (H) => {
-      // Procedural fallback while GLB loads (simple chest plate).
       const g = new THREE.Group();
-      const plate = new THREE.Mesh(
-        new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H),
-        mat("#8B7355", { metalness: 0.6, roughness: 0.3 }),
-      );
-      plate.position.set(0, 0.01 * H, 0.065 * H);
-      g.add(plate);
+      const dark = "#2a2a2e";
+      const metal = "#3a3a42";
+      const gold = "#c9a82c";
+      const leather = "#3d2414";
+      const s = { metalness: 0.7, roughness: 0.25 };
+      const ds = { metalness: 0.6, roughness: 0.3 };
+
+      // ── 1. Ön göğüs plakası ──
+      const front = new THREE.Mesh(new THREE.BoxGeometry(0.18 * H, 0.22 * H, 0.03 * H), mat(dark, s));
+      front.position.set(0, 0.01 * H, 0.068 * H);
+
+      // ── 2. Arka plaka ──
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H), mat(metal, ds));
+      back.position.set(0, 0.01 * H, -0.058 * H);
+
+      // ── 3. Sol yan plaka ──
+      const sideL = new THREE.Mesh(new THREE.BoxGeometry(0.03 * H, 0.20 * H, 0.09 * H), mat(metal, ds));
+      sideL.position.set(-0.135 * H, 0.01 * H, -0.005 * H);
+      const sideR = sideL.clone(); sideR.position.x = 0.135 * H;
+
+      // ── 4. Sol omuz zırhı (kubbe) ──
+      const shL = new THREE.Mesh(new THREE.SphereGeometry(0.045 * H, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), mat(dark, { ...s, metalness: 0.75 }));
+      shL.position.set(-0.115 * H, 0.12 * H, 0.01 * H);
+      const shR = shL.clone(); shR.position.x = 0.115 * H;
+
+      // ── 5. Altın omuz kenarları ──
+      const shRimL = new THREE.Mesh(new THREE.TorusGeometry(0.045 * H, 0.005 * H, 8, 16, Math.PI), mat(gold, { metalness: 0.8, roughness: 0.15 }));
+      shRimL.position.set(-0.115 * H, 0.12 * H, 0.01 * H);
+      shRimL.rotation.x = Math.PI / 2;
+      const shRimR = shRimL.clone(); shRimR.position.x = 0.115 * H;
+
+      // ── 6. Omuz askıları ──
+      const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.02 * H, 0.12 * H, 0.018 * H), mat(leather, { roughness: 0.85 }));
+      strapL.position.set(-0.085 * H, 0.10 * H, 0.068 * H);
+      const strapR = strapL.clone(); strapR.position.x = 0.085 * H;
+
+      // ── 7. Altın yaka ──
+      const collar = new THREE.Mesh(new THREE.TorusGeometry(0.055 * H, 0.01 * H, 8, 18), mat(gold, { metalness: 0.85, roughness: 0.1 }));
+      collar.rotation.x = Math.PI / 2;
+      collar.position.set(0, 0.13 * H, 0.01 * H);
+
+      // ── 8. Kemer ──
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.22 * H, 0.018 * H, 0.13 * H), mat(leather, { roughness: 0.9 }));
+      belt.position.set(0, -0.10 * H, 0.005 * H);
+
+      // ── 9. Altın kemer tokası ──
+      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.03 * H, 0.03 * H, 0.018 * H), mat(gold, { metalness: 0.8, roughness: 0.1 }));
+      buckle.position.set(0, -0.10 * H, 0.07 * H);
+
+      // ── 10. Ön göğüs detayları (dikey altın şeritler) ──
+      const stripL = new THREE.Mesh(new THREE.BoxGeometry(0.008 * H, 0.16 * H, 0.005 * H), mat(gold, { metalness: 0.75, roughness: 0.15 }));
+      stripL.position.set(-0.05 * H, 0.02 * H, 0.085 * H);
+      const stripR = stripL.clone(); stripR.position.x = 0.05 * H;
+
+      // ── 11. Altın göğüs amblemi (taç) ──
+      const emblem = new THREE.Mesh(new THREE.CylinderGeometry(0.018 * H, 0.018 * H, 0.006 * H, 6), mat(gold, { metalness: 0.9, roughness: 0.05 }));
+      emblem.rotation.x = Math.PI / 2;
+      emblem.position.set(0, 0.08 * H, 0.085 * H);
+
+      // ── 12. Alt karın koruması ──
+      const belly = new THREE.Mesh(new THREE.BoxGeometry(0.16 * H, 0.06 * H, 0.03 * H), mat(metal, ds));
+      belly.position.set(0, -0.06 * H, 0.06 * H);
+
+      g.add(front, back, sideL, sideR, shL, shR, shRimL, shRimR, strapL, strapR, collar, belt, buckle, stripL, stripR, emblem, belly);
       return g;
     },
-    scale: 1.0,
   },
   // NOTE: test-zirh removed — use moda-zirh or demir-zirh instead.
 ]);
