@@ -19,6 +19,7 @@ import {
   characterModelUrl,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
+import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
@@ -210,12 +211,16 @@ const FIGHTER_MODEL_H = 1.5;
 function GlbFighterBodyCore({
   fighter,
   url,
+  equipped,
 }: {
   fighter: MutableRefObject<BattleFighter>;
   url: string;
+  equipped?: string[];
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(url);
+  // Skin system: resolve skin URL from equipped items if available
+  const skinUrl = useMemo(() => (equipped ? resolveSkinUrl(equipped) : null), [equipped]);
+  const { scene, animations } = useGLTF(skinUrl || url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
@@ -275,13 +280,14 @@ function GlbFighterBody({
 }: {
   fighter: MutableRefObject<BattleFighter>;
 }) {
+  const equipped = fighter.current.equipped;
   return (
     <GlbModelRetry
       fallback={
-        <GlbFighterBodyCore fighter={fighter} url={FALLBACK_MODEL_URL} />
+        <GlbFighterBodyCore fighter={fighter} url={FALLBACK_MODEL_URL} equipped={equipped} />
       }
     >
-      <GlbFighterBodyCore fighter={fighter} url={characterModelUrl()} />
+      <GlbFighterBodyCore fighter={fighter} url={characterModelUrl()} equipped={equipped} />
     </GlbModelRetry>
   );
 }
