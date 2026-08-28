@@ -1017,17 +1017,27 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const { actions } = useAnimations(animations, groupRef);
 
   // Normalize to exactly PLAYER_3D_HEIGHT — never trust authored scale.
-  // Use skeleton bone heights for character skins (avoids inflation from
-  // armor/accessory meshes that extend far above the body). Falls back
-  // to bounding box for models without a skeleton.
+  // Normalize to exactly PLAYER_3D_HEIGHT.
+  // For character skins (Sketchfab models with armor/accessory meshes that
+  // inflate the bounding box), use skeleton bone heights instead.
+  // For the default character.glb / RobotExpressive, keep bounding box.
   const { normScale, modelHeight, feetOffset } = useMemo(() => {
     clone.updateMatrixWorld(true);
-    const skel = computeSkeletonHeight(clone);
-    const h = skel.height;
-    // Translate model up so its feet sit at Y=0.
-    const feetY = -skel.feetY;
+    if (skinUrl) {
+      // Skin model: use skeleton bones to avoid armor mesh inflation.
+      const skel = computeSkeletonHeight(clone);
+      const h = skel.height;
+      const feetY = -skel.feetY;
+      return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: feetY };
+    }
+    // Default model: bounding box is accurate.
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const h = Math.max(size.y, 0.0001);
+    const feetY = -box.min.y;
     return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: feetY };
-  }, [clone]);
+  }, [clone, skinUrl]);
 
   // Shadow casting on every mesh.
   useEffect(() => {
@@ -1263,10 +1273,17 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
 
   const { normScale, modelHeight } = useMemo(() => {
     clone.updateMatrixWorld(true);
-    const skel = computeSkeletonHeight(clone);
-    const h = skel.height;
+    if (skinUrl) {
+      const skel = computeSkeletonHeight(clone);
+      const h = skel.height;
+      return { normScale: height / h, modelHeight: h };
+    }
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const h = Math.max(size.y, 0.0001);
     return { normScale: height / h, modelHeight: h };
-  }, [clone, height]);
+  }, [clone, height, skinUrl]);
 
   // Play the idle clip (or the first clip as a fallback).
   useEffect(() => {
@@ -1394,10 +1411,17 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
 
   const { normScale, modelHeight } = useMemo(() => {
     clone.updateMatrixWorld(true);
-    const skel = computeSkeletonHeight(clone);
-    const h = skel.height;
+    if (skinUrl) {
+      const skel = computeSkeletonHeight(clone);
+      const h = skel.height;
+      return { normScale: height / h, modelHeight: h };
+    }
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const h = Math.max(size.y, 0.0001);
     return { normScale: height / h, modelHeight: h };
-  }, [clone, height]);
+  }, [clone, height, skinUrl]);
 
   // Idle animation.
   useEffect(() => {

@@ -225,13 +225,20 @@ function GlbFighterBodyCore({
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
-  // Normalize to FIGHTER_MODEL_H — use skeleton bone heights for
-  // character skins (avoids inflation from armor/accessory meshes).
+  // Normalize to FIGHTER_MODEL_H.
+  // For character skins (Sketchfab), use skeleton bone heights to avoid
+  // armor mesh inflation. For default models, keep bounding box.
   const normScale = useMemo(() => {
     scene.updateMatrixWorld(true);
-    const skel = computeSkeletonHeight(scene);
-    return FIGHTER_MODEL_H / Math.max(skel.height, 0.0001);
-  }, [scene]);
+    if (skinUrl) {
+      const skel = computeSkeletonHeight(scene);
+      return FIGHTER_MODEL_H / Math.max(skel.height, 0.0001);
+    }
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    return FIGHTER_MODEL_H / Math.max(size.y, 0.0001);
+  }, [scene, skinUrl]);
 
   useEffect(() => {
     clone.traverse((obj) => {
