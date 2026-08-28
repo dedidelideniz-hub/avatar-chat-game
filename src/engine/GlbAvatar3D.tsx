@@ -488,7 +488,7 @@ export function attachEquippedToModel(
   const attached: THREE.Object3D[] = [];
   const usedSlots = new Set<EquipSlot>();
 
-  console.log('[Equip] attachEquippedToModel called — equipped:', equipped, 'modelHeight:', modelHeight);
+  console.log('[Equip] attachEquippedToModel — equipped:', equipped.length, 'items, modelHeight:', modelHeight.toFixed(2));
 
   // Clean up any leftover debug markers from previous tests.
   clone.traverse((obj: THREE.Object3D) => {
@@ -507,12 +507,12 @@ export function attachEquippedToModel(
   const rootWs = clone.getWorldScale(new THREE.Vector3());
   const expected = (rootWs.x + rootWs.y + rootWs.z) / 3 || 1;
   const boneWs = new THREE.Vector3();
-  console.log('[Equip] rootWs:', rootWs.toArray(), 'expected scale:', expected);
+  console.log('[Equip] rootWs:', rootWs.toArray().map(v => v.toFixed(2)), 'expected:', expected.toFixed(2));
 
   // Log all bone names for debugging.
   const allBoneNames: string[] = [];
   clone.traverse((obj: THREE.Object3D) => { if (obj.name) allBoneNames.push(obj.name); });
-  console.log('[Equip] All bones:', allBoneNames.join(', '));
+
 
   for (const id of equipped) {
     const def = getEquipmentDef(id);
@@ -534,24 +534,9 @@ export function attachEquippedToModel(
       }
     }
 
-    console.log('[Equip] ═══ Processing item:', id, '→ slot:', slot);
-
-    // ── DEBUG 1: getEquipmentDef sonucu ──
-    console.log('[Equip] DEBUG def:', JSON.stringify({ id: def.id, slot: def.slot, hasBuild: !!def.build, hasGlb: !!def.glbPath }));
+    console.log('[Equip] ═══', id, '→ slot:', slot, '| hasBuild:', !!def.build);
 
     const item = def.build(modelHeight);
-
-    // ── DEBUG 2: build(modelHeight) sonucu ──
-    console.log('[Equip] DEBUG build result:', {
-      type: item.type,
-      name: item.name,
-      childrenCount: item.children.length,
-      position: item.position.toArray(),
-      rotation: [item.rotation.x, item.rotation.y, item.rotation.z],
-      scale: item.scale.toArray(),
-      visible: item.visible,
-      modelHeight,
-    });
 
     if (def.positionOffset) {
       item.position.set(
@@ -591,10 +576,7 @@ export function attachEquippedToModel(
       const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3;
       const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
 
-      // ── DEBUG 3: Bone bilgileri ──
-      const bonePos = new THREE.Vector3();
-      bone.getWorldPosition(bonePos);
-      console.log('[Equip] DEBUG bone:', bone.name, '| parent:', bone.parent?.name, '| worldScale:', boneAvg.toFixed(2), '| pos:', bonePos.toArray().map(v => v.toFixed(2)).join(','));
+      console.log('[Equip] bone:', bone.name, '| parent:', bone.parent?.name, '| worldScale:', boneAvg.toFixed(2));
 
       // Only compensate if ratio is drastically off (>2x or <0.5x).
       if (ratio > 2 || ratio < 0.5) {
@@ -612,8 +594,10 @@ export function attachEquippedToModel(
           mesh.renderOrder = 999;
           const m = mesh.material as THREE.Material;
           if (m) {
-            m.depthWrite = true;
-            m.depthTest = true;
+            // CRITICAL: depthTest=false ensures equipment renders ON TOP of
+            // the character mesh even when at the same depth (z-fighting).
+            m.depthTest = false;
+            m.depthWrite = false;
             m.transparent = false;
             if ('side' in m) (m as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
           }
@@ -622,48 +606,12 @@ export function attachEquippedToModel(
       bone.add(inst);
       attached.push(inst);
 
-      // ── DEBUG 4: Equipment bone'a eklendikten SONRA ──
       const eqWorldPos = new THREE.Vector3();
       inst.getWorldPosition(eqWorldPos);
-      const eqWorldScale = new THREE.Vector3();
-      inst.getWorldScale(eqWorldScale);
-      const eqBbox = new THREE.Box3().setFromObject(inst);
-      const eqBboxMin = eqBbox.min.clone();
-      const eqBboxMax = eqBbox.max.clone();
-      const bboxSize = new THREE.Vector3().subVectors(eqBboxMax, eqBboxMin);
-      console.log('[Equip] DEBUG attached:', id, '| parent:', inst.parent?.name, '| worldPos:', eqWorldPos.toArray().map(v => v.toFixed(2)).join(','), '| worldScale:', eqWorldScale.toArray().map(v => v.toFixed(2)).join(','), '| bboxSize:', bboxSize.toArray().map(v => v.toFixed(3)).join(','), '| visible:', inst.visible);
-
-      console.log('[Equip] ✅ Attached', id, 'to bone:', bone.name, 'boneScale:', boneAvg.toFixed(4), 'worldPos:', eqWorldPos.toArray().map(v => v.toFixed(2)));
-
-      // ── VISUAL DEBUG MARKER: Large colored sphere at bone position ──
-      // This confirms whether the bone is in the visible area of the screen.
-      if (i === 0 && !bone.getObjectByName('_debugMarker')) {
-        const marker = new THREE.Group();
-        marker.name = '_debugMarker';
-        // Large sphere — visible even on mobile
-        const colors: Record<string, number> = {
-          CHEST: 0xff4400, HEAD: 0x00ff44, HAND: 0x4400ff, FEET: 0xffff00,
-          MAIN_HAND: 0x4400ff, OFF_HAND: 0xff00ff, HANDS: 0x00ffff, NECK: 0xff8800,
-          BACK: 0x8800ff, LEGS: 0x0088ff, FACE: 0x00ffff,
-        };
-        const sphere = new THREE.Mesh(
-          new THREE.SphereGeometry(0.08, 12, 10),
-          new THREE.MeshBasicMaterial({ color: colors[slot] ?? 0xff0000, transparent: false }),
-        );
-        sphere.name = '_debugCube';
-        marker.add(sphere);
-        // Axes helper for direction reference
-        const axes = new THREE.AxesHelper(0.15);
-        axes.name = '_debugAxes';
-        marker.add(axes);
-        bone.add(marker);
-        console.log('[Equip] 🎯 DEBUG MARKER added to bone:', bone.name, 'slot:', slot, 'color:', (colors[slot] ?? 0xff0000).toString(16));
-      }
+      console.log('[Equip] ✅ Attached', id, '→ bone:', bone.name, '| scale:', inst.scale.toArray().map(v => v.toFixed(3)).join(','), '| worldPos:', eqWorldPos.toArray().map(v => v.toFixed(2)).join(','));
     });
     usedSlots.add(slot);
-  }
-
-  console.log('[Equip] Total attached:', attached.length, 'items:', equipped.join(', '));
+  }    console.log('[Equip] Total attached:', attached.length);
   return () => {
     for (const item of attached) item.removeFromParent();
   };
