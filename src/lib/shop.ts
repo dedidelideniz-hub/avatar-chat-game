@@ -240,6 +240,8 @@ export interface Product {
   slot: WearSlot;
   /** Emoji used on the avatar when equipped (defaults to `emoji`). */
   wearEmoji?: string;
+  /** GLB URL for 3D character preview in shop (skin products). */
+  skinUrl?: string;
 }
 
 export function wearEmojiOf(product: Product): string {
@@ -371,6 +373,7 @@ export const PRODUCTS: Product[] = [
     description: "Stilize düşük poligon samuray karakter — idle, walk, run animasyonları.",
     vendorId: "moda",
     slot: "chest",
+    skinUrl: "/models/skin-samuray.glb",
   },
   {
     id: "skin-sevalye",
@@ -380,6 +383,7 @@ export const PRODUCTS: Product[] = [
     description: "Düşük poligon şövalye karakter — idle, walk animasyonları.",
     vendorId: "moda",
     slot: "chest",
+    skinUrl: "/models/skin-sevalye.glb",
   },
   // ═══ GELECEKTE EKLENECEKLER ═══
   // { id: "moda-sapka", name: "Hasır Şapka", emoji: "👒", price: 100, description: "Güneşten koruyan şık bir hasır şapka.", vendorId: "moda", slot: "head" },
