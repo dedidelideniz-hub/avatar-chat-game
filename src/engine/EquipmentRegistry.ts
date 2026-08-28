@@ -54,6 +54,14 @@ export interface EquipmentDef {
   handSlot?: "MAIN_HAND" | "OFF_HAND";
 
   /**
+   * When true, the GLB is a full-body model that should be attached to
+   * the character root (not a bone). The model is scaled to match the
+   * character height and offset so its feet align with the character feet.
+   * Only meaningful when glbPath is set.
+   */
+  fullBody?: boolean;
+
+  /**
    * Procedural mesh factory. Called with the character's model height
    * (in native units) and returns a THREE.Object3D to attach to the bone.
    * If both `build` and `glbPath` are set, `build` takes priority.

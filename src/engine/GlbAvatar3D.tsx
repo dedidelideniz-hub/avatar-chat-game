@@ -667,22 +667,24 @@ registerEquipmentBatch([
       return g;
     },
   },
-  // ═══ Savaşçı Zırhı — Fantasy Warrior (Sketchfab, GLB) ═══
+  // ═══ Savaşçı Zırhı — Fantasy Warrior (Sketchfab, full-body GLB) ═══
   {
     id: "savasci-zirh",
     slot: "CHEST",
     glbPath: "/models/savasci-zirh.glb",
+    fullBody: true,
     build: (H) => {
       const g = new THREE.Group();
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#6b4423", { metalness: 0.5, roughness: 0.4 }));
       p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
     },
   },
-  // ═══ Şövalye Zırhı — Sable Knight (Sketchfab, GLB) ═══
+  // ═══ Şövalye Zırhı — Sable Knight (Sketchfab, full-body GLB) ═══
   {
     id: "sovalye-zirh",
     slot: "CHEST",
     glbPath: "/models/sovalye-zirh.glb",
+    fullBody: true,
     build: (H) => {
       const g = new THREE.Group();
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#4a5568", { metalness: 0.6, roughness: 0.3 }));
@@ -802,6 +804,27 @@ export function attachEquippedToModel(
     }
     if (def.scale != null) {
       item.scale.multiplyScalar(def.scale);
+    }
+
+    // ── fullBody GLB: attach to root, scale to character height ──
+    if (def.fullBody && def.glbPath) {
+      const bbox = new THREE.Box3().setFromObject(item);
+      const bboxSize = bbox.getSize(new THREE.Vector3());
+      const modelH = Math.max(bboxSize.y, 0.001);
+      // Scale so the GLB matches character world height.
+      const charWorldH = modelHeight * expected;
+      item.scale.setScalar(charWorldH / modelH);
+      // Offset Y so the model's feet (bottom of bbox) align with Y=0.
+      item.position.y = -(bbox.min.y * (charWorldH / modelH));
+      item.userData.isEquipment = true;
+      item.traverse((obj) => { obj.userData.isEquipment = true; obj.frustumCulled = false; });
+      clone.add(item);
+      attached.push(item);
+      const eqPos = new THREE.Vector3();
+      item.getWorldPosition(eqPos);
+      console.log('[Equip] ✅ FullBody GLB attached to root:', id, '| scale:', item.scale.x.toFixed(3), '| worldPos:', eqPos.toArray().map((v: number) => v.toFixed(2)).join(','));
+      usedSlots.add(slot);
+      continue;
     }
 
     let bones = findBonesRegistry(clone, slot);
