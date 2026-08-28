@@ -163,15 +163,26 @@ function EnergySparks() {
 function PreviewCharacter({ url }: { url: string }) {
   const groupRef = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF(url);
-  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
 
-  const normScale = useMemo(() => {
-    const box = new THREE.Box3().setFromObject(scene);
+  const { clone, normScale, yOff } = useMemo(() => {
+    const c = SkeletonUtils.clone(scene);
+    // Compute bounding box of the clone (not original scene)
+    c.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(c);
     const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
     box.getSize(size);
+    box.getCenter(center);
     const h = Math.max(size.y, 0.001);
-    return 2.2 / h;
+    // Target height: 2.2 units (same for all characters)
+    const TARGET_H = 2.2;
+    const s = TARGET_H / h;
+    // Translate clone so its feet sit at Y=0 (bottom of box at origin)
+    // After scaling, the bottom of the box is at (box.min.y - center.y) * s
+    // We want that to be 0, so translate by -(box.min.y - center.y)
+    const feetOffset = -(box.min.y - center.y);
+    return { clone: c, normScale: s, yOff: feetOffset };
   }, [scene]);
 
   // Play idle
@@ -189,7 +200,7 @@ function PreviewCharacter({ url }: { url: string }) {
   });
 
   return (
-    <group ref={groupRef} scale={normScale} position={[0, -0.2, 0]}>
+    <group ref={groupRef} scale={normScale} position={[0, yOff * normScale, 0]}>
       <primitive object={clone} />
     </group>
   );
