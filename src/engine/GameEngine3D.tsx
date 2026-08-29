@@ -727,10 +727,12 @@ function RemoteAvatar3D({ entry }: { entry: PresenceEntry<StreetPresence> }) {
   const data = entry.data;
   const posRef = useRef({ x: data?.x ?? 0, y: data?.y ?? 0 });
   const facingRef = useRef(data?.facing ?? 1);
+  const movingRef = useRef(false);
   if (!data) return null;
   posRef.current.x = data.x;
   posRef.current.y = data.y;
   facingRef.current = data.facing || 1;
+  movingRef.current = !!data.moving;
   return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={data.equipped ?? []} lerpSpeed={12} />;
 }
 
