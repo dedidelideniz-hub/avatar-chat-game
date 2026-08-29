@@ -721,6 +721,7 @@ interface StreetPresence {
   facing: number;
   moving: boolean;
   vy?: number;
+  inBattle?: boolean;
 }
 
 function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresence>; onSelect: (entry: PresenceEntry<StreetPresence>) => void }) {
@@ -748,7 +749,7 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
 
 function StreetRemotePlayers({ sessionId, onSelect }: { sessionId: string; onSelect: (entry: PresenceEntry<StreetPresence>) => void }) {
   const { others } = usePresenceOthers<StreetPresence>("world", sessionId);
-  return <>{others.map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} onSelect={onSelect} />)}</>;
+  return <>{others.filter((entry) => entry.data && !entry.data.inBattle).map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} onSelect={onSelect} />)}</>;
 }
 
 /* ═══════════════════════════════════════════════════════════ */

@@ -1019,6 +1019,8 @@ export default function World() {
     vip: isVip,
   });
   const othersRef = useRef<PresenceEntry<WorldPresence>[]>([]);
+  const { others: liveOthers } = usePresenceOthers<WorldPresence>("world", sessionId);
+  othersRef.current = liveOthers;
   const remoteRefs = useRef(new Map<string, SVGGElement>());
   const remoteStatesRef = useRef(new Map<string, RemoteState>());
   const lastPublishRef = useRef(0);
