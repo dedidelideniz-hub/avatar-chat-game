@@ -844,6 +844,7 @@ export default function World() {
   const avatarSvgCache = useRef<SVGSVGElement | null>(null);
   const remoteSpriteCache = useRef(new Map<string, SVGGElement>());
   const remotePoseCache = useRef(new Map<string, SVGSVGElement>());
+  const remotePlayerSelectRef = useRef<((entry: PresenceEntry<WorldPresence>) => void) | null>(null);
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);

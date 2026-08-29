@@ -723,22 +723,32 @@ interface StreetPresence {
   vy?: number;
 }
 
-function RemoteAvatar3D({ entry }: { entry: PresenceEntry<StreetPresence> }) {
+function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresence>; onSelect: (entry: PresenceEntry<StreetPresence>) => void }) {
   const data = entry.data;
   const posRef = useRef({ x: data?.x ?? 0, y: data?.y ?? 0 });
   const facingRef = useRef(data?.facing ?? 1);
-  const movingRef = useRef(false);
   if (!data) return null;
   posRef.current.x = data.x;
   posRef.current.y = data.y;
   facingRef.current = data.facing || 1;
-  movingRef.current = !!data.moving;
-  return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={data.equipped ?? []} lerpSpeed={12} />;
+  return (
+    <group
+      position={[data.x / S - WORLD_WIDTH / 2, 0, -(data.y / S - WORLD_DEPTH / 2)]}
+      onClick={(event) => { event.stopPropagation(); onSelect(entry); }}
+      onPointerDown={(event) => { event.stopPropagation(); onSelect(entry); }}
+    >
+      <mesh position={[0, 0.9, 0]} raycast={() => null}>
+        <cylinderGeometry args={[0.42, 0.42, 1.8, 12]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={data.equipped ?? []} lerpSpeed={12} />
+    </group>
+  );
 }
 
-function StreetRemotePlayers({ sessionId }: { sessionId: string }) {
+function StreetRemotePlayers({ sessionId, onSelect }: { sessionId: string; onSelect: (entry: PresenceEntry<StreetPresence>) => void }) {
   const { others } = usePresenceOthers<StreetPresence>("world", sessionId);
-  return <>{others.map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} />)}</>;
+  return <>{others.map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} onSelect={onSelect} />)}</>;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -903,6 +913,8 @@ export interface GameEngine3DProps {
   /** Dev-only: render the Phase 1 GLB avatar test next to spawn. */
   glbTest?: boolean;
   presenceSessionId?: string;
+  onRemotePlayerSelect?: (entry: PresenceEntry<StreetPresence>) => void;
+  remotePlayerSelectRef?: React.MutableRefObject<((entry: PresenceEntry<StreetPresence>) => void) | null>;
 }
 
 export function GameEngine3D({
@@ -915,7 +927,13 @@ export function GameEngine3D({
   isMobile,
   glbTest,
   presenceSessionId,
+  onRemotePlayerSelect,
+  remotePlayerSelectRef,
 }: GameEngine3DProps) {
+  const remoteSelect = useCallback((entry: PresenceEntry<StreetPresence>) => {
+    onRemotePlayerSelect?.(entry);
+  }, [onRemotePlayerSelect]);
+  if (remotePlayerSelectRef) remotePlayerSelectRef.current = remoteSelect;
   const initCamY = Math.sin(CAMERA_ELEVATION) * CAMERA_ZOOM;
   const initCamZ = Math.cos(CAMERA_ELEVATION) * CAMERA_ZOOM;
 
@@ -1026,7 +1044,7 @@ export function GameEngine3D({
         equipped={playerEquipped}
         facingRef={facingRef}
       />
-      {presenceSessionId && <StreetRemotePlayers sessionId={presenceSessionId} />}
+      {presenceSessionId && (onRemotePlayerSelect || remotePlayerSelectRef) && <StreetRemotePlayers sessionId={presenceSessionId} onSelect={onRemotePlayerSelect ?? ((entry) => remotePlayerSelectRef?.current?.(entry))} />}
 
       {/* === BOTS + VENDORS (read from ref every frame) === */}
       {Array.from({ length: botsLen }, (_, i) => (
