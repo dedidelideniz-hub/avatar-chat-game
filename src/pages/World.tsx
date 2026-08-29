@@ -2248,6 +2248,7 @@ export default function World() {
           moveTarget={targetMarker}
           isMobile={isMobile}
           glbTest={glbTestParam}
+          presenceSessionId={sessionId}
         />
 
         {/* character profile card — tapping a character opens it here */}

@@ -13,6 +13,7 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
 import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
 import type { AvatarConfig } from "@/lib/avatar";
+import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
 import {
   WORLD_WIDTH,
   WORLD_DEPTH,
@@ -711,6 +712,33 @@ function SvgPlayerAvatar3D({
   );
 }
 
+interface StreetPresence {
+  name: string;
+  config: AvatarConfig;
+  equipped: string[];
+  x: number;
+  y: number;
+  facing: number;
+  moving: boolean;
+  vy?: number;
+}
+
+function RemoteAvatar3D({ entry }: { entry: PresenceEntry<StreetPresence> }) {
+  const data = entry.data;
+  const posRef = useRef({ x: data?.x ?? 0, y: data?.y ?? 0 });
+  const facingRef = useRef(data?.facing ?? 1);
+  if (!data) return null;
+  posRef.current.x = data.x;
+  posRef.current.y = data.y;
+  facingRef.current = data.facing || 1;
+  return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={data.equipped ?? []} lerpSpeed={12} />;
+}
+
+function StreetRemotePlayers({ sessionId }: { sessionId: string }) {
+  const { others } = usePresenceOthers<StreetPresence>("world", sessionId);
+  return <>{others.map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} />)}</>;
+}
+
 /* ═══════════════════════════════════════════════════════════ */
 /*  Bot Avatar3D                                               */
 /* ═══════════════════════════════════════════════════════════ */
@@ -872,6 +900,7 @@ export interface GameEngine3DProps {
   isMobile: boolean;
   /** Dev-only: render the Phase 1 GLB avatar test next to spawn. */
   glbTest?: boolean;
+  presenceSessionId?: string;
 }
 
 export function GameEngine3D({
@@ -883,6 +912,7 @@ export function GameEngine3D({
   moveTarget,
   isMobile,
   glbTest,
+  presenceSessionId,
 }: GameEngine3DProps) {
   const initCamY = Math.sin(CAMERA_ELEVATION) * CAMERA_ZOOM;
   const initCamZ = Math.cos(CAMERA_ELEVATION) * CAMERA_ZOOM;
@@ -994,6 +1024,7 @@ export function GameEngine3D({
         equipped={playerEquipped}
         facingRef={facingRef}
       />
+      {presenceSessionId && <StreetRemotePlayers sessionId={presenceSessionId} />}
 
       {/* === BOTS + VENDORS (read from ref every frame) === */}
       {Array.from({ length: botsLen }, (_, i) => (
