@@ -59,6 +59,37 @@ export function characterModelUrl(): string {
   return param || CHARACTER_MODEL_URL;
 }
 
+/**
+ * Per-skin accent. Kraliyet Savaşçısı and Şövalye share the same animated
+ * knight rig; tint Kraliyet's materials toward royal gold so the two sold
+ * skins stay visually distinct (and read as a brighter, "brawl-style" royal).
+ */
+const SKIN_ACCENT: Record<string, string> = {
+  "/models/moda-savasci.glb": "#d9a441", // royal gold
+};
+
+/** Tint a clone toward an accent color, cloning materials so skins stay
+ *  independent from each other and from the shared cached GLB. */
+function applySkinAccent(root: THREE.Object3D, hex: string | null) {
+  if (!hex) return;
+  const target = new THREE.Color(hex);
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const arr = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const next = arr.map((src) => {
+      const m = src.clone();
+      const s = m as THREE.MeshStandardMaterial;
+      if (s.color) s.color.lerp(target, 0.42);
+      if (typeof s.metalness === "number") s.metalness = Math.min(1, s.metalness + 0.2);
+      if (typeof s.roughness === "number") s.roughness = Math.max(0.1, s.roughness - 0.15);
+      m.needsUpdate = true;
+      return m;
+    });
+    mesh.material = (Array.isArray(mesh.material) ? next : next[0]) as THREE.Material | THREE.Material[];
+  });
+}
+
 /* ── Bone lookup / attachment ─────────────────────────────────── */
 
 
@@ -1058,6 +1089,12 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       }
     });
   }, [clone]);
+
+  // Per-skin accent (e.g. gold Kraliyet) to keep shared-rig skins distinct.
+  const skinAccent = skinUrl ? SKIN_ACCENT[skinUrl] ?? null : null;
+  useEffect(() => {
+    applySkinAccent(clone, skinAccent);
+  }, [clone, skinAccent]);
 
   // Resolve idle/walk clips once. Prefer a real walk cycle over run so the
   // feet visibly alternate while the avatar moves through the world.
