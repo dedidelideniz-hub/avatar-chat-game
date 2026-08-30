@@ -1070,7 +1070,12 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       // locomotion animations (especially on external GLB rigs).
       const box = new THREE.Box3().setFromObject(clone);
       const h = Math.max(box.max.y - box.min.y, 0.0001);
-      return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: -box.min.y };
+      // Soldier.glb has a small authored root offset; compensate only this
+      // skin so its soles sit on the same ground plane while walking.
+      const feetOffset = skinUrl === "/models/skin-savasci.glb"
+        ? -box.min.y + 0.08 * h
+        : -box.min.y;
+      return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset };
     }
     // Default model: bounding box is accurate.
     const box = new THREE.Box3().setFromObject(clone);
@@ -1130,7 +1135,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   // Warrior-only trail: small pooled smoke puffs, kept lightweight for mobile.
   const warriorSmoke = useRef<THREE.Mesh[]>([]);
   const warriorSmokeClock = useRef(0);
-  const isWarriorSkin = skinUrl === "/models/moda-savasci.glb";
+  const isWarriorSkin = skinUrl === "/models/moda-savasci.glb" || skinUrl === "/models/skin-savasci.glb";
   useEffect(() => {
     if (!isWarriorSkin || !groupRef.current) return;
     const smokeMat = new THREE.MeshBasicMaterial({
