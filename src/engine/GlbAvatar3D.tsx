@@ -1055,7 +1055,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   // Per-instance clone with independent skeleton (shares GPU resources).
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
 
-  const { actions } = useAnimations(animations, groupRef);
+  const { actions, mixer } = useAnimations(animations, groupRef);
 
   // Normalize to exactly PLAYER_3D_HEIGHT — never trust authored scale.
   // Normalize to exactly PLAYER_3D_HEIGHT.
@@ -1123,9 +1123,17 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   }, [actions, clips]);
 
   // Movement/animation state (refs — zero React re-renders per frame).
-  const smoothPos = useRef<{ x: number; y: number } | null>(null);
   const movingRef = useRef(false);
   const currentClip = useRef<"idle" | "walk">("idle");
+  useEffect(() => {
+    mixer.stopAllAction();
+    mixer.setTime(0);
+    Object.values(actions).forEach((action) => action?.reset());
+    movingRef.current = false;
+    currentClip.current = "idle";
+  }, [effectiveUrl, mixer, actions]);
+
+  const smoothPos = useRef<{ x: number; y: number } | null>(null);
   // Initial yaw from the ±1 facing flag; afterwards yaw follows movement.
   const targetYaw = useRef(
     (facingRef.current ?? 1) < 0 ? -Math.PI / 2 : Math.PI / 2,
