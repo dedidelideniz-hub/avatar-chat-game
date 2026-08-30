@@ -69,6 +69,17 @@ const SKIN_ACCENT: Record<string, string> = {
   "/models/skin-savasci.glb": "#d9a441", // royal warrior
 };
 
+/**
+ * Per-model yaw offset. The movement code orients the avatar root so its
+ * local +Z matches the walk heading, but some rigs (Three.js Soldier.glb —
+ * Kraliyet Savaşçısı) author their "forward" as -Z. Those models appear to
+ * walk backwards. A 180° yaw on the model wrapper flips their forward to
+ * +Z without touching any gameplay code.
+ */
+const MODEL_YAW_OFFSET: Record<string, number> = {
+  "/models/skin-savasci.glb": Math.PI,
+};
+
 /** Tint a clone toward an accent color, cloning materials so skins stay
  *  independent from each other and from the shared cached GLB. */
 function applySkinAccent(root: THREE.Object3D, hex: string | null) {
@@ -1049,6 +1060,9 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   // Skin system: if any equipped item has a skinUrl, use that character model instead.
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
   const effectiveUrl = skinUrl || url;
+  // Per-model yaw (see MODEL_YAW_OFFSET): -Z-forward rigs must be flipped
+  // so they face their movement direction.
+  const yawOffset = MODEL_YAW_OFFSET[effectiveUrl] ?? 0;
 
   const { scene, animations } = useGLTF(effectiveUrl);
 
@@ -1147,6 +1161,12 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     (facingRef.current ?? 1) < 0 ? -Math.PI / 2 : Math.PI / 2,
   );
   const initDone = useRef(false);
+
+  // Per-model yaw: flip -Z-forward rigs (Soldier.glb) so they face their
+  // movement direction instead of walking backwards.
+  useEffect(() => {
+    if (innerRef.current) innerRef.current.rotation.y = yawOffset;
+  }, [yawOffset, clone]);
 
   // Warrior-only trail: small pooled smoke puffs, kept lightweight for mobile.
   const warriorSmoke = useRef<THREE.Mesh[]>([]);
