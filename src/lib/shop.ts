@@ -363,7 +363,7 @@ export const PRODUCTS: Product[] = [
     description: "Tam gövdeli, ayakları görünür savaşçı karakter — animasyonlu GLB skin.",
     vendorId: "moda",
     slot: "chest",
-    skinUrl: "/models/moda-savasci.glb",
+    skinUrl: "/models/skin-savasci.glb",
   },
 ];
 
