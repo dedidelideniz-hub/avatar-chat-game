@@ -343,7 +343,7 @@ export const PRODUCTS: Product[] = [
     description: "Stilize düşük poligon samuray — idle/walk/run/jump animasyonları dahil.",
     vendorId: "moda",
     slot: "chest",
-    skinUrl: "/models/skin-sevalye.glb",
+    skinUrl: "/models/skin-samuray.glb",
   },
   {
     id: "skin-sevalye",
