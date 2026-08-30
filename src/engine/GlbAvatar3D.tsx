@@ -1077,16 +1077,10 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const { normScale, modelHeight, feetOffset } = useMemo(() => {
     clone.updateMatrixWorld(true);
     if (skinUrl) {
-      // Use the complete rendered mesh for skin ground alignment. Bone-only
-      // bounds can sit above the actual soles, which makes feet sink during
-      // locomotion animations (especially on external GLB rigs).
       const box = new THREE.Box3().setFromObject(clone);
       const h = Math.max(box.max.y - box.min.y, 0.0001);
-      // Soldier.glb has a small authored root offset; compensate only this
-      // skin so its soles sit on the same ground plane while walking.
-      const feetOffset = skinUrl === "/models/skin-savasci.glb"
-        ? -box.min.y + 0.14 * h
-        : -box.min.y;
+      // Keep the Soldier skin's soles on the same plane as the default avatar.
+      const feetOffset = -box.min.y;
       return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset };
     }
     // Default model: bounding box is accurate.
@@ -1146,15 +1140,6 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   }, [effectiveUrl, mixer, actions]);
 
   const smoothPos = useRef<{ x: number; y: number } | null>(null);
-  // Reset locomotion state whenever a skin model changes. Remote avatars can
-  // receive the same skin update independently from the local player.
-  useEffect(() => {
-    mixer.stopAllAction();
-    mixer.setTime(0);
-    Object.values(actions).forEach((action) => action?.reset());
-    movingRef.current = false;
-    currentClip.current = "idle";
-  }, [effectiveUrl, mixer, actions]);
   // Initial yaw from the ±1 facing flag; afterwards yaw follows movement.
   const targetYaw = useRef(
     (facingRef.current ?? 1) < 0 ? -Math.PI / 2 : Math.PI / 2,
