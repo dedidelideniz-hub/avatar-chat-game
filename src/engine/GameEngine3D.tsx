@@ -732,18 +732,24 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
   posRef.current.x = data.x;
   posRef.current.y = data.y;
   facingRef.current = data.facing || 1;
+  // GlbAvatar3D positions itself every frame from posRef (sp.x/S - WORLD_WIDTH/2,
+  // ... same as sX/sZ here), so it must be rendered DIRECTLY in scene space. Wrapping
+  // it in a positioned <group> double-translates the avatar and pushes it off-screen.
+  // Only the invisible click-hit cylinder belongs in the positioned group.
   return (
-    <group
-      position={[data.x / S - WORLD_WIDTH / 2, 0, -(data.y / S - WORLD_DEPTH / 2)]}
-      onClick={(event) => { event.stopPropagation(); onSelect(entry); }}
-      onPointerDown={(event) => { event.stopPropagation(); onSelect(entry); }}
-    >
-      <mesh position={[0, 0.9, 0]} raycast={() => null}>
-        <cylinderGeometry args={[0.42, 0.42, 1.8, 12]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+    <>
+      <group
+        position={[data.x / S - WORLD_WIDTH / 2, 0, -(data.y / S - WORLD_DEPTH / 2)]}
+        onClick={(event) => { event.stopPropagation(); onSelect(entry); }}
+        onPointerDown={(event) => { event.stopPropagation(); onSelect(entry); }}
+      >
+        <mesh position={[0, 0.9, 0]} raycast={() => null}>
+          <cylinderGeometry args={[0.42, 0.42, 1.8, 12]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      </group>
       <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={data.equipped ?? []} lerpSpeed={12} />
-    </group>
+    </>
   );
 }
 
