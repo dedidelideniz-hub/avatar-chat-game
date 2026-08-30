@@ -734,8 +734,7 @@ registerEquipmentBatch([
   {
     id: "skin-samuray",
     slot: "CHEST",
-    // The previous asset is cropped at the knees; use the verified full-body model.
-    skinUrl: "/models/skin-sevalye.glb",
+    skinUrl: "/models/skin-samuray.glb",
     build: (H) => {
       const g = new THREE.Group();
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.17*H, 0.21*H, 0.025*H), mat("#8B4513", { metalness: 0.3, roughness: 0.5 }));
@@ -754,11 +753,11 @@ registerEquipmentBatch([
       p.position.set(0, 0.01*H, 0.065*H); g.add(p); return g;
     },
   },
-  // Poly Pizza / Quaternius Soldier — CC Attribution, full-body GLB.
+  // Royal Warrior — Three.js Soldier (Idle/Walk/Run/TPose), full body with feet.
   {
     id: "skin-savasci-glb",
     slot: "CHEST",
-    skinUrl: "/models/moda-savasci.glb",
+    skinUrl: "/models/skin-savasci.glb",
     build: (H) => {
       const g = new THREE.Group();
       const p = new THREE.Mesh(new THREE.BoxGeometry(0.17 * H, 0.21 * H, 0.025 * H), mat("#8b4513", { metalness: 0.3, roughness: 0.5 }));
