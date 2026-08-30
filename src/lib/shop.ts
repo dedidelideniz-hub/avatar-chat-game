@@ -353,7 +353,7 @@ export const PRODUCTS: Product[] = [
     description: "Detaylı şövalye zırhlı karakter — idle/walk animasyonları dahil.",
     vendorId: "moda",
     slot: "chest",
-    skinUrl: "/models/skin-samuray.glb",
+    skinUrl: "/models/skin-sevalye.glb",
   },
   {
     id: "skin-savasci-glb",
