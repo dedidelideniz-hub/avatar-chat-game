@@ -33,6 +33,10 @@ export function usePresencePublisher(room: string) {
   // Keep the last published payload so the session can be re-announced if
   // the server cleaned it up while the tab was backgrounded.
   const latestDataRef = useRef<unknown>(null);
+  // True while this publisher is mounted (or StrictMode-re-mounted alive).
+  // Used to defer the leave-on-unmount so a StrictMode remount that re-runs
+  // the effect does not delete the freshly re-published session row.
+  const aliveRef = useRef(true);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -47,7 +51,16 @@ export function usePresencePublisher(room: string) {
   // Browsers throttle timers in background tabs, so heartbeats can stop and
   // the session may get swept. As soon as the tab is visible again, announce
   // the latest payload so other players see you reappear immediately.
+  // When the publisher unmounts (e.g. navigating from the street to the
+  // Studio), drop the session row right away. Without this the stale row stays
+  // alive for the full heartbeat timeout and, because `list` filters out only
+  // the *current* session, the player sees their own character duplicated once
+  // they come back. The deferred, alive-guarded `leave` keeps React
+  // StrictMode's mount->unmount->remount cycle from deleting the fresh row:
+  // on a remount the effect re-runs first and flips aliveRef back true, so the
+  // queued leave is skipped.
   useEffect(() => {
+    aliveRef.current = true;
     const rejoin = () => {
       const data = latestDataRef.current;
       if (data !== null) void updatePresence({ room, sessionId, data });
@@ -55,18 +68,21 @@ export function usePresencePublisher(room: string) {
     const onVisible = () => {
       if (document.visibilityState === "visible") rejoin();
     };
-    // Drop the session only when the tab is really going away. NOT on React
-    // unmount: in dev StrictMode mounts -> unmounts -> remounts, and a queued
-    // `leave` can land after the remount's publish and delete the fresh row,
-    // making the player invisible to everyone until the next publish.
     const onPageHide = () => void leave({ room, sessionId });
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     window.addEventListener("pagehide", onPageHide);
     return () => {
+      aliveRef.current = false;
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
       window.removeEventListener("pagehide", onPageHide);
+      // Drop the session only if this mount really stayed unmounted. In
+      // StrictMode the setup immediately re-runs and sets aliveRef back true,
+      // so a queued leave never races the remount's publish.
+      window.setTimeout(() => {
+        if (!aliveRef.current) void leave({ room, sessionId });
+      }, 400);
     };
   }, [room, sessionId, updatePresence, leave]);
 
