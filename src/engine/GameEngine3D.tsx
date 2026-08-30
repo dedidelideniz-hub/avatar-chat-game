@@ -753,9 +753,9 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
   );
 }
 
-function StreetRemotePlayers({ sessionId, onSelect }: { sessionId: string; onSelect: (entry: PresenceEntry<StreetPresence>) => void }) {
+function StreetRemotePlayers({ sessionId, onSelect }: { sessionId: string; onSelect?: (entry: PresenceEntry<StreetPresence>) => void }) {
   const { others } = usePresenceOthers<StreetPresence>("world", sessionId);
-  return <>{others.filter((entry) => entry.data && !entry.data.inBattle).map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} onSelect={onSelect} />)}</>;
+  return <>{others.filter((entry) => entry.data && !entry.data.inBattle).map((entry) => <RemoteAvatar3D key={entry.sessionId} entry={entry} onSelect={onSelect ?? (() => {})} />)}</>;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -1051,7 +1051,7 @@ export function GameEngine3D({
         equipped={playerEquipped}
         facingRef={facingRef}
       />
-      {presenceSessionId && (onRemotePlayerSelect || remotePlayerSelectRef) && <StreetRemotePlayers sessionId={presenceSessionId} onSelect={onRemotePlayerSelect ?? ((entry) => remotePlayerSelectRef?.current?.(entry))} />}
+      {presenceSessionId && <StreetRemotePlayers sessionId={presenceSessionId} onSelect={onRemotePlayerSelect ?? ((entry) => remotePlayerSelectRef?.current?.(entry))} />}
 
       {/* === BOTS + VENDORS (read from ref every frame) === */}
       {Array.from({ length: botsLen }, (_, i) => (
