@@ -1043,6 +1043,9 @@ interface GlbAvatarCoreProps {
 
 function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
+  // Scaled inner group: model transform (scale + feet offset) lives here so
+  // the per-frame world position on the outer group can never clobber it.
+  const innerRef = useRef<THREE.Group>(null);
 
   // Skin system: if any equipped item has a skinUrl, use that character model instead.
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
@@ -1151,7 +1154,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const warriorSmokeClock = useRef(0);
   const isWarriorSkin = skinUrl === "/models/moda-savasci.glb" || skinUrl === "/models/skin-savasci.glb";
   useEffect(() => {
-    if (!isWarriorSkin || !groupRef.current) return;
+    if (!isWarriorSkin || !innerRef.current) return;
     const smokeMat = new THREE.MeshBasicMaterial({
       color: "#111827",
       transparent: true,
@@ -1161,7 +1164,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     const puffs = Array.from({ length: 5 }, () => {
       const puff = new THREE.Mesh(new THREE.SphereGeometry(0.045, 7, 5), smokeMat.clone());
       puff.visible = false;
-      groupRef.current!.add(puff);
+      innerRef.current!.add(puff);
       warriorSmoke.current.push(puff);
       return puff;
     });
@@ -1331,8 +1334,14 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   }, []);
 
   return (
-    <group ref={groupRef} scale={normScale} position={[0, feetOffset * normScale, 0]}>
-      <primitive object={clone} />
+    <group ref={groupRef}>
+      // Inner group carries the model scale + ground offset. The outer
+      // group position is rewritten every frame by useFrame (y=0.02),
+      // which would otherwise wipe the feet offset after the first frame
+      // and sink skinned soles below the road.
+      <group ref={innerRef} scale={normScale} position={[0, feetOffset * normScale, 0]}>
+        <primitive object={clone} />
+      </group>
     </group>
   );
 }
@@ -1350,11 +1359,21 @@ export interface GlbAvatar3DProps {
 export function GlbAvatar3D({ url, ...props }: GlbAvatar3DProps & { url?: string }) {
   const primary = url ?? characterModelUrl();
 
+  // Remount the whole avatar core whenever the effective character model
+  // changes (skin equip / unequip). A fresh mount rebuilds the animation
+  // mixer + actions bound to the NEW skeleton. Without this, switching back
+  // to a previously-loaded skin reuses stale actions that still point at
+  // the old clone, leaving the character frozen in T-pose with no walk.
+  const skinKey = useMemo(
+    () => resolveSkinUrl(props.equipped) ?? "default",
+    [props.equipped],
+  );
+
   // If already on the fallback model, render directly (no retry loop).
   if (primary === FALLBACK_MODEL_URL) {
     return (
       <Suspense fallback={null}>
-        <GlbAvatarCore url={primary} {...props} />
+        <GlbAvatarCore key={skinKey} url={primary} {...props} />
       </Suspense>
     );
   }
@@ -1363,12 +1382,12 @@ export function GlbAvatar3D({ url, ...props }: GlbAvatar3DProps & { url?: string
     <GlbModelBoundary
       fallback={
         <Suspense fallback={null}>
-          <GlbAvatarCore url={FALLBACK_MODEL_URL} {...props} />
+          <GlbAvatarCore key={skinKey} url={FALLBACK_MODEL_URL} {...props} />
         </Suspense>
       }
     >
       <Suspense fallback={null}>
-        <GlbAvatarCore url={primary} {...props} />
+        <GlbAvatarCore key={skinKey} url={primary} {...props} />
       </Suspense>
     </GlbModelBoundary>
   );
