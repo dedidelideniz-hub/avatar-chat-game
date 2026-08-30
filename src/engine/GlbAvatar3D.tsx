@@ -65,7 +65,8 @@ export function characterModelUrl(): string {
  * skins stay visually distinct (and read as a brighter, "brawl-style" royal).
  */
 const SKIN_ACCENT: Record<string, string> = {
-  "/models/moda-savasci.glb": "#d9a441", // royal gold
+  "/models/moda-savasci.glb": "#d9a441", // legacy royal path
+  "/models/skin-savasci.glb": "#d9a441", // royal warrior
 };
 
 /** Tint a clone toward an accent color, cloning materials so skins stay
@@ -1053,7 +1054,18 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
 
   // Per-instance clone with independent skeleton (shares GPU resources).
-  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene, effectiveUrl]);
+  // Force a fresh React subtree when a remote player changes skin. This
+  // prevents an old mixer/action set from continuing to drive the new rig.
+  useEffect(() => {
+    clone.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.frustumCulled = false;
+        mesh.castShadow = true;
+      }
+    });
+  }, [clone]);
 
   const { actions, mixer } = useAnimations(animations, groupRef);
 
@@ -1073,7 +1085,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       // Soldier.glb has a small authored root offset; compensate only this
       // skin so its soles sit on the same ground plane while walking.
       const feetOffset = skinUrl === "/models/skin-savasci.glb"
-        ? -box.min.y + 0.08 * h
+        ? -box.min.y + 0.14 * h
         : -box.min.y;
       return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset };
     }
@@ -1134,6 +1146,15 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   }, [effectiveUrl, mixer, actions]);
 
   const smoothPos = useRef<{ x: number; y: number } | null>(null);
+  // Reset locomotion state whenever a skin model changes. Remote avatars can
+  // receive the same skin update independently from the local player.
+  useEffect(() => {
+    mixer.stopAllAction();
+    mixer.setTime(0);
+    Object.values(actions).forEach((action) => action?.reset());
+    movingRef.current = false;
+    currentClip.current = "idle";
+  }, [effectiveUrl, mixer, actions]);
   // Initial yaw from the ±1 facing flag; afterwards yaw follows movement.
   const targetYaw = useRef(
     (facingRef.current ?? 1) < 0 ? -Math.PI / 2 : Math.PI / 2,
