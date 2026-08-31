@@ -38,7 +38,7 @@ export const PALM_CENTER: [number, number, number] = [0, 13.24, 0]; // MEASURED:
  *  onto this origin, so the grip sits INSIDE the fist. */
 // Fine-tuning controls for the royal sword. Keep these isolated so the
 // attachment pipeline and animation code never need to change.
-export const SWORD_GRIP_POS: [number, number, number] = [0, 12.10, 0]; // move grip into the visible palm
+export const SWORD_GRIP_POS: [number, number, number] = [0, 11.72, 0]; // measured hand-space palm center
 
 /** Euler mapping the sword's +Y blade axis to WORLD-UP at idle and the
  *  crossguard (+X) horizontal — MEASURED for moda-savasci.glb, verified
@@ -46,7 +46,7 @@ export const SWORD_GRIP_POS: [number, number, number] = [0, 12.10, 0]; // move g
  *  value was measured on a DIFFERENT skin file and put the blade 107.7°
  *  off vertical (the sideways, unreadable "stick" look). */
 export const SWORD_GRIP_ROT: [number, number, number] = [-0.9509, 1.2112, -2.032]; // MEASURED: moda-savasci.glb
-export const SWORD_GRIP_SCALE = 0.82;
+export const SWORD_GRIP_SCALE = 0.68; // keep the blade readable beside the hand
 
 /** Target sword length in WORLD units (character height ≈ 1.92). */
 export const SWORD_TARGET_WORLD_LEN = 0.85;
@@ -143,6 +143,7 @@ export function palmCenterLocal(hand: THREE.Object3D): THREE.Vector3 {
 export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D): void {
   sword.quaternion.copy(handWorldQuat(hand).invert());
   sword.position.copy(palmCenterLocal(hand));
+  sword.position.y -= 0.38;
   sword.scale.setScalar(SWORD_GRIP_SCALE);
 }
 

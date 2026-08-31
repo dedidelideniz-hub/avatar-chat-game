@@ -190,6 +190,7 @@ function useRoyalGear(
         const sword = new THREE.Group();
         sword.rotation.set(...SWORD_GRIP_ROT);
         sword.position.set(...SWORD_GRIP_POS);
+        sword.position.y -= 0.38;
         const pivot = new THREE.Group();
         sword.add(pivot);
         const attachSwordModel = (source: THREE.Object3D) => {
