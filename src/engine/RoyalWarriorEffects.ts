@@ -31,8 +31,12 @@ interface RoyalGearRefs {
   royalSparks: React.MutableRefObject<THREE.Mesh[]>;
   /** Set true by the core once the spawn flash mesh exists. */
   flashReady: React.MutableRefObject<boolean>;
-  /** Materials sharing the gentle crown/blade shine pulse. */
+  /** Materials sharing the crown/blade shine shimmer. */
   royalGlowMats: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
+  /** The royal sword group (drives the idle flourish). */
+  royalSword: React.MutableRefObject<THREE.Group | null>;
+  /** Tip-glow materials flaring with the flourish accent. */
+  royalTipMats: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
 }
 
 /**
@@ -109,6 +113,7 @@ function useRoyalGear(
         );
         jewel.position.set(0, 0.09 * H, 0);
         crown.add(jewel);
+        refs.royalGlowMats.current.push(jewel.material as THREE.MeshStandardMaterial);
         crown.position.y = 0.045 * H;
         fitToBone(head, crown);
       }
@@ -147,6 +152,7 @@ function useRoyalGear(
         );
         tipGlow.position.y = 0.35 * H;
         sword.add(tipGlow);
+        refs.royalTipMats.current.push(tipGlow.material as THREE.MeshStandardMaterial);
         const guard = new THREE.Mesh(
           new THREE.BoxGeometry(0.075 * H, 0.014 * H, 0.02 * H),
           mat(goldDeep, { metalness: 0.8, roughness: 0.2 }),
@@ -165,6 +171,7 @@ function useRoyalGear(
         pommel.position.y = -0.035 * H;
         sword.add(pommel);
         fitToBone(hand, sword);
+        refs.royalSword.current = sword;
       }
     }
 
@@ -195,11 +202,17 @@ function useRoyalGear(
         sparkMat.dispose();
         attached.forEach((a) => a.removeFromParent());
         refs.royalSparks.current = [];
+        refs.flashReady.current = false;
         refs.royalGlowMats.current = [];
+        refs.royalTipMats.current = [];
+        refs.royalSword.current = null;
       };
     }
     return () => {
       attached.forEach((a) => a.removeFromParent());
+      refs.royalGlowMats.current = [];
+      refs.royalTipMats.current = [];
+      refs.royalSword.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clone, royalSkin, equipped, modelHeight]);
@@ -244,8 +257,8 @@ function useWarriorTrail(
  * All Kraliyet Savaşçısı visual effects. Call from the avatar core with
  * the clone, skin URL, equipped list, model height and the inner group /
  * spawn-flash refs. Drives its own useFrame loops (sparkle launch+fade,
- * shine pulse) and returns the smoke-trail refs so the core's movement
- * frame loop can emit puffs while walking.
+ * shine shimmer, idle sword flourish) and returns the smoke-trail refs so
+ * the core's movement frame loop can emit puffs while walking.
  */
 export function useRoyalWarriorEffects(
   clone: THREE.Object3D,
@@ -254,18 +267,28 @@ export function useRoyalWarriorEffects(
   modelHeight: number,
   innerRef: React.RefObject<THREE.Group | null>,
   flashRef: React.RefObject<THREE.Mesh | null>,
+  movingRef: React.MutableRefObject<boolean>,
 ) {
   const royalSkin = isRoyalWarriorSkin(skinUrl);
   const royalSparks = useRef<THREE.Mesh[]>([]);
   const royalSparksLaunched = useRef(false);
   const royalGlowMats = useRef<THREE.MeshStandardMaterial[]>([]);
+  const royalTipMats = useRef<THREE.MeshStandardMaterial[]>([]);
+  const royalSword = useRef<THREE.Group | null>(null);
   const warriorSmoke = useRef<THREE.Mesh[]>([]);
   const warriorSmokeClock = useRef(0);
+  // Flourish state: 0 = idle wait, >0 = playing (seconds remaining).
+  const flourishT = useRef(0);
+  const flourishWait = useRef(2.5 + Math.random() * 3);
+  // Base emissive per glow material so the shimmer never drifts.
+  const baseEmissive = useRef(new Map<THREE.MeshStandardMaterial, number>());
 
   useRoyalGear(clone, royalSkin, equipped, modelHeight, innerRef, flashRef, {
     royalSparks,
     flashReady: royalSparksLaunched,
     royalGlowMats,
+    royalTipMats,
+    royalSword,
   });
 
   useWarriorTrail(royalSkin, innerRef, { warriorSmoke, warriorSmokeClock });
@@ -294,12 +317,70 @@ export function useRoyalWarriorEffects(
     }
   });
 
-  // Gentle "royal shine" pulse on crown + blade materials.
-  useFrame(({ clock }) => {
+  // ── Crown/blade SHIMMER (always on) + idle sword FLOURISH (idle only) ──
+  // Shimmer: a bright sweep travels around the crown band / up the blade so
+  // the glow is clearly visible (the old flat pulse was too subtle).
+  // Flourish: ONLY while the character stands still, the sword performs a
+  // slow elegant twirl + tilt, then settles back exactly to its rest pose.
+  useFrame(({ clock }, dt) => {
     if (!royalSkin) return;
     const t = clock.getElapsedTime();
-    const pulse = 0.28 + 0.36 * (0.5 + 0.5 * Math.sin(t * 2.2));
-    for (const m of royalGlowMats.current) m.emissiveIntensity = pulse;
+
+    // Seed each material's authored base intensity (new materials after a
+    // re-equip get picked up here too, so the shimmer never drifts).
+    for (const m of royalGlowMats.current) {
+      if (!baseEmissive.current.has(m)) baseEmissive.current.set(m, m.emissiveIntensity);
+    }
+    for (const m of royalTipMats.current) {
+      if (!baseEmissive.current.has(m)) baseEmissive.current.set(m, m.emissiveIntensity);
+    }
+
+    // Shimmer sweep, staggered per material so the light appears to travel.
+    const sweep = (phase: number) => {
+      const w = 0.5 + 0.5 * Math.sin(t * 2.2 - phase);
+      return w * w * w; // sharpen the peak so the glint reads clearly
+    };
+    const baseOf = (m: THREE.MeshStandardMaterial) => baseEmissive.current.get(m) ?? 0.35;
+    for (const m of royalGlowMats.current) {
+      const base = baseOf(m);
+      m.emissiveIntensity = base + 1.1 * sweep(0) + 0.7 * sweep(1.3);
+    }
+    for (const m of royalTipMats.current) {
+      const base = baseOf(m);
+      m.emissiveIntensity = base + 1.4 * sweep(0.6);
+    }
+
+    // ── Idle flourish — ONLY while the character stands still ──
+    const sword = royalSword.current;
+    if (!sword) return;
+    if (movingRef.current) {
+      // Walking: abort any flourish and settle the sword back to rest.
+      flourishT.current = 0;
+      const k = Math.min(1, 12 * dt);
+      sword.rotation.z *= 1 - k;
+      sword.rotation.x *= 1 - k;
+      sword.rotation.y *= 1 - k;
+      // Hold the wait timer so it never fires mid-walk.
+      return;
+    }
+    if (flourishT.current > 0) {
+      flourishT.current = Math.max(0, flourishT.current - dt);
+      const total = 1.4;
+      const p = 1 - flourishT.current / total; // 0 → 1
+      // Smooth ease in/out; returns to exactly 0 at both ends.
+      const ease = Math.sin(p * Math.PI);
+      const ease2 = ease * ease;
+      sword.rotation.z = ease2 * 0.5;   // elegant tilt
+      sword.rotation.x = ease2 * 0.25;  // slight forward lean
+      sword.rotation.y = ease * 0.9;    // the twirl
+      const tipBoost = baseEmissive.current.get(royalTipMats.current[0] ?? ({} as THREE.MeshStandardMaterial)) ?? 1.6;
+      for (const m of royalTipMats.current) m.emissiveIntensity = tipBoost + ease * 2.2;
+    } else if (flourishWait.current > 0) {
+      flourishWait.current -= dt;
+    } else {
+      flourishT.current = 1.4;
+      flourishWait.current = 4 + Math.random() * 4;
+    }
   });
 
   return { royalSkin, warriorSmoke, warriorSmokeClock };

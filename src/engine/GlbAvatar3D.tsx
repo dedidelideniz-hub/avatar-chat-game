@@ -558,6 +558,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     modelHeight,
     innerRef,
     flashRef,
+    movingRef,
   );
 
   // ── Near-camera fade ─────────────────────────────────────────
