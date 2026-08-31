@@ -213,6 +213,21 @@ export function attachEquippedToModel(
       item.scale.multiplyScalar(def.scale);
     }
 
+    // ── Weapon grip wrapper: bone → gripOffset group → weapon ──
+    // Applied AFTER the bone-scale compensation below, so the grip stays
+    // exact even on rigs with inflated bone hierarchies.
+    let gripHost: THREE.Object3D = item;
+    if (def.gripOffset) {
+      const grip = new THREE.Group();
+      const g = def.gripOffset;
+      if (g.position) grip.position.set(...g.position);
+      if (g.rotation) grip.rotation.set(...g.rotation);
+      if (g.scale != null) grip.scale.setScalar(g.scale);
+      grip.userData.isEquipment = true;
+      grip.add(item);
+      gripHost = grip;
+    }
+
     // ── fullBody GLB: attach to root, scale to character height ──
     if (def.fullBody && def.glbPath) {
       const bbox = new THREE.Box3().setFromObject(item);
@@ -249,7 +264,9 @@ export function attachEquippedToModel(
     equipDebug.foundBones(bones.map((b) => b.name), slot);
 
     bones.forEach((bone, i) => {
-      const inst = i === 0 ? item : item.clone();
+      // Only the first bone instance carries the grip wrapper (multi-bone
+      // slots clone the item itself, without a duplicate grip transform).
+      const inst = i === 0 ? gripHost : item.clone();
       bone.getWorldScale(boneWs);
       const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3;
 

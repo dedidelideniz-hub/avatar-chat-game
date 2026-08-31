@@ -161,17 +161,19 @@ function useRoyalGear(
           closeFinger(bone, isThumb ? 0.18 : phalanx);
         }
         const sword = new THREE.Group();
-        // ── GRIP ALIGNMENT (measured from skin-savasci.glb bind pose) ──
-        // mixamorig:RightHand local axes in WORLD space:
-        //   +X = (0,1,0)  world UP   |   +Y = (1,0,0) along the FINGERS
-        //   +Z = (0,0,-1) backward
-        // Without this offset the blade (sword-local +Y) extended ALONG the
-        // fingers — the sword hung off the hand like a stick. Rotate the
-        // sword so the blade exits the TOP of the fist (≈ world up).
-        // Euler from the measured bind pose (analyze-hand.cjs).
-        sword.rotation.set(0.0056, -0.0055, -1.5441);
-        // Nudge the grip into the palm (hand +Y ≈ finger axis, world ≈ +X).
-        sword.position.set(0, 0.03 * H, 0);
+        // ── GRIP ALIGNMENT (measured from skin-savasci.glb idle pose) ──
+        // Values are HAND-LOCAL units (Mixamo cm-scale bone space) computed
+        // headless from the live idle clip — not guesses:
+        //  • worldUp expressed in hand-local space = (-0.94, -0.04, +0.34)
+        //  • this Euler maps sword +Y (blade) onto that axis, so while the
+        //    character stands the blade reads as vertical out of the fist.
+        //  • position = palm center (avg of the five finger-base bones,
+        //    (-0.54, 11.58, -0.81)) minus the grip-mesh height along the
+        //    blade axis → the hilt sits INSIDE the fist, not at the wrist.
+        // The old bind-pose values kept the sword at the WRIST (y≈0.06) with
+        // the blade pointing sideways — the "floating stick" in screenshots.
+        sword.rotation.set(0.3662, 0.336, 1.4832);
+        sword.position.set(0.32, 11.6, -1.12);
         // Inner pivot: the idle flourish animates THIS, so the grip
         // alignment above is never overwritten by the flourish loop.
         const pivot = new THREE.Group();

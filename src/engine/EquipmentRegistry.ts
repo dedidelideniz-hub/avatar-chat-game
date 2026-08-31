@@ -2,6 +2,15 @@ import * as THREE from "three";
 
 export type EquipSlot = "HEAD" | "FACE" | "NECK" | "CHEST" | "HANDS" | "MAIN_HAND" | "OFF_HAND" | "BACK" | "LEGS" | "FEET" | "HAND";
 
+export interface GripOffset {
+  /** Translation applied after bone-scale compensation (item-local units). */
+  position?: [number, number, number];
+  /** Extra rotation applied on top of the item's authored rotation (radians, XYZ order). */
+  rotation?: [number, number, number];
+  /** Uniform multiplier applied after bone-scale compensation. */
+  scale?: number;
+}
+
 export interface EquipmentDef {
   id: string;
   slot: EquipSlot;
@@ -13,6 +22,15 @@ export interface EquipmentDef {
   positionOffset?: [number, number, number];
   rotationOffset?: [number, number, number];
   scale?: number;
+  /**
+   * Weapon grip transform applied to a wrapper group BETWEEN the bone and
+   * the weapon mesh:
+   *   bone → gripGroup(gripOffset) → weapon item
+   * It composes with (and is applied after) positionOffset/rotationOffset,
+   * so axis-misaligned rigs can be corrected per item without touching the
+   * shared attachment pipeline.
+   */
+  gripOffset?: GripOffset;
   icon?: string;
 }
 
