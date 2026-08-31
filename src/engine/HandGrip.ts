@@ -364,9 +364,12 @@ export function buildFingerMeshes(clone: THREE.Object3D): THREE.Mesh[] {
     );
     // Bones run along local +Y (Mixamo): span from this joint toward the child.
     seg.position.y = segLen / 2;
+    // Parmak meshleri normal depth-test ile çizilir (renderOrder YOK):
+    // böylece kılıç sapını sararak "tutuyor" görünürler, kılıç üstlerini
+    // kapatmaz. Palm segmentleri kavrama bandının (modelY 0.12) hemen
+    // üstünde biter — sap içte, parmaklar önde.
     seg.userData.isEquipment = true;
     seg.frustumCulled = false;
-    seg.renderOrder = 999;
     bone.add(seg);
     created.push(seg);
   }

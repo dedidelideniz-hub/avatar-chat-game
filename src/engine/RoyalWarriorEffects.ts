@@ -219,8 +219,6 @@ function useRoyalGear(
           model.traverse((o: THREE.Object3D) => {
             o.userData.isEquipment = true;
             o.frustumCulled = false;
-            const mesh = o as THREE.Mesh;
-            if (mesh.isMesh) mesh.renderOrder = 999;
           });
           pivot.add(model);
           attached.push(model);
