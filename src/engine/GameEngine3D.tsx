@@ -958,7 +958,7 @@ export function GameEngine3D({
   return (
     <Canvas
       dpr={[1, isMobile ? 1.5 : 2]}
-      shadows={!isMobile}
+      shadows={!isMobile ? "soft" : false}
       camera={{
         position: [sX(SPAWN_SVG.x), initCamY, sZ(SPAWN_SVG.y) + initCamZ],
         fov: 70,
@@ -985,7 +985,7 @@ export function GameEngine3D({
 
       {/* ═══ LIGHTING — warm stylized mobile-game lighting ═══ */}
       <ambientLight intensity={0.6} color="#f0e8d8" />
-      <hemisphereLight args={["#c8e0ff", "#509030", 0.4]} />
+      <hemisphereLight args={["#cfe6ff", "#58a038", 0.5]} />
       <directionalLight
         position={[8, 12, 6]}
         intensity={1.6}
@@ -1001,6 +1001,9 @@ export function GameEngine3D({
       />
       {/* Fill light — soft cool from opposite side */}
       <directionalLight position={[-5, 6, -4]} intensity={0.25} color="#b8d8ff" />
+      {/* Rim/back light — separates characters from the background with a
+          subtle cool edge glow (no shadow cost, mobile friendly). */}
+      <directionalLight position={[-6, 7, -8]} intensity={0.5} color="#a8d4ff" />
 
       {/* Sun disc */}
       <mesh position={[14, 10, -10]}>

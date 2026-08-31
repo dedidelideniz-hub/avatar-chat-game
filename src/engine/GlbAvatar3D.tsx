@@ -1168,6 +1168,84 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     if (innerRef.current) innerRef.current.rotation.y = yawOffset;
   }, [yawOffset, clone]);
 
+  // ── Visual polish (lightweight, mobile-friendly) ──────────────
+  // Adds life on top of the existing rig/animation system without
+  // touching movement, multiplayer, skins or equipment logic:
+  //  • Idle "breathing" bob: tiny upward sway ONLY while idle — never
+  //    during walking, so real walk cycles stay untouched. Offset is
+  //    positive-only so soles never clip below the road.
+  //  • Equip pop: short eased scale pulse (≈1.0 → 1.05 → 1.0) when the
+  //    equipped set changes (skin selected / item equipped) and on spawn.
+  //  • Spawn flash: ONE soft expanding ring at the feet, self-cleaning.
+  const idleBobPhase = useRef(Math.random() * Math.PI * 2);
+  const bounceRef = useRef(0.35); // pop on mount = spawn/skin-select feedback
+  const equipKeyRef = useRef(equipped.join(","));
+  const flashRef = useRef<THREE.Mesh | null>(null);
+  const flashAgeRef = useRef(0);
+
+  useEffect(() => {
+    if (!innerRef.current) return;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.42, 0.6, 28),
+      new THREE.MeshBasicMaterial({
+        color: "#9be7ff",
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    ring.visible = false;
+    innerRef.current.add(ring);
+    flashRef.current = ring;
+    flashAgeRef.current = 0;
+    return () => {
+      ring.geometry.dispose();
+      (ring.material as THREE.Material).dispose();
+      ring.removeFromParent();
+      flashRef.current = null;
+    };
+  }, [clone]);
+
+  useFrame((_, dt) => {
+    const inner = innerRef.current;
+    if (!inner) return;
+
+    // Equip pop trigger (also fires on the first frame = spawn).
+    const key = equipped.join(",");
+    if (key !== equipKeyRef.current) {
+      equipKeyRef.current = key;
+      bounceRef.current = 0.3;
+    }
+
+    // Idle breathing bob (paused while moving so walk cycles stay clean).
+    idleBobPhase.current += dt;
+    const bob = movingRef.current ? 0 : 0.012 + Math.sin(idleBobPhase.current * 2.2) * 0.012;
+    inner.position.y = feetOffset * normScale + bob;
+
+    // Short eased scale pulse.
+    if (bounceRef.current > 0) {
+      bounceRef.current = Math.max(0, bounceRef.current - dt);
+      const t = bounceRef.current / 0.3; // 1 → 0
+      inner.scale.setScalar(normScale * (1 + Math.sin(t * Math.PI) * 0.05));
+    } else if (inner.scale.x !== normScale) {
+      inner.scale.setScalar(normScale);
+    }
+
+    // Expanding + fading spawn ring.
+    const flash = flashRef.current;
+    if (flash && flashAgeRef.current >= 0) {
+      flashAgeRef.current += dt;
+      const t = Math.min(1, flashAgeRef.current / 0.6);
+      flash.visible = t < 1;
+      flash.scale.setScalar(0.35 + t * 1.9);
+      (flash.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - t);
+      if (t >= 1) flashAgeRef.current = -1;
+    }
+  });
+
   // Warrior-only trail: small pooled smoke puffs, kept lightweight for mobile.
   const warriorSmoke = useRef<THREE.Mesh[]>([]);
   const warriorSmokeClock = useRef(0);
