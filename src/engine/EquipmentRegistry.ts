@@ -55,13 +55,54 @@ export const BONE_ALIASES: Record<EquipSlot, string[]> = {
 };
 
 export const MULTI_BONE_SLOTS: ReadonlySet<EquipSlot> = new Set(["HANDS", "LEGS", "FEET"]);
+
+/**
+ * Specificity of an alias hit. Plain `includes` matching mis-ranks rigs
+ * whose bone names chain words: alias "handr" matches
+ * "mixamorigLeftHandRing1" ("...HandRing1") — putting the weapon on the
+ * LEFT ring finger instead of the RIGHT hand. Scoring fixes this:
+ *   100 exact name · 80 full word (separator-bounded) ·
+ *    60 ends at boundary · 40 starts at boundary · 10 mid-word substring
+ */
+function aliasScore(name: string, alias: string): number {
+  if (name === alias) return 100;
+  const idx = name.indexOf(alias);
+  if (idx === -1) return -1;
+  const isSep = (c: string | undefined) => c === undefined || !/[a-z0-9]/.test(c);
+  const startOk = isSep(idx === 0 ? undefined : name[idx - 1]);
+  const endOk = isSep(name[idx + alias.length]);
+  if (startOk && endOk) return 80;
+  if (endOk) return 60;
+  if (startOk) return 40;
+  return 10;
+}
+
+function bestAliasScore(name: string, aliases: string[]): number {
+  let best = -1;
+  for (const a of aliases) best = Math.max(best, aliasScore(name, a));
+  return best;
+}
+
 export function findBone(root: THREE.Object3D, slot: EquipSlot): THREE.Object3D | null {
-  const aliases = BONE_ALIASES[slot]; let found: THREE.Object3D | null = null;
-  root.traverse((obj) => { if (!found && aliases.some((a) => obj.name.toLowerCase().includes(a))) found = obj; }); return found;
+  const aliases = BONE_ALIASES[slot];
+  let found: THREE.Object3D | null = null;
+  let bestScore = -1;
+  root.traverse((obj) => {
+    const score = bestAliasScore(obj.name.toLowerCase(), aliases);
+    if (score > bestScore) { bestScore = score; found = obj; }
+  });
+  return bestScore >= 0 ? found : null;
 }
 export function findBones(root: THREE.Object3D, slot: EquipSlot): THREE.Object3D[] {
-  const aliases = BONE_ALIASES[slot]; const found: THREE.Object3D[] = [];
-  root.traverse((obj) => { if (aliases.some((a) => obj.name.toLowerCase().includes(a))) found.push(obj); }); return found;
+  const aliases = BONE_ALIASES[slot];
+  const scored: { obj: THREE.Object3D; score: number; order: number }[] = [];
+  root.traverse((obj) => {
+    const score = bestAliasScore(obj.name.toLowerCase(), aliases);
+    if (score >= 0) scored.push({ obj, score, order: scored.length });
+  });
+  // Highest specificity first; stable traversal order for ties.
+  scored.sort((a, b) => b.score - a.score || a.order - b.order);
+  return scored.map((s) => s.obj);
 }
 
 export function loadEquipmentGlb(_glbPath: string, _modelHeight: number): THREE.Object3D | null { return null; }
