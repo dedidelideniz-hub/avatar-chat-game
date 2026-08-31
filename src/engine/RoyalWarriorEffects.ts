@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { GLTFLoader, SkeletonUtils } from "three-stdlib";
@@ -8,6 +8,16 @@ import {
   findBone as findBoneRegistry,
   getEquipmentDef,
 } from "./EquipmentRegistry";
+import {
+  SWORD_GRIP_POS,
+  SWORD_GRIP_ROT,
+  SWORD_TARGET_WORLD_LEN,
+  SWORD_GRIP_BAND_MODEL_Y,
+  applyFingerGrip,
+  buildStructuralSword,
+  handBoneScale,
+  markHandJoints,
+} from "./HandGrip";
 
 /* ── Kraliyet Savaşçısı — visual-only effects ─────────────────── */
 /* Keyed to the Kraliyet Savaşçısı skin. Procedural royal pieces are
@@ -69,6 +79,8 @@ function useRoyalGear(
   innerRef: React.RefObject<THREE.Group | null>,
   flashRef: React.RefObject<THREE.Mesh | null>,
   refs: RoyalGearRefs,
+  swordTick: number,
+  onSwordReady: () => void,
 ) {
   useEffect(() => {
     if (!royalSkin || !clone) return;
@@ -154,63 +166,33 @@ function useRoyalGear(
     if (!hasRealSlot("HAND") && !hasRealSlot("MAIN_HAND")) {
       const hand = findBoneRegistry(clone, "MAIN_HAND");
       if (hand) {
-        // The GLB contains the complete right-hand/finger chain. Keep the
-        // hand animation intact and add a subtle closed-grip pose on top of
-        // the authored animation; the sword remains attached to RightHand.
-        const fingerNames = [
-          "mixamorigRightHandThumb1", "mixamorigRightHandThumb2", "mixamorigRightHandThumb3",
-          "mixamorigRightHandIndex1", "mixamorigRightHandIndex2", "mixamorigRightHandIndex3",
-          "mixamorigRightHandMiddle1", "mixamorigRightHandMiddle2", "mixamorigRightHandMiddle3",
-          "mixamorigRightHandRing1", "mixamorigRightHandRing2", "mixamorigRightHandRing3",
-          "mixamorigRightHandPinky1", "mixamorigRightHandPinky2",
-        ];
-        const fingerRest = fingerNames.map((name) => {
-          const bone = clone.getObjectByName(name);
-          return bone ? { bone, rotation: bone.rotation.clone() } : null;
-        }).filter((entry): entry is { bone: THREE.Object3D; rotation: THREE.Euler } => entry !== null);
-        const closeFinger = (bone: THREE.Object3D, amount: number) => {
-          bone.rotation.x += amount;
-          bone.rotation.z += amount * 0.18;
-        };
-        for (const { bone } of fingerRest) {
-          const name = bone.name.toLowerCase();
-          const isThumb = name.includes("thumb");
-          const phalanx = name.endsWith("1") ? 0.16 : 0.22;
-          closeFinger(bone, isThumb ? 0.18 : phalanx);
-        }
-        // ── Kraliyet kılıcı: gerçek CC0 GLB modeli ──
-        // Sword606 (cc0gameassets lowpoly pack, public domain): 1.14 birim
-        // uzunluk, +Y ekseni boyunca, kavrama bandı minY+0.03…+0.21.
+        // Closed-fist pose (idempotent, lives in HandGrip.ts) so the hand
+        // reads as "holding" the sword. Animation/mixer untouched.
+        applyFingerGrip(clone);
+        // Optional joint debug: ?handDebug=1 → ?handDebug=1 in URL.
+        const debugMarkers = markHandJoints(clone);
+        if (debugMarkers) attached.push(debugMarkers);
+        // ── Sword attach: GLB when ready, structural fallback INSTANTLY ──
+        // The structural model shares the GLB's model space (length 1.14,
+        // hilt center at modelY 0.12), so the grip code is identical and
+        // the swap is seamless. First equip always shows a sword.
         const sword = new THREE.Group();
-        // ── GRIP (skin-savasci.glb idle pozu ölçümü) ──
-        // • El-local worldUp = (-0.94, -0.04, +0.34) → bu Euler namluyu idle
-        //   pozunda diktir (düz durunca kılıç yukarı bakar).
-        // • position: avuç merkezi (-0.54, 11.58, -0.81) el-local; GLB'nin
-        //   kavrama merkezi (minY+0.12) yumruğun içine düşecek şekilde −0.12
-        //   namlu ekseni boyunca kaydırılır (aşağıda item translate edilir).
-        sword.rotation.set(0.3662, 0.336, 1.4832);
-        sword.position.set(0.32, 11.6, -1.12);
+        sword.rotation.set(...SWORD_GRIP_ROT);
+        sword.position.set(...SWORD_GRIP_POS);
         const pivot = new THREE.Group();
         sword.add(pivot);
-        const gripBone = hand;
-        const attachSwordModel = (scene: THREE.Object3D) => {
-          const model = SkeletonUtils.clone(scene);
+        const attachSwordModel = (source: THREE.Object3D) => {
+          const model = SkeletonUtils.clone(source);
           model.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const length = Math.max(size.y, 1e-4);
-          // Hedef dünya uzunluğu ~0.85 (karakter boyu 1.92'ye göre kılıç oranı).
-          // zincir: model(x1) → pivot(x1) → sword(x1) → hand bone(boneAvg)
-          // → itemScale, fitToBone telafisi OLMADAN doğrudan bone ölçeğinden
-          // hesaplanır (çift telafi = dev kılıç bug'ıydı).
-          const targetWorld = 0.85;
-          gripBone.updateWorldMatrix(true, false);
-          const boneWs = gripBone.getWorldScale(new THREE.Vector3());
-          const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3 || 1e-6;
-          const itemScale = targetWorld / (length * boneAvg);
+          // Chain: model(x1) → pivot(x1) → sword(x1) → hand bone(boneAvg).
+          // NO fitToBone here — double compensation made a giant sword.
+          const itemScale = SWORD_TARGET_WORLD_LEN / (length * handBoneScale(hand));
           model.scale.setScalar(itemScale);
-          // Kavrama merkezi minY+0.12 (ölçüldü) → pivot origin oraya gelir:
-          model.position.y = -0.12 * itemScale;
+          // Hilt center (modelY = 0.12) lands exactly on the sword origin.
+          model.position.y = -SWORD_GRIP_BAND_MODEL_Y * itemScale;
           model.traverse((o: THREE.Object3D) => {
             o.userData.isEquipment = true;
             o.frustumCulled = false;
@@ -224,21 +206,23 @@ function useRoyalGear(
         const cached = royalSwordCache.get(url);
         if (cached) {
           attachSwordModel(cached);
-        } else if (!royalSwordLoading.has(url)) {
-          const promise = royalSwordLoader.loadAsync(url)
-            .then((gltf) => {
-              royalSwordCache.set(url, gltf.scene);
-              royalSwordLoading.delete(url);
-              attachSwordModel(gltf.scene);
-            })
-            .catch((e) => {
-              console.warn("[Royal] sword GLB load failed:", url, e);
-              royalSwordLoading.delete(url);
-            });
-          royalSwordLoading.set(url, promise);
+        } else {
+          // Instant structural sword — never an empty hand.
+          attachSwordModel(buildStructuralSword());
+          if (!royalSwordLoading.has(url)) {
+            const promise = royalSwordLoader.loadAsync(url)
+              .then((gltf) => {
+                royalSwordCache.set(url, gltf.scene);
+                royalSwordLoading.delete(url);
+                onSwordReady(); // re-run the gear effect → swap to the GLB
+              })
+              .catch((e) => {
+                console.warn("[Royal] sword GLB load failed:", url, e);
+                royalSwordLoading.delete(url);
+              });
+            royalSwordLoading.set(url, promise);
+          }
         }
-        // Kılıç için fitToBone KULLANILMAZ — model ölçeği yukarıda doğrudan
-        // boneAvg'den hesaplandı; ikisi birden uygulanırsa 100× büyür.
         sword.scale.setScalar(1);
         sword.userData.isEquipment = true;
         sword.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
@@ -288,7 +272,7 @@ function useRoyalGear(
       refs.royalSword.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clone, royalSkin, equipped, modelHeight]);
+  }, [clone, royalSkin, equipped, modelHeight, swordTick]);
 }
 
 interface RoyalTrailRefs {
@@ -352,6 +336,12 @@ export function useRoyalWarriorEffects(
   const warriorSmokeClock = useRef(0);
   // Base emissive per glow material so the shimmer never drifts.
   const baseEmissive = useRef(new Map<THREE.MeshStandardMaterial, number>());
+  // Bumped when the sword GLB finishes loading → gear effect re-runs and
+  // swaps the instant structural sword for the detailed GLB. This fixes
+  // "sword only appears after unequip/re-equip": the first attach no
+  // longer depends on a load that resolves AFTER the effect cleanup.
+  const [swordTick, setSwordTick] = useState(0);
+  const onSwordReady = useCallback(() => setSwordTick((t) => t + 1), []);
 
   useRoyalGear(clone, royalSkin, equipped, modelHeight, innerRef, flashRef, {
     royalSparks,
@@ -359,7 +349,7 @@ export function useRoyalWarriorEffects(
     royalGlowMats,
     royalTipMats,
     royalSword,
-  });
+  }, swordTick, onSwordReady);
 
   useWarriorTrail(royalSkin, innerRef, { warriorSmoke, warriorSmokeClock });
 
