@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { GLTFLoader, SkeletonUtils } from "three-stdlib";
+import { DRACOLoader } from "three-stdlib";
 import {
   equipMat,
   findBone as findBoneRegistry,
@@ -26,6 +27,15 @@ const ROYAL_SKIN_URLS = new Set([
 
 /** CC0 kraliyet kılıcı (Sword606 — cc0gameassets lowpoly pack, public domain). */
 const ROYAL_SWORD_URL = "/models/royal-kilic.glb";
+
+/** Draco decoder lives in public/draco (royal-kilic.glb is Draco-compressed). */
+const royalSwordLoader = (() => {
+  const loader = new GLTFLoader();
+  const draco = new DRACOLoader();
+  draco.setDecoderPath("/draco/");
+  loader.setDRACOLoader(draco);
+  return loader;
+})();
 
 /** Loaded royal-sword scene cache + in-flight loads (non-React). */
 const royalSwordCache = new Map<string, THREE.Object3D>();
@@ -190,7 +200,9 @@ function useRoyalGear(
           const size = box.getSize(new THREE.Vector3());
           const length = Math.max(size.y, 1e-4);
           // Hedef dünya uzunluğu ~0.85 (karakter boyu 1.92'ye göre kılıç oranı).
-          // dünya uzunluğu = modelLen × itemScale × boneWorldScale
+          // zincir: model(x1) → pivot(x1) → sword(x1) → hand bone(boneAvg)
+          // → itemScale, fitToBone telafisi OLMADAN doğrudan bone ölçeğinden
+          // hesaplanır (çift telafi = dev kılıç bug'ıydı).
           const targetWorld = 0.85;
           gripBone.updateWorldMatrix(true, false);
           const boneWs = gripBone.getWorldScale(new THREE.Vector3());
@@ -213,16 +225,25 @@ function useRoyalGear(
         if (cached) {
           attachSwordModel(cached);
         } else if (!royalSwordLoading.has(url)) {
-          const promise = new GLTFLoader().loadAsync(url)
+          const promise = royalSwordLoader.loadAsync(url)
             .then((gltf) => {
               royalSwordCache.set(url, gltf.scene);
               royalSwordLoading.delete(url);
               attachSwordModel(gltf.scene);
             })
-            .catch(() => { royalSwordLoading.delete(url); });
+            .catch((e) => {
+              console.warn("[Royal] sword GLB load failed:", url, e);
+              royalSwordLoading.delete(url);
+            });
           royalSwordLoading.set(url, promise);
         }
-        fitToBone(hand, sword);
+        // Kılıç için fitToBone KULLANILMAZ — model ölçeği yukarıda doğrudan
+        // boneAvg'den hesaplandı; ikisi birden uygulanırsa 100× büyür.
+        sword.scale.setScalar(1);
+        sword.userData.isEquipment = true;
+        sword.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
+        hand.add(sword);
+        attached.push(sword);
         refs.royalSword.current = pivot;
       }
     }
