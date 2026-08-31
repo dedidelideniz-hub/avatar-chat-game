@@ -136,6 +136,30 @@ function useRoyalGear(
     if (!hasRealSlot("HAND") && !hasRealSlot("MAIN_HAND")) {
       const hand = findBoneRegistry(clone, "MAIN_HAND");
       if (hand) {
+        // The GLB contains the complete right-hand/finger chain. Keep the
+        // hand animation intact and add a subtle closed-grip pose on top of
+        // the authored animation; the sword remains attached to RightHand.
+        const fingerNames = [
+          "mixamorigRightHandThumb1", "mixamorigRightHandThumb2", "mixamorigRightHandThumb3",
+          "mixamorigRightHandIndex1", "mixamorigRightHandIndex2", "mixamorigRightHandIndex3",
+          "mixamorigRightHandMiddle1", "mixamorigRightHandMiddle2", "mixamorigRightHandMiddle3",
+          "mixamorigRightHandRing1", "mixamorigRightHandRing2", "mixamorigRightHandRing3",
+          "mixamorigRightHandPinky1", "mixamorigRightHandPinky2",
+        ];
+        const fingerRest = fingerNames.map((name) => {
+          const bone = clone.getObjectByName(name);
+          return bone ? { bone, rotation: bone.rotation.clone() } : null;
+        }).filter((entry): entry is { bone: THREE.Object3D; rotation: THREE.Euler } => entry !== null);
+        const closeFinger = (bone: THREE.Object3D, amount: number) => {
+          bone.rotation.x += amount;
+          bone.rotation.z += amount * 0.18;
+        };
+        for (const { bone } of fingerRest) {
+          const name = bone.name.toLowerCase();
+          const isThumb = name.includes("thumb");
+          const phalanx = name.endsWith("1") ? 0.16 : 0.22;
+          closeFinger(bone, isThumb ? 0.18 : phalanx);
+        }
         const sword = new THREE.Group();
         // ── GRIP ALIGNMENT (measured from skin-savasci.glb bind pose) ──
         // mixamorig:RightHand local axes in WORLD space:
