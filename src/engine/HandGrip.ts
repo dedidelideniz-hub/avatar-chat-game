@@ -27,8 +27,12 @@ export const HAND_AXES = {
 /** Palm center = average of the five finger-base bones, hand-local units. */
 export const PALM_CENTER: [number, number, number] = [-0.54, 11.58, -0.81];
 
-/** Sword-local position that puts the grip INSIDE the fist. */
-export const SWORD_GRIP_POS: [number, number, number] = [0.32, 11.6, -1.12];
+/** Sword-local position that puts the grip INSIDE the fist.
+ *  MEASURED palm center is (-0.54, 11.58, -0.81); the sword model's hilt
+ *  center (modelY = 0.12) is translated onto the sword origin below, so
+ *  the origin itself goes to the FIST CENTER (slightly below the knuckles,
+ *  halfway wrist→knuckles at y ≈ 11.0 in hand-local units). */
+export const SWORD_GRIP_POS: [number, number, number] = [-0.54, 11.0, -0.81];
 
 /** Euler mapping the sword's +Y blade axis onto the hand-local world-UP
  *  axis — the blade reads vertical while the character stands. */
@@ -173,15 +177,22 @@ export function buildStructuralSword(): THREE.Group {
 /* ── Debug: hand joint markers (?handDebug=1) ───────────────────── */
 
 /**
- * Marks every right-hand joint with a small colored sphere so the grip
- * math can be verified in-game. Enabled only with ?handDebug=1 in the URL.
+ * Marks every right-hand joint with a colored sphere so the grip math can
+ * be verified in-game. Enabled with ?handDebug=1 in the URL — the flag is
+ * also stored in localStorage because SPA navigation strips the query.
  * Colors: red = RightHand origin, yellow = thumb chain, cyan = fingers,
  * magenta = palm center (where the sword grip should sit).
  * Returns null when the debug flag is off.
  */
 export function markHandJoints(clone: THREE.Object3D): THREE.Group | null {
   if (typeof window === "undefined") return null;
-  if (!new URLSearchParams(window.location.search).has("handDebug")) return null;
+  const sp = new URLSearchParams(window.location.search);
+  if (sp.has("handDebug")) {
+    try { window.localStorage.setItem("handDebug", "1"); } catch { /* private mode */ }
+  }
+  let stored: string | null = null;
+  try { stored = window.localStorage.getItem("handDebug"); } catch { stored = null; }
+  if (!sp.has("handDebug") && stored !== "1") return null;
 
   const group = new THREE.Group();
   group.name = "_handDebugMarkers";
@@ -199,11 +210,11 @@ export function markHandJoints(clone: THREE.Object3D): THREE.Group | null {
   };
 
   const hand = clone.getObjectByName("mixamorigRightHand");
-  if (hand) mark(hand, "#ff3355", 0.02);
+  if (hand) mark(hand, "#ff3355", 0.05);
   for (const name of FINGER_BONES) {
     const bone = clone.getObjectByName(name);
     if (!bone) continue;
-    mark(bone, name.includes("Thumb") ? "#ffd23c" : "#39c6ff", 0.011);
+    mark(bone, name.includes("Thumb") ? "#ffd23c" : "#39c6ff", 0.028);
   }
   if (hand) {
     // Palm center marker (magenta) — where the grip band should land.
@@ -211,11 +222,64 @@ export function markHandJoints(clone: THREE.Object3D): THREE.Group | null {
       new THREE.SphereGeometry(1, 8, 6),
       new THREE.MeshBasicMaterial({ color: "#ff3ce0", depthWrite: false }),
     );
-    palm.scale.setScalar(0.025 / handBoneScale(hand));
+    palm.scale.setScalar(0.06 / handBoneScale(hand));
     palm.position.set(...PALM_CENTER);
     palm.userData.isEquipment = true;
     palm.frustumCulled = false;
     hand.add(palm);
   }
   return group;
+}
+
+/* ── Structural fingers ─────────────────────────────────────────── */
+
+/**
+ * The warrior skin's hand has little to no modeled finger geometry —
+ * rotating the finger BONES (applyFingerGrip) moves nothing visible, so
+ * the fist never reads as "gripping". This builds simple segmented
+ * fingers as meshes PARENTED TO THE BONE CHAIN: they follow every
+ * animation and the closed-grip pose renders a real fist around the
+ * sword hilt.
+ *
+ * Segment lengths come from the GLB itself (bone.position of each child
+ * joint), so proportions match the rig. Sizes are authored in bone-local
+ * units (Mixamo cm-scale) and inherit the bone's world scale.
+ *
+ * Returns the created meshes (caller adds them to the cleanup list).
+ */
+export function buildFingerMeshes(clone: THREE.Object3D): THREE.Mesh[] {
+  const glove = new THREE.MeshStandardMaterial({
+    color: "#6b4527", roughness: 0.75, metalness: 0.08,
+  });
+  const knuckle = new THREE.MeshStandardMaterial({
+    color: "#7a5230", roughness: 0.7, metalness: 0.08,
+  });
+  const created: THREE.Mesh[] = [];
+
+  for (const name of FINGER_BONES) {
+    const bone = clone.getObjectByName(name);
+    if (!bone) continue;
+    // Segment length = distance to the next joint (child bone position).
+    const childName = name.replace(/(\d)$/, (d) => String(Number(d) + 1));
+    const child = clone.getObjectByName(childName);
+    const segLen = child
+      ? child.position.length()
+      : Math.max(bone.position.length() * 0.8, 2.0); // tip segment
+    const isThumb = name.includes("Thumb");
+    const isTip = !child;
+    const radius = (isThumb ? 0.95 : 0.82) * (isTip ? 0.8 : name.endsWith("1") ? 1 : 0.9);
+
+    const seg = new THREE.Mesh(
+      new THREE.CapsuleGeometry(radius, Math.max(segLen - radius * 1.6, 0.4), 4, 8),
+      isTip ? knuckle : glove,
+    );
+    // Bones run along local +Y (Mixamo): span from this joint toward the child.
+    seg.position.y = segLen / 2;
+    seg.userData.isEquipment = true;
+    seg.frustumCulled = false;
+    seg.renderOrder = 999;
+    bone.add(seg);
+    created.push(seg);
+  }
+  return created;
 }

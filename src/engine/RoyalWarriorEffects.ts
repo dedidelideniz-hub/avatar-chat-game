@@ -14,6 +14,7 @@ import {
   SWORD_TARGET_WORLD_LEN,
   SWORD_GRIP_BAND_MODEL_Y,
   applyFingerGrip,
+  buildFingerMeshes,
   buildStructuralSword,
   handBoneScale,
   markHandJoints,
@@ -169,7 +170,11 @@ function useRoyalGear(
         // Closed-fist pose (idempotent, lives in HandGrip.ts) so the hand
         // reads as "holding" the sword. Animation/mixer untouched.
         applyFingerGrip(clone);
-        // Optional joint debug: ?handDebug=1 → ?handDebug=1 in URL.
+        // Structural finger meshes: the skin's hand has no modeled finger
+        // geometry, so bones alone moved nothing visible. These follow the
+        // bone chain and render a real gripping fist around the hilt.
+        attached.push(...buildFingerMeshes(clone));
+        // Optional joint debug: ?handDebug=1 (sticky via localStorage).
         const debugMarkers = markHandJoints(clone);
         if (debugMarkers) attached.push(debugMarkers);
         // ── Sword attach: GLB when ready, structural fallback INSTANTLY ──
