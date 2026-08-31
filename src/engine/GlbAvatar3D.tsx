@@ -229,7 +229,13 @@ export function attachEquippedToModel(
     }
 
     // ── fullBody GLB: attach to root, scale to character height ──
+    // The normalization step in EquipmentBuilders re-parents the meshes to
+    // a clean root — its positionOffset/rotationOffset (which only
+    // restored old placeholder transforms) must be reset here, otherwise
+    // the whole armor lands 13 units to the side of the character.
     if (def.fullBody && def.glbPath) {
+      item.position.set(0, 0, 0);
+      item.rotation.set(0, 0, 0);
       const bbox = new THREE.Box3().setFromObject(item);
       const bboxSize = bbox.getSize(new THREE.Vector3());
       const modelH = Math.max(bboxSize.y, 0.001);
@@ -273,8 +279,8 @@ export function attachEquippedToModel(
       equipDebug.bone(bone.name, bone.parent?.name, boneAvg);
 
       if (def.glbPath && boneAvg > 1e-6) {
-        // GLB equipment: geometry already normalized to height≈1.0 in cache.
-        // Just scale to match character proportions.
+        // GLB equipment: geometry already normalized to height=1.0 in cache.
+        // Scale so the item matches a fixed fraction of character height.
         // worldH = localScale × boneAvg → localScale = targetWorldH / boneAvg
         const charWorldH = modelHeight * expected;
         const targetWorldH = charWorldH * 0.55;
@@ -284,11 +290,15 @@ export function attachEquippedToModel(
       } else {
         // Procedural equipment: compensate for bone scale mismatch.
         const ratio = boneAvg > 1e-6 ? expected / boneAvg : 1;
-        if (ratio > 2 || ratio < 0.5) {
-          inst.scale.setScalar(ratio);
-          equipDebug.scaleFix(ratio);
-        }
+        // ALWAYS apply the compensation. The old threshold (only apply when
+        // ratio>2 || ratio<0.5) let rigs whose bone scale was mildly off keep
+        // builder units × a wrong multiplier — that is how armor rendered as
+        // a 4-millimetre speck. Builders are authored in world units, so the
+        // item must always land at the same world size.
+        inst.scale.setScalar(ratio);
+        equipDebug.scaleFix(ratio);
       }
+      inst.updateMatrixWorld(true);
       // Mark all objects in this equipment subtree so applyFade skips them,
       // and disable frustum culling so the equipment is always rendered.
       inst.userData.isEquipment = true;
