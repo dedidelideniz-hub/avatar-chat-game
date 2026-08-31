@@ -13,6 +13,7 @@ import {
   SWORD_GRIP_ROT,
   SWORD_TARGET_WORLD_LEN,
   SWORD_GRIP_BAND_MODEL_Y,
+  SWORD_GRIP_SCALE,
   applyFingerGrip,
   buildFingerMeshes,
   buildStructuralSword,
@@ -233,7 +234,7 @@ function useRoyalGear(
             royalSwordLoading.set(url, promise);
           }
         }
-        sword.scale.setScalar(1);
+        sword.scale.setScalar(SWORD_GRIP_SCALE);
         sword.userData.isEquipment = true;
         sword.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
         hand.add(sword);
