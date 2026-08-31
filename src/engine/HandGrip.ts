@@ -31,10 +31,9 @@ export const SWORD_CONTAINER_MODEL_SCALE = 0.5; // el boyutuna uygun küçültme
 
 /* ── MEASURED grip constants ────────────────────────────────────── */
 
-/** Right-hand bone local axes at IDLE, expressed in world space —
- *  MEASURED on moda-savasci.glb (Idle @ t = 1.0):
- *   +X = (−0.157, 0.315, 0.936), +Y = (−0.181, −0.941, 0.286) fingers
- *   DOWN, +Z = (0.971, −0.125, 0.204). */
+/** Kılıç görünürlüğü ve kavrama — MEASURED (moda-savasci.glb, Idle@1.0):
+ *  El bone'unun DÜNYA ölçeği ≈ 0.00437; palm merkez (hand-local) y≈31.
+ *  Kılıç kapsayıcısı el bone'una eklenir; model offsetleri burada tek yerde. */
 export const HAND_AXES = {
   up: [0.315, -0.941, -0.125], // world UP in hand-local (MEASURED: moda-savasci.glb)
 } as const;
@@ -47,8 +46,6 @@ export const PALM_CENTER: [number, number, number] = [0, 13.24, 0]; // MEASURED:
 /** Sword origin = FIST CENTER (slightly below the knuckle line, 0.95×
  *  palm Y). The sword model's hilt band (modelY = 0.12) is translated
  *  onto this origin, so the grip sits INSIDE the fist. */
-// Fine-tuning controls for the royal sword. Keep these isolated so the
-// attachment pipeline and animation code never need to change.
 export const SWORD_GRIP_POS: [number, number, number] = [0, 11.72, 0]; // measured hand-space palm center
 
 /** Euler mapping the sword's +Y blade axis to WORLD-UP at idle and the
@@ -155,7 +152,9 @@ export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D):
   sword.quaternion.copy(handWorldQuat(hand).invert());
   sword.position.copy(palmCenterLocal(hand));
   sword.position.y -= 0.38;
-  sword.scale.setScalar(SWORD_GRIP_SCALE);
+  // Preserve the bone-space normalisation: grip scale must stay 1/boneScale
+  // (× SWORD_GRIP_SCALE) so the sword renders at the intended world size.
+  sword.scale.setScalar((1 / handBoneScale(hand)) * SWORD_GRIP_SCALE);
   sword.updateMatrixWorld(true);
 }
 

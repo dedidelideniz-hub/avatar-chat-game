@@ -197,6 +197,10 @@ function useRoyalGear(
         grip.rotation.set(...SWORD_GRIP_ROT);
         grip.position.set(...SWORD_GRIP_POS);
         grip.position.y -= 0.38;
+        // Bone-space ölçek düzeltmesi: bu rig'te el bone 0.00437 ölçekli,
+        // yani grip 0.68 gibi küçük bir değerle çok küçük kalır. Dünya
+        // ölçeğini sabitlemek için boneScale ile normalize edilir.
+        grip.scale.setScalar(1 / handBoneScale(hand) * SWORD_GRIP_SCALE);
         const pivot = new THREE.Group();
         pivot.position.set(...SWORD_CONTAINER_MODEL_POS);
         pivot.rotation.set(...SWORD_CONTAINER_MODEL_ROT);
@@ -245,7 +249,7 @@ function useRoyalGear(
           }
         }
         // Carrier scale is kept separate from the model container scale.
-        grip.scale.setScalar(SWORD_GRIP_SCALE);
+        grip.scale.setScalar(1 / handBoneScale(hand) * SWORD_GRIP_SCALE);
         grip.userData.isEquipment = true;
         grip.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
         hand.add(grip);
