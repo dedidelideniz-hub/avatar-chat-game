@@ -1352,12 +1352,13 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
     return () => { cleanupEquipRef.current?.(); };
   }, []);
 
+  // Inner group carries the model scale + ground offset. The outer
+  // group position is rewritten every frame by useFrame (y=0.02),
+  // which would otherwise wipe the feet offset after the first frame
+  // and sink skinned soles below the road. rotation-y (set via
+  // useEffect above) flips -Z-forward rigs to face the walk heading.
   return (
     <group ref={groupRef}>
-      // Inner group carries the model scale + ground offset. The outer
-      // group position is rewritten every frame by useFrame (y=0.02),
-      // which would otherwise wipe the feet offset after the first frame
-      // and sink skinned soles below the road.
       <group ref={innerRef} scale={normScale} position={[0, feetOffset * normScale, 0]}>
         <primitive object={clone} />
       </group>
@@ -1431,6 +1432,11 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
   const { scene, animations } = useGLTF(skinUrl || url);
   useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  // Face -Z-forward rigs (e.g. Soldier.glb) toward the camera like +Z rigs.
+  const yawOffset = MODEL_YAW_OFFSET[skinUrl || url] ?? 0;
+  useEffect(() => {
+    if (groupRef.current) groupRef.current.rotation.y = yawOffset;
+  }, [yawOffset]);
   const { actions } = useAnimations(animations, groupRef);
 
   const { normScale, modelHeight } = useMemo(() => {
@@ -1569,6 +1575,11 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
   const { scene, animations } = useGLTF(skinUrl || url);
   useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  // Face -Z-forward rigs (e.g. Soldier.glb) toward the camera like +Z rigs.
+  const yawOffset = MODEL_YAW_OFFSET[skinUrl || url] ?? 0;
+  useEffect(() => {
+    if (groupRef.current) groupRef.current.rotation.y = yawOffset;
+  }, [yawOffset]);
   const { actions } = useAnimations(animations, groupRef);
 
   const { normScale, modelHeight } = useMemo(() => {
