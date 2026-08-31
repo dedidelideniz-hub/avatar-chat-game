@@ -16,6 +16,7 @@ import {
   applyFingerGrip,
   buildFingerMeshes,
   buildStructuralSword,
+  calibrateSwordGrip,
   handBoneScale,
   markHandJoints,
 } from "./HandGrip";
@@ -62,8 +63,12 @@ interface RoyalGearRefs {
   flashReady: React.MutableRefObject<boolean>;
   /** Materials sharing the crown/blade shine shimmer. */
   royalGlowMats: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
-  /** The royal sword group (drives the idle flourish). */
+  /** The royal sword group (the grip carrier; calibrated at rest). */
   royalSword: React.MutableRefObject<THREE.Group | null>;
+  /** The MAIN_HAND bone the sword hangs on (for grip calibration). */
+  royalHandBone: React.MutableRefObject<THREE.Object3D | null>;
+  /** True once the grip has been calibrated from the live idle pose. */
+  gripCalibrated: React.MutableRefObject<boolean>;
   /** Tip-glow materials flaring with the flourish accent. */
   royalTipMats: React.MutableRefObject<THREE.MeshStandardMaterial[]>;
 }
@@ -233,7 +238,9 @@ function useRoyalGear(
         sword.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
         hand.add(sword);
         attached.push(sword);
-        refs.royalSword.current = pivot;
+        refs.royalSword.current = sword;
+        refs.royalHandBone.current = hand;
+        refs.gripCalibrated.current = false;
       }
     }
 
@@ -265,6 +272,8 @@ function useRoyalGear(
         attached.forEach((a) => a.removeFromParent());
         refs.royalSparks.current = [];
         refs.flashReady.current = false;
+        refs.royalHandBone.current = null;
+        refs.gripCalibrated.current = false;
         refs.royalGlowMats.current = [];
         refs.royalTipMats.current = [];
         refs.royalSword.current = null;
@@ -272,6 +281,8 @@ function useRoyalGear(
     }
     return () => {
       attached.forEach((a) => a.removeFromParent());
+      refs.royalHandBone.current = null;
+      refs.gripCalibrated.current = false;
       refs.royalGlowMats.current = [];
       refs.royalTipMats.current = [];
       refs.royalSword.current = null;
@@ -337,6 +348,7 @@ export function useRoyalWarriorEffects(
   const royalGlowMats = useRef<THREE.MeshStandardMaterial[]>([]);
   const royalTipMats = useRef<THREE.MeshStandardMaterial[]>([]);
   const royalSword = useRef<THREE.Group | null>(null);
+  const handBone = useRef<THREE.Object3D | null>(null);
   const warriorSmoke = useRef<THREE.Mesh[]>([]);
   const warriorSmokeClock = useRef(0);
   // Base emissive per glow material so the shimmer never drifts.
@@ -347,6 +359,11 @@ export function useRoyalWarriorEffects(
   // longer depends on a load that resolves AFTER the effect cleanup.
   const [swordTick, setSwordTick] = useState(0);
   const onSwordReady = useCallback(() => setSwordTick((t) => t + 1), []);
+  // Grip calibration state: the sword orientation is locked to the hand's
+  // LIVE idle pose once (blade vertical, crossguard horizontal), then stays
+  // fixed in hand-local space so the arm swings naturally while walking.
+  const gripCalibrated = useRef(false);
+  const calibWait = useRef(0);
 
   useRoyalGear(clone, royalSkin, equipped, modelHeight, innerRef, flashRef, {
     royalSparks,
@@ -354,6 +371,8 @@ export function useRoyalWarriorEffects(
     royalGlowMats,
     royalTipMats,
     royalSword,
+    royalHandBone: handBone,
+    gripCalibrated,
   }, swordTick, onSwordReady);
 
   useWarriorTrail(royalSkin, innerRef, { warriorSmoke, warriorSmokeClock });
@@ -415,10 +434,22 @@ export function useRoyalWarriorEffects(
       m.emissiveIntensity = base + 2.4 * sweep(0.6);
     }
 
-    // ── Sword always rests straight (grip rotation is authoritative) ──
-    // The flourish twirl was removed: standing characters must hold the
-    // blade straight up. The shimmer above remains as the "shine" accent.
-    void movingRef;
+    // ── Sword grip calibration ──
+    // Once, on the first STATIONARY frame after the idle animation has
+    // settled (0.6s covers the idle fadeIn): lock the sword so the blade
+    // is vertical and the crossguard horizontal. After that the grip is
+    // fixed in hand-local space — the sword swings naturally with the arm
+    // while walking and returns to vertical at rest. This replaces the
+    // old baked-only constants and works for ANY skin rig.
+    const swordG = royalSword.current;
+    const handB = handBone.current;
+    if (swordG && handB && !gripCalibrated.current) {
+      calibWait.current += dt;
+      if (calibWait.current > 0.6 && !movingRef.current) {
+        calibrateSwordGrip(handB, swordG);
+        gripCalibrated.current = true;
+      }
+    }
   });
 
   return { royalSkin, warriorSmoke, warriorSmokeClock };

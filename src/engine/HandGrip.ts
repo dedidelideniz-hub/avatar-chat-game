@@ -11,32 +11,39 @@ import * as THREE from "three";
  *   • markHandJoints        ?handDebug=1 debug markers on every joint
  *   • handBoneScale         avg world scale of a bone (for size math)
  *
- * All numbers marked MEASURED come from headless parsing of
- * public/models/skin-savasci.glb (live Idle clip, t = 1.0s) — not guesses.
+ * All numbers marked MEASURED come from headless parsing of the skin
+ * GLB the game renders (moda-savasci.glb; live Idle clip, t = 1.0s) —
+ * not guesses. Runtime calibration (calibrateSwordGrip) re-derives the
+ * grip from the live hand pose anyway, so these constants only seed the
+ * very first frames before calibration lands.
  */
 
 /* ── MEASURED grip constants ────────────────────────────────────── */
 
-/** Right-hand bone local axes at idle, expressed in world space:
- *   +X = (0.96, 0.11, 0.25) forward/outward, +Y = (0.18, −0.94, −0.30)
- *   DOWN the fingers, +Z = (0.20, 0.33, −0.92) up-back. */
+/** Right-hand bone local axes at IDLE, expressed in world space —
+ *  MEASURED on moda-savasci.glb (Idle @ t = 1.0):
+ *   +X = (−0.157, 0.315, 0.936), +Y = (−0.181, −0.941, 0.286) fingers
+ *   DOWN, +Z = (0.971, −0.125, 0.204). */
 export const HAND_AXES = {
-  up: [-0.9405, -0.0359, 0.338], // world UP expressed in hand-local space
+  up: [0.315, -0.941, -0.125], // world UP in hand-local (MEASURED: moda-savasci.glb)
 } as const;
 
-/** Palm center = average of the five finger-base bones, hand-local units. */
-export const PALM_CENTER: [number, number, number] = [-0.54, 11.58, -0.81];
+/** Palm center = average of the finger-base bones, hand-local units.
+ *  MEASURED on moda-savasci.glb: (0, 13.24, 0) — that rig carries only
+ *  an Index chain, straight along +Y from the wrist. */
+export const PALM_CENTER: [number, number, number] = [0, 13.24, 0]; // MEASURED: moda-savasci.glb
 
-/** Sword-local position that puts the grip INSIDE the fist.
- *  MEASURED palm center is (-0.54, 11.58, -0.81); the sword model's hilt
- *  center (modelY = 0.12) is translated onto the sword origin below, so
- *  the origin itself goes to the FIST CENTER (slightly below the knuckles,
- *  halfway wrist→knuckles at y ≈ 11.0 in hand-local units). */
-export const SWORD_GRIP_POS: [number, number, number] = [-0.54, 11.0, -0.81];
+/** Sword origin = FIST CENTER (slightly below the knuckle line, 0.95×
+ *  palm Y). The sword model's hilt band (modelY = 0.12) is translated
+ *  onto this origin, so the grip sits INSIDE the fist. */
+export const SWORD_GRIP_POS: [number, number, number] = [0, 12.58, 0]; // fist center (0.95×palm Y)
 
-/** Euler mapping the sword's +Y blade axis onto the hand-local world-UP
- *  axis — the blade reads vertical while the character stands. */
-export const SWORD_GRIP_ROT: [number, number, number] = [0.3662, 0.336, 1.4832];
+/** Euler mapping the sword's +Y blade axis to WORLD-UP at idle and the
+ *  crossguard (+X) horizontal — MEASURED for moda-savasci.glb, verified
+ *  (blade → (0,1,0), crossguard → (1,0,0) in world space). The previous
+ *  value was measured on a DIFFERENT skin file and put the blade 107.7°
+ *  off vertical (the sideways, unreadable "stick" look). */
+export const SWORD_GRIP_ROT: [number, number, number] = [-0.9509, 1.2112, -2.032]; // MEASURED: moda-savasci.glb
 
 /** Target sword length in WORLD units (character height ≈ 1.92). */
 export const SWORD_TARGET_WORLD_LEN = 0.85;
@@ -54,6 +61,87 @@ export function handBoneScale(bone: THREE.Object3D): number {
   return (ws.x + ws.y + ws.z) / 3 || 1e-6;
 }
 
+/* ── Live grip calibration (rig-independent) ─────────────────────── */
+
+/** Pure-rotation world quaternion of a bone. Rig nodes bake scale into
+ *  matrixWorld, so the quaternion must be extracted from NORMALIZED
+ *  basis columns (a raw setFromRotationMatrix is wrong otherwise). */
+export function handWorldQuat(hand: THREE.Object3D): THREE.Quaternion {
+  hand.updateWorldMatrix(true, false);
+  const m = hand.matrixWorld;
+  const rm = new THREE.Matrix4().makeBasis(
+    new THREE.Vector3().setFromMatrixColumn(m, 0).normalize(),
+    new THREE.Vector3().setFromMatrixColumn(m, 1).normalize(),
+    new THREE.Vector3().setFromMatrixColumn(m, 2).normalize(),
+  );
+  return new THREE.Quaternion().setFromRotationMatrix(rm);
+}
+
+/** The right-hand BONE of a clone, suffix-tolerant: plain Mixamo names
+ *  ("mixamorigRightHand") and suffixed exports
+ *  ("mixamorigRightHand_021") both resolve. */
+export function rightHandBone(clone: THREE.Object3D): THREE.Object3D | null {
+  let hand: THREE.Object3D | null = null;
+  clone.traverse((o) => {
+    if (hand || !(o as THREE.Bone).isBone) return;
+    const n = o.name.toLowerCase();
+    if (
+      n === "mixamorigrighthand" ||
+      (n.startsWith("mixamorigrighthand") && !/thumb|index|middle|ring|pinky/.test(n))
+    ) {
+      hand = o;
+    }
+  });
+  return hand;
+}
+
+/** Suffix-tolerant finger-joint bones under one hand bone. End joints
+ *  ("…_end") are excluded — they carry no geometry. */
+export function fingerBonesOf(hand: THREE.Object3D): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  hand.traverse((o) => {
+    if (o === hand || !(o as THREE.Bone).isBone) return;
+    if (/thumb|index|middle|ring|pinky/i.test(o.name) && !/_?end$/i.test(o.name)) out.push(o);
+  });
+  return out;
+}
+
+/** Phalanx index of a (possibly suffixed) finger bone name: 1–4, else 1. */
+function phalanxOf(name: string): number {
+  const m = name.match(/(\d)(?:_|$)/);
+  return m ? Number(m[1]) : 1;
+}
+
+/** Live palm center from THIS rig's finger-base bones (falls back to
+ *  the baked MEASURED constant when the rig exposes none). */
+export function palmCenterLocal(hand: THREE.Object3D): THREE.Vector3 {
+  const bases = hand.children.filter(
+    (c) =>
+      (c as THREE.Bone).isBone &&
+      /thumb|index|middle|ring|pinky/i.test(c.name) &&
+      !/_?end$/i.test(c.name),
+  );
+  if (!bases.length) return new THREE.Vector3(...PALM_CENTER);
+  const avg = bases
+    .reduce((v, b) => v.add(b.position), new THREE.Vector3())
+    .divideScalar(bases.length);
+  avg.y *= 0.95; // fist center sits just below the knuckle line
+  return avg;
+}
+
+/**
+ * Calibrate the sword grip from the hand's LIVE pose: blade vertical,
+ * crossguard horizontal, hilt inside the fist. Called ONCE on the first
+ * stationary frame (after the idle animation has settled); the grip then
+ * stays FIXED in hand-local space, so the sword swings naturally with
+ * the arm while walking and returns to vertical at rest. Works for any
+ * rig — no baked per-file constants involved.
+ */
+export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D): void {
+  sword.quaternion.copy(handWorldQuat(hand).invert());
+  sword.position.copy(palmCenterLocal(hand));
+}
+
 /* ── Finger grip (closed fist) ──────────────────────────────────── */
 
 /** Rest rotations per finger bone, captured the first time we pose it.
@@ -61,23 +149,16 @@ export function handBoneScale(bone: THREE.Object3D): number {
  *  the gear effect re-runs (equip changes, GLB swap, …). */
 const fingerRest = new WeakMap<THREE.Object3D, THREE.Euler>();
 
-const FINGER_BONES = [
-  "mixamorigRightHandThumb1", "mixamorigRightHandThumb2", "mixamorigRightHandThumb3",
-  "mixamorigRightHandIndex1", "mixamorigRightHandIndex2", "mixamorigRightHandIndex3",
-  "mixamorigRightHandMiddle1", "mixamorigRightHandMiddle2", "mixamorigRightHandMiddle3",
-  "mixamorigRightHandRing1", "mixamorigRightHandRing2", "mixamorigRightHandRing3",
-  "mixamorigRightHandPinky1", "mixamorigRightHandPinky2",
-];
-
 /**
  * Adds a subtle closed-grip pose on top of the authored animation so the
  * hand reads as "holding" the sword. Idempotent: safe to call on every
- * gear attach. Never touches the mixer/clips.
+ * gear attach. Never touches the mixer/clips. Bone lookup is
+ * suffix-tolerant so rigs like moda-savasci.glb (Index1_00…) pose too.
  */
 export function applyFingerGrip(clone: THREE.Object3D): void {
-  for (const name of FINGER_BONES) {
-    const bone = clone.getObjectByName(name);
-    if (!bone) continue;
+  const hand = rightHandBone(clone);
+  if (!hand) return;
+  for (const bone of fingerBonesOf(hand)) {
     let rest = fingerRest.get(bone);
     if (!rest) {
       rest = bone.rotation.clone();
@@ -85,9 +166,9 @@ export function applyFingerGrip(clone: THREE.Object3D): void {
     }
     // Reset to rest, then apply the closed pose from a clean base.
     bone.rotation.copy(rest);
-    const isThumb = name.toLowerCase().includes("thumb");
-    const phalanx = name.endsWith("1") ? 0.16 : 0.22;
-    const amount = isThumb ? 0.18 : phalanx;
+    const isThumb = /thumb/i.test(bone.name);
+    const phalanx = phalanxOf(bone.name);
+    const amount = isThumb ? 0.18 : phalanx === 1 ? 0.16 : 0.22;
     bone.rotation.x += amount;
     bone.rotation.z += amount * 0.18;
   }
@@ -178,21 +259,17 @@ export function buildStructuralSword(): THREE.Group {
 
 /**
  * Marks every right-hand joint with a colored sphere so the grip math can
- * be verified in-game. Enabled with ?handDebug=1 in the URL — the flag is
- * also stored in localStorage because SPA navigation strips the query.
- * Colors: red = RightHand origin, yellow = thumb chain, cyan = fingers,
- * magenta = palm center (where the sword grip should sit).
+ * be verified in-game. Enabled ONLY with ?handDebug=1 in the URL — the
+ * old sticky localStorage flag kept painting colored spheres on the hand
+ * forever, which polluted the character look long after debugging ended.
+ * Colors: red = hand origin, yellow = thumb chain, cyan = fingers,
+ * magenta = palm center (where the sword grip sits).
  * Returns null when the debug flag is off.
  */
 export function markHandJoints(clone: THREE.Object3D): THREE.Group | null {
   if (typeof window === "undefined") return null;
   const sp = new URLSearchParams(window.location.search);
-  if (sp.has("handDebug")) {
-    try { window.localStorage.setItem("handDebug", "1"); } catch { /* private mode */ }
-  }
-  let stored: string | null = null;
-  try { stored = window.localStorage.getItem("handDebug"); } catch { stored = null; }
-  if (!sp.has("handDebug") && stored !== "1") return null;
+  if (sp.get("handDebug") !== "1") return null;
 
   const group = new THREE.Group();
   group.name = "_handDebugMarkers";
@@ -209,45 +286,44 @@ export function markHandJoints(clone: THREE.Object3D): THREE.Group | null {
     bone.add(s);
   };
 
-  const hand = clone.getObjectByName("mixamorigRightHand");
-  if (hand) mark(hand, "#ff3355", 0.05);
-  for (const name of FINGER_BONES) {
-    const bone = clone.getObjectByName(name);
-    if (!bone) continue;
-    mark(bone, name.includes("Thumb") ? "#ffd23c" : "#39c6ff", 0.028);
+  const hand = rightHandBone(clone);
+  if (!hand) return group;
+  mark(hand, "#ff3355", 0.05);
+  for (const bone of fingerBonesOf(hand)) {
+    mark(bone, /thumb/i.test(bone.name) ? "#ffd23c" : "#39c6ff", 0.028);
   }
-  if (hand) {
-    // Palm center marker (magenta) — where the grip band should land.
-    const palm = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 8, 6),
-      new THREE.MeshBasicMaterial({ color: "#ff3ce0", depthWrite: false }),
-    );
-    palm.scale.setScalar(0.06 / handBoneScale(hand));
-    palm.position.set(...PALM_CENTER);
-    palm.userData.isEquipment = true;
-    palm.frustumCulled = false;
-    hand.add(palm);
-  }
+  // Palm center marker (magenta) — where the grip band should land.
+  const palm = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 8, 6),
+    new THREE.MeshBasicMaterial({ color: "#ff3ce0", depthWrite: false }),
+  );
+  palm.scale.setScalar(0.06 / handBoneScale(hand));
+  palm.position.copy(palmCenterLocal(hand));
+  palm.userData.isEquipment = true;
+  palm.frustumCulled = false;
+  hand.add(palm);
   return group;
 }
 
 /* ── Structural fingers ─────────────────────────────────────────── */
 
 /**
- * The warrior skin's hand has little to no modeled finger geometry —
- * rotating the finger BONES (applyFingerGrip) moves nothing visible, so
- * the fist never reads as "gripping". This builds simple segmented
- * fingers as meshes PARENTED TO THE BONE CHAIN: they follow every
- * animation and the closed-grip pose renders a real fist around the
- * sword hilt.
+ * Many skin rigs ship little to no modeled finger geometry — rotating
+ * the finger BONES (applyFingerGrip) then moves nothing visible, so the
+ * fist never reads as "gripping". This builds simple segmented fingers
+ * as meshes PARENTED TO THE BONE CHAIN: they follow every animation and
+ * the closed-grip pose renders a real fist around the sword hilt.
  *
- * Segment lengths come from the GLB itself (bone.position of each child
- * joint), so proportions match the rig. Sizes are authored in bone-local
- * units (Mixamo cm-scale) and inherit the bone's world scale.
+ * Segment lengths come from the rig itself (each joint's bone child
+ * position), so proportions match any skeleton — suffix-tolerant lookup
+ * covers rigs like moda-savasci.glb (Index1_00…) that only expose one
+ * finger chain.
  *
  * Returns the created meshes (caller adds them to the cleanup list).
  */
 export function buildFingerMeshes(clone: THREE.Object3D): THREE.Mesh[] {
+  const hand = rightHandBone(clone);
+  if (!hand) return [];
   const glove = new THREE.MeshStandardMaterial({
     color: "#6b4527", roughness: 0.75, metalness: 0.08,
   });
@@ -256,22 +332,21 @@ export function buildFingerMeshes(clone: THREE.Object3D): THREE.Mesh[] {
   });
   const created: THREE.Mesh[] = [];
 
-  for (const name of FINGER_BONES) {
-    const bone = clone.getObjectByName(name);
-    if (!bone) continue;
+  for (const bone of fingerBonesOf(hand)) {
     // Segment length = distance to the next joint (child bone position).
-    const childName = name.replace(/(\d)$/, (d) => String(Number(d) + 1));
-    const child = clone.getObjectByName(childName);
-    const segLen = child
-      ? child.position.length()
+    const next = bone.children.find(
+      (c) => (c as THREE.Bone).isBone && !/_?end$/i.test(c.name),
+    );
+    const segLen = next
+      ? next.position.length()
       : Math.max(bone.position.length() * 0.8, 2.0); // tip segment
-    const isThumb = name.includes("Thumb");
-    const isTip = !child;
-    const radius = (isThumb ? 0.95 : 0.82) * (isTip ? 0.8 : name.endsWith("1") ? 1 : 0.9);
+    const isThumb = /thumb/i.test(bone.name);
+    const phalanx = phalanxOf(bone.name);
+    const radius = (isThumb ? 0.95 : 0.82) * (next ? (phalanx === 1 ? 1 : 0.9) : 0.8);
 
     const seg = new THREE.Mesh(
       new THREE.CapsuleGeometry(radius, Math.max(segLen - radius * 1.6, 0.4), 4, 8),
-      isTip ? knuckle : glove,
+      next ? glove : knuckle,
     );
     // Bones run along local +Y (Mixamo): span from this joint toward the child.
     seg.position.y = segLen / 2;
