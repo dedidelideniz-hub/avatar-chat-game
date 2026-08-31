@@ -14,6 +14,9 @@ import {
   SWORD_TARGET_WORLD_LEN,
   SWORD_GRIP_BAND_MODEL_Y,
   SWORD_GRIP_SCALE,
+  SWORD_CONTAINER_MODEL_POS,
+  SWORD_CONTAINER_MODEL_ROT,
+  SWORD_CONTAINER_MODEL_SCALE,
   applyFingerGrip,
   buildFingerMeshes,
   buildStructuralSword,
@@ -188,10 +191,16 @@ function useRoyalGear(
         // değil, bone'a eklenen boş bir kapsayıcı grubun ÇOCUĞU olarak
         // ekleniyor. Offset'ler HandGrip.ts'te tek yerden ayarlanıyor.
         const grip = new THREE.Group();
+        // The carrier alone follows the right-hand bone. Keep the model's
+        // pivot correction inside a second wrapper so the hand anchor is
+        // never mixed with the GLB's own origin.
         grip.rotation.set(...SWORD_GRIP_ROT);
         grip.position.set(...SWORD_GRIP_POS);
         grip.position.y -= 0.38;
         const pivot = new THREE.Group();
+        pivot.position.set(...SWORD_CONTAINER_MODEL_POS);
+        pivot.rotation.set(...SWORD_CONTAINER_MODEL_ROT);
+        pivot.scale.setScalar(SWORD_CONTAINER_MODEL_SCALE);
         grip.add(pivot);
         const attachSwordModel = (source: THREE.Object3D) => {
           const model = SkeletonUtils.clone(source);
@@ -201,8 +210,10 @@ function useRoyalGear(
           const length = Math.max(size.y, 1e-4);
           const itemScale = SWORD_TARGET_WORLD_LEN / (length * handBoneScale(hand));
           model.scale.setScalar(itemScale);
-          // Hilt center (modelY = 0.12) lands exactly on the sword origin.
-          model.position.y = -SWORD_GRIP_BAND_MODEL_Y * itemScale;
+          // The container owns the requested pivot correction. Do not add
+          // another model-space translation here; that was the source of
+          // the separated grip/blade appearance.
+          model.position.set(0, 0, 0);
           model.traverse((o: THREE.Object3D) => {
             o.userData.isEquipment = true;
             o.frustumCulled = false;
@@ -233,6 +244,7 @@ function useRoyalGear(
             royalSwordLoading.set(url, promise);
           }
         }
+        // Carrier scale is kept separate from the model container scale.
         grip.scale.setScalar(SWORD_GRIP_SCALE);
         grip.userData.isEquipment = true;
         grip.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });

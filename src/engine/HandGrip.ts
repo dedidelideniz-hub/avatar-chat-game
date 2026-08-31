@@ -156,6 +156,7 @@ export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D):
   sword.position.copy(palmCenterLocal(hand));
   sword.position.y -= 0.38;
   sword.scale.setScalar(SWORD_GRIP_SCALE);
+  sword.updateMatrixWorld(true);
 }
 
 /* ── Finger grip (closed fist) ──────────────────────────────────── */
