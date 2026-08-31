@@ -18,6 +18,17 @@ import * as THREE from "three";
  * very first frames before calibration lands.
  */
 
+/* ── Kılıç KAPSAYICI GRUP ayarları (ince ayar) ──────────────────── */
+
+/**
+ * Kılıç GLB'nin origin'i saptta OLMADIĞI için kılıç doğrudan el bone'una
+ * değil, bone'a bağlı boş bir kapsayıcı grup içine ekleniyor. Bu sabitler
+ * kapsayıcı İÇİNDEKİ model offset'leridir — ince ayar için TEK yer.
+ */
+export const SWORD_CONTAINER_MODEL_POS: [number, number, number] = [0, -0.2, 0]; // sapı ele oturt
+export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [Math.PI / 2, 0, 0]; // ucu yukarı/ileri
+export const SWORD_CONTAINER_MODEL_SCALE = 0.5; // el boyutuna uygun küçültme
+
 /* ── MEASURED grip constants ────────────────────────────────────── */
 
 /** Right-hand bone local axes at IDLE, expressed in world space —

@@ -183,24 +183,22 @@ function useRoyalGear(
         // Optional joint debug: ?handDebug=1 (sticky via localStorage).
         const debugMarkers = markHandJoints(clone);
         if (debugMarkers) attached.push(debugMarkers);
-        // ── Sword attach: GLB when ready, structural fallback INSTANTLY ──
-        // The structural model shares the GLB's model space (length 1.14,
-        // hilt center at modelY 0.12), so the grip code is identical and
-        // the swap is seamless. First equip always shows a sword.
-        const sword = new THREE.Group();
-        sword.rotation.set(...SWORD_GRIP_ROT);
-        sword.position.set(...SWORD_GRIP_POS);
-        sword.position.y -= 0.38;
+        // ── Kılıç: el bone → boş KAPSAYICI grup → kılıç model ──
+        // Kılıcın GLB origin'i saptta OLMADIĞI için model doğrudan bone'a
+        // değil, bone'a eklenen boş bir kapsayıcı grubun ÇOCUĞU olarak
+        // ekleniyor. Offset'ler HandGrip.ts'te tek yerden ayarlanıyor.
+        const grip = new THREE.Group();
+        grip.rotation.set(...SWORD_GRIP_ROT);
+        grip.position.set(...SWORD_GRIP_POS);
+        grip.position.y -= 0.38;
         const pivot = new THREE.Group();
-        sword.add(pivot);
+        grip.add(pivot);
         const attachSwordModel = (source: THREE.Object3D) => {
           const model = SkeletonUtils.clone(source);
           model.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const length = Math.max(size.y, 1e-4);
-          // Chain: model(x1) → pivot(x1) → sword(x1) → hand bone(boneAvg).
-          // NO fitToBone here — double compensation made a giant sword.
           const itemScale = SWORD_TARGET_WORLD_LEN / (length * handBoneScale(hand));
           model.scale.setScalar(itemScale);
           // Hilt center (modelY = 0.12) lands exactly on the sword origin.
@@ -235,12 +233,12 @@ function useRoyalGear(
             royalSwordLoading.set(url, promise);
           }
         }
-        sword.scale.setScalar(SWORD_GRIP_SCALE);
-        sword.userData.isEquipment = true;
-        sword.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
-        hand.add(sword);
-        attached.push(sword);
-        refs.royalSword.current = sword;
+        grip.scale.setScalar(SWORD_GRIP_SCALE);
+        grip.userData.isEquipment = true;
+        grip.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
+        hand.add(grip);
+        attached.push(grip);
+        refs.royalSword.current = grip;
         refs.royalHandBone.current = hand;
         refs.gripCalibrated.current = false;
       }
