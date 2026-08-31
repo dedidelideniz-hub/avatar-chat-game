@@ -154,7 +154,8 @@ export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D):
   sword.position.y -= 0.38;
   // Preserve the bone-space normalisation: grip scale must stay 1/boneScale
   // (× SWORD_GRIP_SCALE) so the sword renders at the intended world size.
-  sword.scale.setScalar((1 / handBoneScale(hand)) * SWORD_GRIP_SCALE);
+  // Ölçek telafisini KORU: kalibrasyon yalnız pozisyon+rotasyon günceller,
+  // ölçeğe dokunmaz (dev kılıç regresyonunu önler).
   sword.updateMatrixWorld(true);
 }
 

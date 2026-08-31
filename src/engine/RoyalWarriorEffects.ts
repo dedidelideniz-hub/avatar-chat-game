@@ -187,9 +187,15 @@ function useRoyalGear(
         const debugMarkers = markHandJoints(clone);
         if (debugMarkers) attached.push(debugMarkers);
         // ── Kılıç: el bone → boş KAPSAYICI grup → kılıç model ──
-        // Kılıcın GLB origin'i saptta OLMADIĞI için model doğrudan bone'a
-        // değil, bone'a eklenen boş bir kapsayıcı grubun ÇOCUĞU olarak
-        // ekleniyor. Offset'ler HandGrip.ts'te tek yerden ayarlanıyor.
+        // Ölçek MATEMATİĞİ (tek kaynak):
+        //   grip.scale × boneScale × pivot.scale × model.scale
+        //   = SWORD_TARGET_WORLD_LEN / SWORD_MODEL_LEN (≈0.75 dünya)
+        // Dünya kılıç uzunluğu sabit SWORD_GRIP_SCALE ile çarpılır; bone
+        // ölçeği tam tersiyle telafi edilir. handBoneScale, bone sıcak
+        // klon matrisi henüz güncel değilken 1 dönebilir — 1/0.00437 = 229×
+        // dev kılıç görüntüsünün kök nedeni buydu. Güncel değer: 0.00437.
+        clone.updateWorldMatrix(true, true);
+        const boneScale = Math.max(handBoneScale(hand), 1e-9);
         const grip = new THREE.Group();
         // The carrier alone follows the right-hand bone. Keep the model's
         // pivot correction inside a second wrapper so the hand anchor is
@@ -197,10 +203,7 @@ function useRoyalGear(
         grip.rotation.set(...SWORD_GRIP_ROT);
         grip.position.set(...SWORD_GRIP_POS);
         grip.position.y -= 0.38;
-        // Bone-space ölçek düzeltmesi: bu rig'te el bone 0.00437 ölçekli,
-        // yani grip 0.68 gibi küçük bir değerle çok küçük kalır. Dünya
-        // ölçeğini sabitlemek için boneScale ile normalize edilir.
-        grip.scale.setScalar(1 / handBoneScale(hand) * SWORD_GRIP_SCALE);
+        grip.scale.setScalar(SWORD_GRIP_SCALE / boneScale);
         const pivot = new THREE.Group();
         pivot.position.set(...SWORD_CONTAINER_MODEL_POS);
         pivot.rotation.set(...SWORD_CONTAINER_MODEL_ROT);
@@ -212,8 +215,11 @@ function useRoyalGear(
           const box = new THREE.Box3().setFromObject(model);
           const size = box.getSize(new THREE.Vector3());
           const length = Math.max(size.y, 1e-4);
-          const itemScale = SWORD_TARGET_WORLD_LEN / (length * handBoneScale(hand));
-          model.scale.setScalar(itemScale);
+          // Dünya ölçek zinciri: grip × bone × pivot × model.
+          // model.scale = TARGET_WORLD / (grip.scale × boneScale ×
+          //   pivot.scale × length) — kılıç her durumda aynı dünya boyu.
+          const chain = (grip.scale.x * boneScale * pivot.scale.x) || 1;
+          model.scale.setScalar(SWORD_TARGET_WORLD_LEN / (length * chain));
           // The container owns the requested pivot correction. Do not add
           // another model-space translation here; that was the source of
           // the separated grip/blade appearance.
