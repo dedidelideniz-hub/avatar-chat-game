@@ -89,8 +89,8 @@ function useRoyalGear(
       if (head) {
         const crown = new THREE.Group();
         // Shared glow materials — pulsed together in the shine loop below.
-        const bandMat = mat(gold, { metalness: 0.85, roughness: 0.22, emissive: "#6b4a10", emissiveIntensity: 0.35 });
-        const spikeMat = mat(gold, { metalness: 0.85, roughness: 0.2, emissive: "#8a6414", emissiveIntensity: 0.35 });
+        const bandMat = mat(gold, { metalness: 0.85, roughness: 0.22, emissive: "#b07d18", emissiveIntensity: 0.35 });
+        const spikeMat = mat(gold, { metalness: 0.85, roughness: 0.2, emissive: "#c09332", emissiveIntensity: 0.35 });
         refs.royalGlowMats.current.push(bandMat as THREE.MeshStandardMaterial, spikeMat as THREE.MeshStandardMaterial);
         const band = new THREE.Mesh(
           new THREE.TorusGeometry(0.115 * H, 0.016 * H, 8, 22),
@@ -137,6 +137,21 @@ function useRoyalGear(
       const hand = findBoneRegistry(clone, "MAIN_HAND");
       if (hand) {
         const sword = new THREE.Group();
+        // ── GRIP ALIGNMENT (measured from skin-savasci.glb bind pose) ──
+        // mixamorig:RightHand local axes in WORLD space:
+        //   +X = (0,1,0)  world UP   |   +Y = (1,0,0) along the FINGERS
+        //   +Z = (0,0,-1) backward
+        // Without this offset the blade (sword-local +Y) extended ALONG the
+        // fingers — the sword hung off the hand like a stick. Rotate the
+        // sword so the blade exits the TOP of the fist (≈ world up).
+        // Euler from the measured bind pose (analyze-hand.cjs).
+        sword.rotation.set(0.0056, -0.0055, -1.5441);
+        // Nudge the grip into the palm (hand +Y ≈ finger axis, world ≈ +X).
+        sword.position.set(0, 0.03 * H, 0);
+        // Inner pivot: the idle flourish animates THIS, so the grip
+        // alignment above is never overwritten by the flourish loop.
+        const pivot = new THREE.Group();
+        sword.add(pivot);
         // Sharp, gleaming blade: a 4-sided pyramid (points +Y) flattened to a
         // thin edge so the tip reads clearly. Shares the crown's pulse.
         const bladeMat = mat("#eef4fb", { metalness: 0.95, roughness: 0.08, emissive: "#9fd0ff", emissiveIntensity: 0.4 });
@@ -144,34 +159,34 @@ function useRoyalGear(
         const blade = new THREE.Mesh(new THREE.ConeGeometry(0.014 * H, 0.32 * H, 4), bladeMat);
         blade.scale.z = 0.16;
         blade.position.y = 0.19 * H;
-        sword.add(blade);
+        pivot.add(blade);
         // Bright glowing point at the tip.
         const tipGlow = new THREE.Mesh(
           new THREE.SphereGeometry(0.018 * H, 8, 6),
           mat("#bfe3ff", { emissive: "#7fc7ff", emissiveIntensity: 1.6 }),
         );
         tipGlow.position.y = 0.35 * H;
-        sword.add(tipGlow);
+        pivot.add(tipGlow);
         refs.royalTipMats.current.push(tipGlow.material as THREE.MeshStandardMaterial);
         const guard = new THREE.Mesh(
           new THREE.BoxGeometry(0.075 * H, 0.014 * H, 0.02 * H),
           mat(goldDeep, { metalness: 0.8, roughness: 0.2 }),
         );
         guard.position.y = 0.035 * H;
-        sword.add(guard);
+        pivot.add(guard);
         const grip = new THREE.Mesh(
           new THREE.CylinderGeometry(0.01 * H, 0.01 * H, 0.06 * H, 8),
           mat("#5a3a1e", { roughness: 0.8 }),
         );
-        sword.add(grip);
+        pivot.add(grip);
         const pommel = new THREE.Mesh(
           new THREE.SphereGeometry(0.014 * H, 8, 6),
           mat(gold, { metalness: 0.8, roughness: 0.25 }),
         );
         pommel.position.y = -0.035 * H;
-        sword.add(pommel);
+        pivot.add(pommel);
         fitToBone(hand, sword);
-        refs.royalSword.current = sword;
+        refs.royalSword.current = pivot;
       }
     }
 
@@ -343,11 +358,11 @@ export function useRoyalWarriorEffects(
     const baseOf = (m: THREE.MeshStandardMaterial) => baseEmissive.current.get(m) ?? 0.35;
     for (const m of royalGlowMats.current) {
       const base = baseOf(m);
-      m.emissiveIntensity = base + 1.1 * sweep(0) + 0.7 * sweep(1.3);
+      m.emissiveIntensity = base + 2.6 * sweep(0) + 1.6 * sweep(1.3);
     }
     for (const m of royalTipMats.current) {
       const base = baseOf(m);
-      m.emissiveIntensity = base + 1.4 * sweep(0.6);
+      m.emissiveIntensity = base + 2.4 * sweep(0.6);
     }
 
     // ── Idle flourish — ONLY while the character stands still ──
