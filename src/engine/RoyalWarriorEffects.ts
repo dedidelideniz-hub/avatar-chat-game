@@ -92,36 +92,29 @@ function useRoyalGear(
         const bandMat = mat(gold, { metalness: 0.85, roughness: 0.22, emissive: "#b07d18", emissiveIntensity: 0.35 });
         const spikeMat = mat(gold, { metalness: 0.85, roughness: 0.2, emissive: "#c09332", emissiveIntensity: 0.35 });
         refs.royalGlowMats.current.push(bandMat as THREE.MeshStandardMaterial, spikeMat as THREE.MeshStandardMaterial);
-        // Crown sized to the MEASURED head (skin-savasci.glb, H = 1.832):
-        // head half-width 0.099 raw, head top +0.144H above the head bone.
-        // Band radius 0.062H ≈ 1.25× head half-width; band centered just
-        // above eye level (0.096H above the head-bone origin).
         const band = new THREE.Mesh(
-          new THREE.TorusGeometry(0.062 * H, 0.009 * H, 8, 22),
+          new THREE.TorusGeometry(0.115 * H, 0.016 * H, 8, 22),
           bandMat,
         );
         band.rotation.x = Math.PI / 2;
-        band.position.y = 0.096 * H;
         crown.add(band);
         for (let i = 0; i < 6; i++) {
           const a = (i / 6) * Math.PI * 2;
           const spike = new THREE.Mesh(
-            new THREE.ConeGeometry(0.011 * H, 0.034 * H, 6),
+            new THREE.ConeGeometry(0.022 * H, 0.06 * H, 6),
             spikeMat,
           );
-          spike.position.set(Math.cos(a) * 0.055 * H, 0.12 * H, Math.sin(a) * 0.055 * H);
+          spike.position.set(Math.cos(a) * 0.1 * H, 0.045 * H, Math.sin(a) * 0.1 * H);
           crown.add(spike);
         }
         const jewel = new THREE.Mesh(
-          new THREE.SphereGeometry(0.012 * H, 10, 8),
+          new THREE.SphereGeometry(0.02 * H, 10, 8),
           mat("#e34b3f", { roughness: 0.25, emissive: "#8a1f16", emissiveIntensity: 0.5 }),
         );
-        // Front of the band — head-local +Z is the model's face direction
-        // (measured bind axes: +Z → world −Z = front).
-        jewel.position.set(0, 0.096 * H, 0.062 * H);
+        jewel.position.set(0, 0.09 * H, 0);
         crown.add(jewel);
         refs.royalGlowMats.current.push(jewel.material as THREE.MeshStandardMaterial);
-        crown.position.y = 0; // height now carried by the band offset
+        crown.position.y = 0.045 * H;
         fitToBone(head, crown);
       }
     }
@@ -144,16 +137,15 @@ function useRoyalGear(
       const hand = findBoneRegistry(clone, "MAIN_HAND");
       if (hand) {
         const sword = new THREE.Group();
-        // ── GRIP ALIGNMENT (measured from skin-savasci.glb IDLE pose) ──
-        // RightHand local axes in WORLD space while the arm hangs (the pose
-        // players actually see — the bind/T-pose is never rendered):
-        //   +Y = (0.25,-0.93,-0.27)  FINGERS point DOWN
-        //   -Y = (-0.25, 0.93, 0.27)  UP, out of the top of the fist
-        //   +X = (0.95, 0.19, 0.25)   forward
-        // Map the blade (sword-local +Y) to hand-local (0.25,-1,0): straight
-        // UP out of the fist with no inward drift toward the torso, pommel
-        // below the hand. Euler (0,0,-2.8966) = Rz(-166°), measured.
-        sword.rotation.set(0, 0, -2.8966);
+        // ── GRIP ALIGNMENT (measured from skin-savasci.glb bind pose) ──
+        // mixamorig:RightHand local axes in WORLD space:
+        //   +X = (0,1,0)  world UP   |   +Y = (1,0,0) along the FINGERS
+        //   +Z = (0,0,-1) backward
+        // Without this offset the blade (sword-local +Y) extended ALONG the
+        // fingers — the sword hung off the hand like a stick. Rotate the
+        // sword so the blade exits the TOP of the fist (≈ world up).
+        // Euler from the measured bind pose (analyze-hand.cjs).
+        sword.rotation.set(0.0056, -0.0055, -1.5441);
         // Nudge the grip into the palm (hand +Y ≈ finger axis, world ≈ +X).
         sword.position.set(0, 0.03 * H, 0);
         // Inner pivot: the idle flourish animates THIS, so the grip
