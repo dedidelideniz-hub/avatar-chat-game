@@ -1254,6 +1254,8 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   const royalSkin = skinUrl === "/models/moda-savasci.glb" || skinUrl === "/models/skin-savasci.glb";
   const royalSparks = useRef<THREE.Mesh[]>([]);
   const royalSparksLaunched = useRef(false);
+  // Materials that share the gentle crown/blade shine pulse.
+  const royalGlowMats = useRef<THREE.MeshStandardMaterial[]>([]);
 
   useEffect(() => {
     if (!royalSkin || !clone) return;
@@ -1290,9 +1292,13 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       const head = findBoneRegistry(clone, "HEAD");
       if (head) {
         const crown = new THREE.Group();
+        // Shared glow materials — pulsed together in the shine loop below.
+        const bandMat = mat(gold, { metalness: 0.85, roughness: 0.22, emissive: "#6b4a10", emissiveIntensity: 0.35 });
+        const spikeMat = mat(gold, { metalness: 0.85, roughness: 0.2, emissive: "#8a6414", emissiveIntensity: 0.35 });
+        royalGlowMats.current.push(bandMat as THREE.MeshStandardMaterial, spikeMat as THREE.MeshStandardMaterial);
         const band = new THREE.Mesh(
           new THREE.TorusGeometry(0.115 * H, 0.016 * H, 8, 22),
-          mat(gold, { metalness: 0.85, roughness: 0.22, emissive: "#6b4a10", emissiveIntensity: 0.35 }),
+          bandMat,
         );
         band.rotation.x = Math.PI / 2;
         crown.add(band);
