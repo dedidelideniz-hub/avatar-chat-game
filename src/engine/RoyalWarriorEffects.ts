@@ -14,9 +14,6 @@ import {
   SWORD_TARGET_WORLD_LEN,
   SWORD_GRIP_BAND_MODEL_Y,
   SWORD_GRIP_SCALE,
-  SWORD_CONTAINER_MODEL_POS,
-  SWORD_CONTAINER_MODEL_ROT,
-  SWORD_CONTAINER_MODEL_SCALE,
   applyFingerGrip,
   buildFingerMeshes,
   buildStructuralSword,
@@ -197,17 +194,12 @@ function useRoyalGear(
         clone.updateWorldMatrix(true, true);
         const boneScale = Math.max(handBoneScale(hand), 1e-9);
         const grip = new THREE.Group();
-        // The carrier alone follows the right-hand bone. Keep the model's
-        // pivot correction inside a second wrapper so the hand anchor is
-        // never mixed with the GLB's own origin.
         grip.rotation.set(...SWORD_GRIP_ROT);
         grip.position.set(...SWORD_GRIP_POS);
-        grip.position.y -= 0.38;
         grip.scale.setScalar(SWORD_GRIP_SCALE / boneScale);
+        // Model pivot yönetimi tek yerde: pivot'un rotasyonu kalibrasyonda
+        // elin canlı pozuyla set edilir (calibrateSwordGrip, grip'e uygular).
         const pivot = new THREE.Group();
-        pivot.position.set(...SWORD_CONTAINER_MODEL_POS);
-        pivot.rotation.set(...SWORD_CONTAINER_MODEL_ROT);
-        pivot.scale.setScalar(SWORD_CONTAINER_MODEL_SCALE);
         grip.add(pivot);
         const attachSwordModel = (source: THREE.Object3D) => {
           const model = SkeletonUtils.clone(source);
@@ -254,8 +246,7 @@ function useRoyalGear(
             royalSwordLoading.set(url, promise);
           }
         }
-        // Carrier scale is kept separate from the model container scale.
-        grip.scale.setScalar(1 / handBoneScale(hand) * SWORD_GRIP_SCALE);
+        grip.userData.isEquipment = true;
         grip.userData.isEquipment = true;
         grip.traverse((o) => { o.userData.isEquipment = true; o.frustumCulled = false; });
         hand.add(grip);

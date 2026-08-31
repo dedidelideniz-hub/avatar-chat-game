@@ -26,7 +26,7 @@ import * as THREE from "three";
  * kapsayıcı İÇİNDEKİ model offset'leridir — ince ayar için TEK yer.
  */
 export const SWORD_CONTAINER_MODEL_POS: [number, number, number] = [0, -0.2, 0]; // sapı ele oturt
-export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [Math.PI / 2, 0, 0]; // ucu yukarı/ileri
+export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [0, 0, 0]; // kılıcın kendi ekseni korunur
 export const SWORD_CONTAINER_MODEL_SCALE = 0.5; // el boyutuna uygun küçültme
 
 /* ── MEASURED grip constants ────────────────────────────────────── */
@@ -151,9 +151,6 @@ export function palmCenterLocal(hand: THREE.Object3D): THREE.Vector3 {
 export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D): void {
   sword.quaternion.copy(handWorldQuat(hand).invert());
   sword.position.copy(palmCenterLocal(hand));
-  sword.position.y -= 0.38;
-  // Preserve the bone-space normalisation: grip scale must stay 1/boneScale
-  // (× SWORD_GRIP_SCALE) so the sword renders at the intended world size.
   // Ölçek telafisini KORU: kalibrasyon yalnız pozisyon+rotasyon günceller,
   // ölçeğe dokunmaz (dev kılıç regresyonunu önler).
   sword.updateMatrixWorld(true);
