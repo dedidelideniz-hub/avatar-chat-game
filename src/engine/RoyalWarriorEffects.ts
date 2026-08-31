@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
+import { GLTFLoader, SkeletonUtils } from "three-stdlib";
 import {
   equipMat,
   findBone as findBoneRegistry,
@@ -22,6 +23,13 @@ const ROYAL_SKIN_URLS = new Set([
   "/models/moda-savasci.glb", // legacy royal path
   "/models/skin-savasci.glb", // royal warrior
 ]);
+
+/** CC0 kraliyet kılıcı (Sword606 — cc0gameassets lowpoly pack, public domain). */
+const ROYAL_SWORD_URL = "/models/royal-kilic.glb";
+
+/** Loaded royal-sword scene cache + in-flight loads (non-React). */
+const royalSwordCache = new Map<string, THREE.Object3D>();
+const royalSwordLoading = new Map<string, Promise<void>>();
 
 export const isRoyalWarriorSkin = (skinUrl: string | null) =>
   skinUrl != null && ROYAL_SKIN_URLS.has(skinUrl);
@@ -160,57 +168,60 @@ function useRoyalGear(
           const phalanx = name.endsWith("1") ? 0.16 : 0.22;
           closeFinger(bone, isThumb ? 0.18 : phalanx);
         }
+        // ── Kraliyet kılıcı: gerçek CC0 GLB modeli ──
+        // Sword606 (cc0gameassets lowpoly pack, public domain): 1.14 birim
+        // uzunluk, +Y ekseni boyunca, kavrama bandı minY+0.03…+0.21.
         const sword = new THREE.Group();
-        // ── GRIP ALIGNMENT (measured from skin-savasci.glb idle pose) ──
-        // Values are HAND-LOCAL units (Mixamo cm-scale bone space) computed
-        // headless from the live idle clip — not guesses:
-        //  • worldUp expressed in hand-local space = (-0.94, -0.04, +0.34)
-        //  • this Euler maps sword +Y (blade) onto that axis, so while the
-        //    character stands the blade reads as vertical out of the fist.
-        //  • position = palm center (avg of the five finger-base bones,
-        //    (-0.54, 11.58, -0.81)) minus the grip-mesh height along the
-        //    blade axis → the hilt sits INSIDE the fist, not at the wrist.
-        // The old bind-pose values kept the sword at the WRIST (y≈0.06) with
-        // the blade pointing sideways — the "floating stick" in screenshots.
+        // ── GRIP (skin-savasci.glb idle pozu ölçümü) ──
+        // • El-local worldUp = (-0.94, -0.04, +0.34) → bu Euler namluyu idle
+        //   pozunda diktir (düz durunca kılıç yukarı bakar).
+        // • position: avuç merkezi (-0.54, 11.58, -0.81) el-local; GLB'nin
+        //   kavrama merkezi (minY+0.12) yumruğun içine düşecek şekilde −0.12
+        //   namlu ekseni boyunca kaydırılır (aşağıda item translate edilir).
         sword.rotation.set(0.3662, 0.336, 1.4832);
         sword.position.set(0.32, 11.6, -1.12);
-        // Inner pivot: the idle flourish animates THIS, so the grip
-        // alignment above is never overwritten by the flourish loop.
         const pivot = new THREE.Group();
         sword.add(pivot);
-        // Sharp, gleaming blade: a 4-sided pyramid (points +Y) flattened to a
-        // thin edge so the tip reads clearly. Shares the crown's pulse.
-        const bladeMat = mat("#eef4fb", { metalness: 0.95, roughness: 0.08, emissive: "#9fd0ff", emissiveIntensity: 0.4 });
-        refs.royalGlowMats.current.push(bladeMat as THREE.MeshStandardMaterial);
-        const blade = new THREE.Mesh(new THREE.ConeGeometry(0.014 * H, 0.32 * H, 4), bladeMat);
-        blade.scale.z = 0.16;
-        blade.position.y = 0.19 * H;
-        pivot.add(blade);
-        // Bright glowing point at the tip.
-        const tipGlow = new THREE.Mesh(
-          new THREE.SphereGeometry(0.018 * H, 8, 6),
-          mat("#bfe3ff", { emissive: "#7fc7ff", emissiveIntensity: 1.6 }),
-        );
-        tipGlow.position.y = 0.35 * H;
-        pivot.add(tipGlow);
-        refs.royalTipMats.current.push(tipGlow.material as THREE.MeshStandardMaterial);
-        const guard = new THREE.Mesh(
-          new THREE.BoxGeometry(0.075 * H, 0.014 * H, 0.02 * H),
-          mat(goldDeep, { metalness: 0.8, roughness: 0.2 }),
-        );
-        guard.position.y = 0.035 * H;
-        pivot.add(guard);
-        const grip = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.01 * H, 0.01 * H, 0.06 * H, 8),
-          mat("#5a3a1e", { roughness: 0.8 }),
-        );
-        pivot.add(grip);
-        const pommel = new THREE.Mesh(
-          new THREE.SphereGeometry(0.014 * H, 8, 6),
-          mat(gold, { metalness: 0.8, roughness: 0.25 }),
-        );
-        pommel.position.y = -0.035 * H;
-        pivot.add(pommel);
+        const gripBone = hand;
+        const attachSwordModel = (scene: THREE.Object3D) => {
+          const model = SkeletonUtils.clone(scene);
+          model.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(model);
+          const size = box.getSize(new THREE.Vector3());
+          const length = Math.max(size.y, 1e-4);
+          // Hedef dünya uzunluğu ~0.85 (karakter boyu 1.92'ye göre kılıç oranı).
+          // dünya uzunluğu = modelLen × itemScale × boneWorldScale
+          const targetWorld = 0.85;
+          gripBone.updateWorldMatrix(true, false);
+          const boneWs = gripBone.getWorldScale(new THREE.Vector3());
+          const boneAvg = (boneWs.x + boneWs.y + boneWs.z) / 3 || 1e-6;
+          const itemScale = targetWorld / (length * boneAvg);
+          model.scale.setScalar(itemScale);
+          // Kavrama merkezi minY+0.12 (ölçüldü) → pivot origin oraya gelir:
+          model.position.y = -0.12 * itemScale;
+          model.traverse((o: THREE.Object3D) => {
+            o.userData.isEquipment = true;
+            o.frustumCulled = false;
+            const mesh = o as THREE.Mesh;
+            if (mesh.isMesh) mesh.renderOrder = 999;
+          });
+          pivot.add(model);
+          attached.push(model);
+        };
+        const url = ROYAL_SWORD_URL;
+        const cached = royalSwordCache.get(url);
+        if (cached) {
+          attachSwordModel(cached);
+        } else if (!royalSwordLoading.has(url)) {
+          const promise = new GLTFLoader().loadAsync(url)
+            .then((gltf) => {
+              royalSwordCache.set(url, gltf.scene);
+              royalSwordLoading.delete(url);
+              attachSwordModel(gltf.scene);
+            })
+            .catch(() => { royalSwordLoading.delete(url); });
+          royalSwordLoading.set(url, promise);
+        }
         fitToBone(hand, sword);
         refs.royalSword.current = pivot;
       }
@@ -318,9 +329,6 @@ export function useRoyalWarriorEffects(
   const royalSword = useRef<THREE.Group | null>(null);
   const warriorSmoke = useRef<THREE.Mesh[]>([]);
   const warriorSmokeClock = useRef(0);
-  // Flourish state: 0 = idle wait, >0 = playing (seconds remaining).
-  const flourishT = useRef(0);
-  const flourishWait = useRef(2.5 + Math.random() * 3);
   // Base emissive per glow material so the shimmer never drifts.
   const baseEmissive = useRef(new Map<THREE.MeshStandardMaterial, number>());
 
@@ -391,37 +399,10 @@ export function useRoyalWarriorEffects(
       m.emissiveIntensity = base + 2.4 * sweep(0.6);
     }
 
-    // ── Idle flourish — ONLY while the character stands still ──
-    const sword = royalSword.current;
-    if (!sword) return;
-    if (movingRef.current) {
-      // Walking: abort any flourish and settle the sword back to rest.
-      flourishT.current = 0;
-      const k = Math.min(1, 12 * dt);
-      sword.rotation.z *= 1 - k;
-      sword.rotation.x *= 1 - k;
-      sword.rotation.y *= 1 - k;
-      // Hold the wait timer so it never fires mid-walk.
-      return;
-    }
-    if (flourishT.current > 0) {
-      flourishT.current = Math.max(0, flourishT.current - dt);
-      const total = 1.4;
-      const p = 1 - flourishT.current / total; // 0 → 1
-      // Smooth ease in/out; returns to exactly 0 at both ends.
-      const ease = Math.sin(p * Math.PI);
-      const ease2 = ease * ease;
-      sword.rotation.z = ease2 * 0.5;   // elegant tilt
-      sword.rotation.x = ease2 * 0.25;  // slight forward lean
-      sword.rotation.y = ease * 0.9;    // the twirl
-      const tipBoost = baseEmissive.current.get(royalTipMats.current[0] ?? ({} as THREE.MeshStandardMaterial)) ?? 1.6;
-      for (const m of royalTipMats.current) m.emissiveIntensity = tipBoost + ease * 2.2;
-    } else if (flourishWait.current > 0) {
-      flourishWait.current -= dt;
-    } else {
-      flourishT.current = 1.4;
-      flourishWait.current = 4 + Math.random() * 4;
-    }
+    // ── Sword always rests straight (grip rotation is authoritative) ──
+    // The flourish twirl was removed: standing characters must hold the
+    // blade straight up. The shimmer above remains as the "shine" accent.
+    void movingRef;
   });
 
   return { royalSkin, warriorSmoke, warriorSmokeClock };
