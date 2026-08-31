@@ -14,6 +14,8 @@ import {
   SWORD_TARGET_WORLD_LEN,
   SWORD_GRIP_BAND_MODEL_Y,
   SWORD_GRIP_SCALE,
+  SWORD_CONTAINER_MODEL_POS,
+  SWORD_CONTAINER_MODEL_ROT,
   applyFingerGrip,
   buildFingerMeshes,
   buildStructuralSword,
@@ -197,9 +199,12 @@ function useRoyalGear(
         grip.rotation.set(...SWORD_GRIP_ROT);
         grip.position.set(...SWORD_GRIP_POS);
         grip.scale.setScalar(SWORD_GRIP_SCALE / boneScale);
-        // Model pivot yönetimi tek yerde: pivot'un rotasyonu kalibrasyonda
-        // elin canlı pozuyla set edilir (calibrateSwordGrip, grip'e uygular).
+        // Model pivot yönetimi tek yerde: pivot kılıcın model-space
+        // rotasyonunu taşır (SWORD_CONTAINER_MODEL_ROT). Kalibrasyon yalnız
+        // grip'in pozisyon+rotasyonunu günceller — pivot'a dokunmaz.
         const pivot = new THREE.Group();
+        pivot.position.set(...SWORD_CONTAINER_MODEL_POS);
+        pivot.rotation.set(...SWORD_CONTAINER_MODEL_ROT);
         grip.add(pivot);
         const attachSwordModel = (source: THREE.Object3D) => {
           const model = SkeletonUtils.clone(source);

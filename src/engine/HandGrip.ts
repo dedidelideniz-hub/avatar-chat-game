@@ -25,8 +25,8 @@ import * as THREE from "three";
  * değil, bone'a bağlı boş bir kapsayıcı grup içine ekleniyor. Bu sabitler
  * kapsayıcı İÇİNDEKİ model offset'leridir — ince ayar için TEK yer.
  */
-export const SWORD_CONTAINER_MODEL_POS: [number, number, number] = [0, -0.2, 0]; // sapı ele oturt
-export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [0, 0, 0]; // kılıcın kendi ekseni korunur
+export const SWORD_CONTAINER_MODEL_POS: [number, number, number] = [0, 0, 0]; // sap avuç merkezinde
+export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [Math.PI / 2, 0, Math.PI / 2]; // ucu yukarı/ileri
 export const SWORD_CONTAINER_MODEL_SCALE = 0.5; // el boyutuna uygun küçültme
 
 /* ── MEASURED grip constants ────────────────────────────────────── */
@@ -140,31 +140,18 @@ export function palmCenterLocal(hand: THREE.Object3D): THREE.Vector3 {
   return avg;
 }
 
-/** Blade'in gövdeye paralel kaymasını önleyen sabit eğim (radyan).
- *  Kalibrasyon sonrası namluya uygulanır: kılıç düz dik dururken aynı
- *  görünür; karakter öne/arkaya döndüğünde namlu gövdenin YANINDAN
- *  geçer, içine girmez. ~18° dışa açı. */
-export const SWORD_BLADE_TILT = 0.31;
-
 /**
  * Calibrate the sword grip from the hand's LIVE pose: blade vertical,
  * crossguard horizontal, hilt inside the fist. Called ONCE on the first
  * stationary frame (after the idle animation has settled); the grip then
  * stays FIXED in hand-local space, so the sword swings naturally with
  * the arm while walking and returns to vertical at rest. Works for any
- * rig — no baked per-file constants involved.
+ * rig — no baked per-file constants involved. Model-space rotation
+ * lives in the pivot (SWORD_CONTAINER_MODEL_ROT) — calibration never
+ * touches it, so the two can no longer fight each other.
  */
 export function calibrateSwordGrip(hand: THREE.Object3D, sword: THREE.Object3D): void {
   sword.quaternion.copy(handWorldQuat(hand).invert());
-  // Blade'i gövdeden dışa doğru hafifçe yatırt: karakter ön/arka profile
-  // döndüğünde namlu gövde içinden geçmek yerine yanında kalır. Eksen:
-  // kılıç local X (crossguard ekseni) etrafında tek sabit tilt.
-  sword.quaternion.multiply(
-    new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(1, 0, 0),
-      SWORD_BLADE_TILT,
-    ),
-  );
   sword.position.copy(palmCenterLocal(hand));
   // Ölçek telafisini KORU: kalibrasyon yalnız pozisyon+rotasyon günceller,
   // ölçeğe dokunmaz (dev kılıç regresyonunu önler).
