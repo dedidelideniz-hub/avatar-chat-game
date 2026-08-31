@@ -1306,7 +1306,7 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
           const a = (i / 6) * Math.PI * 2;
           const spike = new THREE.Mesh(
             new THREE.ConeGeometry(0.022 * H, 0.06 * H, 6),
-            mat(gold, { metalness: 0.85, roughness: 0.25 }),
+            spikeMat,
           );
           spike.position.set(Math.cos(a) * 0.1 * H, 0.045 * H, Math.sin(a) * 0.1 * H);
           crown.add(spike);
@@ -1340,12 +1340,18 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       const hand = findBoneRegistry(clone, "MAIN_HAND");
       if (hand) {
         const sword = new THREE.Group();
-        const blade = new THREE.Mesh(
-          new THREE.BoxGeometry(0.02 * H, 0.3 * H, 0.006 * H),
-          mat("#e8eef4", { metalness: 0.9, roughness: 0.12 }),
-        );
+        const bladeMat = mat("#eef4fb", { metalness: 0.95, roughness: 0.08, emissive: "#9fd0ff", emissiveIntensity: 0.4 });
+        royalGlowMats.current.push(bladeMat as THREE.MeshStandardMaterial);
+        const blade = new THREE.Mesh(new THREE.ConeGeometry(0.014 * H, 0.32 * H, 4), bladeMat);
+        blade.scale.z = 0.16;
         blade.position.y = 0.19 * H;
         sword.add(blade);
+        const tipGlow = new THREE.Mesh(
+          new THREE.SphereGeometry(0.018 * H, 8, 6),
+          mat("#bfe3ff", { emissive: "#7fc7ff", emissiveIntensity: 1.6 }),
+        );
+        tipGlow.position.y = 0.35 * H;
+        sword.add(tipGlow);
         const guard = new THREE.Mesh(
           new THREE.BoxGeometry(0.075 * H, 0.014 * H, 0.02 * H),
           mat(goldDeep, { metalness: 0.8, roughness: 0.2 }),
@@ -1424,6 +1430,14 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
       (s.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.9 * (1 - s.userData.age / 0.7));
       if (s.userData.age >= 0.7) s.visible = false;
     }
+  });
+
+  // Gentle "royal shine" pulse on crown + blade materials.
+  useFrame(({ clock }) => {
+    if (!royalSkin) return;
+    const t = clock.getElapsedTime();
+    const pulse = 0.28 + 0.36 * (0.5 + 0.5 * Math.sin(t * 2.2));
+    for (const m of royalGlowMats.current) m.emissiveIntensity = pulse;
   });
 
   // Warrior-only trail: small pooled smoke puffs, kept lightweight for mobile.
