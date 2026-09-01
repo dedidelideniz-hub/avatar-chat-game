@@ -73,6 +73,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
+import { levelFromWins, WINS_PER_LEVEL } from "@/lib/levels";
 
 const WORLD_W = 1600;
 const WORLD_H = 900;
@@ -976,6 +977,9 @@ export default function World() {
   const username = profile?.username ?? "Misafir";
   const config = profile?.avatar ?? DEFAULT_AVATAR;
   const isVip = profile?.vip ?? false;
+  const battleWins = profile?.battleWins ?? 0;
+  const level = profile?.level ?? levelFromWins(battleWins);
+  const nextLevelWins = level >= 10 ? null : level * WINS_PER_LEVEL;
   const vipUntil = profile?.vipUntil ?? 0;
   const bubbleColorId = profile?.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
   const bubbleDef = bubbleColorOf(bubbleColorId);
