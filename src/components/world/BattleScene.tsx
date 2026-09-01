@@ -42,6 +42,24 @@ const PROJ_SPEED = 620;
 const PROJ_RANGE = 660;
 const FIGHTER_R = 22;
 
+/** Bot difficulty curves, all driven by the opponent's profile level (1-10).
+ *  Level 1 plays sloppy and slow; level 10 aims true and keeps pressure on.
+ *  Everything is a gentle ramp so a couple of levels is a nudge, not a wall. */
+const BOT_LEVEL_MIN = 1;
+const BOT_LEVEL_MAX = 10;
+const botLevelT = (level: number) =>
+  (clampLevel(level) - BOT_LEVEL_MIN) / (BOT_LEVEL_MAX - BOT_LEVEL_MIN);
+const clampLevel = (level: number) =>
+  Math.min(BOT_LEVEL_MAX, Math.max(BOT_LEVEL_MIN, Math.round(level || BOT_LEVEL_MIN)));
+/** Aim jitter in radians — shrinks from ±0.14 (level 1) to ±0.03 (level 10). */
+const botAimError = (level: number) => 0.14 - 0.11 * botLevelT(level);
+/** Seconds between bot shots — 1.35s (level 1) down to 0.85s (level 10). */
+const botFireInterval = (level: number) => 1.35 - 0.5 * botLevelT(level);
+/** Bot move speed multiplier — 0.9x (level 1) up to 1.15x (level 10). */
+const botSpeedMul = (level: number) => 0.9 + 0.25 * botLevelT(level);
+/** Chance per shot the bot strafes after firing — dodgier at higher levels. */
+const botStrafeChance = (level: number) => 0.15 + 0.45 * botLevelT(level);
+
 /** Status lines that cycle under the loading bar while the arena loads. */
 const LOAD_STEPS = [
   "Arena hazırlanıyor…",
@@ -834,6 +852,7 @@ export default function BattleScene({
         const dx = p.x - b.x;
         const dy = p.y - b.y;
         const dist = Math.hypot(dx, dy) || 1;
+        const levelT = botLevelT(b.level);
         let mx = 0;
         let my = 0;
         if (dist > 340) {
@@ -846,16 +865,39 @@ export default function BattleScene({
           mx = dy / dist;
           my = -dx / dist;
         }
-        // Cardinal-only: clamp bot to dominant axis
+        // Higher-level bots weave: add a slow perpendicular sway so they are
+        // harder to hit while still closing or holding range.
+        if (levelT > 0) {
+          const sway = Math.sin(performance.now() / 900 + b.phase) * levelT * 0.55;
+          mx += (dy / dist) * sway;
+          my += (-dx / dist) * sway;
+        }
+        // Cardinal-only: clamp to dominant axis, but if the dominant axis is
+        // blocked by an obstacle, fall through to the other axis instead of
+        // grinding into the wall (the "bot stuck on a building" fix).
         if (mx !== 0 && my !== 0) {
           if (Math.abs(mx) >= Math.abs(my)) my = 0;
           else mx = 0;
         }
-        moveFighter(b, mx * 90 * dt, my * 90 * dt, dt);
+        const speed = 90 * botSpeedMul(b.level);
+        const beforeX = b.x;
+        const beforeY = b.y;
+        moveFighter(b, mx * speed * dt, my * speed * dt, dt);
+        // Anti-stuck: if the move did nothing (blocked head-on), swap axes.
+        if (
+          Math.abs(b.x - beforeX) < 0.01 &&
+          Math.abs(b.y - beforeY) < 0.01 &&
+          (mx !== 0 || my !== 0)
+        ) {
+          const altMx = mx !== 0 ? 0 : dx / dist;
+          const altMy = my !== 0 ? 0 : dy / dist;
+          moveFighter(b, altMx * speed * dt, altMy * speed * dt, dt);
+        }
         b.facing = dx > 0 ? 1 : -1;
         if (b.atkCd <= 0 && dist < 640) {
-          b.atkCd = 1.05;
-          const err = (Math.random() - 0.5) * 0.16;
+          b.atkCd = botFireInterval(b.level);
+          // Aim jitter shrinks with level — low levels genuinely miss.
+          const err = (Math.random() - 0.5) * 2 * botAimError(b.level);
           spawnProj(
             b,
             "bot",
@@ -863,6 +905,14 @@ export default function BattleScene({
             p.y + Math.sin(Math.atan2(dy, dx) + err) * 60,
             BASE_DMG,
           );
+          // Higher-level bots strafe after firing, so they are harder to
+          // punish while still shooting.
+          if (Math.random() < botStrafeChance(b.level)) {
+            b.strafeDir = (b.strafeDir ?? (Math.random() < 0.5 ? 1 : -1)) * -1;
+            const sx = (dy / dist) * b.strafeDir;
+            const sy = (-dx / dist) * b.strafeDir;
+            moveFighter(b, sx * 70 * dt, sy * 70 * dt, dt);
+          }
         }
         if (b.superCharge >= 1 && dist < 680) {
           useSuper(b, p);

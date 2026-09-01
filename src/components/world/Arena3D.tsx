@@ -132,6 +132,8 @@ export interface BattleFighter {
   dashHit: boolean;
   lastHitAt: number;
   vy: number; // vertical movement direction: -1 up, 0 idle, +1 down
+  /** Bot strafe direction after firing (1 or -1). Only used by the AI. */
+  strafeDir?: number;
 }
 
 export interface BattleProj {
