@@ -226,6 +226,7 @@ function GlbFighterBodyCore({
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
   const movingRef = useRef(fighter.current.moving);
+  const previousPosition = useRef({ x: fighter.current.x, y: fighter.current.y });
   const arenaEffects = useRoyalWarriorEffects(
     clone,
     skinUrl,
@@ -280,9 +281,15 @@ function GlbFighterBodyCore({
 
   // Crossfade idle ↔ walk from the simulation's moving flag (no re-renders).
   const currentClip = useRef<"idle" | "walk">("idle");
-  useFrame(() => {
-    movingRef.current = fighter.current.moving;
-    const next: "idle" | "walk" = fighter.current.moving ? "walk" : "idle";
+  useFrame((_, dt) => {
+    const f = fighter.current;
+    const movedX = f.x - previousPosition.current.x;
+    const movedY = f.y - previousPosition.current.y;
+    const actuallyMoving = f.moving && Math.hypot(movedX, movedY) > 0.01;
+    movingRef.current = actuallyMoving;
+    previousPosition.current.x = f.x;
+    previousPosition.current.y = f.y;
+    const next: "idle" | "walk" = actuallyMoving ? "walk" : "idle";
     if (next === currentClip.current) return;
     const from =
       actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
