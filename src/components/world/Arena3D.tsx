@@ -494,13 +494,18 @@ function FighterRig({
     if (!root.current) return;
     root.current.position.set(f.x / S, 0, f.y / S);
     // ── 4-direction facing ──
-    // right → look right (+X), left → look left (−X),
-    // up-screen → back view (faces away from camera),
-    // down-screen / standing → front view (faces the camera).
+    // The royal warrior GLB's authored forward axis is opposite to the
+    // procedural body's axis. Keep the shared movement coordinates intact,
+    // but apply the model-specific half-turn so it walks toward its travel
+    // direction instead of showing its back.
+    const isRoyalWarrior = fighter.current.equipped.some(
+      (item) => item === "skin-savasci-glb",
+    );
+    const modelTurn = isRoyalWarrior ? Math.PI : 0;
     let targetYaw: number;
-    if (!f.moving) targetYaw = 0;
-    else if ((f.vy ?? 0) !== 0) targetYaw = f.vy < 0 ? Math.PI : 0;
-    else targetYaw = f.facing >= 0 ? Math.PI / 2 : -Math.PI / 2;
+    if (!f.moving) targetYaw = modelTurn;
+    else if ((f.vy ?? 0) !== 0) targetYaw = (f.vy < 0 ? Math.PI : 0) + modelTurn;
+    else targetYaw = (f.facing >= 0 ? Math.PI / 2 : -Math.PI / 2) + modelTurn;
     let yawDiff = targetYaw - root.current.rotation.y;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
