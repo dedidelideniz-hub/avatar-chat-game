@@ -53,8 +53,10 @@ const clampLevel = (level: number) =>
   Math.min(BOT_LEVEL_MAX, Math.max(BOT_LEVEL_MIN, Math.round(level || BOT_LEVEL_MIN)));
 /** Aim jitter in radians — shrinks from ±0.14 (level 1) to ±0.03 (level 10). */
 const botAimError = (level: number) => 0.14 - 0.11 * botLevelT(level);
-/** Seconds between bot shots — 1.35s (level 1) down to 0.85s (level 10). */
-const botFireInterval = (level: number) => 1.35 - 0.5 * botLevelT(level);
+/** Seconds between bot shots — 0.7s (level 1) down to 0.4s (level 10).
+ *  Faster than the player's 0.85s ATK_CD so bots keep shooting while they
+ *  walk instead of standing still between shots. */
+const botFireInterval = (level: number) => 0.7 - 0.3 * botLevelT(level);
 /** Bot move speed multiplier — 0.9x (level 1) up to 1.15x (level 10). */
 const botSpeedMul = (level: number) => 0.9 + 0.25 * botLevelT(level);
 /** Chance per shot the bot strafes after firing — dodgier at higher levels. */
@@ -894,6 +896,8 @@ export default function BattleScene({
           moveFighter(b, altMx * speed * dt, altMy * speed * dt, dt);
         }
         b.facing = dx > 0 ? 1 : -1;
+        // Bots keep firing while walking: range (640) gates the shot, and the
+        // level-scaled cooldown keeps the shots coming on the move.
         if (b.atkCd <= 0 && dist < 640) {
           b.atkCd = botFireInterval(b.level);
           // Aim jitter shrinks with level — low levels genuinely miss.
