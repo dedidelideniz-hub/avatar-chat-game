@@ -755,9 +755,17 @@ export default function BattleScene({
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
         if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
-          // Cardinal-only: clamp to dominant axis
-          if (Math.abs(jx) >= Math.abs(jy)) { vx = jx > 0 ? 1 : -1; vy = 0; }
-          else { vx = 0; vy = jy > 0 ? -1 : 1; }
+          // Keep the joystick's screen-space axes intact: right is +X and
+          // down is +Y in the arena coordinate system. The previous code
+          // inverted vertical input, which made down move up and also made
+          // left/right feel inconsistent after axis selection.
+          if (Math.abs(jx) >= Math.abs(jy)) {
+            vx = jx;
+            vy = 0;
+          } else {
+            vx = 0;
+            vy = jy;
+          }
           clickTargetRef.current = null;
         }
       }

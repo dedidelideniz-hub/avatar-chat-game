@@ -681,8 +681,15 @@ export default function PvpBattleScene({
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
         if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
-          if (Math.abs(jx) >= Math.abs(jy)) { vx = jx > 0 ? 1 : -1; vy = 0; }
-          else { vx = 0; vy = jy > 0 ? -1 : 1; }
+          // The arena uses screen-space coordinates: +X is right and +Y is
+          // down. Preserve the joystick vector instead of inverting Y.
+          if (Math.abs(jx) >= Math.abs(jy)) {
+            vx = jx;
+            vy = 0;
+          } else {
+            vx = 0;
+            vy = jy;
+          }
           clickTargetRef.current = null;
         }
       }
