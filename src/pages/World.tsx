@@ -97,6 +97,7 @@ const VENDOR_PHRASES: Record<string, string[]> = {
 /** An autonomous street walker — a bot that wanders the road on its own. */
 interface BotDef {
   id: string;
+  level: number; // 1..10 — drives battle strength
   name: string;
   color: string; // chat accent for this bot
   speed: number; // world units / second (slower than the player)
@@ -111,6 +112,7 @@ interface BotDef {
 const BOT_DEFS: BotDef[] = [
   {
     id: "bot-ada",
+    level: 2,
     name: "Ada",
     color: "#ec4899",
     speed: 80,
@@ -129,6 +131,7 @@ const BOT_DEFS: BotDef[] = [
   },
   {
     id: "bot-mert",
+    level: 3,
     name: "Mert",
     color: "#0ea5e9",
     speed: 80,
@@ -147,6 +150,7 @@ const BOT_DEFS: BotDef[] = [
   },
   {
     id: "bot-elif",
+    level: 1,
     name: "Elif",
     color: "#a855f7",
     speed: 80,
@@ -165,6 +169,7 @@ const BOT_DEFS: BotDef[] = [
   },
   {
     id: "bot-kaan",
+    level: 4,
     name: "Kaan",
     color: "#f59e0b",
     speed: 80,
@@ -2265,13 +2270,18 @@ export default function World() {
               <CharacterCard
                 key="me"
                 name={username}
-                subtitle="Sanalika Caddesi sakini"
+                subtitle={`Sanalika Caddesi sakini · Level ${level}`}
                 badge={
-                  isVip ? (
-                    <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
-                      👑 VIP
+                  <>
+                    <span className="flex shrink-0 items-center rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">
+                      ✦ LV {level}
                     </span>
-                  ) : null
+                    {isVip ? (
+                      <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
+                        👑 VIP
+                      </span>
+                    ) : null}
+                  </>
                 }
                 avatar={
                   <GlbProfileAvatar
@@ -2286,6 +2296,9 @@ export default function World() {
                     </span>
                     <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
                       🎒 {items.length} ürün
+                    </span>
+                    <span className="rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-extrabold text-violet-700">
+                      ⚔️ {battleWins} galibiyet · Level {level}
                     </span>
                   </>
                 }
@@ -2304,7 +2317,8 @@ export default function World() {
               <CharacterCard
                 key={viewedBot.id}
                 name={viewedBot.name}
-                subtitle="Sanalika Caddesi sakini"
+                subtitle={`Sanalika Caddesi sakini · Level ${viewedBot.level}`}
+                badge={<span className="animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">✦ LV {viewedBot.level}</span>}
                 avatar={
                   <GlbProfileAvatar
                     equipped={viewedBot.equipped}
