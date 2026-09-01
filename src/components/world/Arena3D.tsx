@@ -20,6 +20,7 @@ import {
   computeSkeletonHeight,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
+import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
@@ -224,6 +225,16 @@ function GlbFighterBodyCore({
   const { scene, animations } = useGLTF(skinUrl || url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const { actions } = useAnimations(animations, groupRef);
+  const movingRef = useRef(fighter.current.moving);
+  const arenaEffects = useRoyalWarriorEffects(
+    clone,
+    skinUrl,
+    fighter.current.equipped,
+    FIGHTER_MODEL_H,
+    groupRef,
+    useRef<THREE.Mesh | null>(null),
+    movingRef,
+  );
 
   // Normalize to FIGHTER_MODEL_H.
   // For character skins (Sketchfab), use skeleton bone heights to avoid
@@ -270,6 +281,7 @@ function GlbFighterBodyCore({
   // Crossfade idle ↔ walk from the simulation's moving flag (no re-renders).
   const currentClip = useRef<"idle" | "walk">("idle");
   useFrame(() => {
+    movingRef.current = fighter.current.moving;
     const next: "idle" | "walk" = fighter.current.moving ? "walk" : "idle";
     if (next === currentClip.current) return;
     const from =
