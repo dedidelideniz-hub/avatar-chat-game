@@ -29,9 +29,19 @@ export const avatarValidator = v.object({
 });
 
 /** Older profiles predate the wallet/equipped fields; fill sensible defaults. */
+export const MAX_LEVEL = 10;
+export const WINS_PER_LEVEL = 100;
+
+/** Level 1 starts at zero wins; each next level requires another 100 wins. */
+export function levelFromWins(wins: number): number {
+  return Math.min(MAX_LEVEL, Math.floor(Math.max(0, wins) / WINS_PER_LEVEL) + 1);
+}
+
 function withWallet(profile: Doc<"profiles">) {
   return {
     ...profile,
+    battleWins: profile.battleWins ?? 0,
+    level: levelFromWins(profile.battleWins ?? 0),
     coins: profile.coins ?? STARTING_COINS,
     items: profile.items ?? [],
     equipped: profile.equipped ?? [],
@@ -452,10 +462,12 @@ export const battleVictory = mutation({
     }
     assertNotBanned(profile);
     const coins = (profile.coins ?? STARTING_COINS) + DAILY_BONUS;
+    const battleWins = (profile.battleWins ?? 0) + 1;
     await ctx.db.patch(profile._id, {
       coins,
+      battleWins,
       updatedAt: Date.now(),
     });
-    return coins;
+    return { coins, battleWins, level: levelFromWins(battleWins) };
   },
 });

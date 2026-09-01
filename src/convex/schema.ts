@@ -128,6 +128,7 @@ const schema = defineSchema(
       banned: v.optional(v.boolean()), // admin ban — blocks access to the game
       abilities: v.optional(v.array(v.string())), // owned battle supers
       equippedAbility: v.optional(v.string()), // equipped super id
+      battleWins: v.optional(v.number()), // completed battle victories
       createdAt: v.number(),
       updatedAt: v.number(),
     })
