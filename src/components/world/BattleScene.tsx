@@ -671,10 +671,17 @@ export default function BattleScene({
   }, []);
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
+    let moved = false;
     let nx = clamp(f.x + dx, 40, ARENA_W - 40);
-    if (!hitsObstacle(nx, f.y, FIGHTER_R)) f.x = nx;
+    if (!hitsObstacle(nx, f.y, FIGHTER_R)) {
+      f.x = nx;
+      moved = Math.abs(dx) > 0.01;
+    }
     let ny = clamp(f.y + dy, 40, ARENA_H - 40);
-    if (!hitsObstacle(f.x, ny, FIGHTER_R)) f.y = ny;
+    if (!hitsObstacle(f.x, ny, FIGHTER_R)) {
+      f.y = ny;
+      moved = moved || Math.abs(dy) > 0.01;
+    }
     if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
     f.moving = Math.hypot(dx, dy) > 0.5;
     // Track vertical direction for body facing (up/down pose)
@@ -874,31 +881,34 @@ export default function BattleScene({
           mx += (dy / dist) * sway;
           my += (-dx / dist) * sway;
         }
-        // Cardinal-only: clamp to dominant axis, but if the dominant axis is
-        // blocked by an obstacle, fall through to the other axis instead of
-        // grinding into the wall (the "bot stuck on a building" fix).
-        if (mx !== 0 && my !== 0) {
-          if (Math.abs(mx) >= Math.abs(my)) my = 0;
-          else mx = 0;
-        }
         const speed = 90 * botSpeedMul(b.level);
         const beforeX = b.x;
         const beforeY = b.y;
+        // Try the natural vector first; diagonal motion lets the bot slide
+        // around corners instead of repeatedly colliding on one cardinal axis.
         moveFighter(b, mx * speed * dt, my * speed * dt, dt);
-        // Anti-stuck: if the move did nothing (blocked head-on), swap axes.
         if (
           Math.abs(b.x - beforeX) < 0.01 &&
           Math.abs(b.y - beforeY) < 0.01 &&
           (mx !== 0 || my !== 0)
         ) {
-          const altMx = mx !== 0 ? 0 : dx / dist;
-          const altMy = my !== 0 ? 0 : dy / dist;
-          moveFighter(b, altMx * speed * dt, altMy * speed * dt, dt);
+          // Pick a perpendicular escape direction, then alternate it when
+          // blocked so the bot cannot remain pinned to the same corner.
+          b.strafeDir = b.strafeDir ?? (Math.random() < 0.5 ? 1 : -1);
+          const escapeX = (-dy / dist) * b.strafeDir;
+          const escapeY = (dx / dist) * b.strafeDir;
+          moveFighter(b, escapeX * speed * dt, escapeY * speed * dt, dt);
+          if (Math.abs(b.x - beforeX) < 0.01 && Math.abs(b.y - beforeY) < 0.01) {
+            b.strafeDir *= -1;
+            moveFighter(b, -escapeX * speed * dt, -escapeY * speed * dt, dt);
+          }
         }
         b.facing = dx > 0 ? 1 : -1;
         // Bots always fire: no range gate, no waiting. The level-scaled
         // cooldown is the only limiter, so they shoot continuously while
         // walking, closing, or strafing.
+        // Attack is evaluated independently of movement/collision. Even when
+        // pinned against an obstacle, the bot must keep firing at the player.
         if (b.atkCd <= 0) {
           b.atkCd = botFireInterval(b.level);
           // Aim jitter shrinks with level — low levels genuinely miss.
