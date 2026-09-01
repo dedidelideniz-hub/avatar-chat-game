@@ -26,7 +26,7 @@ import * as THREE from "three";
  * kapsayıcı İÇİNDEKİ model offset'leridir — ince ayar için TEK yer.
  */
 export const SWORD_CONTAINER_MODEL_POS: [number, number, number] = [0, 0, 0]; // sap avuç merkezinde
-export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [Math.PI / 2, 0, Math.PI / 2]; // ucu yukarı/ileri
+export const SWORD_CONTAINER_MODEL_ROT: [number, number, number] = [Math.PI / 2, 0, Math.PI / 2]; // GLB local ekseni: sap avuçta, uç yukarı/ileri
 export const SWORD_CONTAINER_MODEL_SCALE = 0.5; // el boyutuna uygun küçültme
 
 /* ── MEASURED grip constants ────────────────────────────────────── */

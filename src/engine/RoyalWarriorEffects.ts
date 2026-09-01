@@ -417,11 +417,9 @@ export function useRoyalWarriorEffects(
     }
   });
 
-  // ── Crown/blade SHIMMER (always on) + idle sword FLOURISH (idle only) ──
-  // Shimmer: a bright sweep travels around the crown band / up the blade so
-  // the glow is clearly visible (the old flat pulse was too subtle).
-  // Flourish: ONLY while the character stands still, the sword performs a
-  // slow elegant twirl + tilt, then settles back exactly to its rest pose.
+  // ── Crown/blade SHIMMER (always on) ──
+  // The sword remains fully driven by the hand bone; no independent flourish
+  // or idle rotation is applied here.
   useFrame(({ clock }, dt) => {
     if (!royalSkin) return;
     const t = clock.getElapsedTime();
@@ -451,12 +449,8 @@ export function useRoyalWarriorEffects(
     }
 
     // ── Sword grip calibration ──
-    // Once, on the first STATIONARY frame after the idle animation has
-    // settled (0.6s covers the idle fadeIn): lock the sword so the blade
-    // is vertical and the crossguard horizontal. After that the grip is
-    // fixed in hand-local space — the sword swings naturally with the arm
-    // while walking and returns to vertical at rest. This replaces the
-    // old baked-only constants and works for ANY skin rig.
+    // Calibrate once from the settled idle hand pose. After this, only the
+    // hand bone animation drives the sword; it receives no separate motion.
     const swordG = royalSword.current;
     const handB = handBone.current;
     if (swordG && handB && !gripCalibrated.current) {
