@@ -682,7 +682,7 @@ export default function PvpBattleScene({
         const jy = joystickRef.current.y;
         if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
           if (Math.abs(jx) >= Math.abs(jy)) { vx = jx > 0 ? 1 : -1; vy = 0; }
-          else { vx = 0; vy = jy > 0 ? 1 : -1; }
+          else { vx = 0; vy = jy > 0 ? -1 : 1; }
           clickTargetRef.current = null;
         }
       }

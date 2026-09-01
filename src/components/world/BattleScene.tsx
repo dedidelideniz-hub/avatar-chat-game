@@ -757,7 +757,7 @@ export default function BattleScene({
         if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
           // Cardinal-only: clamp to dominant axis
           if (Math.abs(jx) >= Math.abs(jy)) { vx = jx > 0 ? 1 : -1; vy = 0; }
-          else { vx = 0; vy = jy > 0 ? 1 : -1; }
+          else { vx = 0; vy = jy > 0 ? -1 : 1; }
           clickTargetRef.current = null;
         }
       }
