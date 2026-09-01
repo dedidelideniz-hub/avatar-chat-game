@@ -940,6 +940,7 @@ export default function World() {
   } | null>(null);
   const [battle, setBattle] = useState<{
     opponent: BotDef;
+    opponentLevel: number;
     playerAbility: string;
     opponentAbility: string;
   } | null>(null);

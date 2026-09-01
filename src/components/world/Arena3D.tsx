@@ -115,6 +115,8 @@ export interface BattleFighter {
   config: AvatarConfig;
   equipped: string[];
   ability: AbilityDef;
+  /** Уровень бойца (1..10) — масштабирует HP/урон/скорость стрельбы бота. */
+  level: number;
   hp: number;
   maxHp: number;
   x: number;

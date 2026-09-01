@@ -72,12 +72,14 @@ function newFighter(
   x: number,
   y: number,
   facing: number,
+  level = 1,
 ): BattleFighter {
   return {
     name,
     config,
     equipped,
     ability: abilityOf(abilityId),
+    level,
     hp: HP,
     maxHp: HP,
     x,
@@ -319,6 +321,7 @@ export default function BattleScene({
   opponentConfig: AvatarConfig;
   opponentEquipped: string[];
   opponentAbility: string;
+  opponentLevel: number;
   onExit: (victory: boolean) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
@@ -340,10 +343,10 @@ export default function BattleScene({
   onExitRef.current = onExit;
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 420, 180, 1),
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 420, 180, 1, 1),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1),
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1, opponentLevel),
   );
   bot.current.atkCd = 1;
 
