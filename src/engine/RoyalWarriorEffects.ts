@@ -221,6 +221,9 @@ function useRoyalGear(
           // another model-space translation here; that was the source of
           // the separated grip/blade appearance.
           model.position.set(0, 0, 0);
+          // GLB'nin kendi lokal ekseninde yalnızca keskin yüzü çevir;
+          // grip, bone bağlantısı ve kapsayıcı transformları değişmez.
+          model.rotation.y += Math.PI / 4;
           model.traverse((o: THREE.Object3D) => {
             o.userData.isEquipment = true;
             o.frustumCulled = false;
