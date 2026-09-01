@@ -1715,6 +1715,7 @@ export default function World() {
             playSound("vs");
             setBattle({
               opponent: bot,
+              opponentLevel: bot.level,
               playerAbility: equippedAbility,
               opponentAbility: bot.ability,
             });
@@ -2505,6 +2506,7 @@ export default function World() {
             opponentConfig={battle.opponent.config}
             opponentEquipped={battle.opponent.equipped}
             opponentAbility={battle.opponentAbility}
+            opponentLevel={battle.opponentLevel}
             onExit={endBattle}
           />
         )}

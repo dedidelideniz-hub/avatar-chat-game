@@ -311,6 +311,7 @@ export default function BattleScene({
   opponentConfig,
   opponentEquipped,
   opponentAbility,
+  opponentLevel,
   onExit,
 }: {
   playerName: string;

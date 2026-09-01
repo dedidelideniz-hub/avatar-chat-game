@@ -130,6 +130,7 @@ function newFighter(
     config,
     equipped,
     ability: abilityOf(abilityId),
+    level: 1,
     hp: HP,
     maxHp: HP,
     x,
