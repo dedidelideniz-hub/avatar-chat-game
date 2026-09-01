@@ -1729,7 +1729,7 @@ export default function World() {
         try {
           const newCoins = await battleVictory();
           toast.success(
-            `🏆 Zafer! +150 SP kazandın — yeni bakiye: ${formatCoins(newCoins)}`,
+            `🏆 Zafer! +150 SP kazandın — yeni bakiye: ${formatCoins(newCoins.coins)}`,
           );
         } catch (error) {
           console.error("Ödül hatası:", error);
@@ -1856,7 +1856,7 @@ export default function World() {
         try {
           const newCoins = await battleVictory();
           toast.success(
-            `🏆 Zafer! +150 SP kazandın — yeni bakiye: ${formatCoins(newCoins)}`,
+            `🏆 Zafer! +150 SP kazandın — yeni bakiye: ${formatCoins(newCoins.coins)}`,
           );
         } catch (error) {
           console.error("PvP ödül hatası:", error);
