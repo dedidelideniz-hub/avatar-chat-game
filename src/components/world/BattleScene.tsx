@@ -887,21 +887,52 @@ export default function BattleScene({
         // Try the natural vector first; diagonal motion lets the bot slide
         // around corners instead of repeatedly colliding on one cardinal axis.
         moveFighter(b, mx * speed * dt, my * speed * dt, dt);
-        if (
-          Math.abs(b.x - beforeX) < 0.01 &&
-          Math.abs(b.y - beforeY) < 0.01 &&
-          (mx !== 0 || my !== 0)
-        ) {
-          // Pick a perpendicular escape direction, then alternate it when
-          // blocked so the bot cannot remain pinned to the same corner.
-          b.strafeDir = b.strafeDir ?? (Math.random() < 0.5 ? 1 : -1);
-          const escapeX = (-dy / dist) * b.strafeDir;
-          const escapeY = (dx / dist) * b.strafeDir;
-          moveFighter(b, escapeX * speed * dt, escapeY * speed * dt, dt);
-          if (Math.abs(b.x - beforeX) < 0.01 && Math.abs(b.y - beforeY) < 0.01) {
-            b.strafeDir *= -1;
-            moveFighter(b, -escapeX * speed * dt, -escapeY * speed * dt, dt);
+        // Stuck detection: if the bot covered far less ground than expected
+        // (even partially blocked), accumulate a stuck timer. This catches the
+        // "grinding along a wall" case that zero-displacement checks miss.
+        const expected = speed * dt;
+        if (Math.hypot(b.x - beforeX, b.y - beforeY) < expected * 0.35) {
+          b.stuckT = (b.stuckT ?? 0) + dt;
+        } else {
+          b.stuckT = 0;
+        }
+        if (b.stuckT > 0.12) {
+          // Unblock: sweep the desired direction in 45° steps on both sides
+          // until the bot can actually move again, so it never stays pinned
+          // against an obstacle (and never stops firing because of it).
+          b.unblockDir = b.unblockDir ?? (Math.random() < 0.5 ? 1 : -1);
+          const unblockDir: number = b.unblockDir;
+          const base = Math.atan2(dy, dx);
+          let escaped = false;
+          for (let side = 0; side < 2 && !escaped; side++) {
+            const sign: number = side === 0 ? unblockDir : -unblockDir;
+            for (let a = 1; a <= 4 && !escaped; a++) {
+              const ang = base + sign * a * (Math.PI / 4);
+              const tx = b.x;
+              const ty = b.y;
+              moveFighter(
+                b,
+                Math.cos(ang) * speed * dt,
+                Math.sin(ang) * speed * dt,
+                dt,
+              );
+              if (Math.hypot(b.x - tx, b.y - ty) > expected * 0.3) {
+                escaped = true;
+                b.unblockDir = sign;
+              } else {
+                b.x = tx;
+                b.y = ty;
+              }
+            }
           }
+          // Absolute last resort: slide the bot slightly sideways so it can
+          // never remain stuck forever.
+          if (!escaped) {
+            const ang = base + (Math.PI / 2) * unblockDir;
+            b.x += Math.cos(ang) * expected * 2;
+            b.y += Math.sin(ang) * expected * 2;
+          }
+          b.stuckT = 0;
         }
         b.facing = dx > 0 ? 1 : -1;
         // Bots always fire: no range gate, no waiting. The level-scaled
@@ -940,7 +971,10 @@ export default function BattleScene({
         pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
         const nx = pr.x + pr.vx * dt;
         const ny = pr.y + pr.vy * dt;
-        if (hitsObstacle(nx, ny, pr.r)) {
+        if (hitsObstacle(nx, ny, pr.r) && pr.owner === "player") {
+          // Only PLAYER projectiles smack into obstacles. Bot projectiles pass
+          // through, so a bot pinned behind a crate still lands shots on the
+          // player instead of silently "not firing".
           // projectiles smack into obstacles — little thud + sparks
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
           burstFx(nx, ny, 55, "#d9c29a", 0.3);

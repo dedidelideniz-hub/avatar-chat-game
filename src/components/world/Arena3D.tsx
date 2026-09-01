@@ -134,6 +134,10 @@ export interface BattleFighter {
   vy: number; // vertical movement direction: -1 up, 0 idle, +1 down
   /** Bot strafe direction after firing (1 or -1). Only used by the AI. */
   strafeDir?: number;
+  /** Bot only: how long (seconds) the bot has been barely moving while trying to move. */
+  stuckT?: number;
+  /** Bot only: direction of the last successful unblock move (1 or -1). */
+  unblockDir?: number;
 }
 
 export interface BattleProj {
