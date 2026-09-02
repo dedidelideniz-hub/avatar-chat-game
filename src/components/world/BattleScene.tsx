@@ -39,7 +39,9 @@ const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
 const PROJ_SPEED = 620;
-const PROJ_RANGE = 660;
+/** Long enough to cross the arena diagonally so bot shots from any
+ *  distance always reach the player instead of vanishing mid-air. */
+const PROJ_RANGE = 1500;
 const FIGHTER_R = 22;
 
 /** Bot difficulty curves, all driven by the opponent's profile level (1-10).
@@ -369,7 +371,7 @@ export default function BattleScene({
   const bot = useRef<BattleFighter>(
     newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1, opponentLevel),
   );
-  bot.current.atkCd = 1;
+  bot.current.atkCd = 0.4;
 
   const webglOk = useMemo(() => supportsWebGL(), []);
 
@@ -505,10 +507,14 @@ export default function BattleScene({
     const d = Math.hypot(dx, dy) || 1;
     const speed = opts.speed ?? PROJ_SPEED;
     playSound("shoot", { volume: 0.6 });
+    // Spawn just outside the fighter's radius so a shot fired while pressed
+    // against a crate/fence is born in free space instead of dying on frame 1.
+    const muzzleX = owner.x + (dx / d) * (FIGHTER_R + 6);
+    const muzzleY = owner.y + (dy / d) * (FIGHTER_R + 6);
     projs.current.push({
       owner: ownerKey,
-      x: owner.x,
-      y: owner.y,
+      x: muzzleX,
+      y: muzzleY,
       vx: (dx / d) * speed,
       vy: (dy / d) * speed,
       dmg,
