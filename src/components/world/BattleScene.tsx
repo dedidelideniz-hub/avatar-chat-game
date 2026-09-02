@@ -926,11 +926,16 @@ export default function BattleScene({
             }
           }
           // Absolute last resort: slide the bot slightly sideways so it can
-          // never remain stuck forever.
+          // never remain stuck forever — but only into FREE space. Never
+          // teleport onto or through an obstacle.
           if (!escaped) {
             const ang = base + (Math.PI / 2) * unblockDir;
-            b.x += Math.cos(ang) * expected * 2;
-            b.y += Math.sin(ang) * expected * 2;
+            const sx = clamp(b.x + Math.cos(ang) * expected * 2, 40, ARENA_W - 40);
+            const sy = clamp(b.y + Math.sin(ang) * expected * 2, 40, ARENA_H - 40);
+            if (!hitsObstacle(sx, sy, FIGHTER_R)) {
+              b.x = sx;
+              b.y = sy;
+            }
           }
           b.stuckT = 0;
         }
@@ -971,11 +976,11 @@ export default function BattleScene({
         pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
         const nx = pr.x + pr.vx * dt;
         const ny = pr.y + pr.vy * dt;
-        if (hitsObstacle(nx, ny, pr.r) && pr.owner === "player") {
-          // Only PLAYER projectiles smack into obstacles. Bot projectiles pass
-          // through, so a bot pinned behind a crate still lands shots on the
-          // player instead of silently "not firing".
-          // projectiles smack into obstacles — little thud + sparks
+        if (hitsObstacle(nx, ny, pr.r)) {
+          // ALL projectiles smack into obstacles (player and bot alike) —
+          // little thud + sparks. Bots compensate by keeping their unblock
+          // sweep going, so they reposition instead of relying on shots
+          // passing through cover.
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
           burstFx(nx, ny, 55, "#d9c29a", 0.3);
           projs.current.splice(i, 1);
