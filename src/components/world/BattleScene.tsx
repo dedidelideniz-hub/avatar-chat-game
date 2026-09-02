@@ -55,10 +55,10 @@ const clampLevel = (level: number) =>
   Math.min(BOT_LEVEL_MAX, Math.max(BOT_LEVEL_MIN, Math.round(level || BOT_LEVEL_MIN)));
 /** Aim jitter in radians — shrinks from ±0.14 (level 1) to ±0.03 (level 10). */
 const botAimError = (level: number) => 0.14 - 0.11 * botLevelT(level);
-/** Seconds between bot shots — 0.55s (level 1) down to 0.28s (level 10).
- *  Much faster than the player's 0.85s ATK_CD: bots are aggressive and
- *  shoot continuously while walking, not just when standing still. */
-const botFireInterval = (level: number) => 0.55 - 0.27 * botLevelT(level);
+/** Seconds between bot shots — 0.4s (level 1) down to 0.2s (level 10).
+ *  Much faster than the player's 0.85s ATK_CD: bots fire continuously,
+ *  with no pauses between bursts. */
+const botFireInterval = (level: number) => 0.4 - 0.2 * botLevelT(level);
 /** Bot move speed multiplier — 0.9x (level 1) up to 1.15x (level 10). */
 const botSpeedMul = (level: number) => 0.9 + 0.25 * botLevelT(level);
 /** Chance per shot the bot strafes after firing — dodgier at higher levels. */
@@ -855,6 +855,9 @@ export default function BattleScene({
       }
 
       // --- bot AI ---
+      const dx = p.x - b.x;
+      const dy = p.y - b.y;
+      const dist = Math.hypot(dx, dy) || 1;
       if (b.dashT > 0) {
         b.dashT -= dt;
         moveFighter(b, b.dashVX * 820 * dt, b.dashVY * 820 * dt, dt);
@@ -864,9 +867,6 @@ export default function BattleScene({
         }
         if (b.dashT <= 0) b.dashHit = false;
       } else {
-        const dx = p.x - b.x;
-        const dy = p.y - b.y;
-        const dist = Math.hypot(dx, dy) || 1;
         const levelT = botLevelT(b.level);
         let mx = 0;
         let my = 0;
@@ -946,34 +946,41 @@ export default function BattleScene({
           b.stuckT = 0;
         }
         b.facing = dx > 0 ? 1 : -1;
-        // Bots always fire: no range gate, no waiting. The level-scaled
-        // cooldown is the only limiter, so they shoot continuously while
-        // walking, closing, or strafing.
-        // Attack is evaluated independently of movement/collision. Even when
-        // pinned against an obstacle, the bot must keep firing at the player.
-        if (b.atkCd <= 0) {
-          b.atkCd = botFireInterval(b.level);
-          // Aim jitter shrinks with level — low levels genuinely miss.
-          const err = (Math.random() - 0.5) * 2 * botAimError(b.level);
-          spawnProj(
-            b,
-            "bot",
-            p.x + Math.cos(Math.atan2(dy, dx) + err) * 60,
-            p.y + Math.sin(Math.atan2(dy, dx) + err) * 60,
-            BASE_DMG,
-          );
-          // Higher-level bots strafe after firing, so they are harder to
-          // punish while still shooting.
-          if (Math.random() < botStrafeChance(b.level)) {
-            b.strafeDir = (b.strafeDir ?? (Math.random() < 0.5 ? 1 : -1)) * -1;
-            const sx = (dy / dist) * b.strafeDir;
-            const sy = (-dx / dist) * b.strafeDir;
-            moveFighter(b, sx * 70 * dt, sy * 70 * dt, dt);
-          }
+      }
+
+      // Bots NEVER stop firing: the shot check runs every frame, outside the
+      // movement/dash branches, so nothing (stuck sweep, dash, strafe) can
+      // interrupt the stream of bullets.
+      if (b.atkCd <= 0) {
+        b.atkCd = botFireInterval(b.level);
+        // Aim jitter shrinks with level — low levels genuinely miss.
+        const err = (Math.random() - 0.5) * 2 * botAimError(b.level);
+        spawnProj(
+          b,
+          "bot",
+          p.x + Math.cos(Math.atan2(dy, dx) + err) * 60,
+          p.y + Math.sin(Math.atan2(dy, dx) + err) * 60,
+          BASE_DMG,
+        );
+        // Higher-level bots strafe after firing, so they are harder to
+        // punish while still shooting.
+        if (Math.random() < botStrafeChance(b.level)) {
+          b.strafeDir = (b.strafeDir ?? (Math.random() < 0.5 ? 1 : -1)) * -1;
+          const sx = (dy / dist) * b.strafeDir;
+          const sy = (-dx / dist) * b.strafeDir;
+          moveFighter(b, sx * 70 * dt, sy * 70 * dt, dt);
         }
-        if (b.superCharge >= 1 && dist < 680) {
-          useSuper(b, p);
-        }
+      }
+
+      // Bot super: passively charges over time (faster at higher levels) on
+      // top of the charge earned by dealing damage, and it fires the ult the
+      // instant the bar is full — no range gate, no waiting.
+      b.superCharge = Math.min(
+        1,
+        b.superCharge + dt * (0.06 + 0.06 * botLevelT(b.level)),
+      );
+      if (b.superCharge >= 1) {
+        useSuper(b, p);
       }
 
       // --- projectiles ---
