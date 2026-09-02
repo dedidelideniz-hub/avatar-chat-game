@@ -972,12 +972,12 @@ export default function BattleScene({
         }
       }
 
-      // Bot super: passively charges over time (faster at higher levels) on
-      // top of the charge earned by dealing damage, and it fires the ult the
-      // instant the bar is full — no range gate, no waiting.
+      // Bot super: passively charges quickly over time (faster at higher
+      // levels) on top of the charge earned by dealing damage, and it fires
+      // the ult the instant the bar is full — no range gate, no waiting.
       b.superCharge = Math.min(
         1,
-        b.superCharge + dt * (0.06 + 0.06 * botLevelT(b.level)),
+        b.superCharge + dt * (0.15 + 0.15 * botLevelT(b.level)),
       );
       if (b.superCharge >= 1) {
         useSuper(b, p);
