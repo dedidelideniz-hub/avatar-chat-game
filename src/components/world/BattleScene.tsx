@@ -392,6 +392,7 @@ export default function BattleScene({
     pc: 0,
     oc: 0,
     atkReady: true,
+    hidden: false,
   });
   const lastHudRef = useRef({
     ph: -1,
@@ -399,6 +400,7 @@ export default function BattleScene({
     pc: -1,
     oc: -1,
     atkReady: false,
+    hidden: false,
   });
   const actionsRef = useRef({
     attack: () => {},
@@ -1110,16 +1112,20 @@ export default function BattleScene({
       const pc = Math.round(p.superCharge * 20) / 20;
       const oc = Math.round(b.superCharge * 20) / 20;
       const atkReady = p.atkCd <= 0;
+      // Bush stealth: the player knows they are hidden whenever the bot can no
+      // longer see them — clear, in-your-face feedback that you went invisible.
+      const hidden = !botCanSee;
       const lh = lastHudRef.current;
       if (
         ph !== lh.ph ||
         ohp !== lh.ohp ||
         pc !== lh.pc ||
         oc !== lh.oc ||
-        atkReady !== lh.atkReady
+        atkReady !== lh.atkReady ||
+        hidden !== lh.hidden
       ) {
-        lastHudRef.current = { ph, ohp, pc, oc, atkReady };
-        setHud({ ph, ohp, pc, oc, atkReady });
+        lastHudRef.current = { ph, ohp, pc, oc, atkReady, hidden };
+        setHud({ ph, ohp, pc, oc, atkReady, hidden });
       }
     };
 
@@ -1246,6 +1252,17 @@ export default function BattleScene({
               />
             )}
           </AnimatePresence>
+
+          {/* bush stealth indicator — the player SEES that they went invisible */}
+          {phase === "fight" && hud.hidden && (
+            <div className="pointer-events-none absolute inset-x-0 top-4 z-[12] flex justify-center">
+              <span className="battle-hidden-badge flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-950/75 px-4 py-1.5 text-xs font-extrabold tracking-wide text-emerald-200 shadow-lg backdrop-blur-sm">
+                <span className="text-sm">🌿</span>
+                GİZLENDİN — düşman seni görmüyor
+                <span className="hidden size-2 animate-pulse rounded-full bg-emerald-300 sm:block" />
+              </span>
+            </div>
+          )}
 
           {/* controls */}
           {/* virtual joystick — drag to move (works with mouse + touch) */}
