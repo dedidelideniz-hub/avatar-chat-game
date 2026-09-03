@@ -138,6 +138,43 @@ export interface BattleFighter {
   stuckT?: number;
   /** Bot only: direction of the last successful unblock move (1 or -1). */
   unblockDir?: number;
+  /** Bush stealth: timestamp (performance.now) until which the fighter is
+   *  revealed again after attacking / taking damage inside a bush. */
+  revealUntil: number;
+}
+
+/** Brawl-style bush (stealth) zones — fighters can walk through bushes and
+ *  are hidden from their enemy while standing inside one. */
+export const BUSH_REVEAL_MS = 1200;
+const BUSHES = BATTLE_OBSTACLES.filter((o) => o.kind === "bush");
+
+/** Index of the bush rect containing (x, y), or -1 when outside any bush. */
+export function bushIndexOf(x: number, y: number): number {
+  for (let i = 0; i < BUSHES.length; i++) {
+    const b = BUSHES[i];
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return i;
+  }
+  return -1;
+}
+
+/** True when the point stands inside a bush rect. */
+export function isInBush(x: number, y: number): boolean {
+  return bushIndexOf(x, y) >= 0;
+}
+
+/** True when a fighter is currently revealed (attacked / took damage). */
+export function isRevealed(f: BattleFighter, now = performance.now()): boolean {
+  return now < f.revealUntil;
+}
+
+/** Brawl-style hiding: fighter `f` cannot be seen by observer `o` when it is
+ *  inside a bush, not currently revealed, and they are not standing in the
+ *  SAME bush (mutual vision). Fighters outside bushes are always visible. */
+export function isHiddenFrom(f: BattleFighter, o: BattleFighter): boolean {
+  const fi = bushIndexOf(f.x, f.y);
+  if (fi < 0) return false;
+  if (performance.now() < f.revealUntil) return false;
+  return fi !== bushIndexOf(o.x, o.y);
 }
 
 export interface BattleProj {
@@ -264,7 +301,17 @@ function GlbFighterBodyCore({
 
   useEffect(() => {
     clone.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) obj.castShadow = true;
+      if (!(obj as THREE.Mesh).isMesh) return;
+      const mesh = obj as THREE.Mesh;
+      mesh.castShadow = true;
+      // Clone materials so every fighter owns its own material instances —
+      // the GLB loader caches + SkeletonUtils.clone share materials between
+      // fighters, which would make bush stealth opacity leak across rigs.
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map((m) => m.clone());
+      } else if (mesh.material) {
+        mesh.material = (mesh.material as THREE.Material).clone();
+      }
     });
   }, [clone]);
 
@@ -504,13 +551,19 @@ function makeBoltTexture() {
 
 function FighterRig({
   fighter,
+  other,
   isPlayer = false,
 }: {
   fighter: MutableRefObject<BattleFighter>;
+  other: MutableRefObject<BattleFighter>;
   isPlayer?: boolean;
 }) {
+  const bodyWrap = useRef<THREE.Group>(null);
+  // true while the fighter's body materials are set to 50% (in-bush) view
+  const semiApplied = useRef(false);
   const root = useRef<THREE.Group>(null);
   const bob = useRef<THREE.Group>(null);
+
   const armL = useRef<THREE.Group>(null);
   const armR = useRef<THREE.Group>(null);
   const legL = useRef<THREE.Group>(null);
@@ -550,6 +603,70 @@ function FighterRig({
   useFrame((_, dt) => {
     const f = fighter.current;
     if (!root.current) return;
+    // ── bush stealth: hide from the enemy / render the body 50% ──
+    // The owner always sees its own fighter (faded to 50% while in a bush);
+    // the enemy fighter is invisible while it hides and reappears when it is
+    // revealed (attacked / took damage) or shares the same bush.
+    const inBushF = isInBush(f.x, f.y);
+    let vis: 0 | 1 | 2;
+    if (isPlayer) {
+      vis = inBushF ? 1 : 0;
+    } else {
+      vis = isHiddenFrom(f, other.current) ? 2 : inBushF ? 1 : 0;
+    }
+    const wantHidden = vis === 2;
+    if (root.current.visible === wantHidden) root.current.visible = !wantHidden;
+    if (barGroup.current && barGroup.current.visible === wantHidden)
+      barGroup.current.visible = !wantHidden;
+    const semi = vis === 1;
+    if (semi) {
+      // Re-apply every frame while semi-transparent so materials that mount
+      // later (GLB streaming in) inherit the 50% look too.
+      semiApplied.current = true;
+      if (bodyWrap.current) {
+        bodyWrap.current.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh || !mesh.material) return;
+          const mats = Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material];
+          for (const m of mats) {
+            if (!m.userData._bushOrig) {
+              m.userData._bushOrig = {
+                opacity: m.opacity,
+                transparent: m.transparent,
+              };
+            }
+            const orig = m.userData._bushOrig as {
+              opacity: number;
+              transparent: boolean;
+            };
+            m.transparent = true;
+            m.opacity = orig.opacity * 0.5;
+          }
+        });
+      }
+    } else if (semiApplied.current) {
+      // Leaving the faded state — restore every material to its own baseline.
+      semiApplied.current = false;
+      if (bodyWrap.current) {
+        bodyWrap.current.traverse((obj) => {
+          const mesh = obj as THREE.Mesh;
+          if (!mesh.isMesh || !mesh.material) return;
+          const mats = Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material];
+          for (const m of mats) {
+            const orig = m.userData._bushOrig as
+              | { opacity: number; transparent: boolean }
+              | undefined;
+            if (!orig) continue;
+            m.transparent = orig.transparent;
+            m.opacity = orig.opacity;
+          }
+        });
+      }
+    }
     // paint the name tag once per fight — name/level/emoji never change
     if (!nameTagDrawn.current) {
       nameTagDrawn.current = true;
@@ -828,11 +945,13 @@ function FighterRig({
     <group ref={root} scale={0.72}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
-      <GlbModelBoundary fallback={proceduralBody}>
-        <Suspense fallback={proceduralBody}>
-          <GlbFighterBody fighter={fighter} />
-        </Suspense>
-      </GlbModelBoundary>
+      <group ref={bodyWrap}>
+        <GlbModelBoundary fallback={proceduralBody}>
+          <Suspense fallback={proceduralBody}>
+            <GlbFighterBody fighter={fighter} />
+          </Suspense>
+        </GlbModelBoundary>
+      </group>
       {/* white hit-flash overlay */}
       <RoundedBox args={[0.78, 1.7, 0.55]} radius={0.22} position={[0, 0.85, 0]}>
         <meshStandardMaterial
@@ -1645,8 +1764,8 @@ export function Arena3D({
       ))}
 
       {/* fighters */}
-      <FighterRig fighter={playerRef} isPlayer />
-      <FighterRig fighter={botRef} />
+      <FighterRig fighter={playerRef} other={botRef} isPlayer />
+      <FighterRig fighter={botRef} other={playerRef} />
 
       <ProjectilePool projsRef={projsRef} />
       <FxPool fxsRef={fxsRef} />

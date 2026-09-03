@@ -8,6 +8,8 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import {
   BATTLE_OBSTACLES,
+  isHiddenFrom,
+  isInBush,
   type BattleFighter,
   type BattleFx,
   type BattleProj,
@@ -243,6 +245,22 @@ export function FallbackArena2D({
       };
       applySprite(p, pSpriteRef.current);
       applySprite(b, bSpriteRef.current);
+
+      // bush stealth — Brawl-style cover: the owner's own fighter fades to
+      // 50% inside a bush; the enemy fighter is not drawn at all while it
+      // hides (attacking / being hit reveals it again for 1.2s, and two
+      // fighters in the SAME bush can still see each other).
+      const inBushSelf = isInBush(p.x, p.y);
+      const botHidden = isHiddenFrom(b, p);
+      bRef.current?.setAttribute("visibility", botHidden ? "hidden" : "visible");
+      const pOp = inBushSelf ? "0.5" : "1";
+      const ps = pSpriteRef.current;
+      if (ps && ps.getAttribute("opacity") !== pOp)
+        ps.setAttribute("opacity", pOp);
+      const bOp = !botHidden && isInBush(b.x, b.y) ? "0.5" : "1";
+      const bs = bSpriteRef.current;
+      if (bs && bs.getAttribute("opacity") !== bOp)
+        bs.setAttribute("opacity", bOp);
 
       // spinning identity ring under the player's feet — dashed ring + dot
       // rotating around them, with a soft glow disc pulsing underneath

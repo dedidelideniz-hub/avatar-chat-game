@@ -16,6 +16,8 @@ import {
   Arena3D,
   ATK_CD,
   BATTLE_OBSTACLES,
+  BUSH_REVEAL_MS,
+  isHiddenFrom,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -113,6 +115,8 @@ interface PvpPayload {
   phase: number;
   projs: PvpProj[];
   events: PvpEvent[];
+  /** Bush stealth: wall-clock timestamp until which the fighter is revealed. */
+  revealAt?: number;
   ts: number;
 }
 
@@ -146,6 +150,7 @@ function newFighter(
     dashHit: false,
     lastHitAt: -9999,
     vy: 0,
+    revealUntil: -9999,
   };
 }
 
@@ -299,6 +304,8 @@ export default function PvpBattleScene({
     if (resultRef.current || p.hp <= 0) return;
     p.hp = Math.max(0, p.hp - dmg);
     p.lastHitAt = performance.now();
+    // Taking damage in a bush reveals the victim (Brawl-style).
+    p.revealUntil = performance.now() + BUSH_REVEAL_MS;
     floatText(p.x, p.y - 130, `-${dmg}`, "#ff6b6b");
     playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
     playSound("hit", { volume: 0.35, rate: 1.5 });
@@ -374,6 +381,14 @@ export default function PvpBattleScene({
       superCharge: d.superCharge,
       phase: d.phase,
     };
+    // Bush stealth: mirror the opponent's reveal deadline. It travels as a
+    // wall-clock timestamp so both phones agree even though
+    // performance.now() is device-local. Only refresh while it is still in
+    // the future — once it expires the deadline decays naturally again.
+    if (typeof d.revealAt === "number" && d.revealAt > Date.now()) {
+      bot.current.revealUntil =
+        performance.now() + Math.max(0, d.revealAt - Date.now());
+    }
     // reconcile remote projectiles with the snapshot (corrects drift)
     const next = new Map<string, PvpProj>();
     for (const pr of d.projs ?? []) {
@@ -513,11 +528,15 @@ export default function PvpBattleScene({
       tx = p.x + (aimX! / aimMag) * 120;
       ty = p.y + (aimY! / aimMag) * 120;
     } else {
+      // No auto-lock on a fighter hiding in a bush (Brawl-style).
+      if (isHiddenFrom(bot.current, p)) return;
       tx = bot.current.x;
       ty = bot.current.y - 40;
     }
     p.facing = tx >= p.x ? 1 : -1;
     spawnProj(tx, ty, BASE_DMG);
+    // Firing (even from a bush) reveals the shooter for a moment.
+    p.revealUntil = performance.now() + BUSH_REVEAL_MS;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -525,7 +544,11 @@ export default function PvpBattleScene({
     const p = player.current;
     if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.superCharge < 1)
       return;
+    // Targeted supers cannot lock an opponent hiding in a bush (heal is fine).
+    if (p.ability.id !== "sifa" && isHiddenFrom(bot.current, p)) return;
     useSuper();
+    // Using an ability inside a bush reveals the caster for a moment.
+    p.revealUntil = performance.now() + BUSH_REVEAL_MS;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -533,6 +556,9 @@ export default function PvpBattleScene({
 
   const hitsObstacle = (cx: number, cy: number, r: number) =>
     BATTLE_OBSTACLES.some((c) => {
+      // Bushes are Brawl-style stealth zones: fighters walk THROUGH them
+      // (and shots pass over them) — they only hide who stands inside.
+      if (c.kind === "bush") return false;
       const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
       const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
       const dx = cx - nx;
@@ -859,6 +885,11 @@ export default function PvpBattleScene({
             phase: p.phase,
             projs: ownProjs.current.map((pr) => ({ ...pr })),
             events: pendingEvents.current.map((e) => ({ ...e })),
+            // Bush stealth: remaining reveal time as a wall-clock deadline.
+            revealAt:
+              p.revealUntil > 0
+                ? p.revealUntil - performance.now() + Date.now()
+                : 0,
             ts: now,
           });
         }

@@ -8,6 +8,8 @@ import {
   Arena3D,
   ATK_CD,
   BATTLE_OBSTACLES,
+  BUSH_REVEAL_MS,
+  isHiddenFrom,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -117,6 +119,7 @@ function newFighter(
     dashHit: false,
     lastHitAt: -9999,
     vy: 0,
+    revealUntil: -9999,
   };
 }
 
@@ -439,6 +442,9 @@ export default function BattleScene({
 
   const hitsObstacle = (cx: number, cy: number, r: number) =>
     BATTLE_OBSTACLES.some((c) => {
+      // Bushes are Brawl-style stealth zones: fighters walk THROUGH them
+      // (and shots pass over them) — they only hide who stands inside.
+      if (c.kind === "bush") return false;
       const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
       const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
       const dx = cx - nx;
@@ -529,6 +535,8 @@ export default function BattleScene({
     if (target.hp <= 0 || resultRef.current) return;
     target.hp = Math.max(0, target.hp - dmg);
     target.lastHitAt = performance.now();
+    // Taking damage in a bush reveals the victim (Brawl-style).
+    target.revealUntil = performance.now() + BUSH_REVEAL_MS;
     floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
     chargeGain(attacker, 0.26);
     chargeGain(target, 0.12);
@@ -654,12 +662,16 @@ export default function BattleScene({
       tx = p.x + (aimX! / aimMag) * 120;
       ty = p.y + (aimY! / aimMag) * 120;
     } else {
-      // no drag (or keyboard) — auto-aim at the enemy
+      // no drag (or keyboard) — auto-aim at the enemy. A fighter hiding in
+      // a bush cannot be auto-locked (Brawl-style).
+      if (isHiddenFrom(b, p)) return;
       tx = b.x;
       ty = b.y - 40;
     }
     p.facing = tx >= p.x ? 1 : -1;
     spawnProj(p, "player", tx, ty, BASE_DMG);
+    // Firing (even from a bush) reveals the shooter for a moment.
+    p.revealUntil = performance.now() + BUSH_REVEAL_MS;
   }, []);
 
   const trySuper = useCallback(() => {
@@ -673,7 +685,11 @@ export default function BattleScene({
       p.superCharge < 1
     )
       return;
+    // Targeted supers cannot lock a fighter hiding in a bush (heal is fine).
+    if (p.ability.id !== "sifa" && isHiddenFrom(b, p)) return;
     useSuper(p, b);
+    // Using an ability inside a bush reveals the caster for a moment.
+    p.revealUntil = performance.now() + BUSH_REVEAL_MS;
   }, []);
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
@@ -714,6 +730,14 @@ export default function BattleScene({
     let superReadyPlayed = false;
     let stepAcc = 0;
     let botStepAcc = 0;
+    // Bush stealth: where the bot last saw the player, plus patrol waypoints
+    // used while the player is hidden so the bot keeps hunting (no sight
+    // through bushes).
+    let lastSeenX = 420;
+    let lastSeenY = 180;
+    let patrolT = 0;
+    let patrolX = 850;
+    let patrolY = 550;
     const onKeyDown = (e: KeyboardEvent) => {
       if (
         [
@@ -858,6 +882,14 @@ export default function BattleScene({
       const dx = p.x - b.x;
       const dy = p.y - b.y;
       const dist = Math.hypot(dx, dy) || 1;
+      // Bush stealth: the bot can only see/engage the player while the
+      // player is outside a bush, revealed (attacked / hit recently), or
+      // standing in the same bush as the bot.
+      const botCanSee = !isHiddenFrom(p, b);
+      if (botCanSee) {
+        lastSeenX = p.x;
+        lastSeenY = p.y;
+      }
       if (b.dashT > 0) {
         b.dashT -= dt;
         moveFighter(b, b.dashVX * 820 * dt, b.dashVY * 820 * dt, dt);
@@ -870,7 +902,32 @@ export default function BattleScene({
         const levelT = botLevelT(b.level);
         let mx = 0;
         let my = 0;
-        if (dist > 340) {
+        if (!botCanSee) {
+          // Player vanished into a bush — cruise to the last known spot,
+          // then patrol nearby waypoints so the bot keeps hunting instead of
+          // standing still (it gets no sight through the bush).
+          const ldx = lastSeenX - b.x;
+          const ldy = lastSeenY - b.y;
+          const ld = Math.hypot(ldx, ldy) || 1;
+          if (ld < 90) {
+            patrolT -= dt;
+            if (patrolT <= 0) {
+              patrolT = 0.7 + Math.random() * 1.3;
+              const pa = Math.random() * Math.PI * 2;
+              const prr = 150 + Math.random() * 280;
+              patrolX = clamp(b.x + Math.cos(pa) * prr, 60, ARENA_W - 60);
+              patrolY = clamp(b.y + Math.sin(pa) * prr, 60, ARENA_H - 60);
+            }
+            const pdx = patrolX - b.x;
+            const pdy = patrolY - b.y;
+            const pd = Math.hypot(pdx, pdy) || 1;
+            mx = pdx / pd;
+            my = pdy / pd;
+          } else {
+            mx = ldx / ld;
+            my = ldy / ld;
+          }
+        } else if (dist > 340) {
           mx = dx / dist;
           my = dy / dist;
         } else if (dist < 200) {
@@ -882,7 +939,7 @@ export default function BattleScene({
         }
         // Higher-level bots weave: add a slow perpendicular sway so they are
         // harder to hit while still closing or holding range.
-        if (levelT > 0) {
+        if (levelT > 0 && botCanSee) {
           const sway = Math.sin(performance.now() / 900 + b.phase) * levelT * 0.55;
           mx += (dy / dist) * sway;
           my += (-dx / dist) * sway;
@@ -945,13 +1002,15 @@ export default function BattleScene({
           }
           b.stuckT = 0;
         }
-        b.facing = dx > 0 ? 1 : -1;
+        b.facing = (botCanSee ? dx : mx) > 0 ? 1 : -1;
       }
 
-      // Bots NEVER stop firing: the shot check runs every frame, outside the
-      // movement/dash branches, so nothing (stuck sweep, dash, strafe) can
-      // interrupt the stream of bullets.
-      if (b.atkCd <= 0) {
+      // The shot check runs every frame, outside the movement/dash branches,
+      // so nothing (stuck sweep, dash, strafe) can interrupt the stream of
+      // bullets. The one exception: a player hiding in a bush cannot be
+      // engaged at all — bots stop tracking AND firing while the target is
+      // hidden, and resume the instant it is revealed again.
+      if (b.atkCd <= 0 && botCanSee) {
         b.atkCd = botFireInterval(b.level);
         // Aim jitter shrinks with level — low levels genuinely miss.
         const err = (Math.random() - 0.5) * 2 * botAimError(b.level);
@@ -962,6 +1021,8 @@ export default function BattleScene({
           p.y + Math.sin(Math.atan2(dy, dx) + err) * 60,
           BASE_DMG,
         );
+        // Shooting (even from a bush) reveals the shooter for a moment.
+        b.revealUntil = performance.now() + BUSH_REVEAL_MS;
         // Higher-level bots strafe after firing, so they are harder to
         // punish while still shooting.
         if (Math.random() < botStrafeChance(b.level)) {
@@ -979,8 +1040,11 @@ export default function BattleScene({
         1,
         b.superCharge + dt * (0.15 + 0.15 * botLevelT(b.level)),
       );
-      if (b.superCharge >= 1) {
+      // The ult fires the moment the bar is full — unless the target hides
+      // in a bush (self-heal is fine anywhere). Using it reveals the bot.
+      if (b.superCharge >= 1 && (b.ability.id === "sifa" || botCanSee)) {
         useSuper(b, p);
+        b.revealUntil = performance.now() + BUSH_REVEAL_MS;
       }
 
       // --- projectiles ---
