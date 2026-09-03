@@ -16,6 +16,7 @@ import {
   FALLBACK_MODEL_URL,
   GlbModelBoundary,
   GlbModelRetry,
+  characterModelUrl,
   computeSkeletonHeight,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
@@ -95,12 +96,6 @@ export const BATTLE_OBSTACLES: BattleObstacle[] = [
 
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
 export const ATK_CD = 0.85;
-
-/** Nicer, more detailed default battle model (the three.js Soldier rig — the
- *  same rig used by the Kraliyet Savaşçısı skin), served locally so every
- *  fighter looks properly 3D instead of the low-poly street avatar. Skins and
- *  the RobotExpressive/procedural fallbacks still take over as usual. */
-export const BATTLE_MODEL_URL = "/models/battle-soldier.glb";
 
 /** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
 export function supportsWebGL(): boolean {
@@ -375,9 +370,10 @@ function GlbFighterBodyCore({
   );
 }
 
-/** Battle fighter body — nicer 3D Soldier rig by default → RobotExpressive
- *  fallback (so the battle always has a rigged character). Only if even that
- *  fails does the procedural low-poly body take over (rig's boundary). */
+/** Battle fighter body with the SAME fallback chain as the street world:
+ *  primary model URL → RobotExpressive fallback (so the battle always
+ *  shows the same character as the street). Only if even that fails does
+ *  the procedural low-poly body take over (rig's boundary). */
 function GlbFighterBody({
   fighter,
 }: {
@@ -390,9 +386,7 @@ function GlbFighterBody({
         <GlbFighterBodyCore fighter={fighter} url={FALLBACK_MODEL_URL} equipped={equipped} />
       }
     >
-      {/* Default battle fighters use the nicer 3D Soldier rig; a skin still
-          overrides it (resolveSkinUrl inside GlbFighterBodyCore). */}
-      <GlbFighterBodyCore fighter={fighter} url={BATTLE_MODEL_URL} equipped={equipped} />
+      <GlbFighterBodyCore fighter={fighter} url={characterModelUrl()} equipped={equipped} />
     </GlbModelRetry>
   );
 }
@@ -696,15 +690,14 @@ function FighterRig({
     }
     root.current.position.set(f.x / S, 0, f.y / S);
     // ── 4-direction facing ──
-    // The battle default (Soldier rig) and the Kraliyet Savaşçısı skin (same
-    // Soldier rig) author their forward as -Z, opposite to the procedural
-    // body's axis. Keep the shared movement coordinates intact, but apply the
-    // model-specific half-turn so they walk toward their travel direction
-    // instead of showing their back. Other skins keep their own axis.
-    const fighterSkinUrl = resolveSkinUrl(fighter.current.equipped);
-    const isSoldierRig =
-      !fighterSkinUrl || fighter.current.equipped.includes("skin-savasci-glb");
-    const modelTurn = isSoldierRig ? Math.PI : 0;
+    // The royal warrior GLB's authored forward axis is opposite to the
+    // procedural body's axis. Keep the shared movement coordinates intact,
+    // but apply the model-specific half-turn so it walks toward its travel
+    // direction instead of showing its back.
+    const isRoyalWarrior = fighter.current.equipped.some(
+      (item) => item === "skin-savasci-glb",
+    );
+    const modelTurn = isRoyalWarrior ? Math.PI : 0;
     let targetYaw: number;
     if (!f.moving) targetYaw = modelTurn;
     else if ((f.vy ?? 0) !== 0) targetYaw = (f.vy < 0 ? Math.PI : 0) + modelTurn;
