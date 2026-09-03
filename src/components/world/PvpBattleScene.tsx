@@ -1143,7 +1143,7 @@ export default function PvpBattleScene({
             <div className="pointer-events-none absolute inset-x-0 top-4 z-[12] flex justify-center">
               <span className="battle-hidden-badge flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-950/75 px-4 py-1.5 text-xs font-extrabold tracking-wide text-emerald-200 shadow-lg backdrop-blur-sm">
                 <span className="text-sm">🌿</span>
-                GİZLENDİN — rakibin seni görmüyor
+                GİZLENDİN
                 <span className="hidden size-2 animate-pulse rounded-full bg-emerald-300 sm:block" />
               </span>
             </div>
