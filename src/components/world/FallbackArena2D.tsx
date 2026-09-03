@@ -778,13 +778,47 @@ function Obstacle2D({ o }: { o: (typeof BATTLE_OBSTACLES)[number] }) {
     );
   }
   if (kind === "bush") {
-    const r = Math.min(w, h) / 2;
+    // Brawl-Style little bush patch: several overlapping round blobs with a
+    // darker rim and light crowns (deterministic per position so it never
+    // flickers between renders). Fighters walk over it and hide inside.
+    const blobs: { cx: number; cy: number; r: number }[] = [];
+    for (let i = 0; i < 8; i++) {
+      const s1 =
+        Math.sin((x + 1) * 12.9898 + (y + 3) * 78.233 + i * 71.71) *
+        43758.5453;
+      const fx = s1 - Math.floor(s1);
+      const s2 =
+        Math.sin((y + 5) * 39.719 + (x + 7) * 15.433 + i * 23.13) *
+        43758.5453;
+      const fy = s2 - Math.floor(s2);
+      const r = Math.min(w, h) * (0.16 + 0.09 * fx);
+      const cx = x + r + fx * (w - 2 * r);
+      const cy = y + r + fy * (h - 2 * r);
+      blobs.push({ cx, cy, r });
+    }
     return (
       <g>
-        <circle cx={x + w / 2} cy={y + h / 2} r={r} fill="#3e8e41" stroke="#2d6b30" strokeWidth="5" />
-        <circle cx={x + w * 0.28} cy={y + h * 0.65} r={r * 0.62} fill="#4c9a3a" />
-        <circle cx={x + w * 0.72} cy={y + h * 0.62} r={r * 0.6} fill="#5cb85c" />
-        <circle cx={x + w * 0.5} cy={y + h * 0.38} r={r * 0.45} fill="#5cb85c" opacity="0.8" />
+        {blobs.map((b, i) => (
+          <g key={i}>
+            {/* dark rim blob (slightly bigger, behind the fill) */}
+            <circle cx={b.cx} cy={b.cy} r={b.r + 3.5} fill="#2d6b30" />
+            {/* main foliage */}
+            <circle
+              cx={b.cx}
+              cy={b.cy}
+              r={b.r}
+              fill={i % 2 === 0 ? "#3f9445" : "#4c9a3a"}
+            />
+            {/* light crown highlight */}
+            <circle
+              cx={b.cx - b.r * 0.24}
+              cy={b.cy - b.r * 0.28}
+              r={b.r * 0.42}
+              fill="#66c26a"
+              opacity="0.85"
+            />
+          </g>
+        ))}
       </g>
     );
   }

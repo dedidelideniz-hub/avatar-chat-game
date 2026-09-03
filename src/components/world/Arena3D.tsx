@@ -83,6 +83,15 @@ export const BATTLE_OBSTACLES: BattleObstacle[] = [
   { x: 140, y: 690, w: 120, h: 100, kind: "bush" },
   { x: 1430, y: 600, w: 160, h: 50, kind: "fence" },
   { x: 1440, y: 690, w: 120, h: 100, kind: "bush" },
+  // small Brawl-Style brush patches (extra little stealth spots, mirrored)
+  { x: 510, y: 368, w: 70, h: 58, kind: "bush" },
+  { x: 1120, y: 368, w: 70, h: 58, kind: "bush" },
+  { x: 510, y: 674, w: 70, h: 58, kind: "bush" },
+  { x: 1120, y: 674, w: 70, h: 58, kind: "bush" },
+  { x: 470, y: 210, w: 76, h: 60, kind: "bush" },
+  { x: 1154, y: 210, w: 76, h: 60, kind: "bush" },
+  { x: 470, y: 830, w: 76, h: 60, kind: "bush" },
+  { x: 1154, y: 830, w: 76, h: 60, kind: "bush" },
 ];
 
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
@@ -1512,16 +1521,45 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
     );
   }
   if (o.kind === "bush") {
-    // clump of three green spheres
+    // Brawl-Style little bush patch — a low, overlapping cluster of flattened
+    // domes (darker base + brighter crowns) that reads like a small brush
+    // from the follow camera. Fighters walk straight through these.
+    const minDim = Math.min(w, h);
+    const blobs = Array.from({ length: 7 }, (_, i) => {
+      const s1 =
+        Math.sin((o.x + 1) * 12.9898 + (o.y + 3) * 78.233 + i * 71.71) *
+        43758.5453;
+      const fx = s1 - Math.floor(s1);
+      const s2 =
+        Math.sin((o.y + 5) * 39.719 + (o.x + 7) * 15.433 + i * 23.13) *
+        43758.5453;
+      const fy = s2 - Math.floor(s2);
+      const r = minDim * (0.16 + 0.085 * fx);
+      const lx = -w / 2 + r + fx * (w - 2 * r);
+      const lz = -h / 2 + r + fy * (h - 2 * r);
+      return {
+        p: [lx, r * 0.42, lz] as [number, number, number],
+        r,
+        c:
+          i === 0
+            ? "#2f7d3a"
+            : i % 3 === 1
+              ? "#3e8e41"
+              : i % 3 === 2
+                ? "#4c9a3a"
+                : "#55ad52",
+      };
+    });
     return (
       <group position={[pos[0], 0, pos[2]]}>
-        {[
-          { p: [0, 0.32, 0] as [number, number, number], r: Math.min(w, h) / 2.1, c: "#3e8e41" },
-          { p: [-w / 4, 0.24, h / 4] as [number, number, number], r: Math.min(w, h) / 2.6, c: "#4c9a3a" },
-          { p: [w / 4, 0.26, -h / 4] as [number, number, number], r: Math.min(w, h) / 2.7, c: "#5cb85c" },
-        ].map((b, i) => (
-          <mesh key={i} position={b.p} castShadow>
-            <sphereGeometry args={[b.r, 12, 12]} />
+        {blobs.map((b, i) => (
+          <mesh
+            key={i}
+            position={b.p}
+            scale={[1, 0.58, 1]}
+            castShadow={i < 3}
+          >
+            <sphereGeometry args={[b.r, 14, 10]} />
             <meshStandardMaterial color={b.c} roughness={0.95} />
           </mesh>
         ))}
