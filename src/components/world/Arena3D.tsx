@@ -470,6 +470,45 @@ function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
   tex.needsUpdate = true;
 }
 
+/**
+ * Apply bush visibility to every mesh in a fighter's current hierarchy.
+ * GLTFLoader can return shared material instances, so clone each material
+ * before changing opacity and force the shader to pick up the new flags.
+ */
+export function applyBushTransparency(
+  characterGroup: THREE.Object3D,
+  isInBush: boolean,
+) {
+  characterGroup.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    const current = mesh.material;
+    const materials = Array.isArray(current)
+      ? current.map((material) => {
+          if (material.userData._bushMaterialClone) return material;
+          const unique = material.clone();
+          unique.userData._bushMaterialClone = true;
+          return unique;
+        })
+      : [
+          current.userData._bushMaterialClone
+            ? current
+            : Object.assign(current.clone(), {
+                userData: {
+                  ...current.userData,
+                  _bushMaterialClone: true,
+                },
+              }),
+        ];
+    mesh.material = Array.isArray(current) ? materials : materials[0];
+    for (const material of materials) {
+      material.transparent = isInBush;
+      material.opacity = isInBush ? 0.4 : 1;
+      material.needsUpdate = true;
+    }
+  });
+}
+
 /** Name-tag texture — dark rounded chip with the fighter's ability emoji,
  *  name and (for bots) level. Lives above the HP bar as a world-space
  *  THREE.Sprite, which automatically billboards toward the camera. */
@@ -568,8 +607,8 @@ function FighterRig({
   isPlayer?: boolean;
 }) {
   const bodyWrap = useRef<THREE.Group>(null);
-  // true while the fighter's body materials are set to 50% (in-bush) view
-  const semiApplied = useRef(false);
+  // Tracks the last bush state so the transition gets an immediate update.
+  const bushState = useRef(false);
   const root = useRef<THREE.Group>(null);
   const bob = useRef<THREE.Group>(null);
 
@@ -639,57 +678,18 @@ function FighterRig({
     if (root.current.visible === wantHidden) root.current.visible = !wantHidden;
     if (barGroup.current && barGroup.current.visible === wantHidden)
       barGroup.current.visible = !wantHidden;
-    const semi = vis === 1;
-    if (semi) {
-      // Re-apply every frame while semi-transparent so materials that mount
-      // later (GLB streaming in) inherit the ghosted look too.
-      semiApplied.current = true;
+    const shouldApplyBushState = inBushF !== bushState.current;
+    // This is the same state that drives the "GİZLENDİN" control below:
+    // update the character and every attached equipment child immediately on
+    // entry/exit, then keep enforcing it while inside for late GLB children.
+    if (shouldApplyBushState || inBushF) {
+      bushState.current = inBushF;
       if (bodyWrap.current) {
-        bodyWrap.current.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (!mesh.isMesh || !mesh.material) return;
-          const mats = Array.isArray(mesh.material)
-            ? mesh.material
-            : [mesh.material];
-          for (const m of mats) {
-            if (!m.userData._bushOrig) {
-              m.userData._bushOrig = {
-                opacity: m.opacity,
-                transparent: m.transparent,
-              };
-            }
-            const orig = m.userData._bushOrig as {
-              opacity: number;
-              transparent: boolean;
-            };
-            m.transparent = true;
-            // Ghost fade on the whole model AND its equipment (sword etc.):
-            // 45% so the player unmistakably sees their fighter go pale.
-            m.opacity = orig.opacity * 0.45;
-          }
-        });
-      }
-    } else if (semiApplied.current) {
-      // Leaving the faded state — restore every material to its own baseline.
-      semiApplied.current = false;
-      if (bodyWrap.current) {
-        bodyWrap.current.traverse((obj) => {
-          const mesh = obj as THREE.Mesh;
-          if (!mesh.isMesh || !mesh.material) return;
-          const mats = Array.isArray(mesh.material)
-            ? mesh.material
-            : [mesh.material];
-          for (const m of mats) {
-            const orig = m.userData._bushOrig as
-              | { opacity: number; transparent: boolean }
-              | undefined;
-            if (!orig) continue;
-            m.transparent = orig.transparent;
-            m.opacity = orig.opacity;
-          }
-        });
+        applyBushTransparency(bodyWrap.current, inBushF);
       }
     }
+    // The root visibility rule still hides an enemy from the observer; the
+    // material rule above deliberately remains authoritative for both rigs.
     // paint the name tag once per fight — name/level/emoji never change
     if (!nameTagDrawn.current) {
       nameTagDrawn.current = true;
