@@ -10,6 +10,8 @@
 // symmetric layout, with a golden ball in the center.
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
+
+const STYLIZED_BUSH_URL = "/models/stylized_bush.glb";
 import { RoundedBox, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
