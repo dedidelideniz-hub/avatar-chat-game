@@ -414,6 +414,54 @@ function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
   tex.needsUpdate = true;
 }
 
+/** Name-tag texture — dark rounded chip with the fighter's ability emoji,
+ *  name and (for bots) level. Lives above the HP bar as a world-space
+ *  THREE.Sprite, which automatically billboards toward the camera. */
+function makeNameTex() {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 96;
+  const t = new THREE.CanvasTexture(c);
+  t.minFilter = THREE.LinearFilter;
+  return t;
+}
+
+/** Paint one name-tag frame. Drawn once per fight (name/level never change). */
+function drawNameSprite(
+  tex: THREE.CanvasTexture,
+  { name, emoji, level, isPlayer }: { name: string; emoji: string; level: number; isPlayer: boolean },
+) {
+  const canvas = tex.image as HTMLCanvasElement;
+  const g = canvas.getContext("2d");
+  if (!g) return;
+  g.clearRect(0, 0, 512, 96);
+  g.font = "800 44px 'Baloo 2', 'Segoe UI', sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const lvl = level > 1 ? `  ·  Lv${level}` : "";
+  let namePart = name;
+  const maxW = 434; // leave room for the chip padding inside the 512px canvas
+  const fits = (s: string) =>
+    g.measureText(`${emoji}  ${s}${lvl}`).width <= maxW;
+  while (namePart.length > 1 && !fits(namePart)) {
+    namePart = namePart.slice(0, -1);
+  }
+  if (namePart !== name) namePart = `${namePart}…`;
+  const label = `${emoji}  ${namePart}${lvl}`;
+  const w = Math.min(474, g.measureText(label).width + 44);
+  const x = (512 - w) / 2;
+  g.beginPath();
+  traceRoundRect(g, x, 18, w, 60, 30);
+  g.fillStyle = "rgba(8,12,26,0.85)";
+  g.fill();
+  g.lineWidth = 5;
+  g.strokeStyle = isPlayer ? "#38bdf8" : "#fb7185";
+  g.stroke();
+  g.fillStyle = "#ffffff";
+  g.fillText(label, 256, 50);
+  tex.needsUpdate = true;
+}
+
 /** Lightning-bolt sprite texture (white core + cyan glow) for the player's
  *  electric-strike effect around the identity ring. */
 function makeBoltTexture() {
@@ -473,6 +521,8 @@ function FighterRig({
   const barGroup = useRef<THREE.Group>(null);
   const hpFillTex = useMemo(makeBarTex, []);
   const hpGhostTex = useMemo(makeBarTex, []);
+  const nameTex = useMemo(makeNameTex, []);
+  const nameTagDrawn = useRef(false);
   // animated display values — lerp toward the real hp every frame
   const dispHp = useRef(-1);
   const ghostHp = useRef(-1);
@@ -500,6 +550,16 @@ function FighterRig({
   useFrame((_, dt) => {
     const f = fighter.current;
     if (!root.current) return;
+    // paint the name tag once per fight — name/level/emoji never change
+    if (!nameTagDrawn.current) {
+      nameTagDrawn.current = true;
+      drawNameSprite(nameTex, {
+        name: f.name,
+        emoji: f.ability.emoji,
+        level: f.level,
+        isPlayer,
+      });
+    }
     root.current.position.set(f.x / S, 0, f.y / S);
     // ── 4-direction facing ──
     // The royal warrior GLB's authored forward axis is opposite to the
@@ -879,12 +939,18 @@ function FighterRig({
         </mesh>
         </>
       )}
-      {/* health bar above the head — thin, animated, always visible */}
+      {/* world-space head UI — billboard name chip + animated HP bar,
+          both float above the head and follow the fighter */}
       <group ref={barGroup}>
-        <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[1.02, 0.075, 1]} renderOrder={1}>
+        {/* name / level tag */}
+        <sprite position={[0, 1.82, 0]} scale={[2.05, 0.385, 1]} renderOrder={0}>
+          <spriteMaterial map={nameTex} transparent depthTest={false} />
+        </sprite>
+        {/* animated HP bar (white ghost trails the damage) */}
+        <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[1.28, 0.095, 1]} renderOrder={1}>
           <spriteMaterial map={hpGhostTex} depthTest={false} />
         </sprite>
-        <sprite ref={hpFill} position={[0, 1.55, 0]} scale={[1.02, 0.075, 1]} renderOrder={2}>
+        <sprite ref={hpFill} position={[0, 1.55, 0]} scale={[1.28, 0.095, 1]} renderOrder={2}>
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>

@@ -1084,25 +1084,14 @@ export default function BattleScene({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-2 backdrop-blur-sm sm:p-4">
       <div className="relative flex h-full w-full max-w-[1400px] flex-col overflow-hidden rounded-3xl border-4 border-[#3d2f2a]/40 bg-[#1b2233] shadow-2xl">
-        {/* HUD top */}
+        {/* HUD top — compact strip: HP bars and names now float above each
+            fighter's head inside the arena (world-space UI) */}
         <div className="flex shrink-0 items-center justify-between gap-2 bg-gradient-to-r from-[#232b40] to-[#2a3350] px-3 py-2 text-white">
           <div className="flex min-w-0 items-center gap-2">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/25 text-sm font-extrabold">
               {playerName.slice(0, 1).toUpperCase()}
             </div>
-            <div className="min-w-0">
-              <p className="flex items-center gap-1 text-sm font-extrabold">
-                <span className="truncate">{playerName}</span>
-                <span className="text-[10px]">{abilityEmoji}</span>
-              </p>
-              <div className="mt-1 h-2.5 w-16 overflow-hidden rounded-full bg-white/15 min-[420px]:w-28 sm:w-44">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-lime-400 transition-all"
-                  style={{ width: `${(hud.ph / HP) * 100}%` }}
-                />
-              </div>
-            </div>
-            <div className="ml-1 hidden items-center gap-1 text-[11px] font-extrabold text-sky-300 sm:flex">
+            <div className="flex items-center gap-1 text-[11px] font-extrabold text-sky-300">
               <Zap className="size-3.5" />
               {Math.round(hud.pc * 100)}%
             </div>
@@ -1124,17 +1113,9 @@ export default function BattleScene({
           </div>
 
           <div className="flex min-w-0 items-center justify-end gap-2">
-            <div className="min-w-0 text-right">
-              <p className="flex items-center justify-end gap-1 text-sm font-extrabold">
-                <span className="text-[10px]">{oppAbilityEmoji}</span>
-                <span className="truncate">{opponentName}</span>
-              </p>
-              <div className="mt-1 ml-auto h-2.5 w-16 overflow-hidden rounded-full bg-white/15 min-[420px]:w-28 sm:w-44">
-                <div
-                  className="ml-auto h-full rounded-full bg-gradient-to-r from-rose-400 to-red-500 transition-all"
-                  style={{ width: `${(hud.ohp / HP) * 100}%` }}
-                />
-              </div>
+            <div className="hidden items-center gap-1 text-[11px] font-extrabold text-rose-300 sm:flex">
+              <Zap className="size-3.5" />
+              {Math.round(hud.oc * 100)}%
             </div>
             <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-rose-500/25 text-sm font-extrabold">
               {opponentName.slice(0, 1).toUpperCase()}

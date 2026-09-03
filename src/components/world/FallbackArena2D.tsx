@@ -13,13 +13,45 @@ import {
   type BattleProj,
 } from "@/components/world/Arena3D";
 import type { MutableRefObject } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 const W = 1700;
 const H = 1100;
 const CHAR_W = 58;
 const CHAR_H = 78;
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Font used by the world-space name chips above each fighter's head. */
+const TAG_FONT = "800 15px 'Baloo 2', 'Segoe UI', sans-serif";
+
+/** Rough text width in viewBox px for centering the SVG name chips. */
+function textWidth2D(text: string): number {
+  if (typeof document === "undefined") return text.length * 9;
+  const c = document.createElement("canvas");
+  const g = c.getContext("2d");
+  if (!g) return text.length * 9;
+  g.font = TAG_FONT;
+  return g.measureText(text).width;
+}
+
+/** Build the centered label + chip width for a fighter's head tag. */
+function fighterTag(f: BattleFighter) {
+  const lvl = f.level > 1 ? `  ·  Lv${f.level}` : "";
+  let namePart = f.name;
+  // fit long names inside the chip (max ≈ 216px of text)
+  while (
+    namePart.length > 1 &&
+    textWidth2D(`${f.ability.emoji}  ${namePart}${lvl}`) > 212
+  ) {
+    namePart = namePart.slice(0, -1);
+  }
+  if (namePart !== f.name) namePart += "…";
+  const label = `${f.ability.emoji}  ${namePart}${lvl}`;
+  return {
+    label,
+    w: Math.max(64, Math.min(240, Math.round(textWidth2D(label) + 28))),
+  };
+}
 
 /** Lightning bolt paths (vertical, origin at the feet) for the player's
  *  electric-strike effect around the identity ring. */
@@ -84,6 +116,9 @@ export function FallbackArena2D({
   // Thin animated HP bars above the fighters (white damage trail).
   const pBarRef = useRef<SVGGElement>(null);
   const bBarRef = useRef<SVGGElement>(null);
+  // world-space name chips — measured once, static per fight
+  const pTag = useMemo(() => fighterTag(playerRef.current), [playerRef]);
+  const bTag = useMemo(() => fighterTag(botRef.current), [botRef]);
   const pBarFill = useRef<SVGRectElement>(null);
   const pBarGhost = useRef<SVGRectElement>(null);
   const bBarFill = useRef<SVGRectElement>(null);
@@ -571,6 +606,32 @@ export function FallbackArena2D({
               height={CHAR_H}
             />
           </g>
+          {/* world-space name tag above the head */}
+          <g
+            transform={`translate(${-pTag.w / 2} ${-CHAR_H - 58})`}
+            opacity={0.96}
+          >
+            <rect
+              width={pTag.w}
+              height="24"
+              rx="12"
+              fill="rgba(8,12,26,0.85)"
+              stroke="#38bdf8"
+              strokeWidth="1.5"
+            />
+            <text
+              x={pTag.w / 2}
+              y="12"
+              dy="0.35em"
+              textAnchor="middle"
+              fontSize="15"
+              fontWeight="800"
+              fill="#ffffff"
+              style={{ fontFamily: "'Baloo 2', 'Segoe UI', sans-serif" }}
+            >
+              {pTag.label}
+            </text>
+          </g>
           {/* thin animated HP bar above the head */}
           <g ref={pBarRef}>
             <rect
@@ -593,6 +654,32 @@ export function FallbackArena2D({
               width={CHAR_W}
               height={CHAR_H}
             />
+          </g>
+          {/* world-space name tag above the head */}
+          <g
+            transform={`translate(${-bTag.w / 2} ${-CHAR_H - 58})`}
+            opacity={0.96}
+          >
+            <rect
+              width={bTag.w}
+              height="24"
+              rx="12"
+              fill="rgba(8,12,26,0.85)"
+              stroke="#fb7185"
+              strokeWidth="1.5"
+            />
+            <text
+              x={bTag.w / 2}
+              y="12"
+              dy="0.35em"
+              textAnchor="middle"
+              fontSize="15"
+              fontWeight="800"
+              fill="#ffffff"
+              style={{ fontFamily: "'Baloo 2', 'Segoe UI', sans-serif" }}
+            >
+              {bTag.label}
+            </text>
           </g>
           {/* thin animated HP bar above the head */}
           <g ref={bBarRef}>
