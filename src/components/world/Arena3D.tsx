@@ -612,16 +612,28 @@ function FighterRig({
   useFrame((_, dt) => {
     const f = fighter.current;
     if (!root.current) return;
-    // ── bush stealth: hide from the enemy / render the body 50% ──
-    // The owner always sees its own fighter (faded to 50% while in a bush);
-    // the enemy fighter is invisible while it hides and reappears when it is
-    // revealed (attacked / took damage) or shares the same bush.
+    // ── bush stealth: hide from the enemy / render the body faded ──
+    // The owner sees their own fighter ghosted (45%) while in a bush; the
+    // enemy fighter is invisible while it hides and returns to full opacity
+    // when revealed (attacked / took damage) or while sharing the same bush.
     const inBushF = isInBush(f.x, f.y);
+    // Bush stealth visuals (Brawl-style):
+    //   0 = fully opaque body,
+    //   1 = ghost/faded (in a bush and not revealed),
+    //   2 = completely invisible to the observer (hidden enemy).
+    // A fighter is "revealed" for BUSH_REVEAL_MS after attacking, using an
+    // ability or taking damage, so it temporarily returns to full opacity.
     let vis: 0 | 1 | 2;
-    if (isPlayer) {
-      vis = inBushF ? 1 : 0;
+    if (!inBushF) {
+      vis = 0;
+    } else if (isPlayer) {
+      // Your own body: ghost while hidden, full for 1.2s while revealed so
+      // you feel the bush "give you away" when you act.
+      vis = isRevealed(f) ? 0 : 1;
     } else {
-      vis = isHiddenFrom(f, other.current) ? 2 : inBushF ? 1 : 0;
+      // Enemy body: invisible while hidden from you, ghost in a shared bush,
+      // full while revealed (attacked / took damage).
+      vis = isHiddenFrom(f, other.current) ? 2 : isRevealed(f) ? 0 : 1;
     }
     const wantHidden = vis === 2;
     if (root.current.visible === wantHidden) root.current.visible = !wantHidden;
@@ -630,7 +642,7 @@ function FighterRig({
     const semi = vis === 1;
     if (semi) {
       // Re-apply every frame while semi-transparent so materials that mount
-      // later (GLB streaming in) inherit the 50% look too.
+      // later (GLB streaming in) inherit the ghosted look too.
       semiApplied.current = true;
       if (bodyWrap.current) {
         bodyWrap.current.traverse((obj) => {
@@ -651,9 +663,9 @@ function FighterRig({
               transparent: boolean;
             };
             m.transparent = true;
-            // A strong ghost fade (≈40%) so the player unmistakably sees
-            // their own fighter turn invisible inside a bush.
-            m.opacity = orig.opacity * 0.4;
+            // Ghost fade on the whole model AND its equipment (sword etc.):
+            // 45% so the player unmistakably sees their fighter go pale.
+            m.opacity = orig.opacity * 0.45;
           }
         });
       }
