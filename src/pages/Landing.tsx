@@ -59,7 +59,7 @@ function WorldScene({ className }: { className?: string }) {
       viewBox="0 0 420 380"
       className={className}
       role="img"
-      aria-label="bilsek dünyasından bir sahne"
+      aria-label="Sanalika dünyasından bir sahne"
     >
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -133,7 +133,7 @@ function WorldScene({ className }: { className?: string }) {
         <rect x="4" y="0" width="118" height="34" rx="17" fill="#ffffff" stroke="#ead9bd" strokeWidth="2" />
         <path d="M34 34 L42 48 L56 34 Z" fill="#ffffff" stroke="#ead9bd" strokeWidth="2" />
         <text x="63" y="23" textAnchor="middle" fontSize="14" fontWeight="700" fill="#2b2320">
-          Merhaba! amca 👋
+          Merhaba! 👋
         </text>
       </g>
     </svg>
@@ -141,7 +141,7 @@ function WorldScene({ className }: { className?: string }) {
 }
 
 const MARQUEE_ITEMS = [
-  "Sohbet etetme",
+  "Sohbet et",
   "Avatarını özelleştir",
   "Dünyayı keşfet",
   "Arkadaş edin",
@@ -179,9 +179,9 @@ const FEATURES = [
   {
     icon: MessageCircle,
     color: "bg-secondary/20 text-secondary-foreground",
-    title: "Gerçek Zamanlı aşk",
+    title: "Gerçek Zamanlı Sohbet",
     desc: "Dünyadaki herkesle sohbet et. Konuşma balonları avatarının hemen üstünde belirsin.",
-    badge: "Yakında",
+    badge: "Canlı",
   },
   {
     icon: Map,
@@ -250,7 +250,7 @@ export default function Landing() {
               <span className="text-primary">dünyaya</span> adım at
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              Sanalika Avatar Chat — tarayıcında oynanan 2D avatar chat oyunu.
+              Sanalika Avatar Chat — tarayıcında oynanan avatar sohbet dünyası.
               Karakterini özelleştir, sanal dünyada gez, yeni insanlarla tanış
               ve sohbet et. Hepsi tamamen ücretsiz.
             </p>
@@ -321,7 +321,7 @@ export default function Landing() {
             Neler var?
           </span>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Merhaba
+            Sanalika dünyasında buluş
           </h2>
           <p className="mt-4 text-base leading-7 text-muted-foreground">
             Sohbetten keşfe, arkadaşlıktan kişiselleştirmeye — sanal bir dünyada
@@ -383,7 +383,7 @@ export default function Landing() {
               {[
                 "5 farklı saç stili ve 15 saç rengi",
                 "9 ten rengi, 16 kıyafet ve 10 pantolon rengi",
-                "Canlı SVG önizleme — seçtikçe avatarın anında güncellenir",
+                "Canlı avatar önizlemesi — seçtikçe görünümün anında güncellenir",
                 "Rastgele butonu ile sonsuz kombinasyon dene",
               ].map((item) => (
                 <li key={item} className="flex items-start gap-3 text-sm font-semibold">
