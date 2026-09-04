@@ -959,7 +959,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={1.05}>
+    <group ref={root} scale={1.25}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
@@ -1461,7 +1461,7 @@ function FollowCamera({
   // A steeper, closer follow camera keeps the uploaded battlefield in frame
   // on portrait phones instead of leaving a large background/sky band.
   const el = 1.45;
-  const zoom = 8.1; // fixed — no zoom controls
+  const zoom = 6.4; // fixed — no zoom controls
 
   useFrame((_, dt) => {
     const p = playerRef.current;
