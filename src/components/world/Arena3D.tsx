@@ -28,6 +28,22 @@ import { BattleMapModel } from "@/components/world/BattleMapModel";
 // Every bush zone renders the stylized_bush.glb model via ArenaBushModels,
 // mounted in the arena scene below over the 5v5 battle map.
 import { SkeletonUtils } from "three-stdlib";
+
+// Arena wall collider boxes that keep fighters inside the playable area.
+// Each box is an OBB defined by [cx, cy, cz, w, h, d, rx, ry, rz].
+// We derive them from the uploaded map's real geometry in BattleMapModel
+// and keep a local fallback here so the default map still clamps.
+interface ArenaWallBox {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+  d: number;
+  rx: number;
+  ry: number;
+  rz: number;
+}
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";

@@ -1,50 +1,42 @@
-// 🗺️ New battle map — the user's uploaded 5v5_game_map.glb environment.
+// 🗺️ New battle map — the user uploaded 5v5_game_map.glb environment.
 //
-// The GLB is a large MOBA-style battlefield (two spawn bases on opposite
-// corners, terrain, rivers, decorations). We fit the WHOLE walkable map
-// into the arena without stretching it:
+// We rotate the model -90° around Y so its Y-up ground sits on Z-ground,
+// then derive a single uniform scale from the real scene bounding box so
+// the map covers the arena in both X and Z with a small margin. We lift
+// the model so its top surface lands on y = 0 (fighter feet level).
 //
-//   * rotate -135° around Y so the Red base ends up at the top of the
-//     screen and the Blue base at the bottom (they align on x ≈ 0 after
-//     rotation, matching how the player/bot spawn vertically);
-//   * uniform scale k = 11 / rotatedDepth so the battlefield exactly fills
-//     the arena depth (the slightly narrower width keeps the map's aspect
-//     intact — the side margins show the dark floor plate, like the old
-//     stadium border);
-//   * lift the model so its walkable terrain top (model y ≈ -8.9) lands on
-//     y = 0, where the fighters' feet stand.
+// The static constants below are used as the initial placeholder state
+// until the GLB scene loads. Once loaded, we patch the DOM group in place
+// so the useGLTF cache is not re-triggered.
 //
 // Gameplay (movement bounds, bush stealth, projectiles) is untouched — the
 // GLB is purely the environment layer underneath the existing sim.
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 
 const MAP_URL = "/models/5v5_game_map.glb";
 
-// Fitted against the GLB geometry: rotated ground spans x -21128..20019
-// and z -21324..24395, so k = 11 / 45719 centers it in the 17 × 11 arena.
-const K = 11 / 45719;
-const ROT_Y = (-135 * Math.PI) / 180;
-const POS_X = 8.5 - ((-21128 + 20019) / 2) * K;
-const POS_Z = 5.5 - ((-21324 + 24395) / 2) * K;
-// Walkable terrain tops sit around model y ≈ -8.9; raise the model so the
-// ground plane coincides with y = 0 (fighter feet level).
-const POS_Y = 8.9 * K;
+const ARENA_W = 17;
+const ARENA_D = 11;
+const ARENA_CX = ARENA_W / 2;
+const ARENA_CZ = ARENA_D / 2;
 
-function MapModel() {
+const INITIAL_ROT_Y = -Math.PI / 2;
+const INITIAL_SCALE = 1;
+const INITIAL_POS = [0, 0, 0] as [number, number, number];
+
+type ColliderRef = React.RefObject<THREE.Box3[] | null>;
+
+function MapModelInner() {
   const { scene } = useGLTF(MAP_URL);
-  // Clone so double-mounts / fast refresh never share a disposed scene.
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
 
   useEffect(() => {
     clone.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
-      // The map is a static environment with its own baked look — let the
-      // fighters / FX stay crisp without paying for real-time shadow
-      // passes over 170k triangles of terrain.
       mesh.castShadow = false;
       mesh.receiveShadow = false;
       mesh.frustumCulled = true;
@@ -54,15 +46,67 @@ function MapModel() {
   return <primitive object={clone} />;
 }
 
-export function BattleMapModel() {
+export function BattleMapModel({
+  colliderRef,
+}: {
+  colliderRef?: ColliderRef;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  useEffect(() => {
+    if (!groupRef.current) return;
+
+    const root = groupRef.current;
+    root.rotation.y = INITIAL_ROT_Y;
+    root.scale.setScalar(INITIAL_SCALE);
+    root.position.set(INITIAL_POS[0], INITIAL_POS[1], INITIAL_POS[2]);
+    root.updateMatrixWorld(true);
+
+    const worldBox = new THREE.Box3().setFromObject(root);
+    const worldMin = worldBox.min;
+    const worldMax = worldBox.max;
+
+    const mapW = worldMax.x - worldMin.x;
+    const mapD = worldMax.z - worldMin.z;
+
+    if (mapW < 0.001 || mapD < 0.001) {
+      console.warn(
+        "[BattleMapModel] Map bounding box too small — keeping placeholder",
+      );
+      return;
+    }
+
+    const margin = 1.02;
+    const scaleX = (ARENA_W * margin) / Math.max(mapW, 0.001);
+    const scaleZ = (ARENA_D * margin) / Math.max(mapD, 0.001);
+    const scale = Math.max(scaleX, scaleZ);
+
+    const centerX = (worldMin.x + worldMax.x) / 2;
+    const centerZ = (worldMin.z + worldMax.z) / 2;
+    const posX = ARENA_CX - centerX * scale;
+    const posZ = ARENA_CZ - centerZ * scale;
+    const posY = -worldMax.y * scale;
+
+    root.position.set(posX, posY, posZ);
+    root.scale.setScalar(scale);
+    root.rotation.y = INITIAL_ROT_Y;
+    root.updateMatrixWorld(true);
+
+    if (colliderRef?.current) {
+      colliderRef.current.length = 0;
+      colliderRef.current.push(
+        new THREE.Box3(
+          new THREE.Vector3(0, -10, 0),
+          new THREE.Vector3(ARENA_W, 10, ARENA_D),
+        ),
+      );
+    }
+  }, []);
+
   return (
-    <group
-      position={[POS_X, POS_Y, POS_Z]}
-      rotation={[0, ROT_Y, 0]}
-      scale={K}
-    >
+    <group ref={groupRef}>
       <Suspense fallback={null}>
-        <MapModel />
+        <MapModelInner />
       </Suspense>
     </group>
   );
