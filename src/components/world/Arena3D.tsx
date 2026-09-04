@@ -24,6 +24,8 @@ import {
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { ArenaBushModels } from "@/components/world/ArenaBushModels";
+// Old procedural bushes were removed from ObstacleMesh below — every bush
+// zone now renders the stylized_bush.glb model via ArenaBushModels.
 // GLB bush layer is mounted in the arena scene below.
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
