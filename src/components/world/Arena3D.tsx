@@ -24,6 +24,7 @@ import {
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { ArenaBushModels } from "@/components/world/ArenaBushModels";
+// GLB bush layer is mounted in the arena scene below.
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
