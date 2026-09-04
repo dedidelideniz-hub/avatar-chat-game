@@ -959,7 +959,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={0.72}>
+    <group ref={root} scale={1.05}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
@@ -1447,11 +1447,7 @@ function SpawnCircle({
 }
 
 /* ------------------------------------------------------------------ */
-/* Game-simulation follow camera — fixed zoom (no zoom buttons), the    */
-/* camera glides behind the player like a real battle game and clamps   */
-/* to the arena edges so the whole map stays reachable. The map is      */
-/* rendered with z = +y/S, so screen-up = map-up: the joystick, keys    */
-/* and tap-to-move behave exactly like the 2D arena.                    */
+/* Camera tuned for the portrait battle viewport.                      */
 /* ------------------------------------------------------------------ */
 
 function FollowCamera({
@@ -1460,10 +1456,12 @@ function FollowCamera({
   playerRef: MutableRefObject<BattleFighter>;
 }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
-  const cur = useRef(new THREE.Vector3(CX, 0.6, CZ));
+  const cur = useRef(new THREE.Vector3(CX, 0.28, CZ));
   const tmp = useRef(new THREE.Vector3());
-  const el = 0.5; // elevation (radians)
-  const zoom = 12; // fixed — closer than the old full-map view, no controls
+  // A steeper, closer follow camera keeps the uploaded battlefield in frame
+  // on portrait phones instead of leaving a large background/sky band.
+  const el = 1.45;
+  const zoom = 8.1; // fixed — no zoom controls
 
   useFrame((_, dt) => {
     const p = playerRef.current;
