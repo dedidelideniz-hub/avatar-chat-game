@@ -5,9 +5,9 @@
 // BattleScene.tsx (plain refs, no React re-renders); this component only
 // reads those refs every frame and draws them with Three.js.
 //
-// The map is a Brawl-Ball-style stadium: checkered grass, goal frames with
-// red/blue banners, spawn circles, crates, fences, bushes and barrels in a
-// symmetric layout, with a golden ball in the center.
+// The arena renders the uploaded 5v5_game_map.glb battlefield (see
+// BattleMapModel.tsx for the fit transform). Fighters duel across the open
+// map; only the Brawl-style stealth bushes from the old arena remain.
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
 
@@ -24,9 +24,9 @@ import {
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { ArenaBushModels } from "@/components/world/ArenaBushModels";
-// Old procedural bushes were removed from ObstacleMesh below — every bush
-// zone now renders the stylized_bush.glb model via ArenaBushModels.
-// GLB bush layer is mounted in the arena scene below.
+import { BattleMapModel } from "@/components/world/BattleMapModel";
+// Every bush zone renders the stylized_bush.glb model via ArenaBushModels,
+// mounted in the arena scene below over the 5v5 battle map.
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
@@ -43,52 +43,25 @@ export interface BattleObstacle {
   kind: ObstacleKind;
 }
 
-/** Symmetric Brawl-Ball-style layout (mirrored top/bottom around y=550). */
+/** Stealth-bush zones on the 5v5 battle map. The uploaded GLB environment
+ *  replaces the old stadium (crates / fences / barrels / goals are gone —
+ *  the fighters now duel across the open battlefield), but the Brawl-style
+ *  bushes stay: fighters walk through them and are hidden inside one while
+ *  the enemy can't see them. These rects drive the stealth logic in the
+ *  sim and place the stylized_bush.glb models in the arena. */
 export const BATTLE_OBSTACLES: BattleObstacle[] = [
-  // corner crate stacks + bushes
-  { x: 120, y: 120, w: 105, h: 105, kind: "crate" },
-  { x: 120, y: 235, w: 105, h: 105, kind: "crate" },
-  { x: 1475, y: 120, w: 105, h: 105, kind: "crate" },
-  { x: 1475, y: 235, w: 105, h: 105, kind: "crate" },
   { x: 285, y: 80, w: 100, h: 85, kind: "bush" },
   { x: 1315, y: 80, w: 100, h: 85, kind: "bush" },
   { x: 285, y: 935, w: 100, h: 85, kind: "bush" },
   { x: 1315, y: 935, w: 100, h: 85, kind: "bush" },
-  // upper barrier clusters (fence backed by bushes) + mirrored
-  { x: 255, y: 300, w: 230, h: 55, kind: "fence" },
   { x: 280, y: 370, w: 130, h: 110, kind: "bush" },
-  { x: 1215, y: 300, w: 230, h: 55, kind: "fence" },
   { x: 1290, y: 370, w: 130, h: 110, kind: "bush" },
-  { x: 255, y: 745, w: 230, h: 55, kind: "fence" },
   { x: 280, y: 620, w: 130, h: 110, kind: "bush" },
-  { x: 1215, y: 745, w: 230, h: 55, kind: "fence" },
   { x: 1290, y: 620, w: 130, h: 110, kind: "bush" },
-  // mid rows of three crates above/below the center ball
-  { x: 725, y: 440, w: 90, h: 90, kind: "crate" },
-  { x: 850, y: 440, w: 90, h: 90, kind: "crate" },
-  { x: 975, y: 440, w: 90, h: 90, kind: "crate" },
-  { x: 725, y: 570, w: 90, h: 90, kind: "crate" },
-  { x: 850, y: 570, w: 90, h: 90, kind: "crate" },
-  { x: 975, y: 570, w: 90, h: 90, kind: "crate" },
-  // side fences + barrels
-  { x: 60, y: 480, w: 190, h: 50, kind: "fence" },
-  { x: 1450, y: 480, w: 190, h: 50, kind: "fence" },
-  { x: 60, y: 570, w: 190, h: 50, kind: "fence" },
-  { x: 1450, y: 570, w: 190, h: 50, kind: "fence" },
-  { x: 330, y: 560, w: 80, h: 80, kind: "barrel" },
-  { x: 1290, y: 560, w: 80, h: 80, kind: "barrel" },
-  { x: 330, y: 460, w: 80, h: 80, kind: "barrel" },
-  { x: 1290, y: 460, w: 80, h: 80, kind: "barrel" },
-  // mid fences + bushes near sides
-  { x: 110, y: 450, w: 160, h: 50, kind: "fence" },
   { x: 140, y: 310, w: 120, h: 100, kind: "bush" },
-  { x: 1430, y: 450, w: 160, h: 50, kind: "fence" },
   { x: 1440, y: 310, w: 120, h: 100, kind: "bush" },
-  { x: 110, y: 600, w: 160, h: 50, kind: "fence" },
   { x: 140, y: 690, w: 120, h: 100, kind: "bush" },
-  { x: 1430, y: 600, w: 160, h: 50, kind: "fence" },
   { x: 1440, y: 690, w: 120, h: 100, kind: "bush" },
-  // small Brawl-Style brush patches (extra little stealth spots, mirrored)
   { x: 510, y: 368, w: 70, h: 58, kind: "bush" },
   { x: 1120, y: 368, w: 70, h: 58, kind: "bush" },
   { x: 510, y: 674, w: 70, h: 58, kind: "bush" },
@@ -1440,124 +1413,20 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Map props — goal frames with banners, spawn circles, the center     */
-/* ball and the obstacle renderer (crates / fences / bushes / barrels).*/
-/* ------------------------------------------------------------------ */
-
-function GoalFrame({
-  position,
-  color,
-}: {
-  position: [number, number, number];
-  color: string;
-}) {
-  return (
-    <group position={position}>
-      {/* posts */}
-      <RoundedBox args={[0.16, 1.2, 0.16]} radius={0.05} position={[-0.8, 0.62, 0]} castShadow>
-        <meshStandardMaterial color="#8a5a2b" roughness={0.8} />
-      </RoundedBox>
-      <RoundedBox args={[0.16, 1.2, 0.16]} radius={0.05} position={[0.8, 0.62, 0]} castShadow>
-        <meshStandardMaterial color="#8a5a2b" roughness={0.8} />
-      </RoundedBox>
-      {/* crossbar */}
-      <RoundedBox args={[0.16, 1.76, 0.16]} radius={0.05} position={[0, 1.18, 0]} castShadow>
-        <meshStandardMaterial color="#9c6b33" roughness={0.8} />
-      </RoundedBox>
-      {/* banner hanging from the crossbar */}
-      <mesh position={[0, 0.78, 0.02]}>
-        <boxGeometry args={[1.5, 0.72, 0.04]} />
-        <meshStandardMaterial color={color} roughness={0.7} />
-      </mesh>
-      {/* banner emblem */}
-      <mesh position={[0, 0.78, 0.05]}>
-        <circleGeometry args={[0.18, 20]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.6} />
-      </mesh>
-    </group>
-  );
-}
-
 function SpawnCircle({
   position,
   color,
+  radius = 0.62,
 }: {
   position: [number, number, number];
   color: string;
+  radius?: number;
 }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={position}>
-      <ringGeometry args={[0.95, 1.45, 40]} />
-      <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} />
+      <ringGeometry args={[radius * 0.8, radius, 40]} />
+      <meshBasicMaterial color={color} transparent opacity={0.28} side={THREE.DoubleSide} />
     </mesh>
-  );
-}
-
-function ObstacleMesh({ o }: { o: BattleObstacle }) {
-  const w = o.w / S;
-  const h = o.h / S;
-  const pos: [number, number, number] = [
-    o.x / S + w / 2,
-    0,
-    o.y / S + h / 2,
-  ];
-
-  if (o.kind === "crate") {
-    return (
-      <RoundedBox args={[w, 1.0, h]} radius={0.07} position={[pos[0], 0.5, pos[2]]} castShadow receiveShadow>
-        <meshStandardMaterial color="#8a5a2b" roughness={0.85} />
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[w - 0.24, 0.02, h - 0.24]} />
-          <meshStandardMaterial color="#ffffff" transparent opacity={0.22} />
-        </mesh>
-      </RoundedBox>
-    );
-  }
-  if (o.kind === "fence") {
-    // low wooden rail with posts along its length
-    const posts = Math.max(2, Math.round(w / 1.6));
-    return (
-      <group position={[pos[0], 0, pos[2]]}>
-        <RoundedBox args={[w, 0.5, 0.2]} radius={0.06} position={[0, 0.28, 0]} castShadow>
-          <meshStandardMaterial color="#b07a45" roughness={0.85} />
-        </RoundedBox>
-        <RoundedBox args={[w - 0.2, 0.16, 0.24]} radius={0.04} position={[0, 0.5, 0]}>
-          <meshStandardMaterial color="#c98f55" roughness={0.85} />
-        </RoundedBox>
-        {Array.from({ length: posts }).map((_, i) => (
-          <RoundedBox
-            key={i}
-            args={[0.14, 0.72, 0.22]}
-            radius={0.04}
-            position={[-w / 2 + 0.3 + (i * (w - 0.6)) / Math.max(1, posts - 1), 0.36, 0]}
-            castShadow
-          >
-            <meshStandardMaterial color="#7a5230" roughness={0.85} />
-          </RoundedBox>
-        ))}
-      </group>
-    );
-  }
-  if (o.kind === "bush") return null; // bushes render via stylized_bush.glb
-  // barrel
-  return (
-    <group position={[pos[0], 0, pos[2]]}>
-      <mesh position={[0, 0.5, 0]} castShadow>
-        <cylinderGeometry args={[0.42, 0.36, 1.0, 18]} />
-        <meshStandardMaterial color="#b98a4e" roughness={0.7} />
-      </mesh>
-      {[0.24, 0.76].map((yy) => (
-        <mesh key={yy} position={[0, yy, 0]}>
-          <torusGeometry args={[0.4, 0.04, 8, 20]} />
-          <meshStandardMaterial color="#6f4a24" roughness={0.6} />
-        </mesh>
-      ))}
-      <mesh position={[0, 1.0, 0]}>
-        <circleGeometry args={[0.4, 18]} />
-        <meshStandardMaterial color="#c99a5f" roughness={0.7} />
-      </mesh>
-    </group>
   );
 }
 
@@ -1637,27 +1506,6 @@ export function Arena3D({
       window.matchMedia?.("(pointer: coarse)").matches,
     [],
   );
-  // Checkerboard grass — two alternating greens, tiled across the pitch.
-  const checkerTexture = useMemo(() => {
-    const c = document.createElement("canvas");
-    c.width = 128;
-    c.height = 128;
-    const g = c.getContext("2d");
-    if (g) {
-      const tile = 64;
-      for (let y = 0; y < 2; y++) {
-        for (let x = 0; x < 2; x++) {
-          g.fillStyle = (x + y) % 2 === 0 ? "#5db04a" : "#539e41";
-          g.fillRect(x * tile, y * tile, tile, tile);
-        }
-      }
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(ARENA_W, ARENA_D); // ~1 unit (100px) per tile
-    return t;
-  }, []);
-
   return (
     <Canvas
       dpr={[1, coarse ? 1.5 : 2]}
@@ -1666,11 +1514,11 @@ export function Arena3D({
       className="absolute inset-0"
     >
       <FollowCamera playerRef={playerRef} />
-      {/* outer space — dark border around the pitch */}
-      <color attach="background" args={["#0c1220"]} />
-      <fog attach="fog" args={["#0c1220", 30, 60]} />
-      <ambientLight intensity={0.75} />
-      <hemisphereLight args={["#cfe9ff", "#4c9a3a", 0.6]} />
+      {/* daylight sky — the new battle map is a sunlit battlefield */}
+      <color attach="background" args={["#87b5d8"]} />
+      <fog attach="fog" args={["#aacde4", 30, 80]} />
+      <ambientLight intensity={0.9} />
+      <hemisphereLight args={["#fff4dc", "#5d6f4a", 0.85]} />
       <directionalLight
         position={[10, 14, 6]}
         intensity={1.8}
@@ -1683,99 +1531,19 @@ export function Arena3D({
         shadow-camera-bottom={-12}
       />
 
-      {/* sun */}
-      <mesh position={[11.5, 11, 1]}>
-        <sphereGeometry args={[0.9, 16, 16]} />
-        <meshBasicMaterial color="#ffe066" />
+      {/* out-of-bounds floor — fills the arena, visible in the narrow
+          side margins the slightly narrower map leaves open */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[CX, -0.06, CZ]}>
+        <planeGeometry args={[ARENA_W + 9, ARENA_D + 9]} />
+        <meshStandardMaterial color="#152434" roughness={1} />
       </mesh>
 
-      {/* drifting clouds — plain spheres, no extra dependencies */}
-      {[
-        { pos: [2.5, 6.8, -1], s: 1 },
-        { pos: [12, 6.2, -8], s: 0.8 },
-      ].map((cl, i) => (
-        <group key={i} position={cl.pos as [number, number, number]}>
-          {[
-            [0, 0, 0],
-            [0.85, 0.12, 0.15],
-            [-0.85, 0.12, -0.1],
-            [0.3, 0.28, 0.05],
-            [-0.35, 0.26, -0.12],
-          ].map((o, j) => (
-            <mesh
-              key={j}
-              position={o as [number, number, number]}
-              scale={[1, 0.62, 0.8]}
-            >
-              <sphereGeometry args={[0.55 * cl.s, 10, 10]} />
-              <meshStandardMaterial
-                color="#ffffff"
-                transparent
-                opacity={0.85}
-                roughness={1}
-              />
-            </mesh>
-          ))}
-        </group>
-      ))}
+      {/* uploaded 5v5 battle-map environment (uniform scale, fitted) */}
+      <BattleMapModel />
 
-      {/* dark ground plate under the pitch (the "black space" border) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[CX, -0.03, CZ]}>
-        <planeGeometry args={[ARENA_W + 7, ARENA_D + 7]} />
-        <meshStandardMaterial color="#0a0f1d" roughness={1} />
-      </mesh>
-
-      {/* checkered grass pitch */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[CX, 0, CZ]} receiveShadow>
-        <planeGeometry args={[ARENA_W, ARENA_D]} />
-        <meshStandardMaterial map={checkerTexture} roughness={1} />
-      </mesh>
-
-      {/* center line */}
-      <mesh position={[CX, 0.02, CZ]}>
-        <boxGeometry args={[0.06, 0.02, ARENA_D]} />
-        <meshStandardMaterial color="#ffffff" transparent opacity={0.2} />
-      </mesh>
-
-      {/* spawn circles */}
-      <SpawnCircle position={[CX, 0.03, 1.8]} color="#e63946" />
-      <SpawnCircle position={[CX, 0.03, 9.2]} color="#3a86ff" />
-
-      {/* goal frames — red at top, blue at bottom */}
-      <GoalFrame position={[CX, 0, 0.05]} color="#e63946" />
-      <GoalFrame position={[CX, 0, ARENA_D - 0.05]} color="#3a86ff" />
-
-      {/* center ball */}
-      <mesh position={[CX, 0.26, CZ]} castShadow>
-        <sphereGeometry args={[0.3, 20, 20]} />
-        <meshStandardMaterial
-          color="#f5c542"
-          emissive="#d99a1f"
-          emissiveIntensity={0.35}
-          roughness={0.45}
-          metalness={0.15}
-        />
-      </mesh>
-
-      {/* boundary walls — dark navy so the arena reads as stadium edges */}
-      {[
-        { pos: [CX, 0.3, 0], size: [ARENA_W + 0.4, 0.6, 0.3] },
-        { pos: [CX, 0.3, -ARENA_D], size: [ARENA_W + 0.4, 0.6, 0.3] },
-        { pos: [0, 0.3, CZ], size: [0.3, 0.6, ARENA_D] },
-        { pos: [ARENA_W, 0.3, CZ], size: [0.3, 0.6, ARENA_D] },
-      ].map((w, i) => (
-        <mesh key={i} position={w.pos as [number, number, number]}>
-          <boxGeometry args={w.size as [number, number, number]} />
-          <meshStandardMaterial color="#1d2740" roughness={0.6} />
-        </mesh>
-      ))}
-
-      {/* obstacles — crates, fences, bushes, barrels */}
-      {BATTLE_OBSTACLES.map((o, i) => (
-        <ObstacleMesh key={i} o={o} />
-      ))}
-      {/* GLB bush models — stylized_bush.glb replaces the procedural bushes;
-          stealth detection still uses the invisible BATTLE_OBSTACLES rects */}
+      {/* spawn pads: player starts on the Red base (top), bot on Blue */}
+      <SpawnCircle position={[8.5, 0.03, 0.8]} color="#e63946" />
+      <SpawnCircle position={[8.5, 0.03, 10.2]} color="#3a86ff" />
       <ArenaBushModels obstacles={BATTLE_OBSTACLES} />
 
       {/* fighters */}

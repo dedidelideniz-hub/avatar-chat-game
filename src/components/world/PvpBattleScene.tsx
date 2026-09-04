@@ -211,10 +211,10 @@ export default function PvpBattleScene({
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 420, 180, 1),
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 850, 80, 1),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1),
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 850, 1020, -1),
   );
 
   const ownProjs = useRef<PvpProj[]>([]);

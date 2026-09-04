@@ -369,10 +369,10 @@ export default function BattleScene({
   onExitRef.current = onExit;
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 420, 180, 1, 1),
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 850, 80, 1, 1),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1280, 920, -1, opponentLevel),
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 850, 1020, -1, opponentLevel),
   );
   bot.current.atkCd = 0.4;
 

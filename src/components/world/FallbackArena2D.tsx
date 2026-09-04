@@ -518,51 +518,31 @@ export function FallbackArena2D({
         {/* checkered grass pitch */}
         <rect width={W} height={H} fill="url(#arena2d-checker)" />
 
-        {/* center line */}
-        <line
-          x1={W / 2}
-          y1="0"
-          x2={W / 2}
-          y2={H}
-          stroke="#ffffff"
-          strokeOpacity="0.16"
-          strokeWidth="6"
-          strokeDasharray="18 14"
-        />
-
-        {/* spawn circles */}
-        <circle cx={W / 2} cy="250" r="130" fill="#e63946" opacity="0.14" />
+        {/* spawn pads — player on the Red base (top), bot on Blue */}
+        <circle cx={W / 2} cy="120" r="110" fill="#e63946" opacity="0.12" />
         <circle
           cx={W / 2}
-          cy="250"
-          r="130"
+          cy="120"
+          r="110"
           fill="none"
           stroke="#e63946"
-          strokeOpacity="0.3"
+          strokeOpacity="0.32"
           strokeWidth="6"
           strokeDasharray="16 12"
         />
-        <circle cx={W / 2} cy="850" r="130" fill="#3a86ff" opacity="0.14" />
+        <circle cx={W / 2} cy="980" r="110" fill="#3a86ff" opacity="0.12" />
         <circle
           cx={W / 2}
-          cy="850"
-          r="130"
+          cy="980"
+          r="110"
           fill="none"
           stroke="#3a86ff"
-          strokeOpacity="0.3"
+          strokeOpacity="0.32"
           strokeWidth="6"
           strokeDasharray="16 12"
         />
 
-        {/* goal frames — red top, blue bottom */}
-        <Goal2D cx={W / 2} y={0} color="#e63946" />
-        <Goal2D cx={W / 2} y={H} color="#3a86ff" />
-
-        {/* center ball */}
-        <circle cx={W / 2} cy={H / 2} r="36" fill="url(#arena2d-ball-glow)" stroke="#c99a2e" strokeWidth="5" />
-        <circle cx={W / 2 - 10} cy={H / 2 - 12} r="9" fill="#ffffff" opacity="0.55" />
-
-        {/* obstacles */}
+        {/* obstacles (stealth bushes) */}
         {BATTLE_OBSTACLES.map((o, i) => (
           <Obstacle2D key={i} o={o} />
         ))}
