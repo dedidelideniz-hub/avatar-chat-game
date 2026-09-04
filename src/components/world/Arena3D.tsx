@@ -12,6 +12,54 @@ import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
 
 const STYLIZED_BUSH_URL = "/models/stylized_bush.glb";
+
+function StylizedBushModel({
+  position,
+  width,
+  depth,
+}: {
+  position: [number, number, number];
+  width: number;
+  depth: number;
+}) {
+  const { scene } = useGLTF(STYLIZED_BUSH_URL);
+  const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const { scale, offset } = useMemo(() => {
+    clone.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = box.getSize(new THREE.Vector3());
+    const safeX = Math.max(size.x, 0.0001);
+    const safeY = Math.max(size.y, 0.0001);
+    const safeZ = Math.max(size.z, 0.0001);
+    return {
+      scale: Math.min((width * 0.92) / safeX, (depth * 0.92) / safeZ, 1.65 / safeY),
+      offset: [-box.min.x - size.x / 2, -box.min.y, -box.min.z - size.z / 2] as [number, number, number],
+    };
+  }, [clone, depth, width]);
+
+  useEffect(() => {
+    clone.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      mesh.material = Array.isArray(mesh.material)
+        ? mesh.material.map((material) => material.clone())
+        : mesh.material.clone();
+    });
+  }, [clone]);
+
+  return (
+    <group position={position}>
+      <group position={offset} scale={scale}>
+        <primitive object={clone} />
+      </group>
+    </group>
+  );
+}
+
+useGLTF.preload(STYLIZED_BUSH_URL);
 import { RoundedBox, useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
@@ -24,6 +72,8 @@ import {
 } from "@/engine/GlbAvatar3D";
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
+import { StylizedBushModel } from "@/components/world/StylizedBushModel";
+import { StylizedBushModel } from "@/components/world/StylizedBushModel";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
