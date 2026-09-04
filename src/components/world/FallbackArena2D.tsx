@@ -778,47 +778,40 @@ function Obstacle2D({ o }: { o: (typeof BATTLE_OBSTACLES)[number] }) {
     );
   }
   if (kind === "bush") {
-    // Brawl-Style little bush patch: several overlapping round blobs with a
-    // darker rim and light crowns (deterministic per position so it never
-    // flickers between renders). Fighters walk over it and hide inside.
-    const blobs: { cx: number; cy: number; r: number }[] = [];
-    for (let i = 0; i < 8; i++) {
-      const s1 =
-        Math.sin((x + 1) * 12.9898 + (y + 3) * 78.233 + i * 71.71) *
-        43758.5453;
-      const fx = s1 - Math.floor(s1);
-      const s2 =
-        Math.sin((y + 5) * 39.719 + (x + 7) * 15.433 + i * 23.13) *
-        43758.5453;
-      const fy = s2 - Math.floor(s2);
-      const r = Math.min(w, h) * (0.16 + 0.09 * fx);
-      const cx = x + r + fx * (w - 2 * r);
-      const cy = y + r + fy * (h - 2 * r);
-      blobs.push({ cx, cy, r });
-    }
+    // Bush stealth zone — clean rounded foliage clump (the 3D arena renders
+    // the stylized_bush.glb model here; this 2D fallback mirrors it).
+    // Fighters walk over it and hide inside.
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const rw = w / 2;
+    const rh = h / 2;
     return (
       <g>
-        {blobs.map((b, i) => (
-          <g key={i}>
-            {/* dark rim blob (slightly bigger, behind the fill) */}
-            <circle cx={b.cx} cy={b.cy} r={b.r + 3.5} fill="#2d6b30" />
-            {/* main foliage */}
-            <circle
-              cx={b.cx}
-              cy={b.cy}
-              r={b.r}
-              fill={i % 2 === 0 ? "#3f9445" : "#4c9a3a"}
-            />
-            {/* light crown highlight */}
-            <circle
-              cx={b.cx - b.r * 0.24}
-              cy={b.cy - b.r * 0.28}
-              r={b.r * 0.42}
-              fill="#66c26a"
-              opacity="0.85"
-            />
-          </g>
-        ))}
+        {/* soft ground shadow */}
+        <ellipse
+          cx={cx}
+          cy={cy + rh * 0.34}
+          rx={rw * 0.92}
+          ry={rh * 0.24}
+          fill="#1e4a22"
+          opacity="0.5"
+        />
+        {/* dense foliage body */}
+        <ellipse cx={cx} cy={cy} rx={rw} ry={rh} fill="#2f7d3a" />
+        {/* outer clumps */}
+        <circle cx={cx - rw * 0.5} cy={cy - rh * 0.15} r={rh * 0.55} fill="#3e8e41" />
+        <circle cx={cx + rw * 0.5} cy={cy - rh * 0.15} r={rh * 0.55} fill="#3e8e41" />
+        <circle cx={cx} cy={cy - rh * 0.5} r={rh * 0.6} fill="#4c9a3a" />
+        {/* bright crown highlights */}
+        <ellipse
+          cx={cx - rw * 0.2}
+          cy={cy - rh * 0.34}
+          rx={rw * 0.4}
+          ry={rh * 0.32}
+          fill="#66c26a"
+          opacity="0.85"
+        />
+        <circle cx={cx + rw * 0.3} cy={cy - rh * 0.5} r={rh * 0.22} fill="#7ed47e" opacity="0.9" />
       </g>
     );
   }
