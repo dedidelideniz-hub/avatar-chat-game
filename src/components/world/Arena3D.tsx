@@ -903,7 +903,7 @@ function FighterRig({
             </mesh>
           ))}
           {/* mouth */}
-          <mesh position={[0, -0.06, 0.19]}>
+          <mesh position={[0, -0.3, 0.19]}>
             <boxGeometry args={[0.1, 0.022, 0.02]} />
             <meshStandardMaterial color="#8a4a3a" roughness={0.7} />
           </mesh>

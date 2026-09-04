@@ -53,6 +53,23 @@ const FALLBACK_POS = [
 
 type ColliderRef = React.RefObject<THREE.Box3[] | null>;
 
+/** Union the world-space bounds of meshes matching a pattern. */
+function meshBounds(
+  root: THREE.Object3D,
+  pattern: RegExp,
+): THREE.Box3 | null {
+  const bounds = new THREE.Box3();
+  let found = false;
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || !pattern.test(mesh.name)) return;
+    bounds.union(new THREE.Box3().setFromObject(mesh));
+    found = true;
+  });
+  return found ? bounds : null;
+}
+
 /** Average world position of all meshes whose name matches a pattern. */
 function meshCenterAvg(
   root: THREE.Object3D,
@@ -89,7 +106,27 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
       if (!mesh.isMesh) return;
       mesh.castShadow = false;
       mesh.receiveShadow = false;
-      mesh.frustumCulled = true;
+      // The uploaded asset contains large terrain chunks and many foliage
+      // meshes. Keep them visible after the parent fit transform; otherwise
+      // Three's local-space frustum bounds can cull chunks at the edge of the
+      // follow camera even though their world-space bounds are on screen.
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 0;
+      const materials = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      for (const material of materials) {
+        if (!material) continue;
+        material.transparent = false;
+        material.opacity = 1;
+        material.depthWrite = true;
+        material.needsUpdate = true;
+        const textured = material as THREE.MeshStandardMaterial;
+        if (textured.map) {
+          textured.map.colorSpace = THREE.SRGBColorSpace;
+          textured.map.needsUpdate = true;
+        }
+      }
     });
   }, [clone]);
 
@@ -104,27 +141,41 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
 
-    // Red / Blue spawn pads — used to anchor the layout (world space after
-    // the -135° rotation, so we read their actual rotated positions).
-    const redC = meshCenterAvg(root, /stationred/i);
-    const blueC = meshCenterAvg(root, /stationblue/i);
+    // The playable terrain is a much better fit reference than the decorative
+    // bases: the base meshes include large backdrop pieces, so station-to-
+    // station fitting leaves most of the actual walkable field floating in a
+    // small island with empty margins around it. Fit the terrain itself to the
+    // 17×11 gameplay rectangle and center it on the same coordinates used by
+    // fighters, projectiles and bushes.
+    const terrainBox = meshBounds(root, /terrain/i);
 
     let scale = FALLBACK_SCALE;
     let posX = FALLBACK_POS[0];
     let posZ = FALLBACK_POS[2];
     let posY = FALLBACK_POS[1];
 
-    if (redC && blueC) {
-      const sepZ = blueC.z - redC.z;
-      if (Math.abs(sepZ) > 100) {
-        scale = (BLUE_WORLD_Z - RED_WORLD_Z) / sepZ;
-        // Anchor Red's station center: redWorldZ = 1.0, redWorldX = arena center.
-        posZ = RED_WORLD_Z - redC.z * scale;
-        posX = ARENA_CX - redC.x * scale;
+    if (terrainBox) {
+      const terrainSize = terrainBox.getSize(new THREE.Vector3());
+      if (terrainSize.x > 1 && terrainSize.z > 1) {
+        scale = Math.min(
+          (ARENA_W - 0.8) / terrainSize.x,
+          (ARENA_D - 0.8) / terrainSize.z,
+        );
+        const terrainCenter = terrainBox.getCenter(new THREE.Vector3());
+        posX = ARENA_CX - terrainCenter.x * scale;
+        posZ = ARENA_CZ - terrainCenter.z * scale;
+        // Put the upper walkable terrain surface at y=0. Lower river/edge
+        // geometry remains below the fighters instead of clipping through
+        // their feet or being hidden by the safety floor.
+        posY = -terrainBox.max.y * scale;
       }
     }
-    // Lift so the walkable ground top (model y ≈ -8.9) sits at y = 0.
-    posY = GROUND_TOP_MODEL * scale;
+
+    // Keep the station lookup as a diagnostic: it confirms the expected
+    // Sketchfab nodes exist without letting their oversized backdrops decide
+    // the playable map scale.
+    const redC = meshCenterAvg(root, /stationred/i);
+    const blueC = meshCenterAvg(root, /stationblue/i);
 
     root.scale.setScalar(scale);
     root.position.set(posX, posY, posZ);
@@ -133,8 +184,10 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     console.log(
       `[BattleMapModel] fitted: scale=${scale.toFixed(6)} pos=(${posX.toFixed(
         3,
-      )}, ${posY.toFixed(5)}, ${posZ.toFixed(3)}) stations=${
-        redC && blueC ? "found" : "fallback"
+      )}, ${posY.toFixed(5)}, ${posZ.toFixed(3)}) terrain=${
+        terrainBox ? "found" : "fallback"
+      } stations=${
+        redC && blueC ? "found" : "missing"
       }`,
     );
 
