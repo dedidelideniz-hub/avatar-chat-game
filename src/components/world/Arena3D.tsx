@@ -1537,52 +1537,7 @@ function ObstacleMesh({ o }: { o: BattleObstacle }) {
       </group>
     );
   }
-  if (o.kind === "bush") {
-    // Brawl-Style little bush patch — a low, overlapping cluster of flattened
-    // domes (darker base + brighter crowns) that reads like a small brush
-    // from the follow camera. Fighters walk straight through these.
-    const minDim = Math.min(w, h);
-    const blobs = Array.from({ length: 7 }, (_, i) => {
-      const s1 =
-        Math.sin((o.x + 1) * 12.9898 + (o.y + 3) * 78.233 + i * 71.71) *
-        43758.5453;
-      const fx = s1 - Math.floor(s1);
-      const s2 =
-        Math.sin((o.y + 5) * 39.719 + (o.x + 7) * 15.433 + i * 23.13) *
-        43758.5453;
-      const fy = s2 - Math.floor(s2);
-      const r = minDim * (0.16 + 0.085 * fx);
-      const lx = -w / 2 + r + fx * (w - 2 * r);
-      const lz = -h / 2 + r + fy * (h - 2 * r);
-      return {
-        p: [lx, r * 0.42, lz] as [number, number, number],
-        r,
-        c:
-          i === 0
-            ? "#2f7d3a"
-            : i % 3 === 1
-              ? "#3e8e41"
-              : i % 3 === 2
-                ? "#4c9a3a"
-                : "#55ad52",
-      };
-    });
-    return (
-      <group position={[pos[0], 0, pos[2]]}>
-        {blobs.map((b, i) => (
-          <mesh
-            key={i}
-            position={b.p}
-            scale={[1, 0.58, 1]}
-            castShadow={i < 3}
-          >
-            <sphereGeometry args={[b.r, 14, 10]} />
-            <meshStandardMaterial color={b.c} roughness={0.95} />
-          </mesh>
-        ))}
-      </group>
-    );
-  }
+  if (o.kind === "bush") return null; // bushes render via stylized_bush.glb
   // barrel
   return (
     <group position={[pos[0], 0, pos[2]]}>
@@ -1817,6 +1772,9 @@ export function Arena3D({
       {BATTLE_OBSTACLES.map((o, i) => (
         <ObstacleMesh key={i} o={o} />
       ))}
+      {/* GLB bush models — stylized_bush.glb replaces the procedural bushes;
+          stealth detection still uses the invisible BATTLE_OBSTACLES rects */}
+      <ArenaBushModels obstacles={BATTLE_OBSTACLES} />
 
       {/* fighters */}
       <FighterRig fighter={playerRef} other={botRef} isPlayer />
