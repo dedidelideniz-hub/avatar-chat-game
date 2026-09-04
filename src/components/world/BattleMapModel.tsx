@@ -1,38 +1,88 @@
-// 🗺️ New battle map — the user uploaded 5v5_game_map.glb environment.
+// 🗺️ New battle map — the user-uploaded 5v5_game_map.glb environment.
 //
-// We rotate the model -90° around Y so its Y-up ground sits on Z-ground,
-// then derive a single uniform scale from the real scene bounding box so
-// the map covers the arena in both X and Z with a small margin. We lift
-// the model so its top surface lands on y = 0 (fighter feet level).
+// Layout transform (verified against the real GLB geometry):
+//   * rotate -135° around Y → the Red base ends up at the top of the screen
+//     and the Blue base at the bottom, aligned on the arena's vertical axis;
+//   * uniform scale so the Red↔Blue base distance fills most of the arena
+//     depth (bases sit near the top/bottom spawn lines);
+//   * lift the model so the walkable ground top (model y ≈ -8.9) lands on
+//     y = 0 — exactly where the fighters' feet stand.
 //
-// The static constants below are used as the initial placeholder state
-// until the GLB scene loads. Once loaded, we patch the DOM group in place
-// so the useGLTF cache is not re-triggered.
+// The transform is applied once the GLB is actually mounted (inside the
+// Suspense boundary), so it can never run against an empty scene — the bug
+// that previously left the map invisible. If the two base station meshes
+// are found we derive the scale/position from them at runtime (robust to
+// re-exports); otherwise a fixed fallback keeps the same layout.
 //
 // Gameplay (movement bounds, bush stealth, projectiles) is untouched — the
 // GLB is purely the environment layer underneath the existing sim.
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 
 const MAP_URL = "/models/5v5_game_map.glb";
 
+const ROT_Y = (-135 * Math.PI) / 180;
+
+// Arena footprint (world units). BattleScene maps 1700×1100 px onto this.
 const ARENA_W = 17;
 const ARENA_D = 11;
 const ARENA_CX = ARENA_W / 2;
 const ARENA_CZ = ARENA_D / 2;
 
-const INITIAL_ROT_Y = -Math.PI / 2;
-const INITIAL_SCALE = 1;
-const INITIAL_POS = [0, 0, 0] as [number, number, number];
+// Fixed layout targets (world units).
+//   * The Red/Blue spawn stations sit on the arena vertical axis. We want
+//     red around z ≈ 1.0 and blue around z ≈ 10.0.
+//   * Measured in the model: after -135°, Red station center is at
+//     (x ≈ -591, z ≈ -15242), Blue at (x ≈ -526, z ≈ 17720), separation
+//     32962 model units. Ground surface top ≈ model y = -8.9.
+const RED_Z_MODEL = -15242.1;
+const RED_X_MODEL = -590.9;
+const BASE_SEP_MODEL = 32962.3;
+const RED_WORLD_Z = 1.0;
+const BLUE_WORLD_Z = 10.0;
+const GROUND_TOP_MODEL = 8.9; // lift so model y = -8.9 lands on y = 0
+
+const FALLBACK_SCALE = (BLUE_WORLD_Z - RED_WORLD_Z) / BASE_SEP_MODEL;
+const FALLBACK_POS = [
+  ARENA_CX - RED_X_MODEL * FALLBACK_SCALE,
+  GROUND_TOP_MODEL * FALLBACK_SCALE,
+  RED_WORLD_Z - RED_Z_MODEL * FALLBACK_SCALE,
+] as [number, number, number];
 
 type ColliderRef = React.RefObject<THREE.Box3[] | null>;
 
-function MapModelInner() {
+/** Average world position of all meshes whose name matches a pattern. */
+function meshCenterAvg(
+  root: THREE.Object3D,
+  pattern: RegExp,
+): THREE.Vector3 | null {
+  const acc = new THREE.Vector3();
+  let n = 0;
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (!pattern.test(mesh.name)) return;
+    const box = new THREE.Box3().setFromObject(mesh);
+    acc.add(box.getCenter(new THREE.Vector3()));
+    n++;
+  });
+  if (n === 0) return null;
+  acc.divideScalar(n);
+  return acc;
+}
+
+// Inner loader — the actual GLB scene, cloned so double-mounts / fast
+// refresh never share a disposed scene.
+function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
   const { scene } = useGLTF(MAP_URL);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
+  const groupRef = useRef<THREE.Group>(null);
+  const fittedRef = useRef(false);
 
+  // Static environment: no real-time shadow passes over a huge terrain.
   useEffect(() => {
     clone.traverse((object) => {
       const mesh = object as THREE.Mesh;
@@ -43,55 +93,53 @@ function MapModelInner() {
     });
   }, [clone]);
 
-  return <primitive object={clone} />;
-}
-
-export function BattleMapModel({
-  colliderRef,
-}: {
-  colliderRef?: ColliderRef;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-
-  useEffect(() => {
-    if (!groupRef.current) return;
-
+  // Fit the map once the clone is mounted (guaranteed to have geometry).
+  useLayoutEffect(() => {
     const root = groupRef.current;
-    root.rotation.y = INITIAL_ROT_Y;
-    root.scale.setScalar(INITIAL_SCALE);
-    root.position.set(INITIAL_POS[0], INITIAL_POS[1], INITIAL_POS[2]);
+    if (!root || fittedRef.current) return;
+    fittedRef.current = true;
+
+    root.rotation.y = ROT_Y;
+    root.scale.setScalar(1);
+    root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
 
-    const worldBox = new THREE.Box3().setFromObject(root);
-    const worldMin = worldBox.min;
-    const worldMax = worldBox.max;
+    // Red / Blue spawn pads — used to anchor the layout (world space after
+    // the -135° rotation, so we read their actual rotated positions).
+    const redC = meshCenterAvg(root, /stationred/i);
+    const blueC = meshCenterAvg(root, /stationblue/i);
 
-    const mapW = worldMax.x - worldMin.x;
-    const mapD = worldMax.z - worldMin.z;
+    let scale = FALLBACK_SCALE;
+    let posX = FALLBACK_POS[0];
+    let posZ = FALLBACK_POS[2];
+    let posY = FALLBACK_POS[1];
 
-    if (mapW < 0.001 || mapD < 0.001) {
-      console.warn(
-        "[BattleMapModel] Map bounding box too small — keeping placeholder",
-      );
-      return;
+    if (redC && blueC) {
+      const sepZ = blueC.z - redC.z;
+      if (Math.abs(sepZ) > 100) {
+        scale = (BLUE_WORLD_Z - RED_WORLD_Z) / sepZ;
+        // Anchor Red's station center: redWorldZ = 1.0, redWorldX = arena center.
+        posZ = RED_WORLD_Z - redC.z * scale;
+        posX = ARENA_CX - redC.x * scale;
+      }
     }
+    // Lift so the walkable ground top (model y ≈ -8.9) sits at y = 0.
+    posY = GROUND_TOP_MODEL * scale;
 
-    const margin = 1.02;
-    const scaleX = (ARENA_W * margin) / Math.max(mapW, 0.001);
-    const scaleZ = (ARENA_D * margin) / Math.max(mapD, 0.001);
-    const scale = Math.max(scaleX, scaleZ);
-
-    const centerX = (worldMin.x + worldMax.x) / 2;
-    const centerZ = (worldMin.z + worldMax.z) / 2;
-    const posX = ARENA_CX - centerX * scale;
-    const posZ = ARENA_CZ - centerZ * scale;
-    const posY = -worldMax.y * scale;
-
-    root.position.set(posX, posY, posZ);
     root.scale.setScalar(scale);
-    root.rotation.y = INITIAL_ROT_Y;
+    root.position.set(posX, posY, posZ);
     root.updateMatrixWorld(true);
 
+    console.log(
+      `[BattleMapModel] fitted: scale=${scale.toFixed(6)} pos=(${posX.toFixed(
+        3,
+      )}, ${posY.toFixed(5)}, ${posZ.toFixed(3)}) stations=${
+        redC && blueC ? "found" : "fallback"
+      }`,
+    );
+
+    // Report the arena-covering boundary box (the sim's own movement clamp
+    // keeps fighters on the field; this is a THREE-side equivalent).
     if (colliderRef?.current) {
       colliderRef.current.length = 0;
       colliderRef.current.push(
@@ -105,8 +153,20 @@ export function BattleMapModel({
 
   return (
     <group ref={groupRef}>
+      <primitive object={clone} />
+    </group>
+  );
+}
+
+export function BattleMapModel({
+  colliderRef,
+}: {
+  colliderRef?: ColliderRef;
+}) {
+  return (
+    <group>
       <Suspense fallback={null}>
-        <MapModelInner />
+        <MapModelInner colliderRef={colliderRef} />
       </Suspense>
     </group>
   );
