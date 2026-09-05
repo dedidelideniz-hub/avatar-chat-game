@@ -91,9 +91,9 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
 
-    // Fit from the actual terrain rather than decorative base backdrops. The
-    // extra 6% makes the playable GLB cover the viewport edge-to-edge while
-    // the simulation still clamps fighters to the same 1700×1100 field.
+    // Fit the playable terrain slightly beyond the simulation rectangle so
+    // the GLB does not look undersized behind the fighters. The collider
+    // filter below still keeps the walkable lanes open.
     const terrainBox = meshBounds(root, /terrain/i);
     let scale = FALLBACK_SCALE;
     let posX = FALLBACK_POS[0];
@@ -102,7 +102,7 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     if (terrainBox) {
       const size = terrainBox.getSize(new THREE.Vector3());
       if (size.x > 1 && size.z > 1) {
-        scale = 1.22 * Math.max((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
+        scale = 1.45 * Math.max((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
         const center = terrainBox.getCenter(new THREE.Vector3());
         posX = ARENA_CX - center.x * scale;
         posY = -terrainBox.max.y * scale;
@@ -123,8 +123,15 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
 
     if (colliderRef) {
       const colliders: BattleMapCollider[] = [];
-      const collisionMesh = /(rock|wall|tower|turret|barrier|block)/i;
-      const excludedMesh = /(background|decal|ground|terrain|river)/i;
+      const collisionMesh = /(rockgroup|wildblock|blockbuff|blockboss|tower)/i;
+      // Keep only local gameplay obstacles. The exported GLB also contains
+      // huge perimeter walls, base scenery and duplicated wall shells; those
+      // are visual art, not walk blockers.
+      const excludedMesh = /(background|decal|ground|terrain|river|rockwall|wallg|sidewall|propswall|base(red|blue)|station)/i;
+      const spawnSafeZones = [
+        { x: ARENA_W / 2, z: 0.8, radius: 1.05 },
+        { x: ARENA_W / 2, z: ARENA_D - 0.8, radius: 1.05 },
+      ];
       const padding = 0.035;
       root.traverse((object) => {
         const mesh = object as THREE.Mesh;
@@ -137,7 +144,17 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
           return;
         }
         const box = new THREE.Box3().setFromObject(mesh);
-        if (!box.isEmpty()) {
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        // The bases are walkable spawn platforms. Their decorative tower
+        // meshes overlap the spawn coordinates, so leave a clear radius for
+        // the fighter to start and move out of safely.
+        if (spawnSafeZones.some((zone) =>
+          Math.hypot(center.x - zone.x, center.z - zone.z) < zone.radius
+        )) return;
+        // Ignore any accidental backdrop-sized node even if its exported
+        // name contains a gameplay keyword.
+        if (size.x > 4.5 || size.z > 4.5) return;
           const minX = Math.max(0, box.min.x - padding);
           const maxX = Math.min(ARENA_W, box.max.x + padding);
           const minZ = Math.max(0, box.min.z - padding);
