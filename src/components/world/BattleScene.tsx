@@ -1227,6 +1227,7 @@ export default function BattleScene({
               projsRef={projs}
               fxsRef={fxs}
               aimRef={aimRef}
+              mapColliderRef={mapColliders}
               onWorldClick={(x, y) => actionsRef.current.click(x, y)}
             />
           </ArenaBoundary>

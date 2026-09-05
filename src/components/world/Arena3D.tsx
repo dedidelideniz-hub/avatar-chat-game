@@ -961,7 +961,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={0.9}>
+    <group ref={root} scale={0.7}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
@@ -1508,6 +1508,7 @@ export function Arena3D({
   projsRef,
   fxsRef,
   aimRef,
+  mapColliderRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
@@ -1515,6 +1516,7 @@ export function Arena3D({
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
   aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
+  mapColliderRef: MutableRefObject<BattleMapCollider[]>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   // Touch phones (coarse pointer) get lighter rendering: capped pixel
@@ -1558,7 +1560,7 @@ export function Arena3D({
       </mesh>
 
       {/* uploaded 5v5 battle-map environment (uniform scale, fitted) */}
-      <BattleMapModel />
+      <BattleMapModel colliderRef={mapColliderRef} />
 
       {/* spawn pads: player starts on the Red base (top), bot on Blue */}
       <SpawnCircle position={[8.5, 0.03, 0.8]} color="#e63946" />
