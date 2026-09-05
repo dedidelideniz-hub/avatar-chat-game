@@ -58,27 +58,15 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
   const groupRef = useRef<THREE.Group>(null);
   const fittedRef = useRef(false);
 
+  // Render the map with its ORIGINAL materials/textures/lighting intact.
+  // Only keep large chunks from being wrongly frustum-culled by the follow
+  // camera; we do NOT override transparency, opacity, color space, or
+  // depth flags on the exported materials.
   useEffect(() => {
     clone.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
       mesh.frustumCulled = false;
-      mesh.renderOrder = 0;
-      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      materials.forEach((material) => {
-        if (!material) return;
-        material.transparent = false;
-        material.opacity = 1;
-        material.depthWrite = true;
-        material.needsUpdate = true;
-        const textured = material as THREE.MeshStandardMaterial;
-        if (textured.map) {
-          textured.map.colorSpace = THREE.SRGBColorSpace;
-          textured.map.needsUpdate = true;
-        }
-      });
     });
   }, [clone]);
 

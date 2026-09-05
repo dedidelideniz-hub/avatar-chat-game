@@ -23,12 +23,9 @@ import {
 } from "@/engine/GlbAvatar3D";
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
-import { ArenaBushModels } from "@/components/world/ArenaBushModels";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
 import type { BattleMapCollider } from "@/components/world/BattleMapModel";
 export type { BattleMapCollider } from "@/components/world/BattleMapModel";
-// Every bush zone renders the stylized_bush.glb model via ArenaBushModels,
-// mounted in the arena scene below over the 5v5 battle map.
 import { SkeletonUtils } from "three-stdlib";
 
 // Arena wall collider boxes that keep fighters inside the playable area.
@@ -1535,29 +1532,13 @@ export function Arena3D({
       className="absolute inset-0"
     >
       <FollowCamera playerRef={playerRef} />
-      {/* daylight sky — the new battle map is a sunlit battlefield */}
-      <color attach="background" args={["#87b5d8"]} />
-      <fog attach="fog" args={["#aacde4", 30, 80]} />
-      <ambientLight intensity={0.9} />
-      <hemisphereLight args={["#fff4dc", "#5d6f4a", 0.85]} />
-      <directionalLight
-        position={[10, 14, 6]}
-        intensity={1.8}
-        castShadow
-        shadow-mapSize-width={coarse ? 512 : 1024}
-        shadow-mapSize-height={coarse ? 512 : 1024}
-        shadow-camera-left={-12}
-        shadow-camera-right={12}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
-      />
+      {/* Neutral sky — the exported battle map renders as-is with its own
+          textures and lighting; no artificial ground plane or fog overlay. */}
+      <color attach="background" args={["#aacde4"]} />
+      <ambientLight intensity={0.7} />
+      <hemisphereLight args={["#ffffff", "#8a9aa8", 0.8]} />
+      <directionalLight position={[12, 16, 8]} intensity={1.2} />
 
-      {/* out-of-bounds floor — fills the arena, visible in the narrow
-          side margins the slightly narrower map leaves open */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[CX, -0.06, CZ]}>
-        <planeGeometry args={[ARENA_W + 9, ARENA_D + 9]} />
-        <meshStandardMaterial color="#152434" roughness={1} />
-      </mesh>
 
       {/* uploaded 5v5 battle-map environment (uniform scale, fitted) */}
       <BattleMapModel colliderRef={mapColliderRef} />
@@ -1565,7 +1546,6 @@ export function Arena3D({
       {/* spawn pads: player starts on the Red base (top), bot on Blue */}
       <SpawnCircle position={[8.5, 0.03, 0.8]} color="#e63946" />
       <SpawnCircle position={[8.5, 0.03, 10.2]} color="#3a86ff" />
-      <ArenaBushModels obstacles={BATTLE_OBSTACLES} />
 
       {/* fighters */}
       <FighterRig fighter={playerRef} other={botRef} isPlayer />
