@@ -25,6 +25,7 @@ import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { ArenaBushModels } from "@/components/world/ArenaBushModels";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
+import type { BattleMapCollider } from "@/components/world/BattleMapModel";
 export type { BattleMapCollider } from "@/components/world/BattleMapModel";
 // Every bush zone renders the stylized_bush.glb model via ArenaBushModels,
 // mounted in the arena scene below over the 5v5 battle map.
