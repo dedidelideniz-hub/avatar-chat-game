@@ -13,6 +13,7 @@ import {
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
+  type BattleMapCollider,
   type BattleProj,
 } from "@/components/world/Arena3D";
 import { FallbackArena2D } from "@/components/world/FallbackArena2D";
@@ -363,6 +364,7 @@ export default function BattleScene({
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
   const projs = useRef<BattleProj[]>([]);
+  const mapColliders = useRef<BattleMapCollider[]>([]);
   const fxs = useRef<BattleFx[]>([]);
   const resultRef = useRef<"win" | "lose" | null>(null);
   const onExitRef = useRef(onExit);
@@ -447,6 +449,13 @@ export default function BattleScene({
       // Bushes are Brawl-style stealth zones: fighters walk THROUGH them
       // (and shots pass over them) — they only hide who stands inside.
       if (c.kind === "bush") return false;
+      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
+      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
+      const dx = cx - nx;
+      const dy = cy - ny;
+      return dx * dx + dy * dy < r * r;
+    }) ||
+    mapColliders.current.some((c) => {
       const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
       const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
       const dx = cx - nx;

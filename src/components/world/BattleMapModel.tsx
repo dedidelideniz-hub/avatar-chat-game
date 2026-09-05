@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import type { MutableRefObject } from "react";
 import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
@@ -16,7 +17,14 @@ const FALLBACK_POS = [
   1 - -15242.1 * FALLBACK_SCALE,
 ] as [number, number, number];
 
-type ColliderRef = React.RefObject<THREE.Box3[] | null>;
+export interface BattleMapCollider {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+type ColliderRef = MutableRefObject<BattleMapCollider[]>;
 
 function meshBounds(root: THREE.Object3D, pattern: RegExp): THREE.Box3 | null {
   const bounds = new THREE.Box3();
@@ -113,14 +121,39 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
         `stations=${red && blue ? "found" : "missing"}`,
     );
 
-    if (colliderRef?.current) {
-      colliderRef.current.length = 0;
-      colliderRef.current.push(
-        new THREE.Box3(
-          new THREE.Vector3(0, -10, 0),
-          new THREE.Vector3(ARENA_W, 10, ARENA_D),
-        ),
-      );
+    if (colliderRef) {
+      const colliders: BattleMapCollider[] = [];
+      const collisionMesh = /(rock|wall|tower|turret|barrier|block)/i;
+      const excludedMesh = /(background|decal|ground|terrain|river)/i;
+      const padding = 0.035;
+      root.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        const name = mesh.name || "";
+        if (
+          !mesh.isMesh ||
+          !collisionMesh.test(name) ||
+          excludedMesh.test(name)
+        ) {
+          return;
+        }
+        const box = new THREE.Box3().setFromObject(mesh);
+        if (!box.isEmpty()) {
+          const minX = Math.max(0, box.min.x - padding);
+          const maxX = Math.min(ARENA_W, box.max.x + padding);
+          const minZ = Math.max(0, box.min.z - padding);
+          const maxZ = Math.min(ARENA_D, box.max.z + padding);
+          if (maxX - minX > 0.06 && maxZ - minZ > 0.06) {
+            colliders.push({
+              x: minX * 100,
+              y: minZ * 100,
+              w: (maxX - minX) * 100,
+              h: (maxZ - minZ) * 100,
+            });
+          }
+        }
+      });
+      colliderRef.current.splice(0, colliderRef.current.length, ...colliders);
+      console.log(`[BattleMapModel] active structure colliders=${colliders.length}`);
     }
   }, [clone, colliderRef]);
 
