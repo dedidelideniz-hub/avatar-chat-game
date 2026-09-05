@@ -1463,12 +1463,15 @@ function FollowCamera({
   // Keep a readable three-quarter perspective: enough height to see the map,
   // but not so steep that the battlefield becomes a flat texture.
   const el = 0.82;
-  const zoom = 11.5; // fixed — no zoom controls
+  const baseZoom = 11.5; // fixed — no zoom controls
 
   useFrame((_, dt) => {
     const p = playerRef.current;
-    const vFov = (camera.fov * Math.PI) / 180;
     const aspect = Math.max(0.2, camera.aspect);
+    // Portrait screens need extra distance to show the same playable width;
+    // desktop keeps the authored three-quarter framing.
+    const zoom = baseZoom * THREE.MathUtils.clamp(1.22 / aspect, 1, 1.7);
+    const vFov = (camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
     const halfW = Math.tan(hFov / 2) * zoom;
     const halfD = Math.tan(vFov / 2) * zoom * Math.cos(el);
