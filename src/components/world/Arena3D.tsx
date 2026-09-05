@@ -24,7 +24,8 @@ import {
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { ArenaBushModels } from "@/components/world/ArenaBushModels";
-import { BattleMapModel, type BattleMapCollider } from "@/components/world/BattleMapModel";
+import { BattleMapModel } from "@/components/world/BattleMapModel";
+export type { BattleMapCollider } from "@/components/world/BattleMapModel";
 // Every bush zone renders the stylized_bush.glb model via ArenaBushModels,
 // mounted in the arena scene below over the 5v5 battle map.
 import { SkeletonUtils } from "three-stdlib";
@@ -1460,7 +1461,7 @@ function FollowCamera({
   const tmp = useRef(new THREE.Vector3());
   // Keep a readable three-quarter perspective: enough height to see the map,
   // but not so steep that the battlefield becomes a flat texture.
-  const el = 0.78;
+  const el = 0.82;
   const zoom = 11.5; // fixed — no zoom controls
 
   useFrame((_, dt) => {
