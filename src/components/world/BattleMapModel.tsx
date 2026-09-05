@@ -167,7 +167,6 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
               h: (maxZ - minZ) * 100,
             });
           }
-        }
       });
       colliderRef.current.splice(0, colliderRef.current.length, ...colliders);
       console.log(`[BattleMapModel] active structure colliders=${colliders.length}`);
