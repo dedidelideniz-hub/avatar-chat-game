@@ -959,7 +959,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={1.25}>
+    <group ref={root} scale={0.9}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
@@ -1458,10 +1458,10 @@ function FollowCamera({
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const cur = useRef(new THREE.Vector3(CX, 0.28, CZ));
   const tmp = useRef(new THREE.Vector3());
-  // A steeper, closer follow camera keeps the uploaded battlefield in frame
-  // on portrait phones instead of leaving a large background/sky band.
-  const el = 1.45;
-  const zoom = 6.4; // fixed — no zoom controls
+  // Keep a readable three-quarter perspective: enough height to see the map,
+  // but not so steep that the battlefield becomes a flat texture.
+  const el = 0.78;
+  const zoom = 11.5; // fixed — no zoom controls
 
   useFrame((_, dt) => {
     const p = playerRef.current;
