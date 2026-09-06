@@ -62,6 +62,14 @@ export interface BattleObstacle {
  * grass patches, spawn pads, or legacy arena props are added here. */
 export const BATTLE_OBSTACLES: BattleObstacle[] = [];
 
+/** Legacy spawn-pad compatibility shim: the uploaded GLB owns all battlefield visuals. */
+function SpawnCircle(_props: {
+  position: [number, number, number];
+  color: string;
+}) {
+  return null;
+}
+
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
 export const ATK_CD = 0.85;
 

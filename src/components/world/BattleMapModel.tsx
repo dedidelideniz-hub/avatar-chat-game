@@ -90,7 +90,7 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     if (terrainBox) {
       const size = terrainBox.getSize(new THREE.Vector3());
       if (size.x > 1 && size.z > 1) {
-        scale = 1.45 * Math.max((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
+        scale = Math.max((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
         const center = terrainBox.getCenter(new THREE.Vector3());
         posX = ARENA_CX - center.x * scale;
         posY = -terrainBox.max.y * scale;
@@ -111,11 +111,11 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
 
     if (colliderRef) {
       const colliders: BattleMapCollider[] = [];
-      const collisionMesh = /(rockgroup|wildblock|blockbuff|blockboss|tower)/i;
+      const collisionMesh = /(rockgroup|wildblock|blockbuff|blockboss|tower|rock|wallg|sidewall|propswall)/i;
       // Keep only local gameplay obstacles. The exported GLB also contains
       // huge perimeter walls, base scenery and duplicated wall shells; those
       // are visual art, not walk blockers.
-      const excludedMesh = /(background|decal|ground|terrain|river|rockwall|wallg|sidewall|propswall|base(red|blue)|station)/i;
+      const excludedMesh = /(background|decal|ground|terrain|river|base(red|blue)|station)/i;
       const spawnSafeZones = [
         { x: ARENA_W / 2, z: 0.8, radius: 1.05 },
         { x: ARENA_W / 2, z: ARENA_D - 0.8, radius: 1.05 },
