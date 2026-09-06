@@ -58,34 +58,9 @@ export interface BattleObstacle {
   kind: ObstacleKind;
 }
 
-/** Stealth-bush zones on the 5v5 battle map. The uploaded GLB environment
- *  replaces the old stadium (crates / fences / barrels / goals are gone —
- *  the fighters now duel across the open battlefield), but the Brawl-style
- *  bushes stay: fighters walk through them and are hidden inside one while
- *  the enemy can't see them. These rects drive the stealth logic in the
- *  sim and place the stylized_bush.glb models in the arena. */
-export const BATTLE_OBSTACLES: BattleObstacle[] = [
-  { x: 285, y: 80, w: 100, h: 85, kind: "bush" },
-  { x: 1315, y: 80, w: 100, h: 85, kind: "bush" },
-  { x: 285, y: 935, w: 100, h: 85, kind: "bush" },
-  { x: 1315, y: 935, w: 100, h: 85, kind: "bush" },
-  { x: 280, y: 370, w: 130, h: 110, kind: "bush" },
-  { x: 1290, y: 370, w: 130, h: 110, kind: "bush" },
-  { x: 280, y: 620, w: 130, h: 110, kind: "bush" },
-  { x: 1290, y: 620, w: 130, h: 110, kind: "bush" },
-  { x: 140, y: 310, w: 120, h: 100, kind: "bush" },
-  { x: 1440, y: 310, w: 120, h: 100, kind: "bush" },
-  { x: 140, y: 690, w: 120, h: 100, kind: "bush" },
-  { x: 1440, y: 690, w: 120, h: 100, kind: "bush" },
-  { x: 510, y: 368, w: 70, h: 58, kind: "bush" },
-  { x: 1120, y: 368, w: 70, h: 58, kind: "bush" },
-  { x: 510, y: 674, w: 70, h: 58, kind: "bush" },
-  { x: 1120, y: 674, w: 70, h: 58, kind: "bush" },
-  { x: 470, y: 210, w: 76, h: 60, kind: "bush" },
-  { x: 1154, y: 210, w: 76, h: 60, kind: "bush" },
-  { x: 470, y: 830, w: 76, h: 60, kind: "bush" },
-  { x: 1154, y: 830, w: 76, h: 60, kind: "bush" },
-];
+/** The uploaded GLB is the complete battlefield. No synthetic bushes,
+ * grass patches, spawn pads, or legacy arena props are added here. */
+export const BATTLE_OBSTACLES: BattleObstacle[] = [];
 
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
 export const ATK_CD = 0.85;
@@ -958,7 +933,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={0.55}>
+    <group ref={root} scale={0.38}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
@@ -1428,23 +1403,6 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
   );
 }
 
-function SpawnCircle({
-  position,
-  color,
-  radius = 0.62,
-}: {
-  position: [number, number, number];
-  color: string;
-  radius?: number;
-}) {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={position}>
-      <ringGeometry args={[radius * 0.8, radius, 40]} />
-      <meshBasicMaterial color={color} transparent opacity={0.28} side={THREE.DoubleSide} />
-    </mesh>
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Camera tuned for the portrait battle viewport.                      */
 /* ------------------------------------------------------------------ */
@@ -1459,8 +1417,8 @@ function FollowCamera({
   const tmp = useRef(new THREE.Vector3());
   // Keep a readable three-quarter perspective: enough height to see the map,
   // but not so steep that the battlefield becomes a flat texture.
-  const el = 0.82;
-  const baseZoom = 11.5; // fixed — no zoom controls
+  const el = 0.68;
+  const baseZoom = 13.2; // fixed — no zoom controls
 
   useFrame((_, dt) => {
     const p = playerRef.current;
