@@ -1496,7 +1496,7 @@ export function Arena3D({
       camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.5, far: 200 }}
       className="absolute inset-0"
     >
-      <FollowCamera />
+      <FollowCamera playerRef={playerRef} />
       {/* Neutral sky — the exported battle map renders as-is with its own
           textures and lighting; no artificial ground plane or fog overlay. */}
       <color attach="background" args={["#aacde4"]} />
