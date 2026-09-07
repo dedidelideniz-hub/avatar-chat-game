@@ -6,15 +6,19 @@ import * as THREE from "three";
 
 const MAP_URL = "/models/5v5_game_map.glb";
 const ROT_Y = (-135 * Math.PI) / 180;
-const ARENA_W = 17;
-const ARENA_D = 11;
+// Arena footprint in 3D units — must match Arena3D (S=50). The terrain is
+// spread over this larger footprint so the map reads big and fighters small.
+const ARENA_W = 34;
+const ARENA_D = 22;
 const ARENA_CX = ARENA_W / 2;
 const ARENA_CZ = ARENA_D / 2;
-const FALLBACK_SCALE = 9 / 32962.3;
+/** px per 3D unit (Arena3D S) — colliders are emitted in sim px. */
+const PX = 50;
+const FALLBACK_SCALE = ARENA_W / 32962.3;
 const FALLBACK_POS = [
   ARENA_CX - -590.9 * FALLBACK_SCALE,
   8.9 * FALLBACK_SCALE,
-  1 - -15242.1 * FALLBACK_SCALE,
+  ARENA_CZ - -15242.1 * FALLBACK_SCALE,
 ] as [number, number, number];
 
 export interface BattleMapCollider {
@@ -121,10 +125,10 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
       // are visual art, not walk blockers.
       const excludedMesh = /(background|decal|ground|terrain|river|base(red|blue)|station)/i;
       const spawnSafeZones = [
-        { x: ARENA_W / 2, z: 0.8, radius: 1.05 },
-        { x: ARENA_W / 2, z: ARENA_D - 0.8, radius: 1.05 },
+        { x: ARENA_W / 2, z: 0.8, radius: 2.1 },
+        { x: ARENA_W / 2, z: ARENA_D - 0.8, radius: 2.1 },
       ];
-      const padding = 0.035;
+      const padding = 0.07;
       root.traverse((object) => {
         const mesh = object as THREE.Mesh;
         const name = mesh.name || "";
@@ -146,17 +150,17 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
         )) return;
         // Ignore any accidental backdrop-sized node even if its exported
         // name contains a gameplay keyword.
-        if (size.x > 4.5 || size.z > 4.5) return;
+        if (size.x > 9 || size.z > 9) return;
           const minX = Math.max(0, box.min.x - padding);
           const maxX = Math.min(ARENA_W, box.max.x + padding);
           const minZ = Math.max(0, box.min.z - padding);
           const maxZ = Math.min(ARENA_D, box.max.z + padding);
-          if (maxX - minX > 0.06 && maxZ - minZ > 0.06) {
+          if (maxX - minX > 0.12 && maxZ - minZ > 0.12) {
             colliders.push({
-              x: minX * 100,
-              y: minZ * 100,
-              w: (maxX - minX) * 100,
-              h: (maxZ - minZ) * 100,
+              x: minX * PX,
+              y: minZ * PX,
+              w: (maxX - minX) * PX,
+              h: (maxZ - minZ) * PX,
             });
           }
       });

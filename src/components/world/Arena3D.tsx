@@ -88,12 +88,18 @@ export function supportsWebGL(): boolean {
   }
 }
 
-/** World px → 3D units. */
-const S = 100;
-const ARENA_W = 17; // 1700 px
-const ARENA_D = 11; // 1100 px
+/** World px → 3D units.
+ *  Enlarged battlefield: the whole 5v5 terrain is now spread over a much
+ *  wider world footprint, so the map reads as a big arena while the
+ *  fighters (fixed 1.5-unit bodies) stay small figures on it. The sim
+ *  still runs in 0..1700px; this only changes how those px map to 3D. */
+const S = 50;
+const ARENA_W = 34; // 1700 px / S
+const ARENA_D = 22; // 1100 px / S
 const CX = ARENA_W / 2;
 const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
+/** Readability scale for fixed-size world HUD/effects on the larger map. */
+const HUD = 2;
 
 export interface BattleFighter {
   name: string;
@@ -973,7 +979,7 @@ function FighterRig({
             rotation={[-Math.PI / 2, 0, 0]}
             raycast={() => null}
           >
-            <circleGeometry args={[0.52, 40]} />
+            <circleGeometry args={[0.52 * HUD, 40]} />
             <meshBasicMaterial
               color="#38bdf8"
               transparent
@@ -992,7 +998,7 @@ function FighterRig({
               raycast={() => null}
             >
               <ringGeometry
-                args={[0.44, 0.52, 8, 1, (i * Math.PI) / 2, 1.35]}
+                args={[0.44 * HUD, 0.52 * HUD, 8, 1, (i * Math.PI) / 2, 1.35]}
               />
               <meshBasicMaterial
                 color="#7dd3fc"
@@ -1005,8 +1011,8 @@ function FighterRig({
             </mesh>
           ))}
           {/* bright orbiting dot — makes the spin direction obvious */}
-          <mesh position={[0.52, 0.02, 0]} raycast={() => null}>
-            <sphereGeometry args={[0.055, 12, 12]} />
+          <mesh position={[0.52 * HUD, 0.02 * HUD, 0]} raycast={() => null}>
+            <sphereGeometry args={[0.055 * HUD, 12, 12]} />
             <meshBasicMaterial
               color="#e0f2fe"
               transparent
@@ -1024,7 +1030,7 @@ function FighterRig({
               boltPool.current[i] = el;
             }}
             position={[0, 0.85, 0]}
-            scale={[0.6, 1.8, 1]}
+            scale={[0.6 * HUD, 1.8 * HUD, 1]}
             renderOrder={3}
           >
             <spriteMaterial
@@ -1044,7 +1050,7 @@ function FighterRig({
           visible={false}
           raycast={() => null}
         >
-          <ringGeometry args={[0.5, 0.57, 40]} />
+          <ringGeometry args={[0.5 * HUD, 0.57 * HUD, 40]} />
           <meshBasicMaterial
             ref={shockMat}
             color="#a5f3fc"
@@ -1061,14 +1067,14 @@ function FighterRig({
           both float above the head and follow the fighter */}
       <group ref={barGroup}>
         {/* name / level tag */}
-        <sprite position={[0, 1.0, 0]} scale={[2.05, 0.385, 1]} renderOrder={0}>
+        <sprite position={[0, 1.05, 0]} scale={[2.05 * HUD, 0.385 * HUD, 1]} renderOrder={0}>
           <spriteMaterial map={nameTex} transparent depthTest={false} />
         </sprite>
         {/* animated HP bar (white ghost trails the damage) */}
-        <sprite ref={hpGhost} position={[0, 0.78, 0]} scale={[1.35, 0.14, 1]} renderOrder={1}>
+        <sprite ref={hpGhost} position={[0, 0.8, 0]} scale={[1.35 * HUD, 0.14 * HUD, 1]} renderOrder={1}>
           <spriteMaterial map={hpGhostTex} depthTest={false} />
         </sprite>
-        <sprite ref={hpFill} position={[0, 0.78, 0]} scale={[1.35, 0.14, 1]} renderOrder={2}>
+        <sprite ref={hpFill} position={[0, 0.8, 0]} scale={[1.35 * HUD, 0.14 * HUD, 1]} renderOrder={2}>
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>
@@ -1119,13 +1125,13 @@ function ProjectilePool({
         if (p) {
           tr.visible = true;
           const sp = Math.hypot(p.vx, p.vy) || 1;
-          const len = Math.min(0.9, sp * 0.055);
+          const len = Math.min(0.9 * HUD, sp * 0.055 * HUD);
           tr.position.set(
             (p.x - (p.vx / sp) * len * 0.55) / S,
             0.85,
             (p.y - (p.vy / sp) * len * 0.55) / S,
           );
-          tr.scale.set(len, 0.06, 0.06);
+          tr.scale.set(len, 0.06 * HUD, 0.06 * HUD);
           tr.rotation.y = Math.atan2(p.vy, p.vx);
           (tr.material as THREE.MeshBasicMaterial).color.set(
             p.owner === "player" ? "#7dd3fc" : "#fda4af",
@@ -1146,7 +1152,7 @@ function ProjectilePool({
               meshes.current[i] = el;
             }}
           >
-            <sphereGeometry args={[0.15, 12, 12]} />
+            <sphereGeometry args={[0.15 * HUD, 12, 12]} />
             <meshStandardMaterial emissive="#0ea5e9" emissiveIntensity={2.2} />
           </mesh>
           <mesh
@@ -1155,7 +1161,7 @@ function ProjectilePool({
             }}
             visible={false}
           >
-            <sphereGeometry args={[0.28, 10, 10]} />
+            <sphereGeometry args={[0.28 * HUD, 10, 10]} />
             <meshBasicMaterial color="#ffffff" transparent opacity={0.25} />
           </mesh>
           <mesh
@@ -1260,7 +1266,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         if (m) {
           m.visible = true;
           m.position.set(fx.x / S, 0.08, fx.y / S);
-          const scale = Math.max(0.12, ((fx.grow / S) * (1 - t)) / 1);
+          const scale = Math.max(0.12 * HUD, ((fx.grow / S) * (1 - t)) / 1);
           m.scale.setScalar(scale);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.9;
         }
@@ -1270,7 +1276,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         if (m) {
           m.visible = true;
           m.position.set(fx.x / S, 0.55, fx.y / S);
-          const scale = Math.max(0.2, ((fx.grow / S) * (1 - t)) / 1);
+          const scale = Math.max(0.2 * HUD, ((fx.grow / S) * (1 - t)) / 1);
           m.scale.setScalar(scale);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.85;
         }
@@ -1299,7 +1305,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         if (s) {
           s.visible = true;
           s.position.set(fx.x / S, 0.6 + (1 - t) * 2.4, fx.y / S);
-          const sc = Math.max(0.5, ((fx.grow / S) * (1 - t)) / 1 + 0.35);
+          const sc = Math.max(0.5 * HUD, ((fx.grow / S) * (1 - t)) / 1 + 0.35);
           s.scale.setScalar(sc);
           (s.material as THREE.SpriteMaterial).opacity = t * 0.65;
           (s.material as THREE.SpriteMaterial).color.set(fx.color);
@@ -1339,7 +1345,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
             textRefs.current[i] = el;
           }}
           visible={false}
-          scale={[1.7, 0.64, 1]}
+          scale={[1.7 * HUD, 0.64 * HUD, 1]}
         >
           <spriteMaterial
             map={textTextures[i]}
@@ -1427,7 +1433,7 @@ function FollowCamera() {
   // The arena rect (17 × 11) is presented rotated 45°, so its on-screen
   // extent follows its diagonal: (17+11)/√2 ≈ 19.8 world units per axis.
   // A small margin keeps the island floating clear of the screen edges.
-  const halfSpan = ((ARENA_W + ARENA_D) / (2 * Math.SQRT2)) * 1.06;
+  const halfSpan = ((ARENA_W + ARENA_D) / (2 * Math.SQRT2)) * 1.02;
 
   useFrame((_, dt) => {
     const aspect = Math.max(0.2, camera.aspect);
