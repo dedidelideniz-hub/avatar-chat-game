@@ -1,4 +1,4 @@
-// 🏟️ 3D battle arena — Three.js (react-three-fiber) replacement for the old
+// 3D battle arena — Three.js (react-three-fiber) replacement for the old
 // flat SVG arena. Fighters are procedural low-poly humanoids built from the
 // player's avatar config (skin / hair / shirt / pants / shoes colors), so
 // everyone keeps their own look in 3D. The game simulation stays in
@@ -1421,34 +1421,38 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
 /* Camera tuned for the portrait battle viewport.                      */
 /* ------------------------------------------------------------------ */
 
-function FollowCamera() {
+function FollowCamera({ playerRef }: { playerRef: MutableRefObject<BattleFighter> }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const target = useRef(new THREE.Vector3(CX, 0.6, CZ));
   const smoothed = useRef(new THREE.Vector3(CX, 0.6, CZ));
-  // Whole-battlefield framing: the camera always shows the ENTIRE uploaded
-  // GLB arena — both bases, towers and lanes stay on screen like a classic
-  // MOBA overview, so the map itself fills the viewport instead of a small
-  // patch of grass around one fighter.
-  const el = 0.7; // ~40° elevation — readable isometric angle
-  // The arena rect (17 × 11) is presented rotated 45°, so its on-screen
-  // extent follows its diagonal: (17+11)/√2 ≈ 19.8 world units per axis.
-  // A small margin keeps the island floating clear of the screen edges.
-  const halfSpan = ((ARENA_W + ARENA_D) / (2 * Math.SQRT2)) * 1.02;
+  // Close follow camera: centers on the player so you can clearly see the
+  // fight around them (a readable MOBA lane view), instead of pulling way
+  // back to frame the entire map (which shrank the battlefield into an
+  // "island" floating over its white underside).
+  const el = 1.0; // ~57° elevation — MOBA-style overhead-lane angle
+  const DIST = 12; // close follow distance (units from the player)
+  // Keep the camera pointing inside the arena so we never look past the
+  // map edge into the void around the island.
+  const clamp = 3;
 
   useFrame((_, dt) => {
-    const aspect = Math.max(0.2, camera.aspect);
-    const vFov = (camera.fov * Math.PI) / 180;
-    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    // Camera distance needed for halfSpan of ground to fit: portrait is
-    // width-bound, landscape is depth-bound; take whichever needs more.
-    const zoomW = halfSpan / Math.tan(hFov / 2);
-    const zoomD = halfSpan / (Math.tan(vFov / 2) / Math.sin(el));
-    const zoom = Math.max(zoomW, zoomD, 6);
-    smoothed.current.lerp(target.current, Math.min(1, dt * 3));
+    const f = playerRef.current;
+    // Follow the player, nudged a touch toward the enemy lane so you see
+    // where you're heading, then clamp so the camera stays over the map.
+    target.current.set(
+      THREE.MathUtils.clamp(f.x / S, clamp, ARENA_W - clamp),
+      0.6,
+      THREE.MathUtils.clamp(
+        f.y / S + (CZ - f.y / S) * 0.22,
+        clamp,
+        ARENA_D - clamp,
+      ),
+    );
+    smoothed.current.lerp(target.current, Math.min(1, dt * 4));
     camera.position.set(
       smoothed.current.x,
-      smoothed.current.y + Math.sin(el) * zoom,
-      smoothed.current.z + Math.cos(el) * zoom,
+      smoothed.current.y + Math.sin(el) * DIST,
+      smoothed.current.z + Math.cos(el) * DIST,
     );
     camera.lookAt(smoothed.current);
   });

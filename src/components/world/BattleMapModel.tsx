@@ -109,6 +109,21 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     root.position.set(posX, posY, posZ);
     root.updateMatrixWorld(true);
 
+    // Hide the terrain's huge underside/cliff art — perimeter side walls and
+    // G-walls hang ~20 units below the terrain slab and read as giant white
+    // raw meshes once the map is scaled down and viewed from the battle
+    // camera. Anything sitting entirely below the ground plane (y < 0 after
+    // the fit) is invisible from gameplay anyway, so drop it. Terrain/ground/
+    // decal meshes are always kept so no walkable surface disappears.
+    root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (/terrain|ground|decal/i.test(mesh.name || "")) return;
+      if (new THREE.Box3().setFromObject(mesh).max.y < 0) {
+        mesh.visible = false;
+      }
+    });
+
     const red = meshCenterAvg(root, /stationred/i);
     const blue = meshCenterAvg(root, /stationblue/i);
     console.log(
