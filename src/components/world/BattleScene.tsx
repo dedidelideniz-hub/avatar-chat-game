@@ -362,7 +362,6 @@ export default function BattleScene({
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
   const projs = useRef<BattleProj[]>([]);
-  const mapColliders = useRef<BattleMapCollider[]>([]);
   const fxs = useRef<BattleFx[]>([]);
   const resultRef = useRef<"win" | "lose" | null>(null);
   const onExitRef = useRef(onExit);
@@ -442,24 +441,12 @@ export default function BattleScene({
   const clamp = (v: number, a: number, b: number) =>
     Math.min(Math.max(v, a), b);
 
+  // Collision is generated from the real rock / wall / tower geometry of the
+  // uploaded 5v5 map (rasterized in BattleMapModel) — there are no hand-placed
+  // obstacle lists and no coordinate-based invisible walls, so empty roads and
+  // lanes stay completely free.
   const hitsObstacle = (cx: number, cy: number, r: number) =>
-    BATTLE_OBSTACLES.some((c) => {
-      // Bushes are Brawl-style stealth zones: fighters walk THROUGH them
-      // (and shots pass over them) — they only hide who stands inside.
-      if (c.kind === "bush") return false;
-      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
-      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
-      const dx = cx - nx;
-      const dy = cy - ny;
-      return dx * dx + dy * dy < r * r;
-    }) ||
-    mapColliders.current.some((c) => {
-      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
-      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
-      const dx = cx - nx;
-      const dy = cy - ny;
-      return dx * dx + dy * dy < r * r;
-    });
+    hitsRockCollision(cx, cy, r);
 
   const chargeGain = (f: BattleFighter, amt: number) => {
     f.superCharge = Math.min(1, f.superCharge + amt);
@@ -1212,7 +1199,6 @@ export default function BattleScene({
             projsRef={projs}
             fxsRef={fxs}
             aimRef={aimRef}
-            mapColliderRef={mapColliders}
             onWorldClick={(x, y) => actionsRef.current.click(x, y)}
           />
 

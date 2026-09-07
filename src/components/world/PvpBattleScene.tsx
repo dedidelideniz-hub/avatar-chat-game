@@ -15,15 +15,14 @@ import { Button } from "@/components/ui/button";
 import {
   Arena3D,
   ATK_CD,
-  BATTLE_OBSTACLES,
   BUSH_REVEAL_MS,
   isHiddenFrom,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
-  type BattleMapCollider,
   type BattleProj,
 } from "@/components/world/Arena3D";
+import { hitsRockCollision } from "@/components/world/BattleMapModel";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
 import { usePresenceOthers, usePresencePublisher } from "@/hooks/use-presence";
 import type { AvatarConfig } from "@/lib/avatar";
@@ -218,7 +217,6 @@ export default function PvpBattleScene({
   );
 
   const ownProjs = useRef<PvpProj[]>([]);
-  const mapColliders = useRef<BattleMapCollider[]>([]);
   const remoteProjs = useRef(new Map<string, PvpProj>());
   const projs = useRef<BattleProj[]>([]); // merged render list
   const fxs = useRef<BattleFx[]>([]);
@@ -569,26 +567,11 @@ export default function PvpBattleScene({
 
   const clamp = (v: number, a: number, b: number) => Math.min(Math.max(v, a), b);
 
+  // Collision is generated from the real rock / wall / tower geometry of the
+  // uploaded 5v5 map (rasterized in BattleMapModel) — no hand-placed obstacle
+  // lists or coordinate-based invisible walls, so open lanes stay free.
   const hitsObstacle = (cx: number, cy: number, r: number) =>
-    BATTLE_OBSTACLES.some((c) => {
-      // Bushes are Brawl-style stealth zones: fighters walk THROUGH them
-      // (and shots pass over them) — they only hide who stands inside.
-      if (c.kind === "bush") return false;
-      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
-      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
-      const dx = cx - nx;
-      const dy = cy - ny;
-      return dx * dx + dy * dy < r * r;
-    }) || mapHitsObstacle(cx, cy, r);
-
-  const mapHitsObstacle = (cx: number, cy: number, r: number) =>
-    mapColliders.current.some((c) => {
-      const nx = Math.max(c.x, Math.min(cx, c.x + c.w));
-      const ny = Math.max(c.y, Math.min(cy, c.y + c.h));
-      const dx = cx - nx;
-      const dy = cy - ny;
-      return dx * dx + dy * dy < r * r;
-    });
+    hitsRockCollision(cx, cy, r);
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
     let nx = clamp(f.x + dx, 40, ARENA_W - 40);
@@ -1078,7 +1061,6 @@ export default function PvpBattleScene({
             projsRef={projs}
             fxsRef={fxs}
             aimRef={aimRef}
-            mapColliderRef={mapColliders}
             onWorldClick={(x, y) => actionsRef.current.click(x, y)}
           />
 
