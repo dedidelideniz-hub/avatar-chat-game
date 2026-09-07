@@ -7,15 +7,14 @@ import { Button } from "@/components/ui/button";
 import {
   Arena3D,
   ATK_CD,
-  BATTLE_OBSTACLES,
   BUSH_REVEAL_MS,
   isHiddenFrom,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
-  type BattleMapCollider,
   type BattleProj,
 } from "@/components/world/Arena3D";
+import { hitsRockCollision } from "@/components/world/BattleMapModel";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import {

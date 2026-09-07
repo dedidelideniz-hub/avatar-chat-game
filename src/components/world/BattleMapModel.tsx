@@ -1,5 +1,4 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import type { MutableRefObject } from "react";
 import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
@@ -12,7 +11,7 @@ const ARENA_W = 34;
 const ARENA_D = 22;
 const ARENA_CX = ARENA_W / 2;
 const ARENA_CZ = ARENA_D / 2;
-/** px per 3D unit (Arena3D S) — colliders are emitted in sim px. */
+/** px per 3D unit (Arena3D S) — geometry is rasterized into game px. */
 const PX = 50;
 const FALLBACK_SCALE = ARENA_W / 32962.3;
 const FALLBACK_POS = [
@@ -21,14 +20,177 @@ const FALLBACK_POS = [
   ARENA_CZ - -15242.1 * FALLBACK_SCALE,
 ] as [number, number, number];
 
-export interface BattleMapCollider {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+/* ------------------------------------------------------------------ */
+/* Geometry-derived collision — an occupancy grid rasterized from the  */
+/* ACTUAL rock / wall / tower triangles of the uploaded map. There are */
+/* NO hand-placed obstacle lists and NO coordinate-based invisible     */
+/* walls: a fighter only collides where real geometry exists, so open  */
+/* roads and lanes stay completely free.                              */
+/* ------------------------------------------------------------------ */
+
+const GRID_CELL = 8; // game-space px per cell
+const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL); // 1700 / 8
+const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL); // 1100 / 8
+
+export interface RockGrid {
+  cell: number;
+  cols: number;
+  rows: number;
+  blocked: Uint8Array;
 }
 
-type ColliderRef = MutableRefObject<BattleMapCollider[]>;
+// Populated once when the map finishes fitting; read per-frame by the sim.
+const rockCollision: { grid: RockGrid | null } = { grid: null };
+
+/** True when the circle (cx, cy, r) — in game-space px — overlaps any rock,
+ *  wall or tower geometry rasterized from the map's real meshes. */
+export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
+  const g = rockCollision.grid;
+  if (!g) return false;
+  const { cell, cols, rows, blocked } = g;
+  const minCol = Math.max(0, Math.floor((cx - r) / cell));
+  const maxCol = Math.min(cols - 1, Math.floor((cx + r) / cell));
+  const minRow = Math.max(0, Math.floor((cy - r) / cell));
+  const maxRow = Math.min(rows - 1, Math.floor((cy + r) / cell));
+  for (let row = minRow; row <= maxRow; row++) {
+    const rowOff = row * cols;
+    const ny0 = row * cell;
+    for (let col = minCol; col <= maxCol; col++) {
+      if (!blocked[rowOff + col]) continue;
+      // circle vs. cell square (same test the sim uses for rects)
+      const nx = Math.max(col * cell, Math.min(cx, col * cell + cell));
+      const ny = Math.max(ny0, Math.min(cy, ny0 + cell));
+      const dx = cx - nx;
+      const dy = cy - ny;
+      if (dx * dx + dy * dy < r * r) return true;
+    }
+  }
+  return false;
+}
+
+function markCell(g: RockGrid, px: number, py: number) {
+  const c = Math.floor(px / g.cell);
+  const r = Math.floor(py / g.cell);
+  if (c >= 0 && c < g.cols && r >= 0 && r < g.rows) g.blocked[r * g.cols + c] = 1;
+}
+
+function pointInTri(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+): boolean {
+  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(hasNeg && hasPos);
+}
+
+function sampleEdge(g: RockGrid, x0: number, y0: number, x1: number, y1: number) {
+  const len = Math.hypot(x1 - x0, y1 - y0);
+  const steps = Math.max(1, Math.ceil(len / g.cell));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    markCell(g, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+  }
+}
+
+/** Rasterize one triangle (already in game px) into the occupancy grid. */
+function rasterizeTriangle(g: RockGrid, ax: number, ay: number, bx: number, by: number, cx: number, cy: number) {
+  const minx = Math.min(ax, bx, cx);
+  const maxx = Math.max(ax, bx, cx);
+  const miny = Math.min(ay, by, cy);
+  const maxy = Math.max(ay, by, cy);
+  const c0 = Math.max(0, Math.floor(minx / g.cell));
+  const c1 = Math.min(g.cols - 1, Math.floor(maxx / g.cell));
+  const r0 = Math.max(0, Math.floor(miny / g.cell));
+  const r1 = Math.min(g.rows - 1, Math.floor(maxy / g.cell));
+  for (let r = r0; r <= r1; r++) {
+    const py = (r + 0.5) * g.cell;
+    for (let c = c0; c <= c1; c++) {
+      const px = (c + 0.5) * g.cell;
+      if (pointInTri(px, py, ax, ay, bx, by, cx, cy)) markCell(g, px, py);
+    }
+  }
+  // Sample the edges too so thin walls never leave gaps.
+  sampleEdge(g, ax, ay, bx, by);
+  sampleEdge(g, bx, by, cx, cy);
+  sampleEdge(g, cx, cy, ax, ay);
+}
+
+function clearCircle(g: RockGrid, cx: number, cy: number, radius: number) {
+  const c0 = Math.max(0, Math.floor((cx - radius) / g.cell));
+  const c1 = Math.min(g.cols - 1, Math.floor((cx + radius) / g.cell));
+  const r0 = Math.max(0, Math.floor((cy - radius) / g.cell));
+  const r1 = Math.min(g.rows - 1, Math.floor((cy + radius) / g.cell));
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const pxx = (c + 0.5) * g.cell;
+      const pyy = (r + 0.5) * g.cell;
+      if (Math.hypot(pxx - cx, pyy - cy) < radius) g.blocked[r * g.cols + c] = 0;
+    }
+  }
+}
+
+/**
+ * Rasterize the map's actual rock / wall / tower meshes into an occupancy
+ * grid (game px). Only the walkable-height gameplay props are included:
+ * ground/terrain/decals, walkable base platforms, stations, trees, props
+ * and the giant perimeter/underside walls are excluded so empty roads stay
+ * clear.
+ */
+function buildCollisionGrid(root: THREE.Object3D): RockGrid {
+  const grid: RockGrid = {
+    cell: GRID_CELL,
+    cols: GRID_COLS,
+    rows: GRID_ROWS,
+    blocked: new Uint8Array(GRID_COLS * GRID_ROWS),
+  };
+  const INCLUDE = /(rock|wall|tower|wildblock|blockbuff|blockboss)/i;
+  const EXCLUDE =
+    /(background|ground|decal|terrain|river|base(red|blue)|station|sidewall|wallg|propswall|rockwall|props|yequ|tree|foliage|junglegrass|monster|deer|lizard|bird|sculpture)/i;
+  const va = new THREE.Vector3();
+  const vb = new THREE.Vector3();
+  const vc = new THREE.Vector3();
+  const m = new THREE.Matrix4();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const name = mesh.name || "";
+    if (!INCLUDE.test(name) || EXCLUDE.test(name)) return;
+    const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+    if (!pos) return;
+    mesh.updateWorldMatrix(true, false);
+    m.copy(mesh.matrixWorld);
+    const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
+    const triCount = indexAttr ? indexAttr.count / 3 : pos.count / 3;
+    for (let t = 0; t < triCount; t++) {
+      const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+      const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+      const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+      va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
+      vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
+      vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+      rasterizeTriangle(
+        grid,
+        va.x * PX, va.z * PX,
+        vb.x * PX, vb.z * PX,
+        vc.x * PX, vc.z * PX,
+      );
+    }
+  });
+  // Keep the two spawn pads (player top / bot bottom) clear so fighters can
+  // always step out onto the lane.
+  clearCircle(grid, ARENA_W / 2 * PX, 80, 95);
+  clearCircle(grid, ARENA_W / 2 * PX, ARENA_D * PX - 80, 95);
+  return grid;
+}
 
 function meshBounds(root: THREE.Object3D, pattern: RegExp): THREE.Box3 | null {
   const bounds = new THREE.Box3();
@@ -56,7 +218,7 @@ function meshCenterAvg(root: THREE.Object3D, pattern: RegExp): THREE.Vector3 | n
   return count ? center.multiplyScalar(1 / count) : null;
 }
 
-function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
+function MapModelInner() {
   const { scene } = useGLTF(MAP_URL);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const groupRef = useRef<THREE.Group>(null);
@@ -83,10 +245,10 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
 
-    // Fit the terrain EXACTLY onto the simulation rectangle (17 × 11) with
-    // a uniform scale, so every lane/tower the player sees stands at the
-    // same world coordinate the sim, colliders and the click plane use —
-    // visuals can never drift apart from the walkable area.
+    // Fit the terrain EXACTLY onto the simulation rectangle (34 × 22) with a
+    // uniform scale, so every lane/tower the player sees stands at the same
+    // world coordinate the sim, collisions and the click plane use — visuals
+    // can never drift apart from the walkable area.
     const terrainBox = meshBounds(root, /terrain/i);
     let scale = FALLBACK_SCALE;
     let posX = FALLBACK_POS[0];
@@ -124,65 +286,13 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
       }
     });
 
-    const red = meshCenterAvg(root, /stationred/i);
-    const blue = meshCenterAvg(root, /stationblue/i);
+    // Build the geometry collision grid from the map's real meshes.
+    rockCollision.grid = buildCollisionGrid(root);
     console.log(
-      `[BattleMapModel] fitted terrain=${terrainBox ? "found" : "fallback"} ` +
-        `scale=${scale.toFixed(6)} pos=(${posX.toFixed(3)}, ${posY.toFixed(5)}, ${posZ.toFixed(3)}) ` +
-        `stations=${red && blue ? "found" : "missing"}`,
+      `[BattleMapModel] collision grid=${GRID_COLS}x${GRID_ROWS} ` +
+        `blocked=${rockCollision.grid.blocked.reduce((a, b) => a + b, 0)}`,
     );
-
-    if (colliderRef) {
-      const colliders: BattleMapCollider[] = [];
-      const collisionMesh = /(rockgroup|wildblock|blockbuff|blockboss|tower|rock|wallg|sidewall|propswall)/i;
-      // Keep only local gameplay obstacles. The exported GLB also contains
-      // huge perimeter walls, base scenery and duplicated wall shells; those
-      // are visual art, not walk blockers.
-      const excludedMesh = /(background|decal|ground|terrain|river|base(red|blue)|station)/i;
-      const spawnSafeZones = [
-        { x: ARENA_W / 2, z: 0.8, radius: 2.1 },
-        { x: ARENA_W / 2, z: ARENA_D - 0.8, radius: 2.1 },
-      ];
-      const padding = 0.07;
-      root.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        const name = mesh.name || "";
-        if (
-          !mesh.isMesh ||
-          !collisionMesh.test(name) ||
-          excludedMesh.test(name)
-        ) {
-          return;
-        }
-        const box = new THREE.Box3().setFromObject(mesh);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        // The bases are walkable spawn platforms. Their decorative tower
-        // meshes overlap the spawn coordinates, so leave a clear radius for
-        // the fighter to start and move out of safely.
-        if (spawnSafeZones.some((zone) =>
-          Math.hypot(center.x - zone.x, center.z - zone.z) < zone.radius
-        )) return;
-        // Ignore any accidental backdrop-sized node even if its exported
-        // name contains a gameplay keyword.
-        if (size.x > 9 || size.z > 9) return;
-          const minX = Math.max(0, box.min.x - padding);
-          const maxX = Math.min(ARENA_W, box.max.x + padding);
-          const minZ = Math.max(0, box.min.z - padding);
-          const maxZ = Math.min(ARENA_D, box.max.z + padding);
-          if (maxX - minX > 0.12 && maxZ - minZ > 0.12) {
-            colliders.push({
-              x: minX * PX,
-              y: minZ * PX,
-              w: (maxX - minX) * PX,
-              h: (maxZ - minZ) * PX,
-            });
-          }
-      });
-      colliderRef.current.splice(0, colliderRef.current.length, ...colliders);
-      console.log(`[BattleMapModel] active structure colliders=${colliders.length}`);
-    }
-  }, [clone, colliderRef]);
+  }, [clone]);
 
   return (
     <group ref={groupRef}>
@@ -191,10 +301,10 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
   );
 }
 
-export function BattleMapModel({ colliderRef }: { colliderRef?: ColliderRef }) {
+export function BattleMapModel() {
   return (
     <Suspense fallback={null}>
-      <MapModelInner colliderRef={colliderRef} />
+      <MapModelInner />
     </Suspense>
   );
 }

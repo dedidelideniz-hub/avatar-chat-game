@@ -24,25 +24,7 @@ import {
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
-import type { BattleMapCollider } from "@/components/world/BattleMapModel";
-export type { BattleMapCollider } from "@/components/world/BattleMapModel";
 import { SkeletonUtils } from "three-stdlib";
-
-// Arena wall collider boxes that keep fighters inside the playable area.
-// Each box is an OBB defined by [cx, cy, cz, w, h, d, rx, ry, rz].
-// We derive them from the uploaded map's real geometry in BattleMapModel
-// and keep a local fallback here so the default map still clamps.
-interface ArenaWallBox {
-  x: number;
-  y: number;
-  z: number;
-  w: number;
-  h: number;
-  d: number;
-  rx: number;
-  ry: number;
-  rz: number;
-}
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -1470,7 +1452,6 @@ export function Arena3D({
   projsRef,
   fxsRef,
   aimRef,
-  mapColliderRef,
   onWorldClick,
 }: {
   playerRef: MutableRefObject<BattleFighter>;
@@ -1478,7 +1459,6 @@ export function Arena3D({
   projsRef: MutableRefObject<BattleProj[]>;
   fxsRef: MutableRefObject<BattleFx[]>;
   aimRef: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
-  mapColliderRef: MutableRefObject<BattleMapCollider[]>;
   onWorldClick: (x: number, y: number) => void;
 }) {
   // Touch phones (coarse pointer) get lighter rendering: capped pixel
@@ -1506,7 +1486,7 @@ export function Arena3D({
 
 
       {/* uploaded 5v5 battle-map environment (uniform scale, fitted) */}
-      <BattleMapModel colliderRef={mapColliderRef} />
+      <BattleMapModel />
 
       {/* spawn pads: player starts on the Red base (top), bot on Blue */}
       <SpawnCircle position={[8.5, 0.03, 0.8]} color="#e63946" />
