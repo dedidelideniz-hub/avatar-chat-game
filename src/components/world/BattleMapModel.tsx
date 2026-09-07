@@ -10,8 +10,6 @@ const ARENA_W = 17;
 const ARENA_D = 11;
 const ARENA_CX = ARENA_W / 2;
 const ARENA_CZ = ARENA_D / 2;
-// Battle-only presentation scale: let the authored GLB fill the viewport.
-const MAP_VIEW_SCALE = 1.28;
 const FALLBACK_SCALE = 9 / 32962.3;
 const FALLBACK_POS = [
   ARENA_CX - -590.9 * FALLBACK_SCALE,
@@ -81,9 +79,10 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     root.position.set(0, 0, 0);
     root.updateMatrixWorld(true);
 
-    // Fit the playable terrain slightly beyond the simulation rectangle so
-    // the GLB does not look undersized behind the fighters. The collider
-    // filter below still keeps the walkable lanes open.
+    // Fit the terrain EXACTLY onto the simulation rectangle (17 × 11) with
+    // a uniform scale, so every lane/tower the player sees stands at the
+    // same world coordinate the sim, colliders and the click plane use —
+    // visuals can never drift apart from the walkable area.
     const terrainBox = meshBounds(root, /terrain/i);
     let scale = FALLBACK_SCALE;
     let posX = FALLBACK_POS[0];
@@ -92,7 +91,7 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     if (terrainBox) {
       const size = terrainBox.getSize(new THREE.Vector3());
       if (size.x > 1 && size.z > 1) {
-        scale = MAP_VIEW_SCALE * Math.max(
+        scale = Math.max(
           (ARENA_W - 0.3) / size.x,
           (ARENA_D - 0.3) / size.z,
         );

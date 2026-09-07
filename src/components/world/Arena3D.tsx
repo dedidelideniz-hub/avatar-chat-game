@@ -1061,14 +1061,14 @@ function FighterRig({
           both float above the head and follow the fighter */}
       <group ref={barGroup}>
         {/* name / level tag */}
-        <sprite position={[0, 1.82, 0]} scale={[2.05, 0.385, 1]} renderOrder={0}>
+        <sprite position={[0, 1.0, 0]} scale={[2.05, 0.385, 1]} renderOrder={0}>
           <spriteMaterial map={nameTex} transparent depthTest={false} />
         </sprite>
         {/* animated HP bar (white ghost trails the damage) */}
-        <sprite ref={hpGhost} position={[0, 1.55, 0]} scale={[1.28, 0.095, 1]} renderOrder={1}>
+        <sprite ref={hpGhost} position={[0, 0.78, 0]} scale={[1.35, 0.14, 1]} renderOrder={1}>
           <spriteMaterial map={hpGhostTex} depthTest={false} />
         </sprite>
-        <sprite ref={hpFill} position={[0, 1.55, 0]} scale={[1.28, 0.095, 1]} renderOrder={2}>
+        <sprite ref={hpFill} position={[0, 0.78, 0]} scale={[1.35, 0.14, 1]} renderOrder={2}>
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>
@@ -1415,47 +1415,36 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
 /* Camera tuned for the portrait battle viewport.                      */
 /* ------------------------------------------------------------------ */
 
-function FollowCamera({
-  playerRef,
-}: {
-  playerRef: MutableRefObject<BattleFighter>;
-}) {
+function FollowCamera() {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
-  const cur = useRef(new THREE.Vector3(CX, 0.28, CZ));
-  const tmp = useRef(new THREE.Vector3());
-  // Keep a readable three-quarter perspective: enough height to see the map,
-  // but not so steep that the battlefield becomes a flat texture.
-  const el = 0.68;
-  const baseZoom = 9.4; // battle-only framing for a large authored GLB
+  const target = useRef(new THREE.Vector3(CX, 0.6, CZ));
+  const smoothed = useRef(new THREE.Vector3(CX, 0.6, CZ));
+  // Whole-battlefield framing: the camera always shows the ENTIRE uploaded
+  // GLB arena — both bases, towers and lanes stay on screen like a classic
+  // MOBA overview, so the map itself fills the viewport instead of a small
+  // patch of grass around one fighter.
+  const el = 0.7; // ~40° elevation — readable isometric angle
+  // The arena rect (17 × 11) is presented rotated 45°, so its on-screen
+  // extent follows its diagonal: (17+11)/√2 ≈ 19.8 world units per axis.
+  // A small margin keeps the island floating clear of the screen edges.
+  const halfSpan = ((ARENA_W + ARENA_D) / (2 * Math.SQRT2)) * 1.06;
 
   useFrame((_, dt) => {
-    const p = playerRef.current;
     const aspect = Math.max(0.2, camera.aspect);
-    // Portrait screens need extra distance to show the same playable width;
-    // desktop keeps the authored three-quarter framing.
-    const zoom = baseZoom * THREE.MathUtils.clamp(1.22 / aspect, 1, 1.7);
     const vFov = (camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
-    const halfW = Math.tan(hFov / 2) * zoom;
-    const halfD = Math.tan(vFov / 2) * zoom * Math.cos(el);
-    // If the view is wider/taller than the arena, stay centered on that
-    // axis; otherwise follow the player, clamped to the walls.
-    const tx =
-      halfW * 2 >= ARENA_W
-        ? CX
-        : THREE.MathUtils.clamp(p.x / S, halfW + 0.3, ARENA_W - halfW - 0.3);
-    const tz =
-      halfD * 2 >= ARENA_D
-        ? CZ
-        : THREE.MathUtils.clamp(p.y / S, halfD + 0.3, ARENA_D - halfD - 0.3);
-    tmp.current.set(tx, 0.6, tz);
-    cur.current.lerp(tmp.current, Math.min(1, dt * 5));
+    // Camera distance needed for halfSpan of ground to fit: portrait is
+    // width-bound, landscape is depth-bound; take whichever needs more.
+    const zoomW = halfSpan / Math.tan(hFov / 2);
+    const zoomD = halfSpan / (Math.tan(vFov / 2) / Math.sin(el));
+    const zoom = Math.max(zoomW, zoomD, 6);
+    smoothed.current.lerp(target.current, Math.min(1, dt * 3));
     camera.position.set(
-      cur.current.x,
-      cur.current.y + Math.sin(el) * zoom,
-      cur.current.z + Math.cos(el) * zoom,
+      smoothed.current.x,
+      smoothed.current.y + Math.sin(el) * zoom,
+      smoothed.current.z + Math.cos(el) * zoom,
     );
-    camera.lookAt(cur.current);
+    camera.lookAt(smoothed.current);
   });
 
   return null;
@@ -1494,10 +1483,10 @@ export function Arena3D({
     <Canvas
       dpr={[1, coarse ? 1.5 : 2]}
       shadows={!coarse}
-      camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.1, far: 300 }}
+      camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.5, far: 200 }}
       className="absolute inset-0"
     >
-      <FollowCamera playerRef={playerRef} />
+      <FollowCamera />
       {/* Neutral sky — the exported battle map renders as-is with its own
           textures and lighting; no artificial ground plane or fog overlay. */}
       <color attach="background" args={["#aacde4"]} />
