@@ -16,7 +16,6 @@ import {
   type BattleMapCollider,
   type BattleProj,
 } from "@/components/world/Arena3D";
-import { FallbackArena2D } from "@/components/world/FallbackArena2D";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import {
@@ -1207,30 +1206,16 @@ export default function BattleScene({
           ref={arenaRef}
           className="relative min-h-0 flex-1 touch-none overflow-hidden"
         >
-          {/* 3D arena with the rigged GLB characters; falls back to the
-              2D SVG arena if WebGL/3D rendering is unavailable */}
-          <ArenaBoundary
-            fallback={
-              <FallbackArena2D
-                playerRef={player}
-                botRef={bot}
-                projsRef={projs}
-                fxsRef={fxs}
-                aimRef={aimRef}
-                onWorldClick={(x, y) => actionsRef.current.click(x, y)}
-              />
-            }
-          >
-            <Arena3D
-              playerRef={player}
-              botRef={bot}
-              projsRef={projs}
-              fxsRef={fxs}
-              aimRef={aimRef}
-              mapColliderRef={mapColliders}
-              onWorldClick={(x, y) => actionsRef.current.click(x, y)}
-            />
-          </ArenaBoundary>
+          {/* The supplied GLB is the only battlefield environment. */}
+          <Arena3D
+            playerRef={player}
+            botRef={bot}
+            projsRef={projs}
+            fxsRef={fxs}
+            aimRef={aimRef}
+            mapColliderRef={mapColliders}
+            onWorldClick={(x, y) => actionsRef.current.click(x, y)}
+          />
 
           {/* cinematic vignette — pulls the eye to the action */}
           <div className="arena-vignette pointer-events-none absolute inset-0 z-[6]" />

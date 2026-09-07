@@ -1426,7 +1426,7 @@ function FollowCamera({
   // Keep a readable three-quarter perspective: enough height to see the map,
   // but not so steep that the battlefield becomes a flat texture.
   const el = 0.68;
-  const baseZoom = 13.2; // fixed — no zoom controls
+  const baseZoom = 9.4; // battle-only framing for a large authored GLB
 
   useFrame((_, dt) => {
     const p = playerRef.current;

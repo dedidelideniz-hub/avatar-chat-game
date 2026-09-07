@@ -10,6 +10,8 @@ const ARENA_W = 17;
 const ARENA_D = 11;
 const ARENA_CX = ARENA_W / 2;
 const ARENA_CZ = ARENA_D / 2;
+// Battle-only presentation scale: let the authored GLB fill the viewport.
+const MAP_VIEW_SCALE = 1.28;
 const FALLBACK_SCALE = 9 / 32962.3;
 const FALLBACK_POS = [
   ARENA_CX - -590.9 * FALLBACK_SCALE,
@@ -90,7 +92,10 @@ function MapModelInner({ colliderRef }: { colliderRef?: ColliderRef }) {
     if (terrainBox) {
       const size = terrainBox.getSize(new THREE.Vector3());
       if (size.x > 1 && size.z > 1) {
-        scale = Math.max((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
+        scale = MAP_VIEW_SCALE * Math.max(
+          (ARENA_W - 0.3) / size.x,
+          (ARENA_D - 0.3) / size.z,
+        );
         const center = terrainBox.getCenter(new THREE.Vector3());
         posX = ARENA_CX - center.x * scale;
         posY = -terrainBox.max.y * scale;
