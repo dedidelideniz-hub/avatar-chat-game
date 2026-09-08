@@ -40,6 +40,12 @@ const WALK_PLANE_EPSILON = 0.035;
 // catches rocks whose exported bottom is a few centimetres above/below the
 // terrain, without projecting their tall upper faces across nearby roads.
 const OBSTACLE_BASE_BAND = 0.12;
+// Raised camp/island tops are not walkable surfaces. They are sampled only
+// when the actual GLB face is above the fitted walk plane; flat grass beside
+// a lane remains walkable. This prevents a fighter from climbing onto the
+// green rock islands without introducing coordinate-authored blockers.
+const RAISED_ISLAND_MIN_Y = 0.05;
+const RAISED_SURFACE_MIN_AREA = 0.0002;
 const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL);
 const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
 
@@ -390,10 +396,18 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       names.push(material.name);
     }
     const semanticName = names.join("/");
-    return (
-      /(?:rock|boulder|wall(?!g)|wildblock|block(?:buff|boss)?|tower)/i.test(semanticName) &&
-      !/(?:wallg|sidewalla|background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|grass|moss|meadow|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase)/i.test(semanticName)
+    // A camp island is often exported as BlockBuff/WildBlock with a child
+    // mesh or material named Grass. Do not discard that whole prop merely
+    // because its decorative skirt is green: the raised island body still
+    // needs its real GLB footprint. Only explicit environmental containers
+    // (terrain, water, bridge, etc.) override an obstacle token.
+    const hasObstacleToken = /(?:rock|boulder|wall(?!g)|wildblock|block(?:buff|boss)?|tower)/i.test(
+      semanticName,
     );
+    const hasEnvironmentalContainer = /(?:wallg|sidewalla|background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase)/i.test(
+      names.slice(0, -1).join("/"),
+    );
+    return hasObstacleToken && !hasEnvironmentalContainer;
   };
   // A fighter collides with the part of a prop that actually reaches the
   // walking plane, not with every triangle in its full exported volume. This
@@ -437,6 +451,59 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     }
     const isWater = /(?:water|river|stream|lake|pond)/i.test(semanticName);
     const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+    // The camp decorations in the screenshot are exported as a mixture of
+    // grass, rock and block meshes. Their raised, horizontal top faces are
+    // the island itself, not an obstacle side touching y=0, so the old base
+    // slice let the fighter walk straight up onto them. Treat only sizeable
+    // elevated faces from island/camp/rock semantic groups as blocked. A
+    // normal lane/grass surface at y=0 is deliberately not included.
+    const nodePath = (() => {
+      const path: string[] = [];
+      let node: THREE.Object3D | null = mesh;
+      while (node) {
+        if (node.name) path.push(node.name);
+        node = node.parent;
+      }
+      return path.join("/");
+    })();
+    const isRaisedIslandCandidate =
+      /(?:island|camp|jungle|wildblock|block(?:buff|boss)?|rock|boulder|platform)/i.test(
+        nodePath,
+      ) &&
+      !/(?:terrain|ground|decal|river|water|stream|lake|pond|bridge|crossing|walkway|road|path|lane|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|station|tower)/i.test(
+        nodePath,
+      );
+    if (isRaisedIslandCandidate && !isWater && pos) {
+      mesh.updateWorldMatrix(true, false);
+      m.copy(mesh.matrixWorld);
+      const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
+      const triCount = indexAttr ? indexAttr.count / 3 : pos.count / 3;
+      for (let t = 0; t < triCount; t++) {
+        const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+        const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+        va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
+        vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
+        vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+        edgeA.subVectors(vb, va);
+        edgeB.subVectors(vc, va);
+        faceNormal.crossVectors(edgeA, edgeB).normalize();
+        const triangleMinY = Math.min(va.y, vb.y, vc.y);
+        const triangleMaxY = Math.max(va.y, vb.y, vc.y);
+        const surfaceArea = Math.abs(
+          (vb.x - va.x) * (vc.z - va.z) -
+            (vb.z - va.z) * (vc.x - va.x),
+        ) * 0.5;
+        if (
+          faceNormal.y > 0.78 &&
+          triangleMinY > RAISED_ISLAND_MIN_Y &&
+          triangleMaxY - triangleMinY < 0.5 &&
+          surfaceArea >= RAISED_SURFACE_MIN_AREA
+        ) {
+          rasterizeProjectedTriangle(grid, va, vb, vc);
+        }
+      }
+    }
     if (isWater && pos) {
       mesh.updateWorldMatrix(true, false);
       m.copy(mesh.matrixWorld);
