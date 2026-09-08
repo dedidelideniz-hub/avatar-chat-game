@@ -31,7 +31,12 @@ const FALLBACK_POS = [
 // A small cell keeps the walkable road edges accurate without inflating
 // obstacle footprints into the lane. The old 8 px cells made narrow road
 // clearances collide several pixels before the fighter reached the prop.
-const GRID_CELL = 4; // game-space px per cell
+const GRID_CELL = 2; // game-space px per cell; keeps collider edges tight to GLB geometry
+// The fitted GLB is placed with its terrain top at y=0. Props are usually
+// sunk a few centimetres into that surface, so use that same plane for the
+// footprint intersection instead of projecting a tolerance band onto the map.
+const WALK_PLANE_Y = -0.06;
+const WALK_PLANE_EPSILON = 0.025;
 const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL);
 const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
 
@@ -137,12 +142,15 @@ function rasterizeWalkSlice(
     points.push(new THREE.Vector3(x, 0, z));
   };
   const addEdgeSlice = (from: THREE.Vector3, to: THREE.Vector3) => {
-    const fromNear = Math.abs(from.y) <= 0.12;
-    const toNear = Math.abs(to.y) <= 0.12;
+    const fromNear = Math.abs(from.y - WALK_PLANE_Y) <= WALK_PLANE_EPSILON;
+    const toNear = Math.abs(to.y - WALK_PLANE_Y) <= WALK_PLANE_EPSILON;
     if (fromNear) addPoint(from.x, from.z);
     if (toNear) addPoint(to.x, to.z);
-    if ((from.y < 0 && to.y > 0) || (from.y > 0 && to.y < 0)) {
-      const t = -from.y / (to.y - from.y);
+    if (
+      (from.y < WALK_PLANE_Y && to.y > WALK_PLANE_Y) ||
+      (from.y > WALK_PLANE_Y && to.y < WALK_PLANE_Y)
+    ) {
+      const t = (WALK_PLANE_Y - from.y) / (to.y - from.y);
       addPoint(
         from.x + (to.x - from.x) * t,
         from.z + (to.z - from.z) * t,
@@ -173,15 +181,18 @@ function mergeClosedMeshFootprint(
   boundary: Uint8Array,
   bounds: THREE.Box3,
 ) {
-  const minCol = Math.max(0, Math.floor((bounds.min.x * PX) / target.cell) - 1);
+  // Do not pad this box. The fighter radius is handled by hitsRockCollision;
+  // padding the mesh bounds here made every collider visibly wider than the
+  // corresponding GLB rock and pushed it into neighbouring roads.
+  const minCol = Math.max(0, Math.floor((bounds.min.x * PX) / target.cell));
   const maxCol = Math.min(
     target.cols - 1,
-    Math.ceil((bounds.max.x * PX) / target.cell) + 1,
+    Math.ceil((bounds.max.x * PX) / target.cell),
   );
-  const minRow = Math.max(0, Math.floor((bounds.min.z * PX) / target.cell) - 1);
+  const minRow = Math.max(0, Math.floor((bounds.min.z * PX) / target.cell));
   const maxRow = Math.min(
     target.rows - 1,
-    Math.ceil((bounds.max.z * PX) / target.cell) + 1,
+    Math.ceil((bounds.max.z * PX) / target.cell),
   );
   if (minCol > maxCol || minRow > maxRow) return;
 
@@ -333,7 +344,6 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // removes below-ground/upper decorative triangles while preserving the
   // footprint of raised rocks, jungle blocks and towers.
   const MIN_OBSTACLE_H = 0.18; // world units — small raised rocks still block
-  const WALK_MIN_Y = -0.06;
   const MIN_TOP = 0.08; // world units — a blocker must rise above the walk plane
   const va = new THREE.Vector3();
   const vb = new THREE.Vector3();
@@ -429,7 +439,9 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // contribute to the 2D collision mask.
       const triangleMinY = Math.min(va.y, vb.y, vc.y);
       const triangleMaxY = Math.max(va.y, vb.y, vc.y);
-      const touchesWalkPlane = triangleMinY <= WALK_MIN_Y + 0.16 && triangleMaxY >= WALK_MIN_Y;
+      const touchesWalkPlane =
+        triangleMinY <= WALK_PLANE_Y + WALK_PLANE_EPSILON &&
+        triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON;
       // BlockBuff/WildBlock nodes also contain the thin green ground skirt
       // around a camp. Ignore that low skirt; only the visibly raised rock
       // part of the same exported mesh may become a collider.
@@ -464,10 +476,10 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // real bounding volume from the water cells; no hand-authored river/bridge
   // coordinates are used.
   for (const bridgeBox of bridgeBoxes) {
-    const minCol = Math.max(0, Math.floor((bridgeBox.min.x * PX) / grid.cell) - 1);
-    const maxCol = Math.min(grid.cols - 1, Math.ceil((bridgeBox.max.x * PX) / grid.cell) + 1);
-    const minRow = Math.max(0, Math.floor((bridgeBox.min.z * PX) / grid.cell) - 1);
-    const maxRow = Math.min(grid.rows - 1, Math.ceil((bridgeBox.max.z * PX) / grid.cell) + 1);
+    const minCol = Math.max(0, Math.floor((bridgeBox.min.x * PX) / grid.cell));
+    const maxCol = Math.min(grid.cols - 1, Math.ceil((bridgeBox.max.x * PX) / grid.cell));
+    const minRow = Math.max(0, Math.floor((bridgeBox.min.z * PX) / grid.cell));
+    const maxRow = Math.min(grid.rows - 1, Math.ceil((bridgeBox.max.z * PX) / grid.cell));
     for (let row = minRow; row <= maxRow; row++) {
       for (let col = minCol; col <= maxCol; col++) {
         grid.blocked[row * grid.cols + col] = 0;
