@@ -707,7 +707,10 @@ export default function BattleScene({
       moved = moved || Math.abs(dy) > 0.01;
     }
     if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
-    f.moving = Math.hypot(dx, dy) > 0.5;
+    // Use the actual displacement, not the requested displacement. This
+    // keeps the bot from animating/walking in place when a real collider
+    // blocks its path.
+    f.moving = moved;
     // Track vertical direction for body facing (up/down pose)
     if (f.moving) {
       if (Math.abs(dy) > Math.abs(dx)) f.vy = dy > 0 ? 1 : -1;
