@@ -28,9 +28,12 @@ const FALLBACK_POS = [
 /* roads and lanes stay completely free.                              */
 /* ------------------------------------------------------------------ */
 
-const GRID_CELL = 8; // game-space px per cell
-const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL); // 1700 / 8
-const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL); // 1100 / 8
+// A small cell keeps the walkable road edges accurate without inflating
+// obstacle footprints into the lane. The old 8 px cells made narrow road
+// clearances collide several pixels before the fighter reached the prop.
+const GRID_CELL = 4; // game-space px per cell
+const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL);
+const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
 
 export interface RockGrid {
   cell: number;
@@ -152,32 +155,36 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     rows: GRID_ROWS,
     blocked: new Uint8Array(GRID_COLS * GRID_ROWS),
   };
-  // Only genuine battlefield geometry may block. Everything under these three
-  // categories blocks — rock clusters/walls, lane & jungle stone walls, towers
-  // and jungle camp blocks. PropsWall is deliberately kept (the low stone walls
-  // lining the roads ARE real barriers) while every other "Props…" decor is not.
-  const INCLUDE = /(rock|wall|tower|block)/i;
-  // Flat / cosmetic surfaces never block: terrain & ground tops, water decals,
-  // grass/bushes, trees, foliage, monsters, statues and base/spawn art. A mesh
-  // also has to be actually VISIBLE (the below-ground cleanup hides the giant
-  // perimeter/underside chunks) and taller than a walking step before its
-  // triangles can be rasterized into the walkable mask.
-  const EXCLUDE =
-    /(background|ground|terrain|decal|river|base(red|blue)|station|props(?!wall)|yequ|tree|foliage|jungle|monster|deer|lizard|bird|sculpture)/i;
-  const MIN_OBSTACLE_H = 0.35; // world units — below this it is a flat step, walkable
+  // Use only named gameplay obstacle meshes. In particular, do not use a
+  // broad /wall/ or /block/ match: the GLB contains decorative perimeter
+  // walls, underside chunks and low path dressing with those words in their
+  // names. Those meshes were the reason the visible roads became blocked.
+  const isObstacleMesh = (name: string) =>
+    /(?:rockgroup|rockwall|wildblock|block(?:buff|boss)|tower)/i.test(name) &&
+    !/(?:wallg|sidewalla|background|ground|terrain|decal|river|station|tree|foliage|monster|sculpture)/i.test(name);
+  // A fighter collides with the part of a prop that actually reaches the
+  // walking plane, not with every triangle in its full exported volume. This
+  // removes below-ground/upper decorative triangles while preserving the
+  // footprint of raised rocks, jungle blocks and towers.
+  const MIN_OBSTACLE_H = 0.18; // world units — small raised rocks still block
+  const WALK_MIN_Y = -0.06;
+  const WALK_MAX_Y = 0.42; // tops above this are reached through their side faces
   const MIN_TOP = 0.08; // world units — a blocker must rise above the walk plane
   const va = new THREE.Vector3();
   const vb = new THREE.Vector3();
   const vc = new THREE.Vector3();
+  const edgeA = new THREE.Vector3();
+  const edgeB = new THREE.Vector3();
+  const faceNormal = new THREE.Vector3();
   const m = new THREE.Matrix4();
   const tmpBox = new THREE.Box3();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.visible) return;
     const name = mesh.name || "";
-    if (!INCLUDE.test(name) || EXCLUDE.test(name)) return;
-    // Shape test: only walls/rocks/towers that genuinely rise out of the ground
-    // can stop a fighter — hidden underside chunks and flat rock decals cannot.
+    if (!isObstacleMesh(name)) return;
+    // Shape test: only obstacles that genuinely rise out of the ground can
+    // stop a fighter — hidden underside chunks and flat rock decals cannot.
     tmpBox.setFromObject(mesh);
     const top = tmpBox.max.y;
     if (top < MIN_TOP) return;
@@ -195,6 +202,23 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
       vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
       vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+      // The map is exported with large underground and elevated triangles.
+      // Projecting those triangles from above turns an innocent road into a
+      // solid square. Only triangles touching the fighter's walk plane may
+      // contribute to the 2D collision mask.
+      const triangleMinY = Math.min(va.y, vb.y, vc.y);
+      const triangleMaxY = Math.max(va.y, vb.y, vc.y);
+      const touchesWalkPlane = triangleMinY <= WALK_MIN_Y + 0.16 && triangleMaxY >= WALK_MIN_Y;
+      const hasRaisedFace = triangleMaxY >= 0.16 && triangleMaxY - triangleMinY >= 0.12;
+      edgeA.subVectors(vb, va);
+      edgeB.subVectors(vc, va);
+      faceNormal.crossVectors(edgeA, edgeB).normalize();
+      const isWallLikeFace = Math.abs(faceNormal.y) < 0.82;
+      // Do not project horizontal tops or underground caps into 2D. Those
+      // surfaces cover the whole model footprint and were falsely closing
+      // nearby roads. Only a raised, wall-like face that reaches the walking
+      // plane is a solid collision boundary.
+      if (!touchesWalkPlane || !hasRaisedFace || !isWallLikeFace) continue;
       rasterizeTriangle(
         grid,
         va.x * PX, va.z * PX,
