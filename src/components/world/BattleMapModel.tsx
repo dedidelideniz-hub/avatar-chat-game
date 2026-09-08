@@ -33,10 +33,13 @@ const FALLBACK_POS = [
 // clearances collide several pixels before the fighter reached the prop.
 const GRID_CELL = 2; // game-space px per cell; keeps collider edges tight to GLB geometry
 // The fitted GLB is placed with its terrain top at y=0. Props are usually
-// sunk a few centimetres into that surface, so use that same plane for the
-// footprint intersection instead of projecting a tolerance band onto the map.
-const WALK_PLANE_Y = -0.06;
-const WALK_PLANE_EPSILON = 0.025;
+// seated on that surface (their lowest vertices are often exactly y=0).
+const WALK_PLANE_Y = 0;
+const WALK_PLANE_EPSILON = 0.035;
+// Use a thin band above the walk plane when sampling obstacle sides. This
+// catches rocks whose exported bottom is a few centimetres above/below the
+// terrain, without projecting their tall upper faces across nearby roads.
+const OBSTACLE_BASE_BAND = 0.35;
 const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL);
 const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
 
@@ -130,11 +133,63 @@ function sampleEdge(g: RockGrid, x0: number, y0: number, x1: number, y1: number)
  * ground-level edge; a rock contributes the small slice where it meets the
  * ground, while upper/underground geometry contributes nothing.
  */
+function clipPolygonAgainstY(
+  polygon: THREE.Vector3[],
+  y: number,
+  keepAbove: boolean,
+): THREE.Vector3[] {
+  const clipped: THREE.Vector3[] = [];
+  if (polygon.length === 0) return clipped;
+  const inside = (point: THREE.Vector3) =>
+    keepAbove ? point.y >= y : point.y <= y;
+  for (let i = 0; i < polygon.length; i++) {
+    const from = polygon[i];
+    const to = polygon[(i + 1) % polygon.length];
+    const fromInside = inside(from);
+    const toInside = inside(to);
+    if (fromInside !== toInside) {
+      const t = (y - from.y) / (to.y - from.y);
+      clipped.push(
+        new THREE.Vector3(
+          from.x + (to.x - from.x) * t,
+          y,
+          from.z + (to.z - from.z) * t,
+        ),
+      );
+    }
+    if (toInside) clipped.push(to.clone());
+  }
+  return clipped;
+}
+
+/** Fill only the real lower side of an obstacle. Unlike projecting a whole
+ * triangle, clipping to the base band cannot turn a tall rock face into a
+ * large invisible rectangle on the lane beside it. */
+function rasterizeObstacleBase(
+  g: RockGrid,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+  minY: number,
+  maxY: number,
+): THREE.Vector3[] {
+  let polygon = [a, b, c];
+  polygon = clipPolygonAgainstY(polygon, minY, true);
+  polygon = clipPolygonAgainstY(polygon, maxY, false);
+  if (polygon.length < 3) return polygon;
+  const origin = polygon[0];
+  for (let i = 1; i < polygon.length - 1; i++) {
+    rasterizeProjectedTriangle(g, origin, polygon[i], polygon[i + 1]);
+  }
+  return polygon;
+}
+
 function rasterizeWalkSlice(
   g: RockGrid,
   a: THREE.Vector3,
   b: THREE.Vector3,
   c: THREE.Vector3,
+  planeY: number,
 ) {
   const points: THREE.Vector3[] = [];
   const addPoint = (x: number, z: number) => {
@@ -142,15 +197,15 @@ function rasterizeWalkSlice(
     points.push(new THREE.Vector3(x, 0, z));
   };
   const addEdgeSlice = (from: THREE.Vector3, to: THREE.Vector3) => {
-    const fromNear = Math.abs(from.y - WALK_PLANE_Y) <= WALK_PLANE_EPSILON;
-    const toNear = Math.abs(to.y - WALK_PLANE_Y) <= WALK_PLANE_EPSILON;
+    const fromNear = Math.abs(from.y - planeY) <= WALK_PLANE_EPSILON;
+    const toNear = Math.abs(to.y - planeY) <= WALK_PLANE_EPSILON;
     if (fromNear) addPoint(from.x, from.z);
     if (toNear) addPoint(to.x, to.z);
     if (
-      (from.y < WALK_PLANE_Y && to.y > WALK_PLANE_Y) ||
-      (from.y > WALK_PLANE_Y && to.y < WALK_PLANE_Y)
+      (from.y < planeY && to.y > planeY) ||
+      (from.y > planeY && to.y < planeY)
     ) {
-      const t = (WALK_PLANE_Y - from.y) / (to.y - from.y);
+      const t = (planeY - from.y) / (to.y - from.y);
       addPoint(
         from.x + (to.x - from.x) * t,
         from.z + (to.z - from.z) * t,
@@ -161,19 +216,20 @@ function rasterizeWalkSlice(
   addEdgeSlice(a, b);
   addEdgeSlice(b, c);
   addEdgeSlice(c, a);
-  if (points.length === 0) return;
+  if (points.length === 0) return points;
 
   // The selected obstacle faces are wall-like, so their walk-plane section
   // is normally a line. Mark only that section, not the full projected face.
   if (points.length === 1) {
     markCell(g, points[0].x * PX, points[0].z * PX);
-    return;
+    return points;
   }
   for (let i = 0; i < points.length; i++) {
     const from = points[i];
     const to = points[(i + 1) % points.length];
     sampleEdge(g, from.x * PX, from.z * PX, to.x * PX, to.z * PX);
   }
+  return points;
 }
 
 function mergeClosedMeshFootprint(
@@ -423,7 +479,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     const collisionBounds = new THREE.Box3();
     let hasCollisionFace = false;
     const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(semanticName);
-    const raisedFaceMinTop = isBroadBlock ? 0.28 : 0.16;
+    const raisedFaceMinTop = isBroadBlock ? 0.28 : MIN_TOP;
     const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
     const triCount = indexAttr ? indexAttr.count / 3 : obstaclePos.count / 3;
     for (let t = 0; t < triCount; t++) {
@@ -436,11 +492,13 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // The map is exported with large underground and elevated triangles.
       // Projecting those triangles from above turns an innocent road into a
       // solid square. Only triangles touching the fighter's walk plane may
-      // contribute to the 2D collision mask.
+      // contribute to the 2D collision mask. A broad triangle that crosses
+      // the plane is still clipped by rasterizeWalkSlice to its exact
+      // intersection, so its grass/upper surface cannot be added.
       const triangleMinY = Math.min(va.y, vb.y, vc.y);
       const triangleMaxY = Math.max(va.y, vb.y, vc.y);
       const touchesWalkPlane =
-        triangleMinY <= WALK_PLANE_Y + WALK_PLANE_EPSILON &&
+        triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
         triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON;
       // BlockBuff/WildBlock nodes also contain the thin green ground skirt
       // around a camp. Ignore that low skirt; only the visibly raised rock
@@ -448,22 +506,32 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       const hasRaisedFace =
         triangleMaxY >= raisedFaceMinTop &&
         triangleMaxY - triangleMinY >= (isBroadBlock ? 0.24 : 0.12);
-      edgeA.subVectors(vb, va);
-      edgeB.subVectors(vc, va);
-      faceNormal.crossVectors(edgeA, edgeB).normalize();
-      const isWallLikeFace = Math.abs(faceNormal.y) < 0.82;
-      // Do not project horizontal tops or underground caps into 2D. Those
-      // surfaces cover the whole model footprint and were falsely closing
-      // nearby roads. Only a raised, wall-like face that reaches the walking
-      // plane is a solid collision boundary.
-      if (!touchesWalkPlane || !hasRaisedFace || !isWallLikeFace) continue;
-      rasterizeWalkSlice(
+      // Do not project the complete 3D triangle into 2D: that would make a
+      // tall rock's upper face cover nearby road. Instead, clip every actual
+      // obstacle triangle to the thin band immediately above the walk plane
+      // below. This also catches sloped rock faces, which the old wall-normal
+      // filter allowed the fighter to enter from the side.
+      if (!touchesWalkPlane || !hasRaisedFace) continue;
+      const baseSlice = rasterizeObstacleBase(
         { ...grid, blocked: meshBoundary },
         va,
         vb,
         vc,
+        WALK_PLANE_Y - WALK_PLANE_EPSILON,
+        WALK_PLANE_Y + OBSTACLE_BASE_BAND,
       );
-      collisionBounds.expandByPoint(va).expandByPoint(vb).expandByPoint(vc);
+      // Keep the exact plane edge as well. The clipped lower face closes gaps
+      // between separately triangulated rock sides, while the edge keeps the
+      // collider aligned with the visible bottom contour.
+      const walkSlice = rasterizeWalkSlice(
+        { ...grid, blocked: meshBoundary },
+        va,
+        vb,
+        vc,
+        WALK_PLANE_Y,
+      );
+      for (const point of baseSlice) collisionBounds.expandByPoint(point);
+      for (const point of walkSlice) collisionBounds.expandByPoint(point);
       hasCollisionFace = true;
     }
     // Use the bounds of the selected raised faces, not the entire mesh box.
