@@ -168,39 +168,122 @@ function rasterizeWalkSlice(
   }
 }
 
-function fillEnclosedFootprints(g: RockGrid) {
-  // The walk-plane intersections are stored as the real prop outlines.
-  // Fill only areas enclosed by those outlines; this keeps the interior of a
-  // rock/tower solid without turning the complete projected GLB mesh into a
-  // rectangular road blocker.
-  const outside = new Uint8Array(g.blocked.length);
-  const queue = new Int32Array(g.blocked.length);
+function mergeClosedMeshFootprint(
+  target: RockGrid,
+  boundary: Uint8Array,
+  bounds: THREE.Box3,
+) {
+  const minCol = Math.max(0, Math.floor((bounds.min.x * PX) / target.cell) - 1);
+  const maxCol = Math.min(
+    target.cols - 1,
+    Math.ceil((bounds.max.x * PX) / target.cell) + 1,
+  );
+  const minRow = Math.max(0, Math.floor((bounds.min.z * PX) / target.cell) - 1);
+  const maxRow = Math.min(
+    target.rows - 1,
+    Math.ceil((bounds.max.z * PX) / target.cell) + 1,
+  );
+  if (minCol > maxCol || minRow > maxRow) return;
+
+  let boundaryCount = 0;
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      if (boundary[row * target.cols + col]) boundaryCount++;
+    }
+  }
+  if (boundaryCount < 3) return;
+
+  // Flood-fill only this mesh's own bounding box. The old implementation
+  // flood-filled the entire map after combining every prop's edges, so an
+  // unrelated rock outline could close a road hundreds of pixels away.
+  // Large/incomplete exporter chunks are kept as boundary lines only.
+  const area = (maxCol - minCol + 1) * (maxRow - minRow + 1);
+  if (area > target.cols * target.rows * 0.45) {
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        if (boundary[row * target.cols + col]) {
+          target.blocked[row * target.cols + col] = 1;
+        }
+      }
+    }
+    return;
+  }
+
+  const outside = new Uint8Array(target.blocked.length);
+  const queue = new Int32Array(target.blocked.length);
   let head = 0;
   let tail = 0;
   const enqueue = (index: number) => {
-    if (g.blocked[index] || outside[index]) return;
+    if (boundary[index] || outside[index]) return;
     outside[index] = 1;
     queue[tail++] = index;
   };
-  for (let col = 0; col < g.cols; col++) {
-    enqueue(col);
-    enqueue((g.rows - 1) * g.cols + col);
+  for (let col = minCol; col <= maxCol; col++) {
+    enqueue(minRow * target.cols + col);
+    enqueue(maxRow * target.cols + col);
   }
-  for (let row = 1; row < g.rows - 1; row++) {
-    enqueue(row * g.cols);
-    enqueue(row * g.cols + g.cols - 1);
+  for (let row = minRow + 1; row < maxRow; row++) {
+    enqueue(row * target.cols + minCol);
+    enqueue(row * target.cols + maxCol);
   }
   while (head < tail) {
     const index = queue[head++];
-    const row = Math.floor(index / g.cols);
-    const col = index - row * g.cols;
-    if (col > 0) enqueue(index - 1);
-    if (col + 1 < g.cols) enqueue(index + 1);
-    if (row > 0) enqueue(index - g.cols);
-    if (row + 1 < g.rows) enqueue(index + g.cols);
+    const row = Math.floor(index / target.cols);
+    const col = index - row * target.cols;
+    if (col > minCol) enqueue(index - 1);
+    if (col < maxCol) enqueue(index + 1);
+    if (row > minRow) enqueue(index - target.cols);
+    if (row < maxRow) enqueue(index + target.cols);
   }
-  for (let index = 0; index < g.blocked.length; index++) {
-    if (!g.blocked[index] && !outside[index]) g.blocked[index] = 1;
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const index = row * target.cols + col;
+      if (boundary[index] || !outside[index]) target.blocked[index] = 1;
+    }
+  }
+}
+
+function pointInTriangle2D(
+  px: number,
+  py: number,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+) {
+  const ab = (px - a.x) * (b.z - a.z) - (py - a.z) * (b.x - a.x);
+  const bc = (px - b.x) * (c.z - b.z) - (py - b.z) * (c.x - b.x);
+  const ca = (px - c.x) * (a.z - c.z) - (py - c.z) * (a.x - c.x);
+  return (ab >= 0 && bc >= 0 && ca >= 0) || (ab <= 0 && bc <= 0 && ca <= 0);
+}
+
+function rasterizeProjectedTriangle(
+  g: RockGrid,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+) {
+  const minCol = Math.max(
+    0,
+    Math.floor((Math.min(a.x, b.x, c.x) * PX) / g.cell) - 1,
+  );
+  const maxCol = Math.min(
+    g.cols - 1,
+    Math.ceil((Math.max(a.x, b.x, c.x) * PX) / g.cell) + 1,
+  );
+  const minRow = Math.max(
+    0,
+    Math.floor((Math.min(a.z, b.z, c.z) * PX) / g.cell) - 1,
+  );
+  const maxRow = Math.min(
+    g.rows - 1,
+    Math.ceil((Math.max(a.z, b.z, c.z) * PX) / g.cell) + 1,
+  );
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const x = (col + 0.5) * g.cell / PX;
+      const z = (row + 0.5) * g.cell / PX;
+      if (pointInTriangle2D(x, z, a, b, c)) g.blocked[row * g.cols + col] = 1;
+    }
   }
 }
 
@@ -233,10 +316,16 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       if (node.name) names.push(node.name);
       node = node.parent;
     }
+    const material = mesh.material;
+    if (Array.isArray(material)) {
+      for (const item of material) if (item.name) names.push(item.name);
+    } else if (material?.name) {
+      names.push(material.name);
+    }
     const semanticName = names.join("/");
     return (
       /(?:rock|boulder|wall(?!g)|wildblock|block(?:buff|boss)?|tower)/i.test(semanticName) &&
-      !/(?:wallg|sidewalla|background|ground|terrain|decal|river|station|tree|foliage|monster|sculpture|rockfloor|rockbase)/i.test(semanticName)
+      !/(?:wallg|sidewalla|background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|foliage|monster|sculpture|rockfloor|rockbase)/i.test(semanticName)
     );
   };
   // A fighter collides with the part of a prop that actually reaches the
@@ -254,9 +343,61 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   const faceNormal = new THREE.Vector3();
   const m = new THREE.Matrix4();
   const tmpBox = new THREE.Box3();
+  const bridgeBoxes: THREE.Box3[] = [];
+  const semanticNameOf = (mesh: THREE.Mesh) => {
+    const names: string[] = [];
+    let node: THREE.Object3D | null = mesh;
+    while (node) {
+      if (node.name) names.push(node.name);
+      node = node.parent;
+    }
+    const material = mesh.material;
+    if (Array.isArray(material)) {
+      for (const item of material) if (item.name) names.push(item.name);
+    } else if (material?.name) {
+      names.push(material.name);
+    }
+    return names.join("/");
+  };
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.visible) return;
+    const semanticName = semanticNameOf(mesh);
+    const isBridge = /(?:bridge|crossing|walkway)/i.test(semanticName);
+    if (isBridge) {
+      mesh.updateWorldMatrix(true, false);
+      bridgeBoxes.push(new THREE.Box3().setFromObject(mesh));
+      return;
+    }
+    const isWater = /(?:water|river|stream|lake|pond)/i.test(semanticName);
+    const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+    if (isWater && pos) {
+      mesh.updateWorldMatrix(true, false);
+      m.copy(mesh.matrixWorld);
+      const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
+      const triCount = indexAttr ? indexAttr.count / 3 : pos.count / 3;
+      for (let t = 0; t < triCount; t++) {
+        const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+        const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+        va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
+        vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
+        vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+        edgeA.subVectors(vb, va);
+        edgeB.subVectors(vc, va);
+        faceNormal.crossVectors(edgeA, edgeB).normalize();
+        const triangleMinY = Math.min(va.y, vb.y, vc.y);
+        const triangleMaxY = Math.max(va.y, vb.y, vc.y);
+        if (
+          Math.abs(faceNormal.y) > 0.75 &&
+          triangleMinY <= 0.2 &&
+          triangleMaxY >= -0.2
+        ) {
+          rasterizeProjectedTriangle(grid, va, vb, vc);
+        }
+      }
+      return;
+    }
     if (!isObstacleMesh(mesh)) return;
     // Shape test: only obstacles that genuinely rise out of the ground can
     // stop a fighter — hidden underside chunks and flat rock decals cannot.
@@ -264,19 +405,20 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     const top = tmpBox.max.y;
     if (top < MIN_TOP) return;
     if (top - tmpBox.min.y < MIN_OBSTACLE_H) return;
-    const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
-    if (!pos) return;
+    const obstaclePos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+    if (!obstaclePos) return;
     mesh.updateWorldMatrix(true, false);
     m.copy(mesh.matrixWorld);
+    const meshBoundary = new Uint8Array(grid.blocked.length);
     const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
-    const triCount = indexAttr ? indexAttr.count / 3 : pos.count / 3;
+    const triCount = indexAttr ? indexAttr.count / 3 : obstaclePos.count / 3;
     for (let t = 0; t < triCount; t++) {
       const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
       const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
       const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
-      va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
-      vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
-      vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+      va.set(obstaclePos.getX(i0), obstaclePos.getY(i0), obstaclePos.getZ(i0)).applyMatrix4(m);
+      vb.set(obstaclePos.getX(i1), obstaclePos.getY(i1), obstaclePos.getZ(i1)).applyMatrix4(m);
+      vc.set(obstaclePos.getX(i2), obstaclePos.getY(i2), obstaclePos.getZ(i2)).applyMatrix4(m);
       // The map is exported with large underground and elevated triangles.
       // Projecting those triangles from above turns an innocent road into a
       // solid square. Only triangles touching the fighter's walk plane may
@@ -295,18 +437,29 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // plane is a solid collision boundary.
       if (!touchesWalkPlane || !hasRaisedFace || !isWallLikeFace) continue;
       rasterizeWalkSlice(
-        grid,
+        { ...grid, blocked: meshBoundary },
         va,
         vb,
         vc,
       );
     }
+    mergeClosedMeshFootprint(grid, meshBoundary, tmpBox);
   });
-  // Close the real walk-plane outlines so the interior of a rock/tower is
-  // solid, while open roads remain outside the geometry-derived footprints.
-  // No spawn or lane coordinates are exempted: walkability comes only from
-  // the GLB triangles above.
-  fillEnclosedFootprints(grid);
+  // Water is blocked from the uploaded water surface itself. A bridge is
+  // deliberately treated as a walkable cut-through and removes only its own
+  // real bounding volume from the water cells; no hand-authored river/bridge
+  // coordinates are used.
+  for (const bridgeBox of bridgeBoxes) {
+    const minCol = Math.max(0, Math.floor((bridgeBox.min.x * PX) / grid.cell) - 1);
+    const maxCol = Math.min(grid.cols - 1, Math.ceil((bridgeBox.max.x * PX) / grid.cell) + 1);
+    const minRow = Math.max(0, Math.floor((bridgeBox.min.z * PX) / grid.cell) - 1);
+    const maxRow = Math.min(grid.rows - 1, Math.ceil((bridgeBox.max.z * PX) / grid.cell) + 1);
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        grid.blocked[row * grid.cols + col] = 0;
+      }
+    }
+  }
   return grid;
 }
 
