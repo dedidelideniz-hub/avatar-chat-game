@@ -152,18 +152,36 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     rows: GRID_ROWS,
     blocked: new Uint8Array(GRID_COLS * GRID_ROWS),
   };
-  const INCLUDE = /(rock|wall|tower|wildblock|blockbuff|blockboss)/i;
+  // Only genuine battlefield geometry may block. Everything under these three
+  // categories blocks — rock clusters/walls, lane & jungle stone walls, towers
+  // and jungle camp blocks. PropsWall is deliberately kept (the low stone walls
+  // lining the roads ARE real barriers) while every other "Props…" decor is not.
+  const INCLUDE = /(rock|wall|tower|block)/i;
+  // Flat / cosmetic surfaces never block: terrain & ground tops, water decals,
+  // grass/bushes, trees, foliage, monsters, statues and base/spawn art. A mesh
+  // also has to be actually VISIBLE (the below-ground cleanup hides the giant
+  // perimeter/underside chunks) and taller than a walking step before its
+  // triangles can be rasterized into the walkable mask.
   const EXCLUDE =
-    /(background|ground|decal|terrain|river|base(red|blue)|station|sidewall|wallg|propswall|rockwall|props|yequ|tree|foliage|junglegrass|monster|deer|lizard|bird|sculpture)/i;
+    /(background|ground|terrain|decal|river|base(red|blue)|station|props(?!wall)|yequ|tree|foliage|jungle|monster|deer|lizard|bird|sculpture)/i;
+  const MIN_OBSTACLE_H = 0.35; // world units — below this it is a flat step, walkable
+  const MIN_TOP = 0.08; // world units — a blocker must rise above the walk plane
   const va = new THREE.Vector3();
   const vb = new THREE.Vector3();
   const vc = new THREE.Vector3();
   const m = new THREE.Matrix4();
+  const tmpBox = new THREE.Box3();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh) return;
+    if (!mesh.isMesh || !mesh.visible) return;
     const name = mesh.name || "";
     if (!INCLUDE.test(name) || EXCLUDE.test(name)) return;
+    // Shape test: only walls/rocks/towers that genuinely rise out of the ground
+    // can stop a fighter — hidden underside chunks and flat rock decals cannot.
+    tmpBox.setFromObject(mesh);
+    const top = tmpBox.max.y;
+    if (top < MIN_TOP) return;
+    if (top - tmpBox.min.y < MIN_OBSTACLE_H) return;
     const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
     if (!pos) return;
     mesh.updateWorldMatrix(true, false);
