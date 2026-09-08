@@ -104,27 +104,55 @@ function sampleEdge(g: RockGrid, x0: number, y0: number, x1: number, y1: number)
   }
 }
 
-/** Rasterize one triangle (already in game px) into the occupancy grid. */
-function rasterizeTriangle(g: RockGrid, ax: number, ay: number, bx: number, by: number, cx: number, cy: number) {
-  const minx = Math.min(ax, bx, cx);
-  const maxx = Math.max(ax, bx, cx);
-  const miny = Math.min(ay, by, cy);
-  const maxy = Math.max(ay, by, cy);
-  const c0 = Math.max(0, Math.floor(minx / g.cell));
-  const c1 = Math.min(g.cols - 1, Math.floor(maxx / g.cell));
-  const r0 = Math.max(0, Math.floor(miny / g.cell));
-  const r1 = Math.min(g.rows - 1, Math.floor(maxy / g.cell));
-  for (let r = r0; r <= r1; r++) {
-    const py = (r + 0.5) * g.cell;
-    for (let c = c0; c <= c1; c++) {
-      const px = (c + 0.5) * g.cell;
-      if (pointInTri(px, py, ax, ay, bx, by, cx, cy)) markCell(g, px, py);
+/**
+ * Rasterize only the obstacle's footprint at the fighter's walking plane.
+ * Projecting the complete 3D triangle used to turn sloped/top faces into
+ * huge rectangular blockers over nearby roads. A wall contributes its real
+ * ground-level edge; a rock contributes the small slice where it meets the
+ * ground, while upper/underground geometry contributes nothing.
+ */
+function rasterizeWalkSlice(
+  g: RockGrid,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+) {
+  const vertices = [a, b, c];
+  const points: THREE.Vector3[] = [];
+  const addPoint = (x: number, z: number) => {
+    if (points.some((point) => Math.hypot(point.x - x, point.z - z) < 0.001)) return;
+    points.push(new THREE.Vector3(x, 0, z));
+  };
+  const addEdgeSlice = (from: THREE.Vector3, to: THREE.Vector3) => {
+    const fromNear = Math.abs(from.y) <= 0.12;
+    const toNear = Math.abs(to.y) <= 0.12;
+    if (fromNear) addPoint(from.x, from.z);
+    if (toNear) addPoint(to.x, to.z);
+    if ((from.y < 0 && to.y > 0) || (from.y > 0 && to.y < 0)) {
+      const t = -from.y / (to.y - from.y);
+      addPoint(
+        from.x + (to.x - from.x) * t,
+        from.z + (to.z - from.z) * t,
+      );
     }
+  };
+
+  addEdgeSlice(a, b);
+  addEdgeSlice(b, c);
+  addEdgeSlice(c, a);
+  if (points.length === 0) return;
+
+  // The selected obstacle faces are wall-like, so their walk-plane section
+  // is normally a line. Mark only that section, not the full projected face.
+  if (points.length === 1) {
+    markCell(g, points[0].x * PX, points[0].z * PX);
+    return;
   }
-  // Sample the edges too so thin walls never leave gaps.
-  sampleEdge(g, ax, ay, bx, by);
-  sampleEdge(g, bx, by, cx, cy);
-  sampleEdge(g, cx, cy, ax, ay);
+  for (let i = 0; i < points.length; i++) {
+    const from = points[i];
+    const to = points[(i + 1) % points.length];
+    sampleEdge(g, from.x * PX, from.z * PX, to.x * PX, to.z * PX);
+  }
 }
 
 function clearCircle(g: RockGrid, cx: number, cy: number, radius: number) {
@@ -219,11 +247,11 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // nearby roads. Only a raised, wall-like face that reaches the walking
       // plane is a solid collision boundary.
       if (!touchesWalkPlane || !hasRaisedFace || !isWallLikeFace) continue;
-      rasterizeTriangle(
+      rasterizeWalkSlice(
         grid,
-        va.x * PX, va.z * PX,
-        vb.x * PX, vb.z * PX,
-        vc.x * PX, vc.z * PX,
+        va,
+        vb,
+        vc,
       );
     }
   });
