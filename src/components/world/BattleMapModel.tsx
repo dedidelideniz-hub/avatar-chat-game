@@ -39,7 +39,7 @@ const WALK_PLANE_EPSILON = 0.035;
 // Use a thin band above the walk plane when sampling obstacle sides. This
 // catches rocks whose exported bottom is a few centimetres above/below the
 // terrain, without projecting their tall upper faces across nearby roads.
-const OBSTACLE_BASE_BAND = 0.35;
+const OBSTACLE_BASE_BAND = 0.12;
 const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL);
 const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
 
@@ -476,10 +476,9 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     mesh.updateWorldMatrix(true, false);
     m.copy(mesh.matrixWorld);
     const meshBoundary = new Uint8Array(grid.blocked.length);
-    const collisionBounds = new THREE.Box3();
     let hasCollisionFace = false;
     const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(semanticName);
-    const raisedFaceMinTop = isBroadBlock ? 0.28 : MIN_TOP;
+    const raisedFaceMinTop = isBroadBlock ? 0.35 : 0.22;
     const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
     const triCount = indexAttr ? indexAttr.count / 3 : obstaclePos.count / 3;
     for (let t = 0; t < triCount; t++) {
@@ -505,14 +504,14 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // part of the same exported mesh may become a collider.
       const hasRaisedFace =
         triangleMaxY >= raisedFaceMinTop &&
-        triangleMaxY - triangleMinY >= (isBroadBlock ? 0.24 : 0.12);
+        triangleMaxY - triangleMinY >= (isBroadBlock ? 0.28 : 0.16);
       // Do not project the complete 3D triangle into 2D: that would make a
       // tall rock's upper face cover nearby road. Instead, clip every actual
       // obstacle triangle to the thin band immediately above the walk plane
       // below. This also catches sloped rock faces, which the old wall-normal
       // filter allowed the fighter to enter from the side.
       if (!touchesWalkPlane || !hasRaisedFace) continue;
-      const baseSlice = rasterizeObstacleBase(
+      rasterizeObstacleBase(
         { ...grid, blocked: meshBoundary },
         va,
         vb,
@@ -520,24 +519,27 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         WALK_PLANE_Y - WALK_PLANE_EPSILON,
         WALK_PLANE_Y + OBSTACLE_BASE_BAND,
       );
-      // Keep the exact plane edge as well. The clipped lower face closes gaps
-      // between separately triangulated rock sides, while the edge keeps the
-      // collider aligned with the visible bottom contour.
-      const walkSlice = rasterizeWalkSlice(
+      // Keep the exact plane edge as well. The clipped lower face blocks the
+      // real raised part of a rock, while the edge keeps the collider aligned
+      // with the visible bottom contour.
+      rasterizeWalkSlice(
         { ...grid, blocked: meshBoundary },
         va,
         vb,
         vc,
         WALK_PLANE_Y,
       );
-      for (const point of baseSlice) collisionBounds.expandByPoint(point);
-      for (const point of walkSlice) collisionBounds.expandByPoint(point);
       hasCollisionFace = true;
     }
-    // Use the bounds of the selected raised faces, not the entire mesh box.
-    // A camp mesh can contain a broad grass skirt plus a small rock; using
-    // the full box filled the grass skirt as if it were solid rock.
-    if (hasCollisionFace) mergeClosedMeshFootprint(grid, meshBoundary, collisionBounds);
+    // Do not flood-fill this mesh's bounding box. A single exported camp can
+    // contain both a rock and a wide decorative grass skirt; filling the
+    // closed outline would block the walkable gap between neighbouring grass
+    // patches even though no solid rock occupies that gap.
+    if (hasCollisionFace) {
+      for (let i = 0; i < meshBoundary.length; i++) {
+        if (meshBoundary[i]) grid.blocked[i] = 1;
+      }
+    }
   });
   // Water is blocked from the uploaded water surface itself. A bridge is
   // deliberately treated as a walkable cut-through and removes only its own
