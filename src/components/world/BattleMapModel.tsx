@@ -476,6 +476,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     mesh.updateWorldMatrix(true, false);
     m.copy(mesh.matrixWorld);
     const meshBoundary = new Uint8Array(grid.blocked.length);
+    const collisionBounds = new THREE.Box3();
     let hasCollisionFace = false;
     const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(semanticName);
     const raisedFaceMinTop = isBroadBlock ? 0.35 : 0.22;
@@ -511,7 +512,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // below. This also catches sloped rock faces, which the old wall-normal
       // filter allowed the fighter to enter from the side.
       if (!touchesWalkPlane || !hasRaisedFace) continue;
-      rasterizeObstacleBase(
+      const baseSlice = rasterizeObstacleBase(
         { ...grid, blocked: meshBoundary },
         va,
         vb,
@@ -529,17 +530,18 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         vc,
         WALK_PLANE_Y,
       );
+      // Keep the bounds limited to the clipped, low obstacle slice. This
+      // fills a rock's real enclosed interior (preventing entry through
+      // triangulation gaps) without filling the much larger grass skirt or
+      // upper decorative volume from the original mesh bounding box.
+      for (const point of baseSlice) collisionBounds.expandByPoint(point);
       hasCollisionFace = true;
     }
-    // Do not flood-fill this mesh's bounding box. A single exported camp can
-    // contain both a rock and a wide decorative grass skirt; filling the
-    // closed outline would block the walkable gap between neighbouring grass
-    // patches even though no solid rock occupies that gap.
-    if (hasCollisionFace) {
-      for (let i = 0; i < meshBoundary.length; i++) {
-        if (meshBoundary[i]) grid.blocked[i] = 1;
-      }
-    }
+    // Fill only the footprint enclosed by the selected low rock faces. This
+    // closes holes between separately triangulated sides, which otherwise
+    // lets the fighter enter the visible rock, while avoiding the full mesh
+    // box that also contains the surrounding grass.
+    if (hasCollisionFace) mergeClosedMeshFootprint(grid, meshBoundary, collisionBounds);
   });
   // Water is blocked from the uploaded water surface itself. A bridge is
   // deliberately treated as a walkable cut-through and removes only its own
