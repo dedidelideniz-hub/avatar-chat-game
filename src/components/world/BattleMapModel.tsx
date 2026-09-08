@@ -325,7 +325,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     const semanticName = names.join("/");
     return (
       /(?:rock|boulder|wall(?!g)|wildblock|block(?:buff|boss)?|tower)/i.test(semanticName) &&
-      !/(?:wallg|sidewalla|background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|foliage|monster|sculpture|rockfloor|rockbase)/i.test(semanticName)
+      !/(?:wallg|sidewalla|background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|grass|moss|meadow|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase)/i.test(semanticName)
     );
   };
   // A fighter collides with the part of a prop that actually reaches the
@@ -410,6 +410,10 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     mesh.updateWorldMatrix(true, false);
     m.copy(mesh.matrixWorld);
     const meshBoundary = new Uint8Array(grid.blocked.length);
+    const collisionBounds = new THREE.Box3();
+    let hasCollisionFace = false;
+    const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(semanticName);
+    const raisedFaceMinTop = isBroadBlock ? 0.28 : 0.16;
     const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
     const triCount = indexAttr ? indexAttr.count / 3 : obstaclePos.count / 3;
     for (let t = 0; t < triCount; t++) {
@@ -426,7 +430,12 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       const triangleMinY = Math.min(va.y, vb.y, vc.y);
       const triangleMaxY = Math.max(va.y, vb.y, vc.y);
       const touchesWalkPlane = triangleMinY <= WALK_MIN_Y + 0.16 && triangleMaxY >= WALK_MIN_Y;
-      const hasRaisedFace = triangleMaxY >= 0.16 && triangleMaxY - triangleMinY >= 0.12;
+      // BlockBuff/WildBlock nodes also contain the thin green ground skirt
+      // around a camp. Ignore that low skirt; only the visibly raised rock
+      // part of the same exported mesh may become a collider.
+      const hasRaisedFace =
+        triangleMaxY >= raisedFaceMinTop &&
+        triangleMaxY - triangleMinY >= (isBroadBlock ? 0.24 : 0.12);
       edgeA.subVectors(vb, va);
       edgeB.subVectors(vc, va);
       faceNormal.crossVectors(edgeA, edgeB).normalize();
@@ -442,8 +451,13 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         vb,
         vc,
       );
+      collisionBounds.expandByPoint(va).expandByPoint(vb).expandByPoint(vc);
+      hasCollisionFace = true;
     }
-    mergeClosedMeshFootprint(grid, meshBoundary, tmpBox);
+    // Use the bounds of the selected raised faces, not the entire mesh box.
+    // A camp mesh can contain a broad grass skirt plus a small rock; using
+    // the full box filled the grass skirt as if it were solid rock.
+    if (hasCollisionFace) mergeClosedMeshFootprint(grid, meshBoundary, collisionBounds);
   });
   // Water is blocked from the uploaded water surface itself. A bridge is
   // deliberately treated as a walkable cut-through and removes only its own
