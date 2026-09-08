@@ -77,24 +77,6 @@ function markCell(g: RockGrid, px: number, py: number) {
   if (c >= 0 && c < g.cols && r >= 0 && r < g.rows) g.blocked[r * g.cols + c] = 1;
 }
 
-function pointInTri(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-  cx: number,
-  cy: number,
-): boolean {
-  const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
-  const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
-  const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
-  const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
-  const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(hasNeg && hasPos);
-}
-
 function sampleEdge(g: RockGrid, x0: number, y0: number, x1: number, y1: number) {
   const len = Math.hypot(x1 - x0, y1 - y0);
   const steps = Math.max(1, Math.ceil(len / g.cell));
@@ -117,7 +99,6 @@ function rasterizeWalkSlice(
   b: THREE.Vector3,
   c: THREE.Vector3,
 ) {
-  const vertices = [a, b, c];
   const points: THREE.Vector3[] = [];
   const addPoint = (x: number, z: number) => {
     if (points.some((point) => Math.hypot(point.x - x, point.z - z) < 0.001)) return;
@@ -155,17 +136,39 @@ function rasterizeWalkSlice(
   }
 }
 
-function clearCircle(g: RockGrid, cx: number, cy: number, radius: number) {
-  const c0 = Math.max(0, Math.floor((cx - radius) / g.cell));
-  const c1 = Math.min(g.cols - 1, Math.floor((cx + radius) / g.cell));
-  const r0 = Math.max(0, Math.floor((cy - radius) / g.cell));
-  const r1 = Math.min(g.rows - 1, Math.floor((cy + radius) / g.cell));
-  for (let r = r0; r <= r1; r++) {
-    for (let c = c0; c <= c1; c++) {
-      const pxx = (c + 0.5) * g.cell;
-      const pyy = (r + 0.5) * g.cell;
-      if (Math.hypot(pxx - cx, pyy - cy) < radius) g.blocked[r * g.cols + c] = 0;
-    }
+function fillEnclosedFootprints(g: RockGrid) {
+  // The walk-plane intersections are stored as the real prop outlines.
+  // Fill only areas enclosed by those outlines; this keeps the interior of a
+  // rock/tower solid without turning the complete projected GLB mesh into a
+  // rectangular road blocker.
+  const outside = new Uint8Array(g.blocked.length);
+  const queue = new Int32Array(g.blocked.length);
+  let head = 0;
+  let tail = 0;
+  const enqueue = (index: number) => {
+    if (g.blocked[index] || outside[index]) return;
+    outside[index] = 1;
+    queue[tail++] = index;
+  };
+  for (let col = 0; col < g.cols; col++) {
+    enqueue(col);
+    enqueue((g.rows - 1) * g.cols + col);
+  }
+  for (let row = 1; row < g.rows - 1; row++) {
+    enqueue(row * g.cols);
+    enqueue(row * g.cols + g.cols - 1);
+  }
+  while (head < tail) {
+    const index = queue[head++];
+    const row = Math.floor(index / g.cols);
+    const col = index - row * g.cols;
+    if (col > 0) enqueue(index - 1);
+    if (col + 1 < g.cols) enqueue(index + 1);
+    if (row > 0) enqueue(index - g.cols);
+    if (row + 1 < g.rows) enqueue(index + g.cols);
+  }
+  for (let index = 0; index < g.blocked.length; index++) {
+    if (!g.blocked[index] && !outside[index]) g.blocked[index] = 1;
   }
 }
 
@@ -187,16 +190,29 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // broad /wall/ or /block/ match: the GLB contains decorative perimeter
   // walls, underside chunks and low path dressing with those words in their
   // names. Those meshes were the reason the visible roads became blocked.
-  const isObstacleMesh = (name: string) =>
-    /(?:rockgroup|rockwall|wildblock|block(?:buff|boss)|tower)/i.test(name) &&
-    !/(?:wallg|sidewalla|background|ground|terrain|decal|river|station|tree|foliage|monster|sculpture)/i.test(name);
+  const isObstacleMesh = (mesh: THREE.Mesh) => {
+    // Some GLB exporters give the leaf mesh a generic name (for example
+    // "Mesh.001") and put the useful semantic name on its parent. Include
+    // the complete node path so the collider is still derived from the
+    // uploaded rock/wall/tower geometry rather than from coordinates.
+    const names: string[] = [];
+    let node: THREE.Object3D | null = mesh;
+    while (node) {
+      if (node.name) names.push(node.name);
+      node = node.parent;
+    }
+    const semanticName = names.join("/");
+    return (
+      /(?:rock|boulder|wall(?!g)|wildblock|block(?:buff|boss)?|tower)/i.test(semanticName) &&
+      !/(?:wallg|sidewalla|background|ground|terrain|decal|river|station|tree|foliage|monster|sculpture|rockfloor|rockbase)/i.test(semanticName)
+    );
+  };
   // A fighter collides with the part of a prop that actually reaches the
   // walking plane, not with every triangle in its full exported volume. This
   // removes below-ground/upper decorative triangles while preserving the
   // footprint of raised rocks, jungle blocks and towers.
   const MIN_OBSTACLE_H = 0.18; // world units — small raised rocks still block
   const WALK_MIN_Y = -0.06;
-  const WALK_MAX_Y = 0.42; // tops above this are reached through their side faces
   const MIN_TOP = 0.08; // world units — a blocker must rise above the walk plane
   const va = new THREE.Vector3();
   const vb = new THREE.Vector3();
@@ -209,8 +225,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.visible) return;
-    const name = mesh.name || "";
-    if (!isObstacleMesh(name)) return;
+    if (!isObstacleMesh(mesh)) return;
     // Shape test: only obstacles that genuinely rise out of the ground can
     // stop a fighter — hidden underside chunks and flat rock decals cannot.
     tmpBox.setFromObject(mesh);
@@ -255,10 +270,11 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       );
     }
   });
-  // Keep the two spawn pads (player top / bot bottom) clear so fighters can
-  // always step out onto the lane.
-  clearCircle(grid, ARENA_W / 2 * PX, 80, 95);
-  clearCircle(grid, ARENA_W / 2 * PX, ARENA_D * PX - 80, 95);
+  // Close the real walk-plane outlines so the interior of a rock/tower is
+  // solid, while open roads remain outside the geometry-derived footprints.
+  // No spawn or lane coordinates are exempted: walkability comes only from
+  // the GLB triangles above.
+  fillEnclosedFootprints(grid);
   return grid;
 }
 
@@ -273,19 +289,6 @@ function meshBounds(root: THREE.Object3D, pattern: RegExp): THREE.Box3 | null {
     found = true;
   });
   return found ? bounds : null;
-}
-
-function meshCenterAvg(root: THREE.Object3D, pattern: RegExp): THREE.Vector3 | null {
-  const center = new THREE.Vector3();
-  let count = 0;
-  root.updateMatrixWorld(true);
-  root.traverse((object) => {
-    const mesh = object as THREE.Mesh;
-    if (!mesh.isMesh || !pattern.test(mesh.name)) return;
-    center.add(new THREE.Box3().setFromObject(mesh).getCenter(new THREE.Vector3()));
-    count += 1;
-  });
-  return count ? center.multiplyScalar(1 / count) : null;
 }
 
 function MapModelInner() {
@@ -327,7 +330,10 @@ function MapModelInner() {
     if (terrainBox) {
       const size = terrainBox.getSize(new THREE.Vector3());
       if (size.x > 1 && size.z > 1) {
-        scale = Math.max(
+        // A uniform fit must use the smaller ratio. Using the larger ratio
+        // enlarged one axis beyond the simulation rectangle, which made the
+        // rendered lanes and the collision grid disagree.
+        scale = Math.min(
           (ARENA_W - 0.3) / size.x,
           (ARENA_D - 0.3) / size.z,
         );
