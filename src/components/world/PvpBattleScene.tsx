@@ -22,7 +22,10 @@ import {
   type BattleFx,
   type BattleProj,
 } from "@/components/world/Arena3D";
-import { hitsRockCollision } from "@/components/world/BattleMapModel";
+import {
+  findNearestWalkablePosition,
+  hitsRockCollision,
+} from "@/components/world/BattleMapModel";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
 import { usePresenceOthers, usePresencePublisher } from "@/hooks/use-presence";
 import type { AvatarConfig } from "@/lib/avatar";
@@ -215,6 +218,8 @@ export default function PvpBattleScene({
   const bot = useRef<BattleFighter>(
     newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 850, 1020, -1),
   );
+  // Resolve the local spawn after the asynchronous GLB mask is available.
+  const spawnResolvedRef = useRef(false);
 
   const ownProjs = useRef<PvpProj[]>([]);
   const remoteProjs = useRef(new Map<string, PvpProj>());
@@ -680,6 +685,15 @@ export default function PvpBattleScene({
 
       // freeze the sim until both fighters are connected + loading finished
       if (phaseRef.current !== "fight" || !startedRef.current) return;
+
+      if (!spawnResolvedRef.current) {
+        const spawn = findNearestWalkablePosition(p.x, p.y, FIGHTER_R);
+        if (spawn) {
+          [p.x, p.y] = spawn;
+          p.moving = false;
+          spawnResolvedRef.current = true;
+        }
+      }
 
       // --- disconnect guard ---
       if (

@@ -14,7 +14,10 @@ import {
   type BattleFx,
   type BattleProj,
 } from "@/components/world/Arena3D";
-import { hitsRockCollision } from "@/components/world/BattleMapModel";
+import {
+  findNearestWalkablePosition,
+  hitsRockCollision,
+} from "@/components/world/BattleMapModel";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import {
@@ -374,6 +377,9 @@ export default function BattleScene({
     newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 850, 1020, -1, opponentLevel),
   );
   bot.current.atkCd = 0.4;
+  // The GLB collision mask is asynchronous. Resolve both initial refs once
+  // it exists so a spawn that overlaps a real prop cannot lock movement.
+  const spawnResolvedRef = useRef(false);
 
   const webglOk = useMemo(() => supportsWebGL(), []);
 
@@ -781,6 +787,22 @@ export default function BattleScene({
       const b = bot.current;
       // freeze the simulation until the loading sequence finishes
       if (!startedRef.current || resultRef.current) return;
+
+      if (!spawnResolvedRef.current) {
+        const playerSpawn = findNearestWalkablePosition(p.x, p.y, FIGHTER_R);
+        const botSpawn = findNearestWalkablePosition(b.x, b.y, FIGHTER_R);
+        if (playerSpawn) {
+          [p.x, p.y] = playerSpawn;
+          p.moving = false;
+        }
+        if (botSpawn) {
+          [b.x, b.y] = botSpawn;
+          b.moving = false;
+        }
+        // A null result means the GLB grid is not ready yet. Try again on the
+        // next frame instead of permanently accepting an invalid spawn.
+        if (playerSpawn && botSpawn) spawnResolvedRef.current = true;
+      }
 
       p.atkCd = Math.max(0, p.atkCd - dt);
       b.atkCd = Math.max(0, b.atkCd - dt);

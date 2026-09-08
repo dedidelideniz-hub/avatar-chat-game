@@ -71,6 +71,38 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
   return false;
 }
 
+/**
+ * A GLB can finish loading after the fighter refs have been created. If a
+ * spawn point was inside a real prop, the normal movement test would reject
+ * every next position and leave the fighter permanently pinned. Find the
+ * nearest free point on the already-built geometry mask so the first frame
+ * of the simulation always starts on walkable ground.
+ */
+export function findNearestWalkablePosition(
+  x: number,
+  y: number,
+  r: number,
+): [number, number] | null {
+  if (!rockCollision.grid) return null;
+  if (!hitsRockCollision(x, y, r)) return [x, y];
+
+  const maxX = ARENA_W * PX;
+  const maxY = ARENA_D * PX;
+  const maxRadius = Math.max(maxX, maxY);
+  for (let distance = GRID_CELL * 2; distance <= maxRadius; distance += GRID_CELL * 2) {
+    const samples = Math.max(16, Math.ceil((Math.PI * 2 * distance) / (GRID_CELL * 2)));
+    for (let i = 0; i < samples; i++) {
+      const angle = (i / samples) * Math.PI * 2;
+      const candidateX = Math.max(r, Math.min(maxX - r, x + Math.cos(angle) * distance));
+      const candidateY = Math.max(r, Math.min(maxY - r, y + Math.sin(angle) * distance));
+      if (!hitsRockCollision(candidateX, candidateY, r)) {
+        return [candidateX, candidateY];
+      }
+    }
+  }
+  return null;
+}
+
 function markCell(g: RockGrid, px: number, py: number) {
   const c = Math.floor(px / g.cell);
   const r = Math.floor(py / g.cell);
