@@ -541,10 +541,11 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       !isWater &&
       // The mask is intentionally based on the actual upward-facing
       // triangles below, not on a hand-authored list of map coordinates.
-      // Base floors are often exported simply as "Mesh" without a terrain
-      // name; excluding only known props lets both team bases participate in
-      // the same real-geometry walkable surface.
-      !/(?:rockfloor|rockbase|rock|boulder|wall|tower|wildblock|block(?:buff|boss)?|tree|bush|shrub|plant|foliage|vegetation|decal|basewall|cliff|underside|perimeter|sidewall)/i.test(
+      // Both team bases contain large generic Mesh nodes, so rocks/towers
+      // must NOT be filtered out here: their cells are removed by the real
+      // obstacle mask later. This is what makes every part of a base floor
+      // walkable while leaving only the blue structures blocked.
+      !/(?:rockfloor|rockbase|decal|cliff|underside|perimeter|sidewall|background)/i.test(
         semanticName,
       );
     if (isWalkableSurface && pos) {
@@ -564,12 +565,16 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         faceNormal.crossVectors(edgeA, edgeB).normalize();
         const triangleMinY = Math.min(va.y, vb.y, vc.y);
         const triangleMaxY = Math.max(va.y, vb.y, vc.y);
-        // The fit places the terrain's highest point at y=0. Include its
-        // slightly sloped top, but never the deep underside/cliff geometry.
+        // The fit places the terrain's highest point at y=0, but the two
+        // base platforms are exported slightly below that reference plane.
+        // Keep the complete low, top-facing map band so the base floor is not
+        // mistaken for the out-of-map void. Raised props are harmless here:
+        // their own real obstacle footprint is checked after this mask.
         if (
-          faceNormal.y > 0.7 &&
-          triangleMaxY <= WALK_PLANE_Y + 0.08 &&
-          triangleMinY >= WALK_PLANE_Y - 0.35
+          faceNormal.y > 0.65 &&
+          triangleMaxY <= WALK_PLANE_Y + 0.85 &&
+          triangleMinY >= WALK_PLANE_Y - 1.8 &&
+          triangleMaxY - triangleMinY < 0.65
         ) {
           rasterizeWalkableTriangle(grid, va, vb, vc);
         }
