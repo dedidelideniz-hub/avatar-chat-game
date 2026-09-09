@@ -131,12 +131,14 @@ export function BattleJoystick({
 }: {
   stickRef: MutableRefObject<{ x: number; y: number }>;
 }) {
+  const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const activePointerRef = useRef<number | null>(null);
   const R = 40;
 
   const move = (px: number, py: number) => {
-    const base = knobRef.current?.parentElement;
+    const base = baseRef.current;
     if (!base) return;
     const rect = base.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
@@ -154,35 +156,76 @@ export function BattleJoystick({
   };
 
   const reset = () => {
+    draggingRef.current = false;
+    activePointerRef.current = null;
     stickRef.current = { x: 0, y: 0 };
     if (knobRef.current) knobRef.current.style.transform = "translate(0px, 0px)";
   };
 
+  // A phone can cancel a pointer stream when focus changes, the browser
+  // starts a gesture, or a second finger touches the control. Always release
+  // the live vector in those cases so movement never gets stuck or silently
+  // waits for a new pointer event.
+  useEffect(() => {
+    const resetOnWindowExit = () => reset();
+    const resetOnVisibilityChange = () => {
+      if (document.hidden) reset();
+    };
+    window.addEventListener("blur", resetOnWindowExit);
+    window.addEventListener("pagehide", resetOnWindowExit);
+    document.addEventListener("visibilitychange", resetOnVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", resetOnWindowExit);
+      window.removeEventListener("pagehide", resetOnWindowExit);
+      document.removeEventListener("visibilitychange", resetOnVisibilityChange);
+      reset();
+    };
+  }, []);
+
+  const finishPointer = (element: HTMLDivElement, pointerId: number) => {
+    if (activePointerRef.current !== pointerId) return;
+    reset();
+    if (element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+  };
+
   return (
     <div
+      ref={baseRef}
       className="pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
       onPointerDown={(e) => {
+        // Ignore extra fingers instead of letting them replace the active
+        // pointer and leave the joystick in an inconsistent state.
+        if (activePointerRef.current !== null) return;
+        e.preventDefault();
+        e.stopPropagation();
+        activePointerRef.current = e.pointerId;
         draggingRef.current = true;
         e.currentTarget.setPointerCapture(e.pointerId);
         move(e.clientX, e.clientY);
       }}
       onPointerMove={(e) => {
-        if (draggingRef.current) move(e.clientX, e.clientY);
+        if (draggingRef.current && activePointerRef.current === e.pointerId) {
+          e.preventDefault();
+          move(e.clientX, e.clientY);
+        }
       }}
       onPointerUp={(e) => {
-        draggingRef.current = false;
-        e.currentTarget.releasePointerCapture(e.pointerId);
-        reset();
+        e.preventDefault();
+        e.stopPropagation();
+        finishPointer(e.currentTarget, e.pointerId);
       }}
-      onPointerCancel={() => {
-        draggingRef.current = false;
-        reset();
+      onPointerCancel={(e) => finishPointer(e.currentTarget, e.pointerId)}
+      onLostPointerCapture={(e) => {
+        if (activePointerRef.current === e.pointerId) reset();
       }}
+      onContextMenu={(e) => e.preventDefault()}
       aria-label="Hareket joystick"
     >
       <div
         ref={knobRef}
-        className="absolute top-1/2 left-1/2 -ml-6 -mt-6 size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
+        className="pointer-events-none absolute top-1/2 left-1/2 -ml-6 -mt-6 size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
       />
     </div>
   );
@@ -836,18 +879,16 @@ export default function BattleScene({
         // virtual joystick (mobile) — live direction while dragging
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
-        if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
-          // Keep the joystick's screen-space axes intact: right is +X and
-          // down is +Y in the arena coordinate system. The previous code
-          // inverted vertical input, which made down move up and also made
-          // left/right feel inconsistent after axis selection.
-          if (Math.abs(jx) >= Math.abs(jy)) {
-            vx = jx;
-            vy = 0;
-          } else {
-            vx = 0;
-            vy = jy;
-          }
+        const joystickMagnitude = Math.hypot(
+          joystickRef.current.x,
+          joystickRef.current.y,
+        );
+        if (joystickMagnitude > 0.1) {
+          // Keep the complete analog vector. Selecting only the dominant axis
+          // made diagonal drags switch direction abruptly and feel like the
+          // joystick had stopped responding. +X is right and +Y is down.
+          vx = joystickRef.current.x;
+          vy = joystickRef.current.y;
           clickTargetRef.current = null;
         }
       }

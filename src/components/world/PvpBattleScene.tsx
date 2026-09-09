@@ -728,16 +728,15 @@ export default function PvpBattleScene({
       } else {
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
-        if (Math.abs(jx) > 0.1 || Math.abs(jy) > 0.1) {
-          // The arena uses screen-space coordinates: +X is right and +Y is
-          // down. Preserve the joystick vector instead of inverting Y.
-          if (Math.abs(jx) >= Math.abs(jy)) {
-            vx = jx;
-            vy = 0;
-          } else {
-            vx = 0;
-            vy = jy;
-          }
+        const joystickMagnitude = Math.hypot(
+          joystickRef.current.x,
+          joystickRef.current.y,
+        );
+        if (joystickMagnitude > 0.1) {
+          // Preserve the complete analog vector. Dominant-axis selection made
+          // diagonal drags snap and occasionally look like input was lost.
+          vx = joystickRef.current.x;
+          vy = joystickRef.current.y;
           clickTargetRef.current = null;
         }
       }
