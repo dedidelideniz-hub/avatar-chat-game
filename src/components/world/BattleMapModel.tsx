@@ -54,6 +54,9 @@ export interface RockGrid {
   cols: number;
   rows: number;
   blocked: Uint8Array;
+  /** Occupied cells of the real top-facing terrain mesh. */
+  walkable: Uint8Array;
+  walkableCount: number;
 }
 
 // Populated once when the map finishes fitting; read per-frame by the sim.
@@ -65,6 +68,23 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
   const g = rockCollision.grid;
   if (!g) return false;
   const { cell, cols, rows, blocked } = g;
+
+  // The GLB terrain is not a rectangular island: the lower/right part of
+  // the screenshot is empty space outside its actual mesh. Treat leaving the
+  // rasterized terrain footprint exactly like hitting a rigid collider. The
+  // circumference samples keep the whole fighter body on the map, not just
+  // its center point.
+  if (g.walkableCount > 0) {
+    const samples = 16;
+    if (!isWalkableCell(g, cx, cy)) return true;
+    for (let i = 0; i < samples; i++) {
+      const angle = (i / samples) * Math.PI * 2;
+      if (!isWalkableCell(g, cx + Math.cos(angle) * (r + cell), cy + Math.sin(angle) * (r + cell))) {
+        return true;
+      }
+    }
+  }
+
   const minCol = Math.max(0, Math.floor((cx - r) / cell));
   const maxCol = Math.min(cols - 1, Math.floor((cx + r) / cell));
   const minRow = Math.max(0, Math.floor((cy - r) / cell));
@@ -83,6 +103,18 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
     }
   }
   return false;
+}
+
+function isWalkableCell(g: RockGrid, px: number, py: number): boolean {
+  const col = Math.floor(px / g.cell);
+  const row = Math.floor(py / g.cell);
+  return (
+    col >= 0 &&
+    col < g.cols &&
+    row >= 0 &&
+    row < g.rows &&
+    g.walkable[row * g.cols + col] !== 0
+  );
 }
 
 /**
@@ -121,6 +153,50 @@ function markCell(g: RockGrid, px: number, py: number) {
   const c = Math.floor(px / g.cell);
   const r = Math.floor(py / g.cell);
   if (c >= 0 && c < g.cols && r >= 0 && r < g.rows) g.blocked[r * g.cols + c] = 1;
+}
+
+function markWalkableCell(g: RockGrid, px: number, py: number) {
+  const c = Math.floor(px / g.cell);
+  const r = Math.floor(py / g.cell);
+  if (c < 0 || c >= g.cols || r < 0 || r >= g.rows) return;
+  const index = r * g.cols + c;
+  if (g.walkable[index] === 0) {
+    g.walkable[index] = 1;
+    g.walkableCount++;
+  }
+}
+
+function rasterizeWalkableTriangle(
+  g: RockGrid,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+) {
+  const minCol = Math.max(
+    0,
+    Math.floor((Math.min(a.x, b.x, c.x) * PX) / g.cell) - 1,
+  );
+  const maxCol = Math.min(
+    g.cols - 1,
+    Math.ceil((Math.max(a.x, b.x, c.x) * PX) / g.cell) + 1,
+  );
+  const minRow = Math.max(
+    0,
+    Math.floor((Math.min(a.z, b.z, c.z) * PX) / g.cell) - 1,
+  );
+  const maxRow = Math.min(
+    g.rows - 1,
+    Math.ceil((Math.max(a.z, b.z, c.z) * PX) / g.cell) + 1,
+  );
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const x = (col + 0.5) * g.cell / PX;
+      const z = (row + 0.5) * g.cell / PX;
+      if (pointInTriangle2D(x, z, a, b, c)) {
+        markWalkableCell(g, x * PX, z * PX);
+      }
+    }
+  }
 }
 
 function sampleEdge(g: RockGrid, x0: number, y0: number, x1: number, y1: number) {
@@ -373,6 +449,8 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     cols: GRID_COLS,
     rows: GRID_ROWS,
     blocked: new Uint8Array(GRID_COLS * GRID_ROWS),
+    walkable: new Uint8Array(GRID_COLS * GRID_ROWS),
+    walkableCount: 0,
   };
   // Use only named gameplay obstacle meshes. In particular, do not use a
   // broad /wall/ or /block/ match: the GLB contains decorative perimeter
@@ -451,6 +529,49 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     }
     const isWater = /(?:water|river|stream|lake|pond)/i.test(semanticName);
     const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+
+    // Keep the playable footprint from the actual top-facing terrain
+    // triangles. The screenshot shows the lower/right blue area is outside
+    // the island, so a rectangular 0..1700 × 0..1100 clamp is not enough.
+    // Nothing is authored here: these cells are filled only by real GLB
+    // ground/road/grass/map geometry at the fitted walk plane.
+    const isWalkableSurface =
+      !isWater &&
+      /(?:terrain|ground|floor|grass|road|path|lane|walkway|bridge|crossing|map)/i.test(
+        semanticName,
+      ) &&
+      !/(?:rockfloor|rockbase|rock|boulder|wall|tower|wildblock|block(?:buff|boss)?|tree|bush|shrub|plant|foliage|vegetation|decal)/i.test(
+        semanticName,
+      );
+    if (isWalkableSurface && pos) {
+      mesh.updateWorldMatrix(true, false);
+      m.copy(mesh.matrixWorld);
+      const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
+      const triCount = indexAttr ? indexAttr.count / 3 : pos.count / 3;
+      for (let t = 0; t < triCount; t++) {
+        const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+        const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+        va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
+        vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
+        vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+        edgeA.subVectors(vb, va);
+        edgeB.subVectors(vc, va);
+        faceNormal.crossVectors(edgeA, edgeB).normalize();
+        const triangleMinY = Math.min(va.y, vb.y, vc.y);
+        const triangleMaxY = Math.max(va.y, vb.y, vc.y);
+        // The fit places the terrain's highest point at y=0. Include its
+        // slightly sloped top, but never the deep underside/cliff geometry.
+        if (
+          faceNormal.y > 0.7 &&
+          triangleMaxY <= WALK_PLANE_Y + 0.08 &&
+          triangleMinY >= WALK_PLANE_Y - 0.35
+        ) {
+          rasterizeWalkableTriangle(grid, va, vb, vc);
+        }
+      }
+    }
+
     // The camp decorations in the screenshot are exported as a mixture of
     // grass, rock and block meshes. Their raised, horizontal top faces are
     // the island itself, not an obstacle side touching y=0, so the old base
