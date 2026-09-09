@@ -570,7 +570,19 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         // Keep the complete low, top-facing map band so the base floor is not
         // mistaken for the out-of-map void. Raised props are harmless here:
         // their own real obstacle footprint is checked after this mask.
+        // A raised obstacle top is still an object, even though its face is
+        // horizontal and would otherwise look like a valid floor to the
+        // walkable rasterizer. Leave it out here; the obstacle pass below
+        // marks that same real face as blocked. This is the important
+        // distinction between walking on the base floor and walking on top
+        // of a rock, tower, wall cap, or island prop.
+        const isRaisedObstacleSurface =
+          isObstacleMesh(mesh) &&
+          faceNormal.y > 0.55 &&
+          triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
+          triangleMaxY - triangleMinY < 0.75;
         if (
+          !isRaisedObstacleSurface &&
           faceNormal.y > 0.65 &&
           triangleMaxY <= WALK_PLANE_Y + 0.85 &&
           triangleMinY >= WALK_PLANE_Y - 1.8 &&
@@ -688,15 +700,25 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       vc.set(obstaclePos.getX(i2), obstaclePos.getY(i2), obstaclePos.getZ(i2)).applyMatrix4(m);
       // The map is exported with large underground and elevated triangles.
       // Projecting those triangles from above turns an innocent road into a
-      // solid square. Only triangles touching the fighter's walk plane may
-      // contribute to the 2D collision mask. A broad triangle that crosses
-      // the plane is still clipped by rasterizeWalkSlice to its exact
-      // intersection, so its grass/upper surface cannot be added.
+      // solid square. Ground-touching sides are clipped to their exact base
+      // intersection below. Raised, top-facing faces are handled separately:
+      // they are the surfaces the character was visibly standing on, so their
+      // own projected geometry must be blocked as well.
       const triangleMinY = Math.min(va.y, vb.y, vc.y);
       const triangleMaxY = Math.max(va.y, vb.y, vc.y);
       const touchesWalkPlane =
         triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
         triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON;
+      const isRaisedSurface =
+        faceNormal.y > 0.55 &&
+        triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
+        triangleMaxY - triangleMinY < 0.75;
+      if (isRaisedSurface) {
+        // Block the real top/slope footprint, not the mesh bounding box. This
+        // prevents climbing onto an object while keeping the adjacent lane
+        // open exactly up to the visible edge of that object.
+        rasterizeProjectedTriangle(grid, va, vb, vc);
+      }
       // BlockBuff/WildBlock nodes also contain the thin green ground skirt
       // around a camp. Ignore that low skirt; only the visibly raised rock
       // part of the same exported mesh may become a collider.
