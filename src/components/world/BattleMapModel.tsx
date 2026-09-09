@@ -81,7 +81,12 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
     // not a rigid obstacle. Actual rocks, walls and towers are checked below
     // with the circle-vs-cell test, so the body still cannot enter a real
     // collider while open roads remain traversable.
-    if (!isWalkableCell(g, cx, cy)) return true;
+    // Terrain is triangulated in many small pieces. At a seam between two
+    // triangles the exact center cell can be empty for one raster cell even
+    // though the visible lane is continuous. Accept a tiny neighbourhood for
+    // the boundary test; rigid obstacle cells below still remain authoritative
+    // and keep rocks/walls from becoming passable.
+    if (!hasWalkableNeighbour(g, cx, cy, Math.max(10, r * 0.55))) return true;
   }
 
   const minCol = Math.max(0, Math.floor((cx - r) / cell));
@@ -114,6 +119,30 @@ function isWalkableCell(g: RockGrid, px: number, py: number): boolean {
     row < g.rows &&
     g.walkable[row * g.cols + col] !== 0
   );
+}
+
+function hasWalkableNeighbour(
+  g: RockGrid,
+  px: number,
+  py: number,
+  radius: number,
+): boolean {
+  const minCol = Math.max(0, Math.floor((px - radius) / g.cell));
+  const maxCol = Math.min(g.cols - 1, Math.floor((px + radius) / g.cell));
+  const minRow = Math.max(0, Math.floor((py - radius) / g.cell));
+  const maxRow = Math.min(g.rows - 1, Math.floor((py + radius) / g.cell));
+  const radiusSq = radius * radius;
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      if (!g.walkable[row * g.cols + col]) continue;
+      const cellX = (col + 0.5) * g.cell;
+      const cellY = (row + 0.5) * g.cell;
+      const dx = cellX - px;
+      const dy = cellY - py;
+      if (dx * dx + dy * dy <= radiusSq) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -764,14 +793,12 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         hasCollisionFace = true;
         continue;
       }
-      // PropsWall/RockWall are rigid structures. They are sometimes exported
-      // slightly above the fitted ground plane, so their complete footprint
-      // is used only for those explicitly named wall props.
-      if (isWallMesh) {
-        rasterizeProjectedTriangle(grid, va, vb, vc);
-        hasCollisionFace = true;
-        continue;
-      }
+      // Explicit wall props are rigid, but their meshes contain the full
+      // upper wall and decorative caps. Projecting every wall triangle onto
+      // the map turns the adjacent marked lane into an invisible blocker.
+      // Let the common ground-slice path below use only the real section where
+      // the wall meets the walk plane; raised horizontal faces are handled by
+      // `isRaisedSurface` and remain un-climbable.
       const touchesWalkPlane =
         triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
         triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON;
@@ -788,10 +815,9 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // collider. This keeps the adjacent road open up to the exact visual
       // base instead of filling the whole corridor with the wall's upper
       // geometry.
-      const hasRaisedFace = isWallMesh
-        ? triangleMaxY >= MIN_TOP
-        : triangleMaxY >= raisedFaceMinTop &&
-          triangleMaxY - triangleMinY >= (isBroadBlock ? 0.28 : 0.16);
+      const hasRaisedFace =
+        triangleMaxY >= (isWallMesh ? MIN_TOP : raisedFaceMinTop) &&
+        triangleMaxY - triangleMinY >= (isBroadBlock ? 0.28 : 0.16);
       if (!touchesWalkPlane || !hasRaisedFace) continue;
       const baseSlice = rasterizeObstacleBase(
         { ...grid, blocked: meshBoundary },
@@ -824,7 +850,12 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // doorway, which is the small passage visible in the screenshot. Keep
     // only the exact rasterized wall faces for bases; use the enclosed fill
     // only for rocks/islands whose geometry actually forms a closed footprint.
-    if (hasCollisionFace && !isBaseWallMesh) {
+    // Rock/island meshes are usually closed footprints and need the fill to
+    // prevent slipping through a triangulation seam. Wall meshes are long,
+    // composite strips: filling their bounds closes the very lanes that are
+    // visibly marked as walkable. Their exact raised faces and ground slices
+    // above are sufficient, so never flood-fill an explicit wall mesh.
+    if (hasCollisionFace && !isBaseWallMesh && !isWallMesh) {
       mergeClosedMeshFootprint(grid, meshBoundary, collisionBounds);
     }
   });
