@@ -566,17 +566,20 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // while both team bases are valid floor. A rectangular 0..1700 ×
     // 0..1100 clamp is not enough; nothing is authored here: cells are filled
     // only by real GLB geometry at the fitted walk plane.
+    const isBaseSurface =
+      /(?:base(?:blue|red)(?:part|ground|background))/i.test(semanticName);
     const isWalkableSurface =
       !isWater &&
-      // The mask is intentionally based on the actual upward-facing
-      // triangles below, not on a hand-authored list of map coordinates.
-      // Both team bases contain large generic Mesh nodes, so rocks/towers
-      // must NOT be filtered out here: their cells are removed by the real
-      // obstacle mask later. This is what makes every part of a base floor
-      // walkable while leaving only the blue structures blocked.
-      !/(?:rockfloor|rockbase|decal|cliff|underside|perimeter|sidewall|background)/i.test(
-        semanticName,
-      );
+      // BaseBackground is the actual stone/metal floor surrounding each
+      // nexus, not the empty world background. The old generic `background`
+      // exclusion removed exactly the side lanes marked in the screenshot,
+      // so the boundary test treated those visible floors as outside the map.
+      // Include only explicitly named team-base surfaces; perimeter/world
+      // background meshes remain excluded.
+      (isBaseSurface ||
+        !/(?:rockfloor|rockbase|decal|cliff|underside|perimeter|sidewall|background)/i.test(
+          semanticName,
+        ));
     if (isWalkableSurface && pos) {
       mesh.updateWorldMatrix(true, false);
       m.copy(mesh.matrixWorld);
