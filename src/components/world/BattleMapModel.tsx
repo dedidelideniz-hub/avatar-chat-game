@@ -75,14 +75,13 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
   // circumference samples keep the whole fighter body on the map, not just
   // its center point.
   if (g.walkableCount > 0) {
-    const samples = 16;
+    // The center cell is the authoritative map-boundary test. Requiring all
+    // circumference samples to be walkable made narrow but visibly open
+    // lanes fail: the fighter radius touched a decorative/base mesh that is
+    // not a rigid obstacle. Actual rocks, walls and towers are checked below
+    // with the circle-vs-cell test, so the body still cannot enter a real
+    // collider while open roads remain traversable.
     if (!isWalkableCell(g, cx, cy)) return true;
-    for (let i = 0; i < samples; i++) {
-      const angle = (i / samples) * Math.PI * 2;
-      if (!isWalkableCell(g, cx + Math.cos(angle) * (r + cell), cy + Math.sin(angle) * (r + cell))) {
-        return true;
-      }
-    }
   }
 
   const minCol = Math.max(0, Math.floor((cx - r) / cell));
@@ -457,10 +456,11 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // walls, underside chunks and low path dressing with those words in their
   // names. Those meshes were the reason the visible roads became blocked.
   const isObstacleMesh = (mesh: THREE.Mesh) => {
-    // Some GLB exporters give the leaf mesh a generic name (for example
-    // "Mesh.001") and put the useful semantic name on its parent. Include
-    // the complete node path so the collider is still derived from the
-    // uploaded rock/wall/tower geometry rather than from coordinates.
+    // BaseBluePart/BaseRedPart meshes combine the walkable base floor with
+    // decorative side pieces. Treating the whole mesh as an obstacle closes
+    // the central stone entrance shown in the screenshot. Towers and actual
+    // rock/wall props remain obstacle sources; base floor geometry remains
+    // part of the walkable surface mask.
     const names: string[] = [];
     let node: THREE.Object3D | null = mesh;
     while (node) {
@@ -479,7 +479,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // because its decorative skirt is green: the raised island body still
     // needs its real GLB footprint. Only explicit environmental containers
     // (terrain, water, bridge, etc.) override an obstacle token.
-    const hasObstacleToken = /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower|base(?:blue|red)part)/i.test(
+    const hasObstacleToken = /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower)/i.test(
       semanticName,
     );
     const hasEnvironmentalContainer = /(?:background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase|perimeter|wallg|sidewalla)/i.test(
