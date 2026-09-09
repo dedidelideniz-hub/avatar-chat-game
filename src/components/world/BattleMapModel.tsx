@@ -525,22 +525,26 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     if (isBridge) {
       mesh.updateWorldMatrix(true, false);
       bridgeBoxes.push(new THREE.Box3().setFromObject(mesh));
-      return;
+      // Do not return here. The bridge's real top triangles must also be
+      // rasterized into `walkable`; clearing water cells alone is not enough
+      // now that the outer boundary follows the actual map footprint.
     }
     const isWater = /(?:water|river|stream|lake|pond)/i.test(semanticName);
     const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
 
-    // Keep the playable footprint from the actual top-facing terrain
-    // triangles. The screenshot shows the lower/right blue area is outside
-    // the island, so a rectangular 0..1700 × 0..1100 clamp is not enough.
-    // Nothing is authored here: these cells are filled only by real GLB
-    // ground/road/grass/map geometry at the fitted walk plane.
+    // Keep the playable footprint from the actual top-facing map triangles.
+    // The screenshot shows the lower/right blue area is outside the island,
+    // while both team bases are valid floor. A rectangular 0..1700 ×
+    // 0..1100 clamp is not enough; nothing is authored here: cells are filled
+    // only by real GLB geometry at the fitted walk plane.
     const isWalkableSurface =
       !isWater &&
-      /(?:terrain|ground|floor|grass|road|path|lane|walkway|bridge|crossing|map)/i.test(
-        semanticName,
-      ) &&
-      !/(?:rockfloor|rockbase|rock|boulder|wall|tower|wildblock|block(?:buff|boss)?|tree|bush|shrub|plant|foliage|vegetation|decal)/i.test(
+      // The mask is intentionally based on the actual upward-facing
+      // triangles below, not on a hand-authored list of map coordinates.
+      // Base floors are often exported simply as "Mesh" without a terrain
+      // name; excluding only known props lets both team bases participate in
+      // the same real-geometry walkable surface.
+      !/(?:rockfloor|rockbase|rock|boulder|wall|tower|wildblock|block(?:buff|boss)?|tree|bush|shrub|plant|foliage|vegetation|decal|basewall|cliff|underside|perimeter|sidewall)/i.test(
         semanticName,
       );
     if (isWalkableSurface && pos) {
@@ -591,7 +595,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       /(?:island|camp|jungle|wildblock|block(?:buff|boss)?|rock|boulder|platform)/i.test(
         nodePath,
       ) &&
-      !/(?:terrain|ground|decal|river|water|stream|lake|pond|bridge|crossing|walkway|road|path|lane|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|station|tower)/i.test(
+      !/(?:terrain|ground|decal|river|water|stream|lake|pond|bridge|crossing|walkway|road|path|lane|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|station|tower|base|spawn|fountain|nexus|core)/i.test(
         nodePath,
       );
     if (isRaisedIslandCandidate && !isWater && pos) {
