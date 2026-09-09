@@ -479,7 +479,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // because its decorative skirt is green: the raised island body still
     // needs its real GLB footprint. Only explicit environmental containers
     // (terrain, water, bridge, etc.) override an obstacle token.
-    const hasObstacleToken = /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower)/i.test(
+    const hasObstacleToken = /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower|base(?:blue|red)part)/i.test(
       semanticName,
     );
     const hasEnvironmentalContainer = /(?:background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase|perimeter|wallg|sidewalla)/i.test(
@@ -578,6 +578,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         // of a rock, tower, wall cap, or island prop.
         const isRaisedObstacleSurface =
           isObstacleMesh(mesh) &&
+          !/(?:base(?:blue|red)part)/i.test(semanticName) &&
           faceNormal.y > 0.55 &&
           triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
           triangleMaxY - triangleMinY < 0.75;
@@ -680,11 +681,12 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // reference plane, although they are visibly standing walls. Resolve the
     // wall classification before the height gate so those walls cannot be
     // walked through just because their exported origin is below y=0.
+    const isBaseWallMesh = /(?:base(?:blue|red)part)/i.test(semanticName);
     const isWallMesh = /(?:propswall|rockwall)/i.test(semanticName);
     tmpBox.setFromObject(mesh);
     const top = tmpBox.max.y;
-    if (!isWallMesh && top < MIN_TOP) return;
-    if (!isWallMesh && top - tmpBox.min.y < MIN_OBSTACLE_H) return;
+    if (!isWallMesh && !isBaseWallMesh && top < MIN_TOP) return;
+    if (!isWallMesh && !isBaseWallMesh && top - tmpBox.min.y < MIN_OBSTACLE_H) return;
     const obstaclePos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
     if (!obstaclePos) return;
     mesh.updateWorldMatrix(true, false);
@@ -718,12 +720,44 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       faceNormal.crossVectors(edgeA, edgeB).normalize();
       const triangleMinY = Math.min(va.y, vb.y, vc.y);
       const triangleMaxY = Math.max(va.y, vb.y, vc.y);
-      // WallG/SideWallA are the map's perimeter/underside shells, not the
-      // playable wall props. Their triangles span most of the exported map;
-      // projecting them into X/Z was the reason the central stone lane in the
-      // screenshot became a solid invisible barrier. They are filtered from
-      // isObstacleMesh above. For real wall props, use the same thin ground
-      // slice as rocks instead of projecting the complete tall wall face.
+      // Base meshes also contain the walkable platform. Only their real
+      // vertical faces that touch the walking plane are rigid. Projecting all
+      // base triangles would close the road; accepting only a near-ground
+      // vertical face captures the visible entrance wall in the screenshot.
+      if (isBaseWallMesh) {
+        const isGroundContactWall =
+          Math.abs(faceNormal.y) < 0.45 &&
+          triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
+          triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON &&
+          triangleMaxY - triangleMinY >= 0.12;
+        if (!isGroundContactWall) continue;
+        const baseSlice = rasterizeObstacleBase(
+          { ...grid, blocked: meshBoundary },
+          va,
+          vb,
+          vc,
+          WALK_PLANE_Y - WALK_PLANE_EPSILON,
+          WALK_PLANE_Y + OBSTACLE_BASE_BAND,
+        );
+        rasterizeWalkSlice(
+          { ...grid, blocked: meshBoundary },
+          va,
+          vb,
+          vc,
+          WALK_PLANE_Y,
+        );
+        for (const point of baseSlice) collisionBounds.expandByPoint(point);
+        hasCollisionFace = true;
+        continue;
+      }
+      // PropsWall/RockWall are rigid structures. They are sometimes exported
+      // slightly above the fitted ground plane, so their complete footprint
+      // is used only for those explicitly named wall props.
+      if (isWallMesh) {
+        rasterizeProjectedTriangle(grid, va, vb, vc);
+        hasCollisionFace = true;
+        continue;
+      }
       const touchesWalkPlane =
         triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
         triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON;
