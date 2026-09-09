@@ -578,7 +578,6 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         // of a rock, tower, wall cap, or island prop.
         const isRaisedObstacleSurface =
           isObstacleMesh(mesh) &&
-          !/(?:base(?:blue|red)part)/i.test(semanticName) &&
           faceNormal.y > 0.55 &&
           triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
           triangleMaxY - triangleMinY < 0.75;
@@ -725,6 +724,21 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // base triangles would close the road; accepting only a near-ground
       // vertical face captures the visible entrance wall in the screenshot.
       if (isBaseWallMesh) {
+        // BaseBluePart/BaseRedPart are composite meshes. Their horizontal
+        // floor is walkable, but the raised cap of the brown entrance wall
+        // must never become walkable just because it shares the same mesh.
+        // Use the real face height/normal here: the floor remains at the
+        // fitted walk plane, while a wall top is projected into the blocked
+        // grid and cannot be climbed onto.
+        const isRaisedBaseTop =
+          faceNormal.y > 0.55 &&
+          triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
+          triangleMaxY - triangleMinY < 0.75;
+        if (isRaisedBaseTop) {
+          rasterizeProjectedTriangle(grid, va, vb, vc);
+          hasCollisionFace = true;
+          continue;
+        }
         const isGroundContactWall =
           Math.abs(faceNormal.y) < 0.45 &&
           triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
