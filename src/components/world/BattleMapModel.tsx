@@ -804,11 +804,15 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       for (const point of baseSlice) collisionBounds.expandByPoint(point);
       hasCollisionFace = true;
     }
-    // Fill only the footprint enclosed by the selected low rock faces. This
-    // closes holes between separately triangulated sides, which otherwise
-    // lets the fighter enter the visible rock, while avoiding the full mesh
-    // box that also contains the surrounding grass.
-    if (hasCollisionFace) mergeClosedMeshFootprint(grid, meshBoundary, collisionBounds);
+    // Base meshes are composite assets: their vertical wall faces should
+    // block the character, but their open doorway must remain open. The
+    // closed-footprint flood fill assumes a sealed rock and would fill that
+    // doorway, which is the small passage visible in the screenshot. Keep
+    // only the exact rasterized wall faces for bases; use the enclosed fill
+    // only for rocks/islands whose geometry actually forms a closed footprint.
+    if (hasCollisionFace && !isBaseWallMesh) {
+      mergeClosedMeshFootprint(grid, meshBoundary, collisionBounds);
+    }
   });
   // Water is blocked from the uploaded water surface itself. A bridge is
   // deliberately treated as a walkable cut-through and removes only its own
