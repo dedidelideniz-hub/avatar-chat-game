@@ -929,7 +929,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={0.42}>
+    <group ref={root} scale={0.46}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
