@@ -929,7 +929,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={0.3876}>
+    <group ref={root} scale={0.42}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
@@ -1049,14 +1049,14 @@ function FighterRig({
           both float above the head and follow the fighter */}
       <group ref={barGroup}>
         {/* name / level tag */}
-        <sprite position={[0, 1.05, 0]} scale={[1.7 * HUD, 0.32 * HUD, 1]} renderOrder={0}>
+        <sprite position={[0, 1.05, 0]} scale={[1.25 * HUD, 0.26 * HUD, 1]} renderOrder={0}>
           <spriteMaterial map={nameTex} transparent depthTest={false} />
         </sprite>
         {/* animated HP bar (white ghost trails the damage) */}
-        <sprite ref={hpGhost} position={[0, 0.8, 0]} scale={[1.1 * HUD, 0.12 * HUD, 1]} renderOrder={1}>
+        <sprite ref={hpGhost} position={[0, 0.8, 0]} scale={[0.85 * HUD, 0.1 * HUD, 1]} renderOrder={1}>
           <spriteMaterial map={hpGhostTex} depthTest={false} />
         </sprite>
-        <sprite ref={hpFill} position={[0, 0.8, 0]} scale={[1.1 * HUD, 0.12 * HUD, 1]} renderOrder={2}>
+        <sprite ref={hpFill} position={[0, 0.8, 0]} scale={[0.85 * HUD, 0.1 * HUD, 1]} renderOrder={2}>
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>
