@@ -41,11 +41,14 @@ export interface BattleObstacle {
 }
 
 /** The uploaded GLB is the complete battlefield. No synthetic bushes,
- * grass patches, spawn pads, or legacy arena props are added here. */
+ * grass patches, <BattleAtmosphere playerRef={playerRef} botRef={botRef} />
+
+      {/* spawn pads, or legacy arena props are added here. */
 export const BATTLE_OBSTACLES: BattleObstacle[] = [];
 
 /** Legacy spawn-pad compatibility shim: the uploaded GLB owns all battlefield visuals. */
-function SpawnCircle(_props: {
+function BattleAtmosphere playerRef={playerRef} botRef={botRef} />
+      <SpawnCircle(_props: {
   position: [number, number, number];
   color: string;
 }) {
@@ -1440,6 +1443,115 @@ function FollowCamera({ playerRef }: { playerRef: MutableRefObject<BattleFighter
   });
 
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* MOBA-style battle atmosphere — visual-only, simulation independent. */
+/* ------------------------------------------------------------------ */
+
+function BattleAtmosphere({
+  playerRef,
+  botRef,
+}: {
+  playerRef: MutableRefObject<BattleFighter>;
+  botRef: MutableRefObject<BattleFighter>;
+}) {
+  const aura = useRef<THREE.Group>(null);
+  const auraDisc = useRef<THREE.Mesh>(null);
+  const playerLight = useRef<THREE.PointLight>(null);
+  const botLight = useRef<THREE.PointLight>(null);
+
+  useFrame((_, dt) => {
+    const player = playerRef.current;
+    const bot = botRef.current;
+    const now = performance.now();
+    const pulse = 1 + Math.sin(now / 260) * 0.035;
+
+    if (aura.current) {
+      aura.current.position.set(player.x / S, 0.045, player.y / S);
+      aura.current.rotation.y += dt * 0.32;
+      aura.current.scale.setScalar(pulse);
+    }
+    if (auraDisc.current) {
+      const material = auraDisc.current.material as THREE.MeshBasicMaterial;
+      material.opacity = 0.035 + (Math.sin(now / 360) + 1) * 0.012;
+    }
+    if (playerLight.current) {
+      playerLight.current.position.set(player.x / S, 2.4, player.y / S);
+      playerLight.current.intensity = 1.2 + Math.sin(now / 300) * 0.18;
+    }
+    if (botLight.current) {
+      botLight.current.position.set(bot.x / S, 2.2, bot.y / S);
+      botLight.current.intensity = 0.9 + Math.sin(now / 340 + 1) * 0.14;
+    }
+  });
+
+  return (
+    <>
+      {/* Large green tactical radius, like a MOBA skill/engagement zone. It
+          is purely visual and never participates in movement or collision. */}
+      <group ref={aura}>
+        <mesh ref={auraDisc} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+          <circleGeometry args={[4.25, 96]} />
+          <meshBasicMaterial
+            color="#39f27d"
+            transparent
+            opacity={0.045}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        {[0, 1, 2, 3].map((index) => (
+          <mesh
+            key={index}
+            rotation={[-Math.PI / 2, 0, 0]}
+            raycast={() => null}
+          >
+            <ringGeometry
+              args={[4.18, 4.24, 96, 1, (index * Math.PI) / 2, Math.PI / 2.35]}
+            />
+            <meshBasicMaterial
+              color="#69ff9a"
+              transparent
+              opacity={0.82}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        ))}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+          <ringGeometry args={[3.45, 3.48, 96]} />
+          <meshBasicMaterial
+            color="#a7f3d0"
+            transparent
+            opacity={0.2}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      </group>
+
+      {/* Faction-colored local lights make the player/enemy sides read like a
+          live team fight without changing any model or gameplay state. */}
+      <pointLight
+        ref={playerLight}
+        color="#38d9ff"
+        distance={7}
+        decay={2}
+        intensity={1.2}
+      />
+      <pointLight
+        ref={botLight}
+        color="#ff426f"
+        distance={6}
+        decay={2}
+        intensity={0.9}
+      />
+    </>
+  );
 }
 
 /* ------------------------------------------------------------------ */
