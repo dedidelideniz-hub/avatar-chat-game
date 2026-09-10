@@ -41,14 +41,11 @@ export interface BattleObstacle {
 }
 
 /** The uploaded GLB is the complete battlefield. No synthetic bushes,
- * grass patches, <BattleAtmosphere playerRef={playerRef} botRef={botRef} />
-
-      {/* spawn pads, or legacy arena props are added here. */
+ * grass patches, spawn pads, or legacy arena props are added here. */
 export const BATTLE_OBSTACLES: BattleObstacle[] = [];
 
 /** Legacy spawn-pad compatibility shim: the uploaded GLB owns all battlefield visuals. */
-function BattleAtmosphere playerRef={playerRef} botRef={botRef} />
-      <SpawnCircle(_props: {
+function SpawnCircle(_props: {
   position: [number, number, number];
   color: string;
 }) {
