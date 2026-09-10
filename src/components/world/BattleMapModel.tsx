@@ -1037,7 +1037,191 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       }
     }
   }
+  // Guarantee each spawn base connects to the walkable lanes. Base meshes
+  // (BaseBluePart / BaseRedPart) combine the walkable floor with thin
+  // perimeter walls; those walls are rasterized as solid and can seal every
+  // exit, leaving the character trapped on the base floor. This pass finds
+  // where a base floor touches a real walkable lane through a thin blocked
+  // band and clears that band (a doorway) so the character can always leave
+  // its base — while thick obstacles (blue props, towers, raised platforms)
+  // stay solid.
+  carveBaseExits(grid);
   return grid;
+}
+
+/** Spawn base centers in game-space px (must match BattleScene). */
+const BASE_CENTERS: [number, number][] = [
+  [850, 80], // player (red) base
+  [850, 1020], // enemy (blue) base
+];
+/** Max barrier thickness to carve through, in grid cells (~thin walls only). */
+const BASE_OPEN_SEARCH = 34;
+/** Doorway half-width in cells. Must exceed the fighter radius (~11 cells) so
+ *  the whole collision circle fits through the opened base exit. */
+const BASE_DOOR_RADIUS = 15;
+const BASE_DIRS: [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+function findNearestWalkableCell(
+  grid: RockGrid,
+  c0: number,
+  r0: number,
+): { c: number; r: number } | null {
+  const { cols, rows } = grid;
+  const visited = new Uint8Array(cols * rows);
+  const q = new Int32Array(cols * rows);
+  let h = 0;
+  let t = 0;
+  q[t++] = r0 * cols + c0;
+  visited[r0 * cols + c0] = 1;
+  while (h < t) {
+    const idx = q[h++];
+    const r = (idx / cols) | 0;
+    const c = idx - r * cols;
+    if (grid.walkable[idx]) return { c, r };
+    for (const [dc, dr] of BASE_DIRS) {
+      const nc = c + dc;
+      const nr = r + dr;
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+      const ni = nr * cols + nc;
+      if (!visited[ni]) {
+        visited[ni] = 1;
+        q[t++] = ni;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Geometry-independent: opens each spawn base onto the walkable lanes by
+ * clearing only the thin blocked band between the base floor and an adjacent
+ * walkable region (the lane). Thick obstacles never satisfy the search, so
+ * wall/obstacle blocking everywhere else is preserved.
+ */
+function carveBaseExits(grid: RockGrid) {
+  const { cols, rows, cell } = grid;
+  const depthArr = new Uint16Array(cols * rows);
+  const visited = new Uint8Array(cols * rows);
+  const queue = new Int32Array(cols * rows);
+  const comp = new Uint8Array(cols * rows);
+  const reached: number[] = [];
+
+  for (const [bx, by] of BASE_CENTERS) {
+    let sc = Math.max(0, Math.min(cols - 1, Math.floor(bx / cell)));
+    let sr = Math.max(0, Math.min(rows - 1, Math.floor(by / cell)));
+    if (!grid.walkable[sr * cols + sc]) {
+      const seed = findNearestWalkableCell(grid, sc, sr);
+      if (!seed) continue;
+      sc = seed.c;
+      sr = seed.r;
+    }
+
+    // 1) connected component of the base floor (walkable cells)
+    comp.fill(0);
+    let head = 0;
+    let tail = 0;
+    comp[sr * cols + sc] = 1;
+    queue[tail++] = sr * cols + sc;
+    while (head < tail) {
+      const idx = queue[head++];
+      const r = (idx / cols) | 0;
+      const c = idx - r * cols;
+      for (const [dc, dr] of BASE_DIRS) {
+        const nc = c + dc;
+        const nr = r + dr;
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        const ni = nr * cols + nc;
+        if (!comp[ni] && grid.walkable[ni]) {
+          comp[ni] = 1;
+          queue[tail++] = ni;
+        }
+      }
+    }
+
+    // 2) blocked frontier cells on the base-floor boundary
+    const frontier: number[] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!comp[r * cols + c]) continue;
+        for (const [dc, dr] of BASE_DIRS) {
+          const nc = c + dc;
+          const nr = r + dr;
+          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+          const ni = nr * cols + nc;
+          if (grid.blocked[ni]) frontier.push(ni);
+        }
+      }
+    }
+
+    // 3) For each frontier cell, BFS through blocked cells up to the search
+    //    radius; if it reaches a walkable cell outside the base floor, clear
+    //    the barrier path so the base opens onto the lane.
+    for (const start of frontier) {
+      visited.fill(0);
+      reached.length = 0;
+      let h = 0;
+      let t = 1;
+      queue[0] = start;
+      visited[start] = 1;
+      depthArr[start] = 0;
+      let found = false;
+      while (h < t && !found) {
+        const idx = queue[h++];
+        const d = depthArr[idx];
+        if (d >= BASE_OPEN_SEARCH) continue;
+        const r = (idx / cols) | 0;
+        const c = idx - r * cols;
+        for (const [dc, dr] of BASE_DIRS) {
+          const nc = c + dc;
+          const nr = r + dr;
+          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+          const ni = nr * cols + nc;
+          if (visited[ni]) continue;
+          if (grid.walkable[ni] && !comp[ni]) {
+            found = true;
+            break;
+          }
+          if (grid.blocked[ni]) {
+            visited[ni] = 1;
+            depthArr[ni] = d + 1;
+            reached.push(ni);
+            queue[t++] = ni;
+          }
+        }
+      }
+      if (found) {
+        // Widen the opened gap to at least the fighter diameter, otherwise
+        // the whole-radius walkable-footprint test would still trap the
+        // fighter in a too-narrow doorway. Only cells near the carved path
+        // are cleared, so real obstacles stay solid.
+        const openDoorway = (cellIdx: number) => {
+          const doorRow = (cellIdx / cols) | 0;
+          const doorCol = cellIdx - doorRow * cols;
+          for (let dr = -BASE_DOOR_RADIUS; dr <= BASE_DOOR_RADIUS; dr++) {
+            for (let dc = -BASE_DOOR_RADIUS; dc <= BASE_DOOR_RADIUS; dc++) {
+              if (dr * dr + dc * dc > BASE_DOOR_RADIUS * BASE_DOOR_RADIUS) continue;
+              const nr = doorRow + dr;
+              const nc = doorCol + dc;
+              if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+              const idx = nr * cols + nc;
+              grid.blocked[idx] = 0;
+              if (grid.walkable[idx] === 0) {
+                grid.walkable[idx] = 1;
+                grid.walkableCount++;
+              }
+            }
+          }
+        };
+        for (const idx of reached) openDoorway(idx);
+        openDoorway(start);
+      }
+    }
+  }
 }
 
 function meshBounds(root: THREE.Object3D, pattern: RegExp): THREE.Box3 | null {
