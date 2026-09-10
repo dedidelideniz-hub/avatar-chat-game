@@ -86,7 +86,10 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
     // though the visible lane is continuous. Accept a tiny neighbourhood for
     // the boundary test; rigid obstacle cells below still remain authoritative
     // and keep rocks/walls from becoming passable.
-    if (!hasWalkableNeighbour(g, cx, cy, Math.max(10, r * 0.55))) return true;
+    // Keep the entire collision circle on the authored navigation surface.
+    // This is deliberately separate from `blocked`: roads remain open, while
+    // a fighter-sized footprint cannot be placed half on a wall/platform.
+    if (!hasWalkableFootprint(g, cx, cy, r)) return true;
   }
 
   const minCol = Math.max(0, Math.floor((cx - r) / cell));
@@ -143,6 +146,29 @@ function hasWalkableNeighbour(
     }
   }
   return false;
+}
+
+/**
+ * Navigation clearance test for a fighter-sized circle. A nearby walkable
+ * cell is not enough: that old rule let the center sit on a wall/platform
+ * edge whenever some road cell was within the tolerance. Sample the actual
+ * circle in the walkable mask instead, keeping the corridor open while
+ * reserving the fighter radius from every unwalkable surface.
+ */
+function hasWalkableFootprint(g: RockGrid, px: number, py: number, radius: number) {
+  if (!isWalkableCell(g, px, py)) return false;
+  const clearance = Math.max(0, radius - g.cell);
+  const rings = [clearance * 0.55, clearance];
+  for (const ring of rings) {
+    const samples = Math.max(12, Math.ceil((Math.PI * 2 * ring) / g.cell));
+    for (let i = 0; i < samples; i++) {
+      const angle = (i / samples) * Math.PI * 2;
+      if (!isWalkableCell(g, px + Math.cos(angle) * ring, py + Math.sin(angle) * ring)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 /**
@@ -568,18 +594,18 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // only by real GLB geometry at the fitted walk plane.
     const isBaseSurface =
       /(?:base(?:blue|red)(?:part|ground|background))/i.test(semanticName);
+      const isNavigationFloor =
+      /(?:terraincenter|terrainpart|base(?:blue|red)(?:ground|background))/i.test(
+        semanticName,
+      );
     const isWalkableSurface =
       !isWater &&
-      // BaseBackground is the actual stone/metal floor surrounding each
-      // nexus, not the empty world background. The old generic `background`
-      // exclusion removed exactly the side lanes marked in the screenshot,
-      // so the boundary test treated those visible floors as outside the map.
-      // Include only explicitly named team-base surfaces; perimeter/world
-      // background meshes remain excluded.
-      (isBaseSurface ||
-        !/(?:rockfloor|rockbase|decal|cliff|underside|perimeter|sidewall|background)/i.test(
-          semanticName,
-        ));
+      // Navigation is authored from the map's floor/terrain meshes only.
+      // Props, walls, foliage and platform meshes are never allowed to make
+      // themselves walkable just because they have an upward-facing triangle.
+      // The two base backgrounds/grounds are included because they are the
+      // visible side corridors in the supplied screenshot.
+      (isBaseSurface || isNavigationFloor);
     if (isWalkableSurface && pos) {
       mesh.updateWorldMatrix(true, false);
       m.copy(mesh.matrixWorld);
