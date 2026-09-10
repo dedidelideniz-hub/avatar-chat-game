@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { WarAtmosphere } from "./WarAtmosphere";
 import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
@@ -1146,9 +1147,15 @@ function MapModelInner() {
 
 export function BattleMapModel() {
   return (
-    <Suspense fallback={null}>
-      <MapModelInner />
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <MapModelInner />
+      </Suspense>
+      {/* War atmosphere renders as a sibling of the map so it stays in
+          arena/world space (embers, team base beams, golden sun). Visual
+          only — never participates in movement or collision. */}
+      <WarAtmosphere />
+    </>
   );
 }
 
