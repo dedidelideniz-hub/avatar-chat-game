@@ -1054,174 +1054,116 @@ const BASE_CENTERS: [number, number][] = [
   [850, 80], // player (red) base
   [850, 1020], // enemy (blue) base
 ];
-/** Max barrier thickness to carve through, in grid cells (~thin walls only). */
-const BASE_OPEN_SEARCH = 34;
-/** Doorway half-width in cells. Must exceed the fighter radius (~11 cells) so
- *  the whole collision circle fits through the opened base exit. */
-const BASE_DOOR_RADIUS = 15;
-const BASE_DIRS: [number, number][] = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
 
-function findNearestWalkableCell(
-  grid: RockGrid,
-  c0: number,
-  r0: number,
-): { c: number; r: number } | null {
-  const { cols, rows } = grid;
-  const visited = new Uint8Array(cols * rows);
-  const q = new Int32Array(cols * rows);
-  let h = 0;
-  let t = 0;
-  q[t++] = r0 * cols + c0;
-  visited[r0 * cols + c0] = 1;
-  while (h < t) {
-    const idx = q[h++];
-    const r = (idx / cols) | 0;
-    const c = idx - r * cols;
-    if (grid.walkable[idx]) return { c, r };
-    for (const [dc, dr] of BASE_DIRS) {
-      const nc = c + dc;
-      const nr = r + dr;
-      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-      const ni = nr * cols + nc;
-      if (!visited[ni]) {
-        visited[ni] = 1;
-        q[t++] = ni;
-      }
-    }
-  }
-  return null;
+/** Distance from a point to a segment, in px. */
+function pointToSegmentDist(
+  px: number,
+  py: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): number {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - x0, py - y0);
+  let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
 }
 
 /**
- * Geometry-independent: opens each spawn base onto the walkable lanes by
- * clearing only the thin blocked band between the base floor and an adjacent
- * walkable region (the lane). Thick obstacles never satisfy the search, so
- * wall/obstacle blocking everywhere else is preserved.
+ * Carve a straight, fighter-wide passage from a base toward a lane. Only
+ * clears blocked cells where the corridor ends on real open ground (a
+ * walkable lane) AND stays mostly clear along its length — so it never cuts
+ * through a raised platform or a thick obstacle. The cleared cells are forced
+ * walkable too, so both the wall test and the walkable-footprint test pass.
  */
-function carveBaseExits(grid: RockGrid) {
+function carveBaseCorridor(
+  grid: RockGrid,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  halfWidth: number,
+) {
   const { cols, rows, cell } = grid;
-  const depthArr = new Uint16Array(cols * rows);
-  const visited = new Uint8Array(cols * rows);
-  const queue = new Int32Array(cols * rows);
-  const comp = new Uint8Array(cols * rows);
-  const reached: number[] = [];
+  const isWalkablePx = (px: number, py: number) => {
+    const c = Math.floor(px / cell);
+    const r = Math.floor(py / cell);
+    return c >= 0 && c < cols && r >= 0 && r < rows && grid.walkable[r * cols + c] === 1;
+  };
 
-  for (const [bx, by] of BASE_CENTERS) {
-    let sc = Math.max(0, Math.min(cols - 1, Math.floor(bx / cell)));
-    let sr = Math.max(0, Math.min(rows - 1, Math.floor(by / cell)));
-    if (!grid.walkable[sr * cols + sc]) {
-      const seed = findNearestWalkableCell(grid, sc, sr);
-      if (!seed) continue;
-      sc = seed.c;
-      sr = seed.r;
-    }
+  const len = Math.hypot(x1 - x0, y1 - y0);
+  const steps = Math.max(12, Math.ceil(len / cell));
+  const samples: boolean[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    samples.push(isWalkablePx(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+  }
+  // Must start on the base floor and end on the lane, and the blocked band in
+  // the middle (the thin wall) must stay small — a raised platform or thick
+  // prop would leave a large blocked run and this corridor is skipped.
+  const startOk = samples.length > 4 ? samples[Math.floor(samples.length * 0.12)] : true;
+  const endOk = samples.length > 4 ? samples[samples.length - 1] : false;
+  const blockedRun = samples.filter((w) => !w).length;
+  if (!startOk || !endOk || blockedRun > steps * 0.38) return;
 
-    // 1) connected component of the base floor (walkable cells)
-    comp.fill(0);
-    let head = 0;
-    let tail = 0;
-    comp[sr * cols + sc] = 1;
-    queue[tail++] = sr * cols + sc;
-    while (head < tail) {
-      const idx = queue[head++];
-      const r = (idx / cols) | 0;
-      const c = idx - r * cols;
-      for (const [dc, dr] of BASE_DIRS) {
-        const nc = c + dc;
-        const nr = r + dr;
-        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-        const ni = nr * cols + nc;
-        if (!comp[ni] && grid.walkable[ni]) {
-          comp[ni] = 1;
-          queue[tail++] = ni;
+  // Clear blocked cells within halfWidth of the whole corridor and mark them
+  // walkable.
+  const minC = Math.max(0, Math.floor((Math.min(x0, x1) - halfWidth) / cell));
+  const maxC = Math.min(cols - 1, Math.ceil((Math.max(x0, x1) + halfWidth) / cell));
+  const minR = Math.max(0, Math.floor((Math.min(y0, y1) - halfWidth) / cell));
+  const maxR = Math.min(rows - 1, Math.ceil((Math.max(y0, y1) + halfWidth) / cell));
+  for (let r = minR; r <= maxR; r++) {
+    for (let c = minC; c <= maxC; c++) {
+      const px = (c + 0.5) * cell;
+      const py = (r + 0.5) * cell;
+      if (pointToSegmentDist(px, py, x0, y0, x1, y1) <= halfWidth) {
+        const idx = r * cols + c;
+        grid.blocked[idx] = 0;
+        if (grid.walkable[idx] === 0) {
+          grid.walkable[idx] = 1;
+          grid.walkableCount++;
         }
-      }
-    }
-
-    // 2) blocked frontier cells on the base-floor boundary
-    const frontier: number[] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (!comp[r * cols + c]) continue;
-        for (const [dc, dr] of BASE_DIRS) {
-          const nc = c + dc;
-          const nr = r + dr;
-          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-          const ni = nr * cols + nc;
-          if (grid.blocked[ni]) frontier.push(ni);
-        }
-      }
-    }
-
-    // 3) For each frontier cell, BFS through blocked cells up to the search
-    //    radius; if it reaches a walkable cell outside the base floor, clear
-    //    the barrier path so the base opens onto the lane.
-    for (const start of frontier) {
-      visited.fill(0);
-      reached.length = 0;
-      let h = 0;
-      let t = 1;
-      queue[0] = start;
-      visited[start] = 1;
-      depthArr[start] = 0;
-      let found = false;
-      while (h < t && !found) {
-        const idx = queue[h++];
-        const d = depthArr[idx];
-        if (d >= BASE_OPEN_SEARCH) continue;
-        const r = (idx / cols) | 0;
-        const c = idx - r * cols;
-        for (const [dc, dr] of BASE_DIRS) {
-          const nc = c + dc;
-          const nr = r + dr;
-          if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-          const ni = nr * cols + nc;
-          if (visited[ni]) continue;
-          if (grid.walkable[ni] && !comp[ni]) {
-            found = true;
-            break;
-          }
-          if (grid.blocked[ni]) {
-            visited[ni] = 1;
-            depthArr[ni] = d + 1;
-            reached.push(ni);
-            queue[t++] = ni;
-          }
-        }
-      }
-      if (found) {
-        // Widen the opened gap to at least the fighter diameter, otherwise
-        // the whole-radius walkable-footprint test would still trap the
-        // fighter in a too-narrow doorway. Only cells near the carved path
-        // are cleared, so real obstacles stay solid.
-        const openDoorway = (cellIdx: number) => {
-          const doorRow = (cellIdx / cols) | 0;
-          const doorCol = cellIdx - doorRow * cols;
-          for (let dr = -BASE_DOOR_RADIUS; dr <= BASE_DOOR_RADIUS; dr++) {
-            for (let dc = -BASE_DOOR_RADIUS; dc <= BASE_DOOR_RADIUS; dc++) {
-              if (dr * dr + dc * dc > BASE_DOOR_RADIUS * BASE_DOOR_RADIUS) continue;
-              const nr = doorRow + dr;
-              const nc = doorCol + dc;
-              if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
-              const idx = nr * cols + nc;
-              grid.blocked[idx] = 0;
-              if (grid.walkable[idx] === 0) {
-                grid.walkable[idx] = 1;
-                grid.walkableCount++;
-              }
-            }
-          }
-        };
-        for (const idx of reached) openDoorway(idx);
-        openDoorway(start);
       }
     }
   }
+}
+
+/**
+ * Opens each spawn base onto the walkable lanes. Bases face the arena
+ * centre, so try the inward direction plus both flanks, carving only toward
+ * real open ground. Guarantees the character can leave its base while thick
+ * obstacles stay solid.
+ */
+function carveBaseExits(grid: RockGrid) {
+  const MID = (ARENA_D * PX) / 2; // 550 px — the lane between the bases
+  const LEN = 300; // corridor length (px) along the vertical axis
+  const SPREAD = 300; // how far the flank corridors fan out horizontally
+  const HALF = 30; // half-width (px) -> ~60px opening, fighter r=22 fits
+  const before = grid.blocked.reduce((a, b) => a + b, 0);
+
+  for (const [bx, by] of BASE_CENTERS) {
+    if (bx < 0 || bx > ARENA_W * PX || by < 0 || by > ARENA_D * PX) continue;
+    const dir = by < MID ? 1 : -1; // player base exits down, enemy base up
+    const ey = by + dir * LEN;
+    // Fan of corridors: straight toward the centre lane, diagonal flanks
+    // toward the two side lanes, and horizontal flanks. carveBaseCorridor
+    // only opens the ones that actually land on walkable ground.
+    carveBaseCorridor(grid, bx, by, bx, ey, HALF);
+    carveBaseCorridor(grid, bx, by, bx - SPREAD, ey, HALF);
+    carveBaseCorridor(grid, bx, by, bx + SPREAD, ey, HALF);
+    carveBaseCorridor(grid, bx, by, bx - SPREAD, by, HALF);
+    carveBaseCorridor(grid, bx, by, bx + SPREAD, by, HALF);
+  }
+
+  const after = grid.blocked.reduce((a, b) => a + b, 0);
+  console.log(
+    `[BattleMapModel] base-exit carve cleared ${before - after} blocked cells ` +
+      `(walkable cells now ${grid.walkableCount})`,
+  );
 }
 
 function meshBounds(root: THREE.Object3D, pattern: RegExp): THREE.Box3 | null {
