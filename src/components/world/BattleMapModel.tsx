@@ -1133,6 +1133,12 @@ function MapModelInner() {
 
   return (
     <group ref={groupRef}>
+      {/* Faction rim lights — visual-only battlefield atmosphere. The map
+          keeps its own neutral fill lighting; these add cool/warm side color
+          so each base reads like a live team fight. Purely decorative, never
+          used by movement or collision. */}
+      <pointLight position={[7, 5, 1.5]} color="#38d9ff" distance={18} decay={2} intensity={2.4} />
+      <pointLight position={[7, 5, 10]} color="#ff426f" distance={18} decay={2} intensity={2.2} />
       <primitive object={clone} />
     </group>
   );
