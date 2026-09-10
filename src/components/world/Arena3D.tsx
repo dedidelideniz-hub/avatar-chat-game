@@ -1049,14 +1049,14 @@ function FighterRig({
           both float above the head and follow the fighter */}
       <group ref={barGroup}>
         {/* name / level tag */}
-        <sprite position={[0, 1.05, 0]} scale={[1.25 * HUD, 0.26 * HUD, 1]} renderOrder={0}>
+        <sprite position={[0, 1.05, 0]} scale={[0.625 * HUD, 0.13 * HUD, 1]} renderOrder={0}>
           <spriteMaterial map={nameTex} transparent depthTest={false} />
         </sprite>
         {/* animated HP bar (white ghost trails the damage) */}
-        <sprite ref={hpGhost} position={[0, 0.8, 0]} scale={[0.85 * HUD, 0.1 * HUD, 1]} renderOrder={1}>
+        <sprite ref={hpGhost} position={[0, 0.8, 0]} scale={[0.425 * HUD, 0.05 * HUD, 1]} renderOrder={1}>
           <spriteMaterial map={hpGhostTex} depthTest={false} />
         </sprite>
-        <sprite ref={hpFill} position={[0, 0.8, 0]} scale={[0.85 * HUD, 0.1 * HUD, 1]} renderOrder={2}>
+        <sprite ref={hpFill} position={[0, 0.8, 0]} scale={[0.425 * HUD, 0.05 * HUD, 1]} renderOrder={2}>
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>
