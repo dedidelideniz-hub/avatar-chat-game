@@ -203,6 +203,139 @@ export function findNearestWalkablePosition(
   return null;
 }
 
+/**
+ * Find a short, radius-aware route on the fitted GLB navigation mask.
+ * Player taps and bot chase requests use this instead of drawing a straight
+ * line through a wall. The route is deliberately 4-directional: diagonal
+ * corner cutting is not allowed unless the complete fighter footprint is
+ * clear along the segment.
+ */
+export function findWalkablePath(
+  sx: number,
+  sy: number,
+  gx: number,
+  gy: number,
+  radius: number,
+): [number, number][] {
+  const grid = rockCollision.grid;
+  if (!grid) return [];
+
+  const navCell = Math.max(GRID_CELL * 4, radius);
+  const cols = Math.ceil((ARENA_W * PX) / navCell);
+  const rows = Math.ceil((ARENA_D * PX) / navCell);
+  const toNode = (x: number, y: number) => ({
+    c: Math.max(0, Math.min(cols - 1, Math.floor(x / navCell))),
+    r: Math.max(0, Math.min(rows - 1, Math.floor(y / navCell))),
+  });
+  const toWorld = (c: number, r: number): [number, number] => [
+    Math.min(ARENA_W * PX - radius, Math.max(radius, (c + 0.5) * navCell)),
+    Math.min(ARENA_D * PX - radius, Math.max(radius, (r + 0.5) * navCell)),
+  ];
+  const key = (c: number, r: number) => r * cols + c;
+  const isFree = (c: number, r: number) => {
+    if (c < 0 || c >= cols || r < 0 || r >= rows) return false;
+    const [x, y] = toWorld(c, r);
+    return !hitsRockCollision(x, y, radius);
+  };
+  const nearestFree = (x: number, y: number) => {
+    const start = toNode(x, y);
+    if (isFree(start.c, start.r)) return start;
+    const queue: [number, number][] = [[start.c, start.r]];
+    const visited = new Set<number>([key(start.c, start.r)]);
+    while (queue.length) {
+      const [c, r] = queue.shift()!;
+      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nc = c + dc;
+        const nr = r + dr;
+        const nk = key(nc, nr);
+        if (visited.has(nk) || nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        visited.add(nk);
+        if (isFree(nc, nr)) return { c: nc, r: nr };
+        queue.push([nc, nr]);
+      }
+    }
+    return null;
+  };
+
+  const start = nearestFree(sx, sy);
+  const goal = nearestFree(gx, gy);
+  if (!start || !goal) return [];
+  if (start.c === goal.c && start.r === goal.r) return [toWorld(start.c, start.r)];
+
+  const open: { c: number; r: number; g: number; f: number; parent: number | null }[] = [
+    { ...start, g: 0, f: 0, parent: null },
+  ];
+  const records = new Map<number, (typeof open)[number]>();
+  const closed = new Set<number>();
+  const startKey = key(start.c, start.r);
+  const goalKey = key(goal.c, goal.r);
+  open[0].f = Math.abs(start.c - goal.c) + Math.abs(start.r - goal.r);
+  records.set(startKey, open[0]);
+
+  while (open.length) {
+    let best = 0;
+    for (let i = 1; i < open.length; i++) if (open[i].f < open[best].f) best = i;
+    const current = open.splice(best, 1)[0];
+    const currentKey = key(current.c, current.r);
+    if (closed.has(currentKey)) continue;
+    if (currentKey === goalKey) {
+      const route: [number, number][] = [];
+      let node: typeof current | undefined = current;
+      while (node) {
+        route.push(toWorld(node.c, node.r));
+        node = node.parent === null ? undefined : records.get(node.parent);
+      }
+      route.reverse();
+      return smoothWalkableRoute(route, radius);
+    }
+    closed.add(currentKey);
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nc = current.c + dc;
+      const nr = current.r + dr;
+      if (!isFree(nc, nr)) continue;
+      const nk = key(nc, nr);
+      if (closed.has(nk)) continue;
+      const g = current.g + 1;
+      const existing = records.get(nk);
+      if (existing && existing.g <= g) continue;
+      const node = {
+        c: nc,
+        r: nr,
+        g,
+        f: g + Math.abs(nc - goal.c) + Math.abs(nr - goal.r),
+        parent: currentKey,
+      };
+      records.set(nk, node);
+      open.push(node);
+    }
+  }
+  return [];
+}
+
+function smoothWalkableRoute(route: [number, number][], radius: number): [number, number][] {
+  if (route.length <= 2) return route;
+  const result: [number, number][] = [route[0]];
+  let anchor = 0;
+  for (let i = 2; i < route.length; i++) {
+    if (!canWalkSegment(route[anchor], route[i], radius)) {
+      result.push(route[i - 1]);
+      anchor = i - 1;
+    }
+  }
+  result.push(route[route.length - 1]);
+  return result;
+}
+
+function canWalkSegment(a: [number, number], b: [number, number], radius: number) {
+  const distance = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const steps = Math.max(1, Math.ceil(distance / Math.max(4, GRID_CELL * 2)));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    if (hitsRockCollision(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, radius)) return false;
+  }
+  return true;
+}
+
 function markCell(g: RockGrid, px: number, py: number) {
   const c = Math.floor(px / g.cell);
   const r = Math.floor(py / g.cell);

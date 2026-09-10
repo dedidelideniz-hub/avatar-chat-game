@@ -16,6 +16,7 @@ import {
 } from "@/components/world/Arena3D";
 import {
   findNearestWalkablePosition,
+  findWalkablePath,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
 import type { AvatarConfig } from "@/lib/avatar";
@@ -407,6 +408,9 @@ export default function BattleScene({
 
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
+  // Tap-to-move follows the GLB-derived navigation mask instead of drawing
+  // a straight line through a wall or across a raised platform.
+  const movementPathRef = useRef<[number, number][]>([]);
   const projs = useRef<BattleProj[]>([]);
   const fxs = useRef<BattleFx[]>([]);
   const resultRef = useRef<"win" | "lose" | null>(null);
@@ -821,7 +825,10 @@ export default function BattleScene({
       attack: tryAttack,
       super: trySuper,
       click: (x: number, y: number) => {
-        clickTargetRef.current = { x, y };
+        const p = player.current;
+        const route = findWalkablePath(p.x, p.y, x, y, FIGHTER_R);
+        movementPathRef.current = route.slice(1);
+        clickTargetRef.current = route.length > 0 ? null : { x, y };
       },
     };
 
@@ -875,6 +882,7 @@ export default function BattleScene({
           else vx = 0;
         }
         clickTargetRef.current = null;
+        movementPathRef.current = [];
       } else {
         // virtual joystick (mobile) — live direction while dragging
         const jx = joystickRef.current.x;
@@ -890,6 +898,19 @@ export default function BattleScene({
           vx = joystickRef.current.x;
           vy = joystickRef.current.y;
           clickTargetRef.current = null;
+          movementPathRef.current = [];
+        }
+      }
+      if (vx === 0 && vy === 0 && movementPathRef.current.length > 0) {
+        const [tx, ty] = movementPathRef.current[0];
+        const dx = tx - p.x;
+        const dy = ty - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d < Math.max(8, FIGHTER_R * 0.45)) {
+          movementPathRef.current.shift();
+        } else {
+          vx = dx / d;
+          vy = dy / d;
         }
       }
       if (vx === 0 && vy === 0 && clickTargetRef.current) {
@@ -898,6 +919,8 @@ export default function BattleScene({
         const d = Math.hypot(dx, dy);
         if (d < 24) clickTargetRef.current = null;
         else {
+          // Legacy fallback for a tap made before the GLB nav mask is ready.
+          // Once the mask exists, new taps always use movementPathRef.
           // Cardinal-only: move along dominant axis
           if (Math.abs(dx) >= Math.abs(dy)) { vx = dx > 0 ? 1 : -1; vy = 0; }
           else { vx = 0; vy = dy > 0 ? 1 : -1; }

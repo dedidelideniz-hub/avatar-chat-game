@@ -24,6 +24,7 @@ import {
 } from "@/components/world/Arena3D";
 import {
   findNearestWalkablePosition,
+  findWalkablePath,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
@@ -211,6 +212,7 @@ export default function PvpBattleScene({
   const attackKnobRef = useRef<HTMLSpanElement>(null);
   const keysRef = useRef(new Set<string>());
   const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
+  const movementPathRef = useRef<[number, number][]>([]);
 
   const player = useRef<BattleFighter>(
     newFighter(playerName, playerConfig, playerEquipped, playerAbility, 850, 80, 1),
@@ -644,7 +646,10 @@ export default function PvpBattleScene({
       attack: tryAttack,
       super: trySuper,
       click: (x: number, y: number) => {
-        clickTargetRef.current = { x, y };
+        const p = player.current;
+        const route = findWalkablePath(p.x, p.y, x, y, FIGHTER_R);
+        movementPathRef.current = route.slice(1);
+        clickTargetRef.current = route.length > 0 ? null : { x, y };
       },
     };
 
@@ -725,6 +730,7 @@ export default function PvpBattleScene({
           else vx = 0;
         }
         clickTargetRef.current = null;
+        movementPathRef.current = [];
       } else {
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
@@ -738,6 +744,19 @@ export default function PvpBattleScene({
           vx = joystickRef.current.x;
           vy = joystickRef.current.y;
           clickTargetRef.current = null;
+          movementPathRef.current = [];
+        }
+      }
+      if (vx === 0 && vy === 0 && movementPathRef.current.length > 0) {
+        const [tx, ty] = movementPathRef.current[0];
+        const dx = tx - p.x;
+        const dy = ty - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d < Math.max(8, FIGHTER_R * 0.45)) {
+          movementPathRef.current.shift();
+        } else {
+          vx = dx / d;
+          vy = dy / d;
         }
       }
       if (vx === 0 && vy === 0 && clickTargetRef.current) {
