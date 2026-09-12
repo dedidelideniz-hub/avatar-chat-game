@@ -21,13 +21,13 @@ import {
   computeSkeletonHeight,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
-import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
+import { isRoyalWarriorSkin, useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import {
-  attachSamuraiKatana,
-  applySamuraiSlamPose,
-  findSamuraiRig,
-  type SamuraiKatana,
-} from "@/engine/SamuraiKatana";
+  applyRoyalSlamPose,
+  findHandSword,
+  findRoyalSlamRig,
+  measureBladeAxis,
+} from "@/engine/RoyalSlam";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
 import { SkeletonUtils } from "three-stdlib";
@@ -61,9 +61,10 @@ function SpawnCircle(_props: {
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
 export const ATK_CD = 0.85;
 
-/** Samuray skin'i ikinci ultiyi ve yere vuran kılıç animasyonunu açar. */
+/** Kraliyet Savaşçısı ikinci ultiyi (iki elli kılıç yere vuruş) kullanır:
+ *  elinde zaten kraliyet kılıcı olduğu için ulti tam olarak o skine bağlı. */
 export function isSamuraiFighter(fighter: BattleFighter): boolean {
-  return fighter.equipped.includes("skin-samuray");
+  return isRoyalWarriorSkin(resolveSkinUrl(fighter.equipped));
 }
 
 export const SAMURAI_ULTIMATE_DAMAGE = 360;
@@ -272,22 +273,12 @@ function GlbFighterBodyCore({
   const { actions } = useAnimations(animations, groupRef);
   const movingRef = useRef(fighter.current.moving);
   const previousPosition = useRef({ x: fighter.current.x, y: fighter.current.y });
-  // Samuray kostümü: sağ elde katana + iki elli yere vurma pozu.
-  const samurai = isSamuraiFighter(fighter.current);
-  const samuraiRig = useMemo(() => findSamuraiRig(clone), [clone]);
-  const katanaRef = useRef<SamuraiKatana | null>(null);
-  const katanaCalibrated = useRef(false);
-  useEffect(() => {
-    if (!samurai || !samuraiRig.rightHand) return;
-    const katana = attachSamuraiKatana(clone, samuraiRig);
-    katanaRef.current = katana;
-    katanaCalibrated.current = false;
-    return () => {
-      katana?.dispose();
-      katanaRef.current = null;
-    };
-  }, [samurai, samuraiRig, clone]);
-  const arenaEffects = useRoyalWarriorEffects(
+  // Kraliyet Savaşçısı: elindeki kılıçla iki elli yere vurma pozu.
+  const royalSlammer = isSamuraiFighter(fighter.current);
+  const slamRig = useMemo(() => findRoyalSlamRig(clone), [clone]);
+  const slamBladeAxis = useRef<THREE.Vector3 | null>(null);
+  // Kraliyet zırhı/kılıcı + kılıç kalibrasyonu bu hook içinde bağlanır.
+  useRoyalWarriorEffects(
     clone,
     skinUrl,
     fighter.current.equipped,
@@ -360,18 +351,21 @@ function GlbFighterBodyCore({
     previousPosition.current.x = f.x;
     previousPosition.current.y = f.y;
     const next: "idle" | "walk" = actuallyMoving ? "walk" : "idle";
-    // Kılıç sapı/hizası bir kez, karakter hazır Idle pozundayken ölçülür.
-    if (katanaRef.current && !katanaCalibrated.current) {
-      katanaRef.current.calibrate();
-      katanaCalibrated.current = true;
+    const slamActive = royalSlammer && f.samuraiUltT > 0;
+    // Bıçak ekseni ulti başlarken bir kez ölçülür: o an kılıç elde, sap
+    // kalibre edilmiş ve hazır Idle pozunda olur.
+    if (slamActive && !slamBladeAxis.current && slamRig.rightHand) {
+      const sword = findHandSword(slamRig.rightHand);
+      if (sword) {
+        slamBladeAxis.current = measureBladeAxis(slamRig.rightHand, sword);
+      }
     }
-    const samuraiActive = samurai && f.samuraiUltT > 0;
-    applySamuraiSlamPose({
-      rig: samuraiRig,
-      katana: katanaRef.current,
-      progress: samuraiActive ? 1 - f.samuraiUltT / 0.82 : 0,
+    applyRoyalSlamPose({
+      rig: slamRig,
+      bladeAxis: slamBladeAxis.current,
+      progress: slamActive ? 1 - f.samuraiUltT / 0.82 : 0,
       facing: f.facing,
-      active: samuraiActive,
+      active: slamActive,
     });
     if (next === currentClip.current) return;
     const from =
