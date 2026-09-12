@@ -23,7 +23,11 @@ import {
 } from "@/engine/GlbAvatar3D";
 import { isRoyalWarriorSkin, useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
 import {
+  ROYAL_ULT_LOCK,
+  applyRoyalSlamBody,
   applyRoyalSlamPose,
+  clearRoyalSlamBody,
+  computeRoyalSlamBody,
   findHandSword,
   findRoyalSlamRig,
   measureBladeAxis,
@@ -279,6 +283,7 @@ function GlbFighterBodyCore({
   const royalSlammer = isSamuraiFighter(fighter.current);
   const slamRig = useMemo(() => findRoyalSlamRig(clone), [clone]);
   const slamBladeAxis = useRef<THREE.Vector3 | null>(null);
+  const wasUlt = useRef(false);
   // Kraliyet zırhı/kılıcı + kılıç kalibrasyonu bu hook içinde bağlanır.
   useRoyalWarriorEffects(
     clone,
@@ -354,21 +359,35 @@ function GlbFighterBodyCore({
     previousPosition.current.y = f.y;
     const next: "idle" | "walk" = actuallyMoving ? "walk" : "idle";
     const slamActive = royalSlammer && f.samuraiUltT > 0;
-    // Bıçak ekseni ulti başlarken bir kez ölçülür: o an kılıç elde, sap
-    // kalibre edilmiş ve hazır Idle pozunda olur.
-    if (slamActive && !slamBladeAxis.current && slamRig.rightHand) {
-      const sword = findHandSword(slamRig.rightHand);
-      if (sword) {
-        slamBladeAxis.current = measureBladeAxis(slamRig.rightHand, sword);
+    const slamProgress = slamActive
+      ? 1 - Math.max(0, f.samuraiUltT) / ROYAL_ULT_LOCK
+      : 0;
+    const g = groupRef.current;
+    if (slamActive && g) {
+      // Kılıç bıçağının el-lokal ekseni bir kez ölçülür (rig'e sabit yok).
+      if (!slamBladeAxis.current && slamRig.rightHand) {
+        const sword = findHandSword(slamRig.rightHand);
+        if (sword) {
+          slamBladeAxis.current = measureBladeAxis(slamRig.rightHand, sword);
+        }
       }
+      // Gövde ağırlığı (hamle / çömelme / kalça burulması) EN ÖNCE
+      // uygulanır: kol ve omurga hedefleri dünya uzayında hesaplandığı
+      // için poz bu duruşun üstüne biner (yapıştırılmış gibi durmaz).
+      const body = computeRoyalSlamBody(slamProgress);
+      if (body) applyRoyalSlamBody(g, slamRig, body, f.facing);
+      applyRoyalSlamPose({
+        rig: slamRig,
+        bladeAxis: slamBladeAxis.current,
+        progress: slamProgress,
+        facing: f.facing,
+        active: true,
+      });
+    } else if (wasUlt.current && g) {
+      // Ulti bitti → gövdeyi dinlenme duruşuna döndür.
+      clearRoyalSlamBody(g);
     }
-    applyRoyalSlamPose({
-      rig: slamRig,
-      bladeAxis: slamBladeAxis.current,
-      progress: slamActive ? 1 - f.samuraiUltT / 0.82 : 0,
-      facing: f.facing,
-      active: slamActive,
-    });
+    wasUlt.current = slamActive;
     if (next === currentClip.current) return;
     const from =
       actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
