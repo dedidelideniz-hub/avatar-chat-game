@@ -17,6 +17,8 @@ import {
   ATK_CD,
   BUSH_REVEAL_MS,
   isHiddenFrom,
+  isSamuraiFighter,
+  SAMURAI_ULTIMATE_DAMAGE,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -102,6 +104,16 @@ type PvpEvent =
       r: number;
       dmg: number;
       hit: boolean;
+    }
+  | {
+      id: string;
+      type: "samuraiCrack";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      dmg: number;
+      hit: boolean;
     };
 
 /** What one phone publishes about its fighter every ~100 ms. */
@@ -112,6 +124,7 @@ interface PvpPayload {
   moving: boolean;
   hp: number;
   superCharge: number;
+  samuraiCharge: number;
   dashT: number;
   dashVX: number;
   dashVY: number;
@@ -147,6 +160,9 @@ function newFighter(
     moving: false,
     atkCd: 0,
     superCharge: 0,
+    samuraiCharge: 0,
+    samuraiUltT: 0,
+    samuraiUltHit: false,
     dashT: 0,
     dashVX: 0,
     dashVY: 0,
@@ -282,6 +298,7 @@ export default function PvpBattleScene({
   const actionsRef = useRef({
     attack: () => {},
     super: () => {},
+    samuraiSuper: () => {},
     click: (_x: number, _y: number) => {},
   });
 
@@ -362,6 +379,10 @@ export default function PvpBattleScene({
         if (ev.hit) damageMe(ev.dmg);
         break;
       }
+      case "samuraiCrack":
+        addFx({ kind: "samuraiCrack", x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2, ttl: 0.62, maxTtl: 0.62 });
+        if (ev.hit) damageMe(ev.dmg);
+        break;
     }
   };
 
@@ -377,6 +398,7 @@ export default function PvpBattleScene({
       moving: false,
       hp: HP,
       superCharge: 0,
+      samuraiCharge: 0,
       dashT: 0,
       dashVX: 0,
       dashVY: 0,
@@ -505,6 +527,18 @@ export default function PvpBattleScene({
     p.dashHit = false;
     circleFx(p.x, p.y - 40, 60, "#a5f3fc", 0.35);
     circleFx(p.x, p.y - 60, 40, "#e0f2fe", 0.3);
+  };
+
+  const useSamuraiSuper = () => {
+    const p = player.current;
+    const b = bot.current;
+    if (!isSamuraiFighter(p) || p.samuraiCharge < 1 || p.samuraiUltT > 0) return;
+    const ang = Math.atan2(b.y - p.y, b.x - p.x);
+    p.samuraiCharge = 0;
+    p.samuraiUltT = 0.82;
+    p.samuraiUltHit = false;
+    p.facing = Math.cos(ang) >= 0 ? 1 : -1;
+    playSound("super", { volume: 1, rate: 0.72 });
   };
 
   const useSuper = () => {
@@ -645,6 +679,7 @@ export default function PvpBattleScene({
     actionsRef.current = {
       attack: tryAttack,
       super: trySuper,
+      samuraiSuper: useSamuraiSuper,
       click: (x: number, y: number) => {
         const p = player.current;
         const route = findWalkablePath(p.x, p.y, x, y, FIGHTER_R);
@@ -660,6 +695,25 @@ export default function PvpBattleScene({
       const p = player.current;
       const b = bot.current;
       if (resultRef.current) return;
+      if (isSamuraiFighter(p)) {
+        p.samuraiCharge = Math.min(1, p.samuraiCharge + dt * 0.16);
+        if (p.samuraiUltT > 0) {
+          p.samuraiUltT -= dt;
+          if (!p.samuraiUltHit && p.samuraiUltT < 0.31) {
+            p.samuraiUltHit = true;
+            const hit = Math.hypot(b.x - p.x, b.y - p.y) < 620;
+            const ang = Math.atan2(b.y - p.y, b.x - p.x);
+            const x2 = p.x + Math.cos(ang) * 620;
+            const y2 = p.y + Math.sin(ang) * 620;
+            addFx({ kind: "samuraiCrack", x1: p.x, y1: p.y, x2, y2, ttl: 0.62, maxTtl: 0.62 });
+            pushEvent({ type: "samuraiCrack", x1: p.x, y1: p.y, x2, y2, dmg: SAMURAI_ULTIMATE_DAMAGE, hit });
+            if (hit) {
+              floatText(b.x, b.y - 130, `-${SAMURAI_ULTIMATE_DAMAGE}`, "#fbbf24");
+              b.lastHitAt = performance.now();
+            }
+          }
+        }
+      }
 
       // --- remote fighter: lerp toward the latest snapshot ---
       const t = remoteTarget.current;
@@ -918,6 +972,7 @@ export default function PvpBattleScene({
             moving: p.moving,
             hp: Math.round(p.hp),
             superCharge: p.superCharge,
+            samuraiCharge: p.samuraiCharge,
             dashT: p.dashT,
             dashVX: p.dashVX,
             dashVY: p.dashVY,
@@ -1164,6 +1219,24 @@ export default function PvpBattleScene({
           <BattleJoystick stickRef={joystickRef} />
 
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
+            {isSamuraiFighter(player.current) && (
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  actionsRef.current.samuraiSuper();
+                }}
+                aria-label="Samuray yere vuruş ultisi"
+                className={`pointer-events-auto flex size-14 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
+                  player.current.samuraiCharge >= 1
+                    ? "border-amber-200 bg-gradient-to-br from-amber-300 to-orange-600 text-amber-950"
+                    : "border-white/30 bg-white/10 text-white/70"
+                }`}
+              >
+                <span className="text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
+              </button>
+            )}
             <button
               type="button"
               onPointerDown={(e) => {

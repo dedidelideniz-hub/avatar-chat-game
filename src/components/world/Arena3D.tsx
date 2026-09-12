@@ -55,6 +55,13 @@ function SpawnCircle(_props: {
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
 export const ATK_CD = 0.85;
 
+/** Samuray skin'i ikinci ultiyi ve yere vuran kılıç animasyonunu açar. */
+export function isSamuraiFighter(fighter: BattleFighter): boolean {
+  return fighter.equipped.includes("skin-samuray");
+}
+
+export const SAMURAI_ULTIMATE_DAMAGE = 360;
+
 /** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
 export function supportsWebGL(): boolean {
   if (typeof window === "undefined") return false;
@@ -99,6 +106,11 @@ export interface BattleFighter {
   moving: boolean;
   atkCd: number;
   superCharge: number;
+  /** Samuray'a özel ikinci ulti şarjı. Diğer skinlerde 0 kalır. */
+  samuraiCharge: number;
+  /** Yere iki elle kılıç vurma animasyonunun kalan süresi. */
+  samuraiUltT: number;
+  samuraiUltHit: boolean;
   dashT: number;
   dashVX: number;
   dashVY: number;
@@ -208,6 +220,15 @@ export type BattleFx =
       maxTtl: number;
       grow: number;
       color: string;
+    }
+  | {
+      kind: "samuraiCrack";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      ttl: number;
+      maxTtl: number;
     };
 
 const PROJ_POOL = 26;
@@ -245,6 +266,43 @@ function GlbFighterBodyCore({
   const { actions } = useAnimations(animations, groupRef);
   const movingRef = useRef(fighter.current.moving);
   const previousPosition = useRef({ x: fighter.current.x, y: fighter.current.y });
+  const samuraiRest = useRef(new WeakMap<THREE.Object3D, THREE.Euler>());
+  const samuraiBones = useMemo(() => {
+    const found: { leftUpper?: THREE.Object3D; rightUpper?: THREE.Object3D; leftFore?: THREE.Object3D; rightFore?: THREE.Object3D } = {};
+    clone.traverse((obj) => {
+      if (!(obj as THREE.Bone).isBone) return;
+      const n = obj.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!found.leftUpper && /left.*upperarm|upperarm.*left/.test(n)) found.leftUpper = obj;
+      if (!found.rightUpper && /right.*upperarm|upperarm.*right/.test(n)) found.rightUpper = obj;
+      if (!found.leftFore && /left.*forearm|forearm.*left/.test(n)) found.leftFore = obj;
+      if (!found.rightFore && /right.*forearm|forearm.*right/.test(n)) found.rightFore = obj;
+    });
+    return found;
+  }, [clone]);
+  const applySamuraiPose = (active: boolean, progress: number) => {
+    const bones = Object.values(samuraiBones).filter(Boolean) as THREE.Object3D[];
+    for (const bone of bones) {
+      let rest = samuraiRest.current.get(bone);
+      if (!rest) {
+        rest = bone.rotation.clone();
+        samuraiRest.current.set(bone, rest);
+      }
+      bone.rotation.copy(rest);
+    }
+    if (!active) return;
+    const swing = Math.sin(Math.min(1, progress) * Math.PI);
+    const drive = swing * 1.25;
+    if (samuraiBones.leftUpper) {
+      samuraiBones.leftUpper.rotation.x += drive * 0.58;
+      samuraiBones.leftUpper.rotation.z -= drive * 0.42;
+    }
+    if (samuraiBones.rightUpper) {
+      samuraiBones.rightUpper.rotation.x += drive * 0.58;
+      samuraiBones.rightUpper.rotation.z += drive * 0.42;
+    }
+    if (samuraiBones.leftFore) samuraiBones.leftFore.rotation.x += drive * 0.9;
+    if (samuraiBones.rightFore) samuraiBones.rightFore.rotation.x += drive * 0.9;
+  };
   const arenaEffects = useRoyalWarriorEffects(
     clone,
     skinUrl,
@@ -318,6 +376,8 @@ function GlbFighterBodyCore({
     previousPosition.current.x = f.x;
     previousPosition.current.y = f.y;
     const next: "idle" | "walk" = actuallyMoving ? "walk" : "idle";
+    const samuraiActive = isSamuraiFighter(f) && f.samuraiUltT > 0;
+    applySamuraiPose(samuraiActive, samuraiActive ? 1 - f.samuraiUltT / 0.82 : 0);
     if (next === currentClip.current) return;
     const from =
       actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
@@ -1279,6 +1339,20 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           m.scale.set(len, 1, 1);
           m.rotation.y = Math.atan2(dz, dx);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.95;
+        }
+        mi++;
+      } else if (fx.kind === "samuraiCrack") {
+        const m = beamRefs.current[mi];
+        if (m) {
+          m.visible = true;
+          const dx = (fx.x2 - fx.x1) / S;
+          const dz = (fx.y2 - fx.y1) / S;
+          const len = Math.hypot(dx, dz) || 1;
+          m.position.set((fx.x1 + fx.x2) / (2 * S), 0.11, (fx.y1 + fx.y2) / (2 * S));
+          m.scale.set(len, 1.8, 1.8);
+          m.rotation.y = Math.atan2(dz, dx);
+          (m.material as THREE.MeshBasicMaterial).color.set("#fbbf24");
+          (m.material as THREE.MeshBasicMaterial).opacity = t;
         }
         mi++;
       } else {

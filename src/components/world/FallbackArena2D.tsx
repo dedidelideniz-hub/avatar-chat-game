@@ -448,6 +448,19 @@ export function FallbackArena2D({
             el.setAttribute("opacity", `${t}`);
           }
           mi++;
+        } else if (fx.kind === "samuraiCrack") {
+          const el = beamsEls[mi];
+          if (el) {
+            el.setAttribute("visibility", "visible");
+            el.setAttribute("x1", `${fx.x1}`);
+            el.setAttribute("y1", `${fx.y1}`);
+            el.setAttribute("x2", `${fx.x2}`);
+            el.setAttribute("y2", `${fx.y2}`);
+            el.setAttribute("stroke", "#fbbf24");
+            el.setAttribute("stroke-width", "18");
+            el.setAttribute("opacity", `${t}`);
+          }
+          mi++;
         } else {
           // smoke — gray puffs rising and spreading
           const el = smokesEls[si];

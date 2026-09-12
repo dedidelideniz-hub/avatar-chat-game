@@ -9,6 +9,8 @@ import {
   ATK_CD,
   BUSH_REVEAL_MS,
   isHiddenFrom,
+  isSamuraiFighter,
+  SAMURAI_ULTIMATE_DAMAGE,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -116,6 +118,9 @@ function newFighter(
     moving: false,
     atkCd: 0,
     superCharge: 0,
+    samuraiCharge: 0,
+    samuraiUltT: 0,
+    samuraiUltHit: false,
     dashT: 0,
     dashVX: 0,
     dashVY: 0,
@@ -455,9 +460,10 @@ export default function BattleScene({
     hidden: false,
   });
   const actionsRef = useRef({
-    attack: () => {},
-    super: () => {},
+    attack: () => {},    super: () => {},
+    samuraiSuper: () => {},
     click: (_x: number, _y: number) => {},
+
   });
 
   // Animated VS banner plays once the loading sequence finishes.
@@ -589,6 +595,12 @@ export default function BattleScene({
     floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
     chargeGain(attacker, 0.26);
     chargeGain(target, 0.12);
+    if (isSamuraiFighter(attacker)) {
+      attacker.samuraiCharge = Math.min(1, attacker.samuraiCharge + 0.26);
+    }
+    if (isSamuraiFighter(target)) {
+      target.samuraiCharge = Math.min(1, target.samuraiCharge + 0.12);
+    }
     // Distinct audio for getting hurt vs. dealing damage.
     if (target === player.current) {
       playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
@@ -723,6 +735,26 @@ export default function BattleScene({
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
   }, []);
 
+  const trySamuraiSuper = useCallback(() => {
+    const p = player.current;
+    const b = bot.current;
+    if (
+      !startedRef.current ||
+      resultRef.current ||
+      p.hp <= 0 ||
+      !isSamuraiFighter(p) ||
+      p.samuraiCharge < 1 ||
+      p.samuraiUltT > 0
+    ) return;
+    p.samuraiCharge = 0;
+    p.samuraiUltT = 0.82;
+    p.samuraiUltHit = false;
+    p.facing = b.x >= p.x ? 1 : -1;
+    playSound("super", { volume: 1, rate: 0.72 });
+    circleFx(p.x, p.y, 90, "#fbbf24", 0.55);
+    smokeFx(p.x, p.y, 5, 100);
+  }, []);
+
   const trySuper = useCallback(() => {
     const p = player.current;
     const b = bot.current;
@@ -824,6 +856,7 @@ export default function BattleScene({
     actionsRef.current = {
       attack: tryAttack,
       super: trySuper,
+      samuraiSuper: trySamuraiSuper,
       click: (x: number, y: number) => {
         const p = player.current;
         const route = findWalkablePath(p.x, p.y, x, y, FIGHTER_R);
@@ -926,7 +959,21 @@ export default function BattleScene({
           else { vx = 0; vy = dy > 0 ? 1 : -1; }
         }
       }
-      if (p.dashT > 0) {
+      if (p.samuraiUltT > 0) {
+        p.samuraiUltT -= dt;
+        const targetX = b.x;
+        const targetY = b.y;
+        const progress = 1 - Math.max(0, p.samuraiUltT) / 0.82;
+        if (!p.samuraiUltHit && progress > 0.62) {
+          p.samuraiUltHit = true;
+          addFx({ kind: "samuraiCrack", x1: p.x, y1: p.y, x2: targetX, y2: targetY, ttl: 0.62, maxTtl: 0.62 });
+          damageEnemy(p, b, SAMURAI_ULTIMATE_DAMAGE);
+          burstFx(targetX, targetY, 120, "#fbbf24", 0.45);
+          playSound("hit", { volume: 1, rate: 0.7 });
+        }
+        p.moving = false;
+        p.phase += dt * 5;
+      } else if (p.dashT > 0) {
         p.dashT -= dt;
         moveFighter(p, p.dashVX * 820 * dt, p.dashVY * 820 * dt, dt);
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < 90) {
@@ -1125,6 +1172,25 @@ export default function BattleScene({
         1,
         b.superCharge + dt * (0.15 + 0.15 * botLevelT(b.level)),
       );
+      if (isSamuraiFighter(b)) {
+        b.samuraiCharge = Math.min(1, b.samuraiCharge + dt * 0.16);
+        if (b.samuraiCharge >= 1 && b.samuraiUltT <= 0 && botCanSee) {
+          b.samuraiCharge = 0;
+          b.samuraiUltT = 0.82;
+          b.samuraiUltHit = false;
+          b.facing = p.x >= b.x ? 1 : -1;
+        }
+      }
+      if (b.samuraiUltT > 0) {
+        b.samuraiUltT -= dt;
+        const progress = 1 - Math.max(0, b.samuraiUltT) / 0.82;
+        if (!b.samuraiUltHit && progress > 0.62) {
+          b.samuraiUltHit = true;
+          addFx({ kind: "samuraiCrack", x1: b.x, y1: b.y, x2: p.x, y2: p.y, ttl: 0.62, maxTtl: 0.62 });
+          damageEnemy(b, p, SAMURAI_ULTIMATE_DAMAGE);
+          burstFx(p.x, p.y, 120, "#fbbf24", 0.45);
+        }
+      }
       // The ult fires the moment the bar is full — unless the target hides
       // in a bush (self-heal is fine anywhere). Using it reveals the bot.
       if (b.superCharge >= 1 && (b.ability.id === "sifa" || botCanSee)) {
@@ -1338,9 +1404,28 @@ export default function BattleScene({
           <BattleJoystick stickRef={joystickRef} />
 
           <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
-            <button
+              {isSamuraiFighter(player.current) && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    actionsRef.current.samuraiSuper();
+                  }}
+                  aria-label="Samuray yere vuruş ultisi"
+                  className={`pointer-events-auto flex size-14 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
+                    player.current.samuraiCharge >= 1
+                      ? "border-amber-200 bg-gradient-to-br from-amber-300 to-orange-600 text-amber-950"
+                      : "border-white/30 bg-white/10 text-white/70"
+                  }`}
+                >
+                  <span className="text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
+                </button>
+              )}
+              <button
               type="button"
               onPointerDown={(e) => {
+
                 // Fire instantly (even while holding the joystick) instead of
                 // waiting for a click, and never let the tap fall through to
                 // the arena's tap-to-move plane.
@@ -1359,9 +1444,10 @@ export default function BattleScene({
                 {hud.pc >= 1 ? abilityEmoji : Math.round(hud.pc * 100) + "%"}
               </span>
             </button>
-            <button
+              <button
               type="button"
               onPointerDown={(e) => {
+
                 // Press the attack button, then drag to aim (Brawl Stars
                 // style): the aim guide follows your finger and releasing
                 // fires in that direction. Holding still keeps firing on
