@@ -725,14 +725,27 @@ function FighterRig({
       (item) => item === "skin-savasci-glb",
     );
     const modelTurn = isRoyalWarrior ? Math.PI : 0;
+    // Ulti sırasında gövde hedefe döner: sim, facing/vy'yi rakibe göre
+    // ayarlar. (Hareketsizken yaw modelTurn'a kilitli olduğu için kılıç
+    // hedeften bağımsız bir yöne savruluyordu.)
+    const ulting = f.samuraiUltT > 0;
     let targetYaw: number;
-    if (!f.moving) targetYaw = modelTurn;
+    if (ulting) {
+      targetYaw =
+        ((f.vy ?? 0) !== 0
+          ? f.vy < 0
+            ? Math.PI
+            : 0
+          : f.facing >= 0
+            ? Math.PI / 2
+            : -Math.PI / 2) + modelTurn;
+    } else if (!f.moving) targetYaw = modelTurn;
     else if ((f.vy ?? 0) !== 0) targetYaw = (f.vy < 0 ? Math.PI : 0) + modelTurn;
     else targetYaw = (f.facing >= 0 ? Math.PI / 2 : -Math.PI / 2) + modelTurn;
     let yawDiff = targetYaw - root.current.rotation.y;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-    root.current.rotation.y += yawDiff * Math.min(1, 12 * dt);
+    root.current.rotation.y += yawDiff * Math.min(1, (ulting ? 22 : 12) * dt);
     if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
     // spinning identity ring under the player's feet — dashed ring + orbit
     // dot turning around them, with a soft pulsing glow disc
@@ -1341,7 +1354,8 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
             (fx.y1 + (fx.y2 - fx.y1) / 2) / S,
           );
           m.scale.set(len, 1, 1);
-          m.rotation.y = Math.atan2(dz, dx);
+          // Ry(θ) +X'i (cosθ, 0, −sinθ) yapar → yön eşlemesi atan2(−dz, dx).
+          m.rotation.y = Math.atan2(-dz, dx);
           (m.material as THREE.MeshBasicMaterial).opacity = t * 0.95;
         }
         mi++;

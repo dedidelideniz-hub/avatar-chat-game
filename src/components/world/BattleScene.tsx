@@ -751,7 +751,12 @@ export default function BattleScene({
     p.samuraiCharge = 0;
     p.samuraiUltT = 0.82;
     p.samuraiUltHit = false;
-    p.facing = b.x >= p.x ? 1 : -1;
+    // Gövde rakibe döner (yatay: facing, dikey: vy) → kılıç ve yarık aynı yöne.
+    const ultAng = Math.atan2(b.y - p.y, b.x - p.x);
+    const ultDirX = Math.cos(ultAng);
+    const ultDirY = Math.sin(ultAng);
+    p.facing = ultDirX >= 0 ? 1 : -1;
+    p.vy = Math.abs(ultDirY) > 0.5 ? (ultDirY > 0 ? 1 : -1) : 0;
     playSound("super", { volume: 1, rate: 0.72 });
     circleFx(p.x, p.y, 90, "#fbbf24", 0.55);
     smokeFx(p.x, p.y, 5, 100);
@@ -1205,7 +1210,9 @@ export default function BattleScene({
           b.samuraiCharge = 0;
           b.samuraiUltT = 0.82;
           b.samuraiUltHit = false;
-          b.facing = p.x >= b.x ? 1 : -1;
+          const ang = Math.atan2(p.y - b.y, p.x - b.x);
+          b.facing = Math.cos(ang) >= 0 ? 1 : -1;
+          b.vy = Math.abs(Math.sin(ang)) > 0.5 ? (Math.sin(ang) > 0 ? 1 : -1) : 0;
         }
       }
       if (b.samuraiUltT > 0) {

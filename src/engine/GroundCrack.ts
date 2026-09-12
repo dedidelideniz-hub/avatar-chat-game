@@ -223,7 +223,10 @@ export function updateGroundCrack(crack: GroundCrack, u: GroundCrackUpdate): voi
 
   crack.group.visible = true;
   crack.group.position.set(u.x1, 0, u.y1);
-  crack.group.rotation.y = Math.atan2(dz, dx);
+  // Geometri +X boyunca uzanır; three.js'te Ry(θ) +X'i (cosθ, 0, −sinθ)
+  // yaptığı için yön eşlemesi atan2(−dz, dx) olmalı — düz atan2(dz, dx)
+  // z'yi aynalıyor ve yarık ters yöne (rakibin arkasına) gidiyordu.
+  crack.group.rotation.y = Math.atan2(-dz, dx);
 
   const open = Math.min(1, progress / 0.12);
   const openLen = Math.max(len * open, 0.02);

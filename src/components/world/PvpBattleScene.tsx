@@ -114,13 +114,16 @@ type PvpEvent =
       y2: number;
       dmg: number;
       hit: boolean;
-    };
+    }
+  | { id: string; type: "samuraiStart"; facing: number; vy: number };
 
 /** What one phone publishes about its fighter every ~100 ms. */
 interface PvpPayload {
   x: number;
   y: number;
   facing: number;
+  /** Dikey bakış yönü (−1 yukarı / +1 aşağı) — ulti dönüşü için. */
+  vy: number;
   moving: boolean;
   hp: number;
   superCharge: number;
@@ -254,6 +257,7 @@ export default function PvpBattleScene({
     x: 1280,
     y: 920,
     facing: -1,
+    vy: 0,
     moving: false,
     hp: HP,
     superCharge: 0,
@@ -360,6 +364,7 @@ export default function PvpBattleScene({
   /** Apply a one-shot combat event sent by the other phone. */
   const applyRemoteEvent = (ev: PvpEvent) => {
     const p = player.current;
+    const b = bot.current;
     if (resultRef.current || p.hp <= 0) return;
     switch (ev.type) {
       case "hit":
@@ -381,6 +386,13 @@ export default function PvpBattleScene({
         if (ev.hit) damageMe(ev.dmg);
         break;
       }
+      case "samuraiStart":
+        // Rakip ultiye başladı: kendi ekranımızda da aynı animasyon oynasın.
+        b.samuraiUltT = 0.82;
+        b.samuraiUltHit = true; // hasar samuraiCrack olayından gelir
+        b.facing = ev.facing;
+        b.vy = ev.vy;
+        break;
       case "samuraiCrack":
         addFx({ kind: "samuraiCrack", x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2, ttl: 1.25, maxTtl: 1.25 });
         if (ev.hit) damageMe(ev.dmg);
@@ -420,6 +432,7 @@ export default function PvpBattleScene({
       x: d.x,
       y: d.y,
       facing: typeof d.facing === "number" ? d.facing : 1,
+      vy: typeof d.vy === "number" ? d.vy : 0,
       moving: !!d.moving,
       hp: d.hp,
       superCharge: d.superCharge,
@@ -539,7 +552,11 @@ export default function PvpBattleScene({
     p.samuraiCharge = 0;
     p.samuraiUltT = 0.82;
     p.samuraiUltHit = false;
+    // Gövde rakibe döner (yatay: facing, dikey: vy) → kılıç ve yarık aynı yöne.
     p.facing = Math.cos(ang) >= 0 ? 1 : -1;
+    p.vy = Math.abs(Math.sin(ang)) > 0.5 ? (Math.sin(ang) > 0 ? 1 : -1) : 0;
+    // Rakip cihazda da aynı yöne dönüp aynı animasyonu oynasın.
+    pushEvent({ type: "samuraiStart", facing: p.facing, vy: p.vy });
     playSound("super", { volume: 1, rate: 0.72 });
   };
 
@@ -728,7 +745,10 @@ export default function PvpBattleScene({
       b.x += (t.x - b.x) * k;
       b.y += (t.y - b.y) * k;
       b.facing = t.facing;
+      b.vy = t.vy;
       b.moving = t.moving;
+      // Rakibin samuray-kılıç ultisi animasyonu burada akar.
+      if (b.samuraiUltT > 0) b.samuraiUltT -= dt;
       if (t.moving) b.phase += dt * 10;
       if (t.hp < b.hp - 1) {
         // enemy took a hit on their phone — reflect it here
@@ -976,6 +996,7 @@ export default function PvpBattleScene({
             x: p.x,
             y: p.y,
             facing: p.facing,
+            vy: p.vy,
             moving: p.moving,
             hp: Math.round(p.hp),
             superCharge: p.superCharge,
