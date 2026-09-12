@@ -28,6 +28,7 @@ import {
   findRoyalSlamRig,
   measureBladeAxis,
 } from "@/engine/RoyalSlam";
+import { buildGroundCrack, updateGroundCrack } from "@/engine/GroundCrack";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
 import { SkeletonUtils } from "three-stdlib";
@@ -244,6 +245,7 @@ const RING_POOL = 12;
 const BURST_POOL = 8;
 const BEAM_POOL = 2;
 const SMOKE_POOL = 22;
+const CRACK_POOL = 3;
 
 /* ------------------------------------------------------------------ */
 /* Fighters — the same rigged GLB character used in the street world.  */
@@ -1242,6 +1244,18 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
   const burstRefs = useRef<(THREE.Mesh | null)[]>([]);
   const beamRefs = useRef<(THREE.Mesh | null)[]>([]);
   const smokeRefs = useRef<(THREE.Sprite | null)[]>([]);
+  // Yerdeki 3D yarıklar (kendi nesneleri; sahne köküne eklenir).
+  const scene = useThree((s) => s.scene);
+  const cracks = useMemo(
+    () => Array.from({ length: CRACK_POOL }, () => buildGroundCrack()),
+    [],
+  );
+  useEffect(() => {
+    for (const crack of cracks) scene.add(crack.group);
+    return () => {
+      for (const crack of cracks) crack.group.removeFromParent();
+    };
+  }, [cracks, scene]);
   // Canvas textures for the floating damage numbers — created once.
   const textTextures = useMemo(
     () =>
@@ -1274,6 +1288,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
     let bi = 0;
     let mi = 0;
     let si = 0;
+    let xi = 0;
 
     for (const fx of fxs) {
       if (fx.ttl <= 0) continue;
@@ -1331,19 +1346,19 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         }
         mi++;
       } else if (fx.kind === "samuraiCrack") {
-        const m = beamRefs.current[mi];
-        if (m) {
-          m.visible = true;
-          const dx = (fx.x2 - fx.x1) / S;
-          const dz = (fx.y2 - fx.y1) / S;
-          const len = Math.hypot(dx, dz) || 1;
-          m.position.set((fx.x1 + fx.x2) / (2 * S), 0.11, (fx.y1 + fx.y2) / (2 * S));
-          m.scale.set(len, 1.8, 1.8);
-          m.rotation.y = Math.atan2(dz, dx);
-          (m.material as THREE.MeshBasicMaterial).color.set("#fbbf24");
-          (m.material as THREE.MeshBasicMaterial).opacity = t;
+        // Yerin gerçekten yarılması (3D): yanık leke + iki yana kırılmış
+        // taş plakalar + akkor çekirdek + ilerleyen uç parlaması + taşlar.
+        const crack = cracks[xi];
+        if (crack) {
+          updateGroundCrack(crack, {
+            x1: fx.x1 / S,
+            y1: fx.y1 / S,
+            x2: fx.x2 / S,
+            y2: fx.y2 / S,
+            t,
+          });
         }
-        mi++;
+        xi++;
       } else {
         // smoke — soft puffs that rise, spread and fade
         const s = smokeRefs.current[si];
@@ -1378,6 +1393,9 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
     for (let i = si; i < SMOKE_POOL; i++) {
       const s = smokeRefs.current[i];
       if (s) s.visible = false;
+    }
+    for (let i = xi; i < CRACK_POOL; i++) {
+      cracks[i].group.visible = false;
     }
   });
 

@@ -382,7 +382,7 @@ export default function PvpBattleScene({
         break;
       }
       case "samuraiCrack":
-        addFx({ kind: "samuraiCrack", x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2, ttl: 0.62, maxTtl: 0.62 });
+        addFx({ kind: "samuraiCrack", x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2, ttl: 1.25, maxTtl: 1.25 });
         if (ev.hit) damageMe(ev.dmg);
         break;
     }
@@ -705,10 +705,15 @@ export default function PvpBattleScene({
             p.samuraiUltHit = true;
             const hit = Math.hypot(b.x - p.x, b.y - p.y) < 620;
             const ang = Math.atan2(b.y - p.y, b.x - p.x);
-            const x2 = p.x + Math.cos(ang) * 620;
-            const y2 = p.y + Math.sin(ang) * 620;
-            addFx({ kind: "samuraiCrack", x1: p.x, y1: p.y, x2, y2, ttl: 0.62, maxTtl: 0.62 });
-            pushEvent({ type: "samuraiCrack", x1: p.x, y1: p.y, x2, y2, dmg: SAMURAI_ULTIMATE_DAMAGE, hit });
+            // Yarık kılıcın yere indiği noktadan başlar (rakibe doğru).
+            const dirX = Math.cos(ang);
+            const dirY = Math.sin(ang);
+            const impactX = p.x + dirX * 50;
+            const impactY = p.y + dirY * 50;
+            const x2 = p.x + dirX * 620;
+            const y2 = p.y + dirY * 620;
+            addFx({ kind: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, ttl: 1.25, maxTtl: 1.25 });
+            pushEvent({ type: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, dmg: SAMURAI_ULTIMATE_DAMAGE, hit });
             if (hit) {
               floatText(b.x, b.y - 130, `-${SAMURAI_ULTIMATE_DAMAGE}`, "#fbbf24");
               b.lastHitAt = performance.now();

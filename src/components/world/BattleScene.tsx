@@ -973,9 +973,29 @@ export default function BattleScene({
         const progress = 1 - Math.max(0, p.samuraiUltT) / 0.82;
         if (!p.samuraiUltHit && progress > 0.62) {
           p.samuraiUltHit = true;
-          addFx({ kind: "samuraiCrack", x1: p.x, y1: p.y, x2: targetX, y2: targetY, ttl: 0.62, maxTtl: 0.62 });
+          // Yarık, kılıcın YERE İNDİĞİ noktadan (karakterin önünden) başlar
+          // ve rakibe doğru ilerler.
+          const katanaAng = Math.atan2(targetY - p.y, targetX - p.x);
+          const dirX = Math.cos(katanaAng);
+          const dirY = Math.sin(katanaAng);
+          const impactX = p.x + dirX * 50;
+          const impactY = p.y + dirY * 50;
+          const reach = Math.max(180, Math.hypot(targetX - p.x, targetY - p.y) + 50);
+          addFx({
+            kind: "samuraiCrack",
+            x1: impactX,
+            y1: impactY,
+            x2: p.x + dirX * reach,
+            y2: p.y + dirY * reach,
+            ttl: 1.25,
+            maxTtl: 1.25,
+          });
+          burstFx(impactX, impactY, 90, "#fbbf24", 0.4);
+          smokeFx(impactX, impactY, 4, 80);
+          for (let s = 1; s <= 3; s++) {
+            smokeFx(impactX + dirX * 55 * s, impactY + dirY * 55 * s, 2, 70);
+          }
           damageEnemy(p, b, SAMURAI_ULTIMATE_DAMAGE);
-          burstFx(targetX, targetY, 120, "#fbbf24", 0.45);
           playSound("hit", { volume: 1, rate: 0.7 });
         }
         p.moving = false;
@@ -1193,9 +1213,24 @@ export default function BattleScene({
         const progress = 1 - Math.max(0, b.samuraiUltT) / 0.82;
         if (!b.samuraiUltHit && progress > 0.62) {
           b.samuraiUltHit = true;
-          addFx({ kind: "samuraiCrack", x1: b.x, y1: b.y, x2: p.x, y2: p.y, ttl: 0.62, maxTtl: 0.62 });
+          const katanaAng = Math.atan2(p.y - b.y, p.x - b.x);
+          const dirX = Math.cos(katanaAng);
+          const dirY = Math.sin(katanaAng);
+          const impactX = b.x + dirX * 50;
+          const impactY = b.y + dirY * 50;
+          const reach = Math.max(180, Math.hypot(p.x - b.x, p.y - b.y) + 50);
+          addFx({
+            kind: "samuraiCrack",
+            x1: impactX,
+            y1: impactY,
+            x2: b.x + dirX * reach,
+            y2: b.y + dirY * reach,
+            ttl: 1.25,
+            maxTtl: 1.25,
+          });
+          burstFx(impactX, impactY, 90, "#fbbf24", 0.4);
+          smokeFx(impactX, impactY, 3, 70);
           damageEnemy(b, p, SAMURAI_ULTIMATE_DAMAGE);
-          burstFx(p.x, p.y, 120, "#fbbf24", 0.45);
         }
       }
       // The ult fires the moment the bar is full — unless the target hides
