@@ -448,6 +448,7 @@ export default function BattleScene({
     ohp: HP,
     pc: 0,
     oc: 0,
+    sc: 0,
     atkReady: true,
     hidden: false,
   });
@@ -456,6 +457,7 @@ export default function BattleScene({
     ohp: -1,
     pc: -1,
     oc: -1,
+    sc: -1,
     atkReady: false,
     hidden: false,
   });
@@ -959,6 +961,11 @@ export default function BattleScene({
           else { vx = 0; vy = dy > 0 ? 1 : -1; }
         }
       }
+      // Samuray 2. ultisi hasar vurmanın yanında zamanla da dolar (PvP
+      // arenasındaki ile aynı) — yoksa ult hiç erişilemiyor görünüyordu.
+      if (isSamuraiFighter(p)) {
+        p.samuraiCharge = Math.min(1, p.samuraiCharge + dt * 0.16);
+      }
       if (p.samuraiUltT > 0) {
         p.samuraiUltT -= dt;
         const targetX = b.x;
@@ -1260,6 +1267,7 @@ export default function BattleScene({
       const ohp = Math.round(b.hp / 5) * 5;
       const pc = Math.round(p.superCharge * 20) / 20;
       const oc = Math.round(b.superCharge * 20) / 20;
+      const sc = Math.round(p.samuraiCharge * 20) / 20;
       const atkReady = p.atkCd <= 0;
       // Bush stealth: the player knows they are hidden whenever the bot can no
       // longer see them — clear, in-your-face feedback that you went invisible.
@@ -1270,11 +1278,12 @@ export default function BattleScene({
         ohp !== lh.ohp ||
         pc !== lh.pc ||
         oc !== lh.oc ||
+        sc !== lh.sc ||
         atkReady !== lh.atkReady ||
         hidden !== lh.hidden
       ) {
-        lastHudRef.current = { ph, ohp, pc, oc, atkReady, hidden };
-        setHud({ ph, ohp, pc, oc, atkReady, hidden });
+        lastHudRef.current = { ph, ohp, pc, oc, sc, atkReady, hidden };
+        setHud({ ph, ohp, pc, oc, sc, atkReady, hidden });
       }
     };
 

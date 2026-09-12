@@ -22,6 +22,12 @@ import {
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
 import { useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
+import {
+  attachSamuraiKatana,
+  applySamuraiSlamPose,
+  findSamuraiRig,
+  type SamuraiKatana,
+} from "@/engine/SamuraiKatana";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
 import { SkeletonUtils } from "three-stdlib";
@@ -266,43 +272,21 @@ function GlbFighterBodyCore({
   const { actions } = useAnimations(animations, groupRef);
   const movingRef = useRef(fighter.current.moving);
   const previousPosition = useRef({ x: fighter.current.x, y: fighter.current.y });
-  const samuraiRest = useRef(new WeakMap<THREE.Object3D, THREE.Euler>());
-  const samuraiBones = useMemo(() => {
-    const found: { leftUpper?: THREE.Object3D; rightUpper?: THREE.Object3D; leftFore?: THREE.Object3D; rightFore?: THREE.Object3D } = {};
-    clone.traverse((obj) => {
-      if (!(obj as THREE.Bone).isBone) return;
-      const n = obj.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (!found.leftUpper && /left.*upperarm|upperarm.*left/.test(n)) found.leftUpper = obj;
-      if (!found.rightUpper && /right.*upperarm|upperarm.*right/.test(n)) found.rightUpper = obj;
-      if (!found.leftFore && /left.*forearm|forearm.*left/.test(n)) found.leftFore = obj;
-      if (!found.rightFore && /right.*forearm|forearm.*right/.test(n)) found.rightFore = obj;
-    });
-    return found;
-  }, [clone]);
-  const applySamuraiPose = (active: boolean, progress: number) => {
-    const bones = Object.values(samuraiBones).filter(Boolean) as THREE.Object3D[];
-    for (const bone of bones) {
-      let rest = samuraiRest.current.get(bone);
-      if (!rest) {
-        rest = bone.rotation.clone();
-        samuraiRest.current.set(bone, rest);
-      }
-      bone.rotation.copy(rest);
-    }
-    if (!active) return;
-    const swing = Math.sin(Math.min(1, progress) * Math.PI);
-    const drive = swing * 1.25;
-    if (samuraiBones.leftUpper) {
-      samuraiBones.leftUpper.rotation.x += drive * 0.58;
-      samuraiBones.leftUpper.rotation.z -= drive * 0.42;
-    }
-    if (samuraiBones.rightUpper) {
-      samuraiBones.rightUpper.rotation.x += drive * 0.58;
-      samuraiBones.rightUpper.rotation.z += drive * 0.42;
-    }
-    if (samuraiBones.leftFore) samuraiBones.leftFore.rotation.x += drive * 0.9;
-    if (samuraiBones.rightFore) samuraiBones.rightFore.rotation.x += drive * 0.9;
-  };
+  // Samuray kostümü: sağ elde katana + iki elli yere vurma pozu.
+  const samurai = isSamuraiFighter(fighter.current);
+  const samuraiRig = useMemo(() => findSamuraiRig(clone), [clone]);
+  const katanaRef = useRef<SamuraiKatana | null>(null);
+  const katanaCalibrated = useRef(false);
+  useEffect(() => {
+    if (!samurai || !samuraiRig.rightHand) return;
+    const katana = attachSamuraiKatana(clone, samuraiRig);
+    katanaRef.current = katana;
+    katanaCalibrated.current = false;
+    return () => {
+      katana?.dispose();
+      katanaRef.current = null;
+    };
+  }, [samurai, samuraiRig, clone]);
   const arenaEffects = useRoyalWarriorEffects(
     clone,
     skinUrl,
@@ -376,8 +360,19 @@ function GlbFighterBodyCore({
     previousPosition.current.x = f.x;
     previousPosition.current.y = f.y;
     const next: "idle" | "walk" = actuallyMoving ? "walk" : "idle";
-    const samuraiActive = isSamuraiFighter(f) && f.samuraiUltT > 0;
-    applySamuraiPose(samuraiActive, samuraiActive ? 1 - f.samuraiUltT / 0.82 : 0);
+    // Kılıç sapı/hizası bir kez, karakter hazır Idle pozundayken ölçülür.
+    if (katanaRef.current && !katanaCalibrated.current) {
+      katanaRef.current.calibrate();
+      katanaCalibrated.current = true;
+    }
+    const samuraiActive = samurai && f.samuraiUltT > 0;
+    applySamuraiSlamPose({
+      rig: samuraiRig,
+      katana: katanaRef.current,
+      progress: samuraiActive ? 1 - f.samuraiUltT / 0.82 : 0,
+      facing: f.facing,
+      active: samuraiActive,
+    });
     if (next === currentClip.current) return;
     const from =
       actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];

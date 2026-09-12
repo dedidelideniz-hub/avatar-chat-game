@@ -284,6 +284,7 @@ export default function PvpBattleScene({
     ohp: HP,
     pc: 0,
     oc: 0,
+    sc: 0,
     atkReady: true,
     hidden: false,
   });
@@ -292,6 +293,7 @@ export default function PvpBattleScene({
     ohp: -1,
     pc: -1,
     oc: -1,
+    sc: -1,
     atkReady: false,
     hidden: false,
   });
@@ -993,6 +995,7 @@ export default function PvpBattleScene({
         const ohp = Math.round(bot.current.hp / 5) * 5;
         const pc = Math.round(player.current.superCharge * 20) / 20;
         const oc = Math.round(bot.current.superCharge * 20) / 20;
+        const sc = Math.round(player.current.samuraiCharge * 20) / 20;
         const atkReady = player.current.atkCd <= 0;
         // Bush stealth: the player knows they are hidden whenever the remote
         // opponent can no longer see them — clear "you went invisible" feedback.
@@ -1003,11 +1006,12 @@ export default function PvpBattleScene({
           ohp !== lh.ohp ||
           pc !== lh.pc ||
           oc !== lh.oc ||
+          sc !== lh.sc ||
           atkReady !== lh.atkReady ||
           hidden !== lh.hidden
         ) {
-          lastHudRef.current = { ph, ohp, pc, oc, atkReady, hidden };
-          setHud({ ph, ohp, pc, oc, atkReady, hidden });
+          lastHudRef.current = { ph, ohp, pc, oc, sc, atkReady, hidden };
+          setHud({ ph, ohp, pc, oc, sc, atkReady, hidden });
         }
       } catch (err) {
         console.error("PvP döngüsü hatası:", err);
