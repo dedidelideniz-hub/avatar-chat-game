@@ -26,15 +26,16 @@ const LIFT = 0.03; // şerit kenarlarının hafif kalkması (hacim)
 const BLADE_H = 0.28; // yükselen kor diliminin yüksekliği
 const LIFE = 1.25; // toplam ömür (saniye) — sim tarafındaki ttl ile aynı
 const OPEN_DUR = 0.16; // vuruş noktasından rakibe doğru açılma süresi
-const HOLD = 0.5; // açıldıktan sonra sabit kaldığı süre
+const HOLD = 0.62; // açıldıktan sonra sabit kaldığı süre (kor izi daha çok okunsun)
 const DEBRIS_COUNT = 16;
 const DUST_COUNT = 30;
 const GRAVITY = 7;
 const DEFAULT_PIXEL_SCALE = 480;
 const GROUND_Y = 0.012; // zeminin hafif üstünde dur (batmayı önler)
 const CAP_START_R = 0.58; // vuruş noktası patlama halkası yarıçapı
-const CAP_END_R = 0.46; // hat sonu parlama halkası yarıçapı
-const CAP_DUR = 0.45; // halkaların genişleme süresi
+const CAP_END_R = 0.66; // hat sonu (düşmana çarpan) patlama halkası yarıçapı
+const CAP_DUR = 0.5; // halkaların genişleme süresi
+const CAP_END_BOOST = 1.4; // hat sonu halkasının parlaklık çarpanı
 
 const UP = new THREE.Vector3(0, 1, 0);
 const DOWN = new THREE.Vector3(0, -1, 0);
@@ -168,6 +169,7 @@ const CAP_FRAG = `
 varying vec2 vUv;
 uniform float uProg;
 uniform float uFade;
+uniform float uBoost;
 uniform vec3 uHot;
 uniform vec3 uMid;
 void main() {
@@ -177,7 +179,9 @@ void main() {
   float edge = 1.0 - smoothstep(0.74, 1.0, d);
   float inten = (core * 1.25 + ring * 1.15) * edge * uFade;
   vec3 col = mix(uMid, uHot, clamp(core + ring * 0.6, 0.0, 1.0));
-  gl_FragColor = vec4(col, clamp(inten, 0.0, 1.0));
+  // Parlaklık çarpanı RENGE uygulanır: additive blending'de renk doğrudan
+  // eklenir, böylece alfa kırpılmasına takılmadan daha parlak yanar.
+  gl_FragColor = vec4(col * uBoost, clamp(inten, 0.0, 1.0));
 }
 `;
 
@@ -238,7 +242,7 @@ function makeDustMaterial(): THREE.ShaderMaterial {
   });
 }
 
-function makeCapMaterial(): THREE.ShaderMaterial {
+function makeCapMaterial(boost: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -250,6 +254,7 @@ function makeCapMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uProg: { value: 0 },
       uFade: { value: 0 },
+      uBoost: { value: boost },
       uHot: { value: new THREE.Color("#fff0cc") },
       uMid: { value: new THREE.Color("#ff7a12") },
     },
@@ -397,7 +402,8 @@ export interface GroundCrack {
   dustMat: THREE.ShaderMaterial;
   capStart: THREE.Mesh;
   capEnd: THREE.Mesh;
-  capMat: THREE.ShaderMaterial;
+  capMatStart: THREE.ShaderMaterial;
+  capMatEnd: THREE.ShaderMaterial;
   /** Yarık ortasına vuran geçici ışık — sahne KÖKÜNE eklenmeli. */
   light: THREE.PointLight;
   /** Arena3D'nin yeni efekt başına ayarladığı zemin bilgisi. */
@@ -448,9 +454,10 @@ export function buildGroundCrack(): GroundCrack {
   group.add(dust);
 
   // Vuruş noktası ve hat sonu için dairesel patlama/parlama halkaları.
-  const capMat = makeCapMaterial();
-  const capStart = new THREE.Mesh(capGeometry, capMat);
-  const capEnd = new THREE.Mesh(capGeometry, capMat);
+  const capMatStart = makeCapMaterial(1);
+  const capMatEnd = makeCapMaterial(CAP_END_BOOST);
+  const capStart = new THREE.Mesh(capGeometry, capMatStart);
+  const capEnd = new THREE.Mesh(capGeometry, capMatEnd);
   capStart.frustumCulled = false;
   capEnd.frustumCulled = false;
   capStart.renderOrder = 5;
@@ -517,7 +524,8 @@ export function buildGroundCrack(): GroundCrack {
     dustMat,
     capStart,
     capEnd,
-    capMat,
+    capMatStart,
+    capMatEnd,
     light,
     groundNormal: new THREE.Vector3(0, 1, 0),
     groundY: 0,
@@ -568,7 +576,8 @@ export function updateGroundCrack(crack: GroundCrack, u: GroundCrackUpdate): voi
     elapsed <= holdEnd
       ? 1
       : Math.max(0, 1 - (elapsed - holdEnd) / Math.max(0.001, LIFE - holdEnd));
-  const fade = collapse * collapse;
+  // Sönme: kare yerine yumuşak eğri → iz, sönerken daha uzun okunur.
+  const fade = collapse * (0.35 + 0.65 * collapse);
 
   // Yarık yönünde açılır; sonra ölçek küçülerek yok olur.
   crack.strip.scale.set(len, 1, 1);
@@ -589,8 +598,11 @@ export function updateGroundCrack(crack: GroundCrack, u: GroundCrackUpdate): voi
   setBlade(crack.bladeMatR);
 
   // ── Vuruş noktası + hat sonu patlama halkaları ───────────────────────
-  crack.capMat.uniforms.uProg.value = Math.min(1, elapsed / CAP_DUR);
-  crack.capMat.uniforms.uFade.value = fade;
+  const capProg = Math.min(1, elapsed / CAP_DUR);
+  crack.capMatStart.uniforms.uProg.value = capProg;
+  crack.capMatStart.uniforms.uFade.value = fade;
+  crack.capMatEnd.uniforms.uProg.value = capProg;
+  crack.capMatEnd.uniforms.uFade.value = fade;
   crack.capStart.scale.setScalar(CAP_START_R);
   crack.capEnd.scale.setScalar(CAP_END_R);
   crack.capEnd.position.set(len, 0, 0);
