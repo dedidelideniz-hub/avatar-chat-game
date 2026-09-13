@@ -1278,6 +1278,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
   const smokeRefs = useRef<(THREE.Sprite | null)[]>([]);
   // Yerdeki 3D yarıklar (kendi nesneleri; sahne köküne eklenir).
   const scene = useThree((s) => s.scene);
+  const gl = useThree((s) => s.gl);
   const cracks = useMemo(
     () => Array.from({ length: CRACK_POOL }, () => buildGroundCrack()),
     [],
@@ -1379,8 +1380,8 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         }
         mi++;
       } else if (fx.kind === "samuraiCrack") {
-        // Yerin gerçekten yarılması (3D): yanık leke + iki yana kırılmış
-        // taş plakalar + akkor çekirdek + ilerleyen uç parlaması + taşlar.
+        // Yerin gerçekten yarılması (3D): additive magma şeridi + yükselen
+        // kor dilimleri + yerçekimli 3D taş parçaları + toz bulutu.
         const crack = cracks[xi];
         if (crack) {
           updateGroundCrack(crack, {
@@ -1389,6 +1390,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
             x2: fx.x2 / S,
             y2: fx.y2 / S,
             t,
+            pixelScale: (gl.domElement.height || 960) * 0.5,
           });
         }
         xi++;
