@@ -38,6 +38,12 @@ import {
   updateGroundCrack,
 } from "@/engine/GroundCrack";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
+import {
+  applyFlash,
+  HIT_FLASH_MS,
+  snapshotFlash,
+  type FlashBase,
+} from "@/engine/HitFlash";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
@@ -254,6 +260,10 @@ const BURST_POOL = 8;
 const BEAM_POOL = 2;
 const SMOKE_POOL = 22;
 const CRACK_POOL = 3;
+
+/* Brawl tarzı vuruş geri bildirimi */
+const HIT_SPARKS = 10; // vuruş başına kıvılcım tanesi
+const SPARK_LIFE = 0.42; // kıvılcım ömrü (saniye)
 
 /* ------------------------------------------------------------------ */
 /* Fighters — the same rigged GLB character used in the street world.  */
@@ -654,7 +664,23 @@ function FighterRig({
   const armR = useRef<THREE.Group>(null);
   const legL = useRef<THREE.Group>(null);
   const legR = useRef<THREE.Group>(null);
-  const flashMat = useRef<THREE.MeshStandardMaterial>(null);
+  // Vuruş geri bildirimi: beyaz parlama + kıvılcım havuzu.
+  const flashBase = useRef(new Map<THREE.Material, FlashBase>());
+  const flashSeen = useRef(-9999);
+  const flashStart = useRef(0);
+  const flashOn = useRef(false);
+  const sparkRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const sparkSeen = useRef(-9999);
+  const sparkStart = useRef(0);
+  const sparkData = useRef(
+    Array.from({ length: HIT_SPARKS }, () => ({
+      a: 0,
+      s: 1,
+      u: 1,
+      sz: 0.05,
+      c: "#ffe066",
+    })),
+  );
   const hpFill = useRef<THREE.Sprite>(null);
   const hpGhost = useRef<THREE.Sprite>(null);
   const barGroup = useRef<THREE.Group>(null);
@@ -858,9 +884,60 @@ function FighterRig({
         ? Math.abs(Math.sin(t)) * 0.09
         : Math.sin(performance.now() / 420) * 0.018;
     }
-    if (flashMat.current) {
-      const elapsed = performance.now() - f.lastHitAt;
-      flashMat.current.opacity = Math.max(0, 0.85 * (1 - elapsed / 350));
+    // ── White flash: düşman hasar aldığı an model kaplaması 0.1s beyaza
+    // döner, sonra orijinal kaplamasına geri döner (emissive overlay). ──
+    const now = performance.now();
+    if (f.lastHitAt !== flashSeen.current) {
+      flashSeen.current = f.lastHitAt;
+      flashStart.current = now;
+      if (!flashOn.current && bodyWrap.current) {
+        snapshotFlash(bodyWrap.current, flashBase.current);
+        flashOn.current = true;
+      }
+    }
+    if (flashOn.current && bodyWrap.current) {
+      const k = 1 - (now - flashStart.current) / HIT_FLASH_MS;
+      if (k > 0) {
+        applyFlash(bodyWrap.current, flashBase.current, k);
+      } else {
+        applyFlash(bodyWrap.current, flashBase.current, 0);
+        flashOn.current = false;
+      }
+    }
+    // ── Impact sparks: düşmanın merkezinden dışa saçılan kor ──
+    if (f.lastHitAt !== sparkSeen.current) {
+      sparkSeen.current = f.lastHitAt;
+      sparkStart.current = now;
+      for (let i = 0; i < HIT_SPARKS; i++) {
+        const d = sparkData.current[i];
+        d.a = (i / HIT_SPARKS) * Math.PI * 2 + Math.random() * 1.1;
+        d.s = 1.0 + Math.random() * 1.7;
+        d.u = 1.1 + Math.random() * 1.7;
+        d.sz = 0.03 + Math.random() * 0.035;
+        d.c = i % 2 === 0 ? "#ffe066" : "#ff9a2e";
+      }
+    }
+    const se = (now - sparkStart.current) / 1000;
+    const sparksAlive = se < SPARK_LIFE;
+    for (let i = 0; i < HIT_SPARKS; i++) {
+      const m = sparkRefs.current[i];
+      if (!m) continue;
+      if (!sparksAlive) {
+        if (m.visible) m.visible = false;
+        continue;
+      }
+      const d = sparkData.current[i];
+      const k = 1 - se / SPARK_LIFE;
+      m.visible = true;
+      m.position.set(
+        Math.cos(d.a) * d.s * se,
+        Math.max(-0.2, d.u * se - 4.5 * se * se),
+        Math.sin(d.a) * d.s * se,
+      );
+      m.scale.setScalar(d.sz * (0.45 + k));
+      const mat = m.material as THREE.MeshBasicMaterial;
+      mat.opacity = k;
+      mat.color.set(d.c);
     }
     // HP bar pops briefly white when the fighter is hit
     const justHit = performance.now() - f.lastHitAt < 260;
@@ -1026,17 +1103,28 @@ function FighterRig({
           </Suspense>
         </GlbModelBoundary>
       </group>
-      {/* white hit-flash overlay */}
-      <RoundedBox args={[0.78, 1.7, 0.55]} radius={0.22} position={[0, 0.85, 0]}>
-        <meshStandardMaterial
-          ref={flashMat}
-          color="#ffffff"
-          transparent
-          opacity={0}
-          roughness={1}
-          depthWrite={false}
-        />
-      </RoundedBox>
+      {/* Vuruş kıvılcımları: karakterin merkezinden dışa saçılan küçük kor
+          parçacıkları. Beyaz parlama artık model kaplamasına uygulanıyor. */}
+      <group position={[0, 0.85, 0]}>
+        {Array.from({ length: HIT_SPARKS }).map((_, i) => (
+          <mesh
+            key={`sp${i}`}
+            ref={(el) => {
+              sparkRefs.current[i] = el;
+            }}
+            visible={false}
+          >
+            <sphereGeometry args={[1, 6, 6]} />
+            <meshBasicMaterial
+              color="#ffe066"
+              transparent
+              opacity={0}
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+        ))}
+      </group>
     </group>
       {/* spinning "this is you" ring under the player's feet */}
       {isPlayer && (
@@ -1275,6 +1363,7 @@ function drawTextSprite(sprite: THREE.Sprite, text: string, color: string) {
 }
 
 function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
+  // FX havuzu (metin, halka, patlama, ışın, duman, yarık).
   const textRefs = useRef<(THREE.Sprite | null)[]>([]);
   const ringRefs = useRef<(THREE.Mesh | null)[]>([]);
   const burstRefs = useRef<(THREE.Mesh | null)[]>([]);
@@ -1350,8 +1439,12 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
             s.userData.key = key;
           }
           s.visible = true;
-          s.position.set(fx.x / S, 1.7 + (1 - t) * 1.5, fx.y / S);
-          (s.material as THREE.SpriteMaterial).opacity = t;
+          // Damage Text Pop: ilk çıktığı an büyür, sonra süzülüp söner.
+          const pop = t > 0.72 ? (t - 0.72) / 0.28 : 0;
+          const sc = 1 + 0.7 * pop;
+          s.position.set(fx.x / S, 1.7 + (1 - t) * 1.8, fx.y / S);
+          s.scale.set(1.7 * HUD * sc, 0.64 * HUD * sc, 1);
+          (s.material as THREE.SpriteMaterial).opacity = Math.min(1, t * 1.7);
         }
         ti++;
       } else if (fx.kind === "ring") {
