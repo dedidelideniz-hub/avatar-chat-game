@@ -32,7 +32,11 @@ import {
   findRoyalSlamRig,
   measureBladeAxis,
 } from "@/engine/RoyalSlam";
-import { buildGroundCrack, updateGroundCrack } from "@/engine/GroundCrack";
+import {
+  buildGroundCrack,
+  sampleGroundCrack,
+  updateGroundCrack,
+} from "@/engine/GroundCrack";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
 import { SkeletonUtils } from "three-stdlib";
@@ -1279,14 +1283,24 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
   // Yerdeki 3D yarıklar (kendi nesneleri; sahne köküne eklenir).
   const scene = useThree((s) => s.scene);
   const gl = useThree((s) => s.gl);
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const groundRef = useRef<THREE.Object3D[] | null>(null);
   const cracks = useMemo(
     () => Array.from({ length: CRACK_POOL }, () => buildGroundCrack()),
     [],
   );
   useEffect(() => {
-    for (const crack of cracks) scene.add(crack.group);
+    for (const crack of cracks) {
+      scene.add(crack.group);
+      // Işık sahne kökünde tutulur: grup gizlense bile ışık sayısı sabit
+      // kalır, böylece ultide materyal yeniden derlemesi (takılma) olmaz.
+      scene.add(crack.light);
+    }
     return () => {
-      for (const crack of cracks) crack.group.removeFromParent();
+      for (const crack of cracks) {
+        crack.group.removeFromParent();
+        crack.light.removeFromParent();
+      }
     };
   }, [cracks, scene]);
   // Canvas textures for the floating damage numbers — created once.
@@ -1384,6 +1398,28 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
         // kor dilimleri + yerçekimli 3D taş parçaları + toz bulutu.
         const crack = cracks[xi];
         if (crack) {
+          // Yeni yarık başlarken zemini BİR KEZ örnekle (yükseklik + normal):
+          // çatlak zemine tam oturur, eğimlerde doğru açıyla uzanır.
+          if (crack.lastFx !== fx) {
+            if (!groundRef.current || groundRef.current.length === 0) {
+              const list: THREE.Object3D[] = [];
+              scene.traverse((o) => {
+                const m = o as THREE.Mesh;
+                if (m.isMesh && /terrain|ground|decal/i.test(m.name || "")) {
+                  list.push(m);
+                }
+              });
+              groundRef.current = list;
+            }
+            sampleGroundCrack(
+              crack,
+              fx,
+              raycaster,
+              groundRef.current,
+              (fx.x1 + fx.x2) / 2 / S,
+              (fx.y1 + fx.y2) / 2 / S,
+            );
+          }
           updateGroundCrack(crack, {
             x1: fx.x1 / S,
             y1: fx.y1 / S,
@@ -1431,6 +1467,7 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
     }
     for (let i = xi; i < CRACK_POOL; i++) {
       cracks[i].group.visible = false;
+      cracks[i].light.intensity = 0;
     }
   });
 

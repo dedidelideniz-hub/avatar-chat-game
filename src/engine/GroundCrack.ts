@@ -31,6 +31,16 @@ const DEBRIS_COUNT = 16;
 const DUST_COUNT = 30;
 const GRAVITY = 7;
 const DEFAULT_PIXEL_SCALE = 480;
+const GROUND_Y = 0.012; // zeminin hafif üstünde dur (batmayı önler)
+const CAP_START_R = 0.58; // vuruş noktası patlama halkası yarıçapı
+const CAP_END_R = 0.46; // hat sonu parlama halkası yarıçapı
+const CAP_DUR = 0.45; // halkaların genişleme süresi
+
+const UP = new THREE.Vector3(0, 1, 0);
+const DOWN = new THREE.Vector3(0, -1, 0);
+const alignQuat = new THREE.Quaternion();
+const yawQuat = new THREE.Quaternion();
+const rayOrigin = new THREE.Vector3();
 
 /* Prosedürel gürültü — hem magma şeridi hem dilimler kullanır. */
 const NOISE_GLSL = `
@@ -146,12 +156,40 @@ void main() {
 }
 `;
 
+const CAP_VERT = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const CAP_FRAG = `
+varying vec2 vUv;
+uniform float uProg;
+uniform float uFade;
+uniform vec3 uHot;
+uniform vec3 uMid;
+void main() {
+  float d = length(vUv - 0.5) * 2.0;
+  float core = 1.0 - smoothstep(0.0, 0.42, d);
+  float ring = exp(-pow((d - uProg) * 6.0, 2.0)) * (1.0 - uProg * 0.55);
+  float edge = 1.0 - smoothstep(0.74, 1.0, d);
+  float inten = (core * 1.25 + ring * 1.15) * edge * uFade;
+  vec3 col = mix(uMid, uHot, clamp(core + ring * 0.6, 0.0, 1.0));
+  gl_FragColor = vec4(col, clamp(inten, 0.0, 1.0));
+}
+`;
+
 function makeStripMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
     uniforms: {
       uTime: { value: 0 },
       uOpen: { value: 0 },
@@ -172,6 +210,9 @@ function makeBladeMaterial(): THREE.ShaderMaterial {
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
     uniforms: {
       uTime: { value: 0 },
       uOpen: { value: 0 },
@@ -194,6 +235,26 @@ function makeDustMaterial(): THREE.ShaderMaterial {
     },
     vertexShader: DUST_VERT,
     fragmentShader: DUST_FRAG,
+  });
+}
+
+function makeCapMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+    uniforms: {
+      uProg: { value: 0 },
+      uFade: { value: 0 },
+      uHot: { value: new THREE.Color("#fff0cc") },
+      uMid: { value: new THREE.Color("#ff7a12") },
+    },
+    vertexShader: CAP_VERT,
+    fragmentShader: CAP_FRAG,
   });
 }
 
@@ -261,7 +322,26 @@ function buildDustGeometry(): THREE.BufferGeometry {
   return g;
 }
 
+/** Zemin düzleminde, merkezi uv=(0.5,0.5) olan kare (ölçek = çap). */
+function buildCapGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(
+      [-0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5],
+      3,
+    ),
+  );
+  g.setAttribute(
+    "uv",
+    new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2),
+  );
+  g.setIndex([0, 1, 2, 0, 2, 3]);
+  return g;
+}
+
 const debrisGeometry = new THREE.IcosahedronGeometry(0.062, 0);
+const capGeometry = buildCapGeometry();
 
 interface DebrisInfo {
   along: number;
@@ -315,6 +395,15 @@ export interface GroundCrack {
   debrisMat: THREE.MeshStandardMaterial;
   dust: THREE.Points;
   dustMat: THREE.ShaderMaterial;
+  capStart: THREE.Mesh;
+  capEnd: THREE.Mesh;
+  capMat: THREE.ShaderMaterial;
+  /** Yarık ortasına vuran geçici ışık — sahne KÖKÜNE eklenmeli. */
+  light: THREE.PointLight;
+  /** Arena3D'nin yeni efekt başına ayarladığı zemin bilgisi. */
+  groundNormal: THREE.Vector3;
+  groundY: number;
+  lastFx: unknown;
   dummy: THREE.Object3D;
   debrisInfo: DebrisInfo[];
   dustInfo: DustInfo[];
@@ -357,6 +446,21 @@ export function buildGroundCrack(): GroundCrack {
   const dust = new THREE.Points(buildDustGeometry(), dustMat);
   dust.frustumCulled = false;
   group.add(dust);
+
+  // Vuruş noktası ve hat sonu için dairesel patlama/parlama halkaları.
+  const capMat = makeCapMaterial();
+  const capStart = new THREE.Mesh(capGeometry, capMat);
+  const capEnd = new THREE.Mesh(capGeometry, capMat);
+  capStart.frustumCulled = false;
+  capEnd.frustumCulled = false;
+  capStart.renderOrder = 5;
+  capEnd.renderOrder = 5;
+  group.add(capStart, capEnd);
+
+  // Yarık hattının tam ortasına vuran geçici turuncu ışık. Grup değil
+  // sahne köküne eklenir: grup gizlenirken de ışık sayısı sabit kalsın ve
+  // three'nin materyalleri yeniden derlemesine yol açmasın.
+  const light = new THREE.PointLight(new THREE.Color("#ff7a1a"), 0, 5.5, 2);
 
   const rng = makeRng(0x5eed1);
   const debrisInfo: DebrisInfo[] = [];
@@ -411,6 +515,13 @@ export function buildGroundCrack(): GroundCrack {
     debrisMat,
     dust,
     dustMat,
+    capStart,
+    capEnd,
+    capMat,
+    light,
+    groundNormal: new THREE.Vector3(0, 1, 0),
+    groundY: 0,
+    lastFx: null,
     dummy: new THREE.Object3D(),
     debrisInfo,
     dustInfo,
@@ -443,10 +554,13 @@ export function updateGroundCrack(crack: GroundCrack, u: GroundCrackUpdate): voi
   const elapsed = progress * LIFE;
 
   crack.group.visible = true;
-  crack.group.position.set(u.x1, 0, u.y1);
+  crack.group.position.set(u.x1, crack.groundY + GROUND_Y, u.y1);
   // Geometri +X boyunca uzanır; Ry(θ) +X'i (cosθ, 0, −sinθ) yaptığı için
-  // yön eşlemesi atan2(−dz, dx) olmalı.
-  crack.group.rotation.y = Math.atan2(-dz, dx);
+  // yön eşlemesi atan2(−dz, dx) olmalı. Zemin normali verilmişse önce
+  // zemine hizalanır, sonra bu normal etrafında döndürülür.
+  alignQuat.setFromUnitVectors(UP, crack.groundNormal);
+  yawQuat.setFromAxisAngle(UP, Math.atan2(-dz, dx));
+  crack.group.quaternion.copy(alignQuat).multiply(yawQuat);
 
   const open = Math.min(1, elapsed / OPEN_DUR);
   const holdEnd = OPEN_DUR + HOLD;
@@ -473,6 +587,21 @@ export function updateGroundCrack(crack: GroundCrack, u: GroundCrackUpdate): voi
   };
   setBlade(crack.bladeMatL);
   setBlade(crack.bladeMatR);
+
+  // ── Vuruş noktası + hat sonu patlama halkaları ───────────────────────
+  crack.capMat.uniforms.uProg.value = Math.min(1, elapsed / CAP_DUR);
+  crack.capMat.uniforms.uFade.value = fade;
+  crack.capStart.scale.setScalar(CAP_START_R);
+  crack.capEnd.scale.setScalar(CAP_END_R);
+  crack.capEnd.position.set(len, 0, 0);
+
+  // ── Geçici ışık: yarık hattının tam ortası, turuncu parıltı ──────────
+  crack.light.position.set(
+    (u.x1 + u.x2) / 2,
+    crack.groundY + 0.35,
+    (u.y1 + u.y2) / 2,
+  );
+  crack.light.intensity = 6 * fade * (0.55 + 0.45 * open);
 
   // ── 3D taş parçacıkları (yerçekimli, dönerek düşer) ──────────────────
   const dummy = crack.dummy;
@@ -524,4 +653,39 @@ export function updateGroundCrack(crack: GroundCrack, u: GroundCrackUpdate): voi
   dAlpha.needsUpdate = true;
   dSize.needsUpdate = true;
   crack.dustMat.uniforms.uScale.value = u.pixelScale ?? DEFAULT_PIXEL_SCALE;
+}
+
+/**
+ * Yeni bir yarık başlarken zemini BİR KEZ örnekler: çatlağın yüksekliğini ve
+ * normalini bulur, böylece efekt zemine tam oturur, eğimlerde doğru açıyla
+ * uzanır ve zeminin içine batmaz. `targets` çağıran tarafından süzülmüş
+ * (terrain/ground/decal) mesh listesidir. Aynı `fxKey` için tekrar çalışmaz.
+ */
+export function sampleGroundCrack(
+  crack: GroundCrack,
+  fxKey: unknown,
+  raycaster: THREE.Raycaster,
+  targets: THREE.Object3D[],
+  midX: number,
+  midZ: number,
+): void {
+  if (crack.lastFx === fxKey) return;
+  crack.lastFx = fxKey;
+  crack.groundY = 0;
+  crack.groundNormal.set(0, 1, 0);
+  if (targets.length === 0) return;
+
+  rayOrigin.set(midX, 8, midZ);
+  raycaster.set(rayOrigin, DOWN);
+  const hit = raycaster.intersectObjects(targets, false)[0];
+  if (!hit || !hit.face) return;
+
+  crack.groundY = hit.point.y;
+  crack.groundNormal
+    .copy(hit.face.normal)
+    .transformDirection(hit.object.matrixWorld)
+    .normalize();
+  if (crack.groundNormal.y < 0) crack.groundNormal.negate();
+  // Uçurum/dik yüzeylere yapışmasın: neredeyse düz değilse zemine dön.
+  if (crack.groundNormal.y < 0.55) crack.groundNormal.set(0, 1, 0);
 }
