@@ -16,9 +16,11 @@ import {
   Arena3D,
   ATK_CD,
   BUSH_REVEAL_MS,
+  applyHitReaction,
   isHiddenFrom,
   isSamuraiFighter,
   SAMURAI_ULTIMATE_DAMAGE,
+  stepHitStun,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -136,6 +138,9 @@ interface PvpPayload {
   events: PvpEvent[];
   /** Bush stealth: wall-clock timestamp until which the fighter is revealed. */
   revealAt?: number;
+  /** Vuruş sarsıntısı: kalan stun süresi (saniye). Rakip ekranında da
+   *  karakterin titremesi/savrulması için yayınlanır. */
+  stun?: number;
   ts: number;
 }
 
@@ -171,6 +176,10 @@ function newFighter(
     dashVY: 0,
     dashHit: false,
     lastHitAt: -9999,
+    hitStunT: 0,
+    hitStunK: 0,
+    kbVX: 0,
+    kbVY: 0,
     vy: 0,
     revealUntil: -9999,
   };
@@ -262,6 +271,7 @@ export default function PvpBattleScene({
     hp: HP,
     superCharge: 0,
     phase: 0,
+    stun: 0,
   });
   const lastRemoteAt = useRef(0);
   const remoteConnected = useRef(false);
@@ -347,6 +357,9 @@ export default function PvpBattleScene({
     if (resultRef.current || p.hp <= 0) return;
     p.hp = Math.max(0, p.hp - dmg);
     p.lastHitAt = performance.now();
+    // Vuruş tepkisi: ben sarsılır ve rakibin tersine savrulurum (savrulma
+    // hızı yerel simülasyonda çarpışma kontrollü uygulanır).
+    applyHitReaction(p, bot.current.x, bot.current.y, dmg);
     // Taking damage in a bush reveals the victim (Brawl-style).
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
     floatText(p.x, p.y - 130, `-${dmg}`, "#ff6b6b");
@@ -359,6 +372,15 @@ export default function PvpBattleScene({
       void arenaEl.getBoundingClientRect();
       arenaEl.classList.add("battle-shake");
     }
+  };
+
+  /** Rakibe isabet ettim: yerel sarsıntı + vuruş işareti. Hasarı karşı
+   *  telefon uygular; burada sadece anında görünen tepki verilir. */
+  const hitRemote = (dmg: number) => {
+    const b = bot.current;
+    const p = player.current;
+    b.lastHitAt = performance.now();
+    applyHitReaction(b, p.x, p.y, dmg);
   };
 
   /** Apply a one-shot combat event sent by the other phone. */
@@ -437,6 +459,7 @@ export default function PvpBattleScene({
       hp: d.hp,
       superCharge: d.superCharge,
       phase: d.phase,
+      stun: typeof d.stun === "number" ? d.stun : 0,
     };
     // Bush stealth: mirror the opponent's reveal deadline. It travels as a
     // wall-clock timestamp so both phones agree even though
@@ -510,7 +533,7 @@ export default function PvpBattleScene({
     pushEvent({ type: "explode", x: pr.x, y: pr.y, r, dmg: pr.dmg, hit });
     if (hit) {
       floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
-      b.lastHitAt = performance.now();
+      hitRemote(pr.dmg);
       player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
     }
   };
@@ -528,7 +551,7 @@ export default function PvpBattleScene({
     pushEvent({ type: "beam", x1: p.x, y1: p.y, angle: ang, len, dmg: 300, hit });
     if (hit) {
       floatText(b.x, b.y - 130, "-300", "#ff6b6b");
-      b.lastHitAt = performance.now();
+      hitRemote(300);
     }
   };
 
@@ -733,7 +756,7 @@ export default function PvpBattleScene({
             pushEvent({ type: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, dmg: SAMURAI_ULTIMATE_DAMAGE, hit });
             if (hit) {
               floatText(b.x, b.y - 130, `-${SAMURAI_ULTIMATE_DAMAGE}`, "#fbbf24");
-              b.lastHitAt = performance.now();
+              hitRemote(SAMURAI_ULTIMATE_DAMAGE);
             }
           }
         }
@@ -750,10 +773,14 @@ export default function PvpBattleScene({
       // Rakibin samuray-kılıç ultisi animasyonu burada akar.
       if (b.samuraiUltT > 0) b.samuraiUltT -= dt;
       if (t.moving) b.phase += dt * 10;
+      // Rakibin sarsıntısı: kendi telefonundan yayınlanan stun süresi +
+      // yerel vuruş tepkisi. Proxy'de süre kendiliğinden azalır.
+      b.hitStunT = Math.max(b.hitStunT - dt, t.stun);
+      b.hitStunK = b.hitStunT > 0 ? Math.max(b.hitStunK, 1) : 0;
       if (t.hp < b.hp - 1) {
         // enemy took a hit on their phone — reflect it here
         const diff = Math.round(b.hp - t.hp);
-        b.lastHitAt = performance.now();
+        hitRemote(diff);
         floatText(b.x, b.y - 130, `-${diff}`, "#ff6b6b");
         playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
       }
@@ -793,7 +820,8 @@ export default function PvpBattleScene({
       p.atkCd = Math.max(0, p.atkCd - dt);
 
       // run-and-gun: hold the attack button (or Space) to keep firing
-      if (aimRef.current.active && p.atkCd <= 0) {
+      // Sarsılırken ateş edilemez: ulti/beam yiyen karakter bir an "kilitli".
+      if (aimRef.current.active && p.atkCd <= 0 && p.hitStunT <= 0) {
         tryAttack(aimRef.current.dx, aimRef.current.dy);
       }
 
@@ -850,7 +878,12 @@ export default function PvpBattleScene({
           else { vx = 0; vy = dy > 0 ? 1 : -1; }
         }
       }
-      if (p.dashT > 0) {
+      // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
+      // kaybeder; savrulma hareketi burada (çarpışma kontrollü) uygulanır. ──
+      const pStunned = stepHitStun(p, dt, moveFighter);
+      if (pStunned) {
+        // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
+      } else if (p.dashT > 0) {
         p.dashT -= dt;
         moveFighter(p, p.dashVX * 820 * dt, p.dashVY * 820 * dt, dt);
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < 90) {
@@ -858,7 +891,7 @@ export default function PvpBattleScene({
           pushEvent({ type: "dashHit", dmg: 200 });
           floatText(b.x, b.y - 130, "-200", "#ff6b6b");
           burstFx(b.x, b.y - 40, 90, "#e0f2fe", 0.4);
-          b.lastHitAt = performance.now();
+          hitRemote(200);
           playSound("hit", { volume: 0.9, rate: 1.1 });
           player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
         }
@@ -868,7 +901,7 @@ export default function PvpBattleScene({
       }
 
       // --- footsteps while walking ---
-      if (p.moving && p.dashT <= 0) {
+      if (p.moving && p.dashT <= 0 && p.hitStunT <= 0) {
         stepAcc += dt;
         if (stepAcc > 0.3) {
           stepAcc = 0;
@@ -900,7 +933,7 @@ export default function PvpBattleScene({
           } else {
             pushEvent({ type: "hit", dmg: pr.dmg });
             floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
-            b.lastHitAt = performance.now();
+            hitRemote(pr.dmg);
             burstFx(pr.x, pr.y - 40, 60, "#fda4af", 0.3);
             playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
             player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
@@ -1005,6 +1038,8 @@ export default function PvpBattleScene({
             dashVX: p.dashVX,
             dashVY: p.dashVY,
             phase: p.phase,
+            // Rakip ekranında da sarsıntı görünsün diye kalan stun süresi.
+            stun: p.hitStunT,
             projs: ownProjs.current.map((pr) => ({ ...pr })),
             events: pendingEvents.current.map((e) => ({ ...e })),
             // Bush stealth: remaining reveal time as a wall-clock deadline.

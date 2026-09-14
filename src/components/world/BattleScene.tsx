@@ -8,9 +8,11 @@ import {
   Arena3D,
   ATK_CD,
   BUSH_REVEAL_MS,
+  applyHitReaction,
   isHiddenFrom,
   isSamuraiFighter,
   SAMURAI_ULTIMATE_DAMAGE,
+  stepHitStun,
   supportsWebGL,
   type BattleFighter,
   type BattleFx,
@@ -126,6 +128,10 @@ function newFighter(
     dashVY: 0,
     dashHit: false,
     lastHitAt: -9999,
+    hitStunT: 0,
+    hitStunK: 0,
+    kbVX: 0,
+    kbVY: 0,
     vy: 0,
     revealUntil: -9999,
   };
@@ -592,6 +598,9 @@ export default function BattleScene({
     if (target.hp <= 0 || resultRef.current) return;
     target.hp = Math.max(0, target.hp - dmg);
     target.lastHitAt = performance.now();
+    // Vuruş tepkisi: vurulan karakter sarsılır ve vuran taraftan uzağa
+    // savrulur (ulti/beam/dash sert, normal mermi hafif).
+    applyHitReaction(target, attacker.x, attacker.y, dmg);
     // Taking damage in a bush reveals the victim (Brawl-style).
     target.revealUntil = performance.now() + BUSH_REVEAL_MS;
     floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
@@ -903,7 +912,8 @@ export default function BattleScene({
       // Run-and-gun: keep firing while the attack button is held (or Space
       // is down) so you can shoot while walking with the joystick. The shot
       // follows the dragged aim direction; zero means auto-aim.
-      if (aimRef.current.active && p.atkCd <= 0) {
+      // Sarsılırken ateş edilemez: ulti/beam yiyen karakter bir an "kilitli".
+      if (aimRef.current.active && p.atkCd <= 0 && p.hitStunT <= 0) {
         tryAttack(aimRef.current.dx, aimRef.current.dy);
       }
 
@@ -971,6 +981,9 @@ export default function BattleScene({
       if (isSamuraiFighter(p)) {
         p.samuraiCharge = Math.min(1, p.samuraiCharge + dt * 0.16);
       }
+      // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
+      // kaybeder; savrulma hareketi burada (çarpışma kontrollü) uygulanır. ──
+      const pStunned = stepHitStun(p, dt, moveFighter);
       if (p.samuraiUltT > 0) {
         p.samuraiUltT -= dt;
         const targetX = b.x;
@@ -1005,6 +1018,8 @@ export default function BattleScene({
         }
         p.moving = false;
         p.phase += dt * 5;
+      } else if (pStunned) {
+        // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
       } else if (p.dashT > 0) {
         p.dashT -= dt;
         moveFighter(p, p.dashVX * 820 * dt, p.dashVY * 820 * dt, dt);
@@ -1018,7 +1033,7 @@ export default function BattleScene({
       }
 
       // --- footstep ticks while walking (continuous battle audio) ---
-      if (p.moving && p.dashT <= 0) {
+      if (p.moving && p.dashT <= 0 && p.hitStunT <= 0) {
         stepAcc += dt;
         if (stepAcc > 0.3) {
           stepAcc = 0;
@@ -1031,7 +1046,7 @@ export default function BattleScene({
       } else {
         stepAcc = 0;
       }
-      if (b.moving && b.dashT <= 0) {
+      if (b.moving && b.dashT <= 0 && b.hitStunT <= 0) {
         botStepAcc += dt;
         if (botStepAcc > 0.34) {
           botStepAcc = 0;
@@ -1054,7 +1069,12 @@ export default function BattleScene({
         lastSeenX = p.x;
         lastSeenY = p.y;
       }
-      if (b.dashT > 0) {
+      // Bot da vuruş sarsıntısı yaşar: sarsılırken ne hareket eder ne de
+      // ateş eder (savrulma yukarıda, çarpışma kontrollü uygulanır).
+      const bStunned = stepHitStun(b, dt, moveFighter);
+      if (bStunned) {
+        // sarsılıyor — AI bu karede çalışmaz
+      } else if (b.dashT > 0) {
         b.dashT -= dt;
         moveFighter(b, b.dashVX * 820 * dt, b.dashVY * 820 * dt, dt);
         if (!b.dashHit && Math.hypot(p.x - b.x, p.y - b.y) < 90) {
@@ -1206,7 +1226,7 @@ export default function BattleScene({
       );
       if (isSamuraiFighter(b)) {
         b.samuraiCharge = Math.min(1, b.samuraiCharge + dt * 0.16);
-        if (b.samuraiCharge >= 1 && b.samuraiUltT <= 0 && botCanSee) {
+        if (b.samuraiCharge >= 1 && b.samuraiUltT <= 0 && botCanSee && !bStunned) {
           b.samuraiCharge = 0;
           b.samuraiUltT = 0.82;
           b.samuraiUltHit = false;
@@ -1242,7 +1262,7 @@ export default function BattleScene({
       }
       // The ult fires the moment the bar is full — unless the target hides
       // in a bush (self-heal is fine anywhere). Using it reveals the bot.
-      if (b.superCharge >= 1 && (b.ability.id === "sifa" || botCanSee)) {
+      if (b.superCharge >= 1 && (b.ability.id === "sifa" || botCanSee) && !bStunned) {
         useSuper(b, p);
         b.revealUntil = performance.now() + BUSH_REVEAL_MS;
       }

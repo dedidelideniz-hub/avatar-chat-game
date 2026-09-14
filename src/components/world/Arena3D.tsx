@@ -84,6 +84,64 @@ export function isSamuraiFighter(fighter: BattleFighter): boolean {
 
 export const SAMURAI_ULTIMATE_DAMAGE = 360;
 
+/** Vuruş sarsıntısının (hit-stun) üst sınırı — ulti gibi ağır vuruşlarda. */
+export const HIT_STUN_MAX = 0.42;
+
+/**
+ * Vuruş tepkisi: vurulan karakter bir an kontrolünü kaybeder (hit-stun) ve
+ * vuran taraftan uzağa savrulur. Tepkinin şiddeti hasarın ağırlığına bağlı —
+ * normal mermi hafif bir sarsıntı, ulti/beam/dash sert bir savrulma verir.
+ *
+ * Savrulma sadece hız olarak yazılır; konum güncellemesini sim tarafındaki
+ * `stepHitStun` oyunun kendi hareket/çarpışma fonksiyonuyla yapar, böylece
+ * karakter savrulurken duvarın içinden geçmez.
+ */
+export function applyHitReaction(
+  target: BattleFighter,
+  fromX: number,
+  fromY: number,
+  dmg: number,
+): void {
+  const k = Math.max(0, Math.min(1, (dmg - 110) / 250));
+  target.hitStunT = Math.max(target.hitStunT, 0.1 + 0.32 * k);
+  target.hitStunK = Math.max(target.hitStunK, 0.5 + 0.5 * k);
+  const dx = target.x - fromX;
+  const dy = target.y - fromY;
+  const d = Math.hypot(dx, dy) || 1;
+  const force = 70 + 640 * k;
+  target.kbVX = (dx / d) * force;
+  target.kbVY = (dy / d) * force;
+}
+
+/**
+ * Sarsılma fazını ilerletir: savrulma hızını oyunun kendi hareket fonksiyonuyla
+ * uygular (duvar/obstacle kontrolleri korunur) ve sarsılma bitince durumu
+ * temizler. True dönerse karakter bu karede kontrolü kaybetmiştir.
+ */
+export function stepHitStun(
+  f: BattleFighter,
+  dt: number,
+  move: (f: BattleFighter, dx: number, dy: number, dt: number) => void,
+): boolean {
+  if (f.hitStunT <= 0) return false;
+  f.hitStunT -= dt;
+  if (f.hitStunT <= 0) {
+    f.hitStunT = 0;
+    f.hitStunK = 0;
+    f.kbVX = 0;
+    f.kbVY = 0;
+    return false;
+  }
+  const damp = Math.exp(-dt * 8);
+  move(f, f.kbVX * dt, f.kbVY * dt, dt);
+  f.kbVX *= damp;
+  f.kbVY *= damp;
+  // Savrulurken yalpalama animasyonu oynasın (duvara dayansa bile).
+  f.moving = true;
+  f.phase += dt * 6;
+  return true;
+}
+
 /** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
 export function supportsWebGL(): boolean {
   if (typeof window === "undefined") return false;
@@ -138,6 +196,13 @@ export interface BattleFighter {
   dashVY: number;
   dashHit: boolean;
   lastHitAt: number;
+  /** Sarsılma (hit-stun): kalan süre — bu sürede hareket girdisi yok sayılır. */
+  hitStunT: number;
+  /** Sarsılmanın şiddeti 0..1 — görsel titreme/savrulma bununla ölçeklenir. */
+  hitStunK: number;
+  /** Vuruştan gelen savrulma hızı (px/s) — sürtünmeyle söner. */
+  kbVX: number;
+  kbVY: number;
   vy: number; // vertical movement direction: -1 up, 0 idle, +1 down
   /** Bot strafe direction after firing (1 or -1). Only used by the AI. */
   strafeDir?: number;
@@ -938,6 +1003,38 @@ function FighterRig({
       const mat = m.material as THREE.MeshBasicMaterial;
       mat.opacity = k;
       mat.color.set(d.c);
+    }
+    // ── Sarsılma (hit-stun): vuruş anında gövde geriye yatar, titrer ve
+    // bir an küçülüp doğrulur. Ulti/mermi, kim vurursa vursun burada
+    // okunur — böylece vurulan karakter "hiç etkilenmemiş" gibi durmaz. ──
+    const stunK =
+      f.hitStunT > 0 ? Math.min(1, f.hitStunT / HIT_STUN_MAX) * f.hitStunK : 0;
+    const bw = bodyWrap.current;
+    if (bw) {
+      if (stunK > 0.002) {
+        const tw = now * 0.001;
+        const shake = 0.17 * stunK;
+        bw.position.set(
+          Math.sin(tw * 47) * shake,
+          0,
+          Math.cos(tw * 39) * shake * 0.7,
+        );
+        // Geriye savrulma: gövde vuruş yönünün tersine yatar.
+        bw.rotation.x = -0.34 * stunK * (0.7 + 0.3 * Math.sin(tw * 33));
+        bw.rotation.z = Math.sin(tw * 43) * 0.18 * stunK;
+        bw.scale.setScalar(1 + 0.07 * stunK * Math.sin(tw * 31));
+      } else if (
+        bw.position.x !== 0 ||
+        bw.position.z !== 0 ||
+        bw.rotation.x !== 0 ||
+        bw.rotation.z !== 0 ||
+        bw.scale.x !== 1
+      ) {
+        // Sarsılma bitti: modeli tam dinlenme duruşuna döndür.
+        bw.position.set(0, 0, 0);
+        bw.rotation.set(0, 0, 0);
+        bw.scale.setScalar(1);
+      }
     }
     // HP bar pops briefly white when the fighter is hit
     const justHit = performance.now() - f.lastHitAt < 260;
