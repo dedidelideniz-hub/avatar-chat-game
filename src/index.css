@@ -815,6 +815,45 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   animation: bulb-twinkle 4s ease-in-out infinite;
 }
 
+/* ------------------------------------------------------------------ */
+/* Yatay mod yönergesi (savaş alanı girişi).                           */
+/* ------------------------------------------------------------------ */
+
+/* Telefon dikeyden yataya devrilip geri gelir — oyuncu taklit eder. */
+@keyframes rotate-phone-turn {
+  0%, 16% { transform: rotate(0deg); }
+  36%, 64% { transform: rotate(90deg); }
+  86%, 100% { transform: rotate(0deg); }
+}
+.rotate-phone-icon {
+  display: inline-flex;
+  animation: rotate-phone-turn 2.6s cubic-bezier(0.5, 0, 0.3, 1) infinite;
+}
+
+/* İki yanda dışa doğru nabız atan yönlendirme okları. */
+@keyframes rotate-phone-arrow {
+  0%, 100% { opacity: 0.3; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.12); }
+}
+.rotate-phone-arrow {
+  animation: rotate-phone-arrow 1.4s ease-in-out infinite;
+}
+
+/* Telefon yatay modunda (kısa viewport) savaş alanına daha fazla yer açılır:
+   dış boşluk ve kalın çerçeve kırpılır, böylece oynanabilir arena büyür.
+   Sahne kökü, içindeki .battle-joystick işaretçisi üzerinden seçilir —
+   böylece başka hiçbir overlay etkilenmez. */
+@media (orientation: landscape) and (max-height: 560px) {
+  div[class*="inset-0"]:has(.battle-joystick) {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+  }
+  div[class*="inset-0"]:has(.battle-joystick) > div {
+    border-width: 0 !important;
+    border-radius: 0 !important;
+  }
+}
+
 /* ═══ PERFORMANCE: SVG containment ═══ */
 svg {
   will-change: auto;

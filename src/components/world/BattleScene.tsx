@@ -23,8 +23,14 @@ import {
   findWalkablePath,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
+import {
+  DUEL_LEAVE_EVENT,
+  LandscapeGate,
+  useLandscapeGate,
+} from "@/components/world/LandscapeGate";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
+import { cn } from "@/lib/utils";
 import {
   playSound,
   startBattleAmbience,
@@ -140,9 +146,18 @@ function newFighter(
 /** Virtual joystick — drag anywhere on it to move (works with mouse + touch). */
 export function BattleJoystick({
   stickRef,
+  disabled = false,
 }: {
   stickRef: MutableRefObject<{ x: number; y: number }>;
+  /** Ek olarak kilitlenmek istendiğinde (örn. sonuç ekranı açıkken). */
+  disabled?: boolean;
 }) {
+  // Savaş alanı yatay (landscape) düzende oynanır. Telefon dikeyken kol
+  // girdisi yok sayılır ve "yan çevir" yönergesi ekranı kaplar; yönerge
+  // burada render edilir çünkü bu katman iki arenada da (bot + PvP) her
+  // zaman takılıdır.
+  const gate = useLandscapeGate();
+  const locked = disabled || gate.required;
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -151,7 +166,7 @@ export function BattleJoystick({
 
   const move = (px: number, py: number) => {
     const base = baseRef.current;
-    if (!base) return;
+    if (!base || locked) return;
     const rect = base.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -194,6 +209,12 @@ export function BattleJoystick({
     };
   }, []);
 
+  // Yönerge ekranı açılınca kol sıfırlanır — yoksa telefon yan çevrildiğinde
+  // karakter "basılı kalmış" yöne yürümeye devam ederdi.
+  useEffect(() => {
+    if (locked) reset();
+  }, [locked]);
+
   const finishPointer = (element: HTMLDivElement, pointerId: number) => {
     if (activePointerRef.current !== pointerId) return;
     reset();
@@ -203,43 +224,53 @@ export function BattleJoystick({
   };
 
   return (
-    <div
-      ref={baseRef}
-      className="pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
-      onPointerDown={(e) => {
-        // Ignore extra fingers instead of letting them replace the active
-        // pointer and leave the joystick in an inconsistent state.
-        if (activePointerRef.current !== null) return;
-        e.preventDefault();
-        e.stopPropagation();
-        activePointerRef.current = e.pointerId;
-        draggingRef.current = true;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        move(e.clientX, e.clientY);
-      }}
-      onPointerMove={(e) => {
-        if (draggingRef.current && activePointerRef.current === e.pointerId) {
-          e.preventDefault();
-          move(e.clientX, e.clientY);
-        }
-      }}
-      onPointerUp={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        finishPointer(e.currentTarget, e.pointerId);
-      }}
-      onPointerCancel={(e) => finishPointer(e.currentTarget, e.pointerId)}
-      onLostPointerCapture={(e) => {
-        if (activePointerRef.current === e.pointerId) reset();
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-      aria-label="Hareket joystick"
-    >
+    <>
       <div
-        ref={knobRef}
-        className="pointer-events-none absolute top-1/2 left-1/2 -ml-6 -mt-6 size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
+        ref={baseRef}
+        className="battle-joystick pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
+        onPointerDown={(e) => {
+          // Ignore extra fingers instead of letting them replace the active
+          // pointer and leave the joystick in an inconsistent state.
+          if (activePointerRef.current !== null) return;
+          e.preventDefault();
+          e.stopPropagation();
+          activePointerRef.current = e.pointerId;
+          draggingRef.current = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          move(e.clientX, e.clientY);
+        }}
+        onPointerMove={(e) => {
+          if (draggingRef.current && activePointerRef.current === e.pointerId) {
+            e.preventDefault();
+            move(e.clientX, e.clientY);
+          }
+        }}
+        onPointerUp={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          finishPointer(e.currentTarget, e.pointerId);
+        }}
+        onPointerCancel={(e) => finishPointer(e.currentTarget, e.pointerId)}
+        onLostPointerCapture={(e) => {
+          if (activePointerRef.current === e.pointerId) reset();
+        }}
+        onContextMenu={(e) => e.preventDefault()}
+        aria-label="Hareket joystick"
+      >
+        <div
+          ref={knobRef}
+          className="pointer-events-none absolute top-1/2 left-1/2 -ml-6 -mt-6 size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
+        />
+      </div>
+
+      {/* Telefon yatay değilse savaş başlamaz: tüm ekranı kaplayan yönerge
+          ekranı (z-[100]) kontrol katmanıyla birlikte gelir. */}
+      <LandscapeGate
+        visible={gate.required}
+        touch={gate.touch}
+        canLock={gate.canLock}
       />
-    </div>
+    </>
   );
 }
 
@@ -447,6 +478,12 @@ export default function BattleScene({
   // Gaming-style loading sequence runs before the fight unlocks.
   const [phase, setPhase] = useState<"loading" | "fight">("loading");
   const startedRef = useRef(false);
+  // Yatay mod: telefon dikeyken yükleme ilerlemez ve savaş duraklar.
+  const gate = useLandscapeGate();
+  const rotateRef = useRef(gate.required);
+  useEffect(() => {
+    rotateRef.current = gate.required;
+  }, [gate.required]);
   const [loadPct, setLoadPct] = useState(0);
   const [loadStep, setLoadStep] = useState(0);
   const [hud, setHud] = useState({
@@ -485,12 +522,18 @@ export default function BattleScene({
   // status lines, then an orchestral "VS" sting as the fight unlocks.
   useEffect(() => {
     if (phase !== "loading") return;
-    const start = performance.now();
+    // Telefon yan çevrilene kadar süre sayılmaz: yükleme %0'da bekler, yani
+    // savaş gerçekten yatay modda başlar.
+    let elapsed = 0;
+    let last = performance.now();
     const DURATION = 4200;
     const STEPS = LOAD_STEPS.length;
     let raf = 0;
     const tick = (now: number) => {
-      const t = Math.min((now - start) / DURATION, 1);
+      const delta = now - last;
+      last = now;
+      if (!rotateRef.current) elapsed += delta;
+      const t = Math.min(elapsed / DURATION, 1);
       setLoadPct(Math.round(t * 100));
       setLoadStep(Math.min(Math.floor(t * STEPS), STEPS - 1));
       if (t < 1) {
@@ -504,6 +547,25 @@ export default function BattleScene({
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [phase]);
+
+  // Yönerge ekranı açıkken savaş sesleri susar; telefon yan çevrilince geri
+  // gelir. Geçiş takip edilir çünkü `startBattleAmbience` çağrısı dosya
+  // yüklemesi nedeniyle asenkron — aynı anda iki kez çağrılırsa üst üste
+  // binerdi.
+  const rotatedAwayRef = useRef(gate.required);
+  useEffect(() => {
+    if (gate.required) stopBattleAmbience();
+    else if (rotatedAwayRef.current && !resultRef.current)
+      startBattleAmbience();
+    rotatedAwayRef.current = gate.required;
+  }, [gate.required]);
+
+  // Yatay mod yönergesindeki "Savaştan çık": sahne dışından gelen istek.
+  useEffect(() => {
+    const leave = () => onExitRef.current(false);
+    window.addEventListener(DUEL_LEAVE_EVENT, leave);
+    return () => window.removeEventListener(DUEL_LEAVE_EVENT, leave);
+  }, []);
 
   const clamp = (v: number, a: number, b: number) =>
     Math.min(Math.max(v, a), b);
@@ -826,7 +888,9 @@ export default function BattleScene({
 
   // ---- main loop ----
   useEffect(() => {
-    startBattleAmbience();
+    // Yatay mod yönergesi açıksa ambiyans hiç başlamaz (yukarıdaki geçiş
+    // efekti telefon yan çevrildiğinde devreye alır).
+    if (!rotateRef.current) startBattleAmbience();
     let superReadyPlayed = false;
     let stepAcc = 0;
     let botStepAcc = 0;
@@ -1351,9 +1415,14 @@ export default function BattleScene({
 
     const loop = (now: number) => {
       try {
-        const dt = Math.min((now - last) / 1000, 0.05);
-        last = now;
-        step(dt);
+        if (rotateRef.current) {
+          // Dikey mod: simülasyon durur (karakterler donar), süre işlemez.
+          last = now;
+        } else {
+          const dt = Math.min((now - last) / 1000, 0.05);
+          last = now;
+          step(dt);
+        }
       } catch (err) {
         console.error("Savaş döngüsü hatası:", err);
       }

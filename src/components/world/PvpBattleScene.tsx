@@ -32,6 +32,10 @@ import {
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
+import {
+  DUEL_LEAVE_EVENT,
+  useLandscapeGate,
+} from "@/components/world/LandscapeGate";
 import { usePresenceOthers, usePresencePublisher } from "@/hooks/use-presence";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf } from "@/lib/shop";
@@ -291,6 +295,19 @@ export default function PvpBattleScene({
   const [phase, setPhase] = useState<"loading" | "waiting" | "fight">("loading");
   phaseRef.current = phase;
   const startedRef = useRef(false);
+  // Yatay mod: telefon dikeyken düello başlamaz ve simülasyon duraklar.
+  const gate = useLandscapeGate();
+  const rotateRef = useRef(gate.required);
+  useEffect(() => {
+    rotateRef.current = gate.required;
+  }, [gate.required]);
+
+  // Yatay mod yönergesindeki "Savaştan çık": sahne dışından gelen istek.
+  useEffect(() => {
+    const leave = () => onExitRef.current(false, "leave");
+    window.addEventListener(DUEL_LEAVE_EVENT, leave);
+    return () => window.removeEventListener(DUEL_LEAVE_EVENT, leave);
+  }, []);
   const [loadPct, setLoadPct] = useState(0);
   const [loadStep, setLoadStep] = useState(0);
   const [hud, setHud] = useState({
@@ -975,9 +992,14 @@ export default function PvpBattleScene({
 
     const loop = (now: number) => {
       try {
-        const dt = Math.min((now - last) / 1000, 0.05);
-        last = now;
-        step(dt);
+        if (rotateRef.current) {
+          // Dikey mod: yerel simülasyon durur (karakterler donar).
+          last = now;
+        } else {
+          const dt = Math.min((now - last) / 1000, 0.05);
+          last = now;
+          step(dt);
+        }
 
         // merged render list: my projectiles (blue) + remote (red)
         const merged: BattleProj[] = [];
@@ -1092,12 +1114,17 @@ export default function PvpBattleScene({
   // ---- gaming loading sequence, then wait for the opponent to connect ----
   useEffect(() => {
     if (phase !== "loading") return;
-    const start = performance.now();
+    // Telefon yan çevrilene kadar süre sayılmaz: yükleme %0'da bekler.
+    let elapsed = 0;
+    let last = performance.now();
     const DURATION = 3000;
     const STEPS = 4;
     let raf = 0;
     const tick = (now: number) => {
-      const t = Math.min((now - start) / DURATION, 1);
+      const delta = now - last;
+      last = now;
+      if (!rotateRef.current) elapsed += delta;
+      const t = Math.min(elapsed / DURATION, 1);
       setLoadPct(Math.round(t * 100));
       setLoadStep(Math.min(Math.floor(t * STEPS), STEPS - 1));
       if (t < 1) {
@@ -1119,19 +1146,22 @@ export default function PvpBattleScene({
   // when waiting, start the fight as soon as the opponent appears
   useEffect(() => {
     if (phase !== "waiting") return;
-    if (remoteConnected.current) {
+    // Telefon dikeyken düello başlamaz; yan çevrildiğinde otomatik başlar.
+    if (remoteConnected.current && !rotateRef.current) {
       playSound("vs");
       setPhase("fight");
     }
-  }, [phase, others]);
+  }, [phase, others, gate.required]);
 
   // battle ambience once the fight unlocks; VS banner auto-hides
   useEffect(() => {
     if (phase !== "fight") return;
-    void startBattleAmbience();
+    // Yatay mod yönergesi açıkken savaş sesleri de susar.
+    if (gate.required) stopBattleAmbience();
+    else void startBattleAmbience();
     const t = window.setTimeout(() => setVsShow(false), 1800);
     return () => window.clearTimeout(t);
-  }, [phase]);
+  }, [phase, gate.required]);
 
   const abilityEmoji = abilityOf(playerAbility).emoji;
   const oppAbilityEmoji = abilityOf(opponentAbility).emoji;
