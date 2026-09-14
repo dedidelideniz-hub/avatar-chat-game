@@ -844,13 +844,18 @@ svg[data-pose="walk-side"] .avatar-pose-side {
    Sahne kökü, içindeki .battle-joystick işaretçisi üzerinden seçilir —
    böylece başka hiçbir overlay etkilenmez. */
 @media (orientation: landscape) and (max-height: 560px) {
+  /* Full-bleed arena. Padding the root here only revealed the dark backdrop
+     as a black bar along the notched (left) edge while the canvas stayed
+     inset, which read as a broken layout. The HUD that could sit under a
+     notch — the top bar and the bottom corner controls — is inset from those
+     edges, so the scene can safely use the whole screen. */
   div[class*="inset-0"]:has(.battle-joystick) {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right)
-      env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+    padding: 0 !important;
   }
   div[class*="inset-0"]:has(.battle-joystick) > div {
     border-width: 0 !important;
     border-radius: 0 !important;
+    max-width: none !important;
   }
 }
 

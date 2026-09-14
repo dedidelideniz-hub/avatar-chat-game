@@ -45,6 +45,7 @@ import {
   type FlashBase,
 } from "@/engine/HitFlash";
 import { BattleMapModel } from "@/components/world/BattleMapModel";
+import { useArenaCamera } from "@/components/world/ArenaCamera";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
@@ -776,6 +777,11 @@ function FighterRig({
     radii: [0.55, 0.7, 0.85],
   });
   const c = fighter.current.config;
+
+  // Arena camera: the PLAYER rig owns the aspect-aware follow framing. This
+  // rig is mounted after <FollowCamera>, so this useFrame runs later in the
+  // same frame and its framing is the one that renders (ArenaCamera.tsx).
+  useArenaCamera(isPlayer ? fighter : null);
 
   useFrame((_, dt) => {
     const f = fighter.current;
