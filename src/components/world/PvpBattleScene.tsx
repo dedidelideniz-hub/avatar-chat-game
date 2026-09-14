@@ -251,10 +251,10 @@ export default function PvpBattleScene({
   const movementPathRef = useRef<[number, number][]>([]);
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 850, 80, 1),
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 400, 100, 1),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 850, 1020, -1),
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1300, 1000, -1),
   );
   // Resolve the local spawn after the asynchronous GLB mask is available.
   const spawnResolvedRef = useRef(false);

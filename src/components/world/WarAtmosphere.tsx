@@ -135,8 +135,10 @@ function BaseColumns() {
 
   return (
     <>
-      <group ref={redRef}>{column(17, 1.6, "#ff5a5a", redTex)}</group>
-      <group ref={blueRef}>{column(17, 20.4, "#56aaff", blueTex)}</group>
+      {/* Base positions follow the -90° map rotation: red base at px
+          (400,100) → scene (8,2), blue base at px (1300,1000) → (26,20). */}
+      <group ref={redRef}>{column(8, 2, "#ff5a5a", redTex)}</group>
+      <group ref={blueRef}>{column(26, 20, "#56aaff", blueTex)}</group>
     </>
   );
 }

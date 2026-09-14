@@ -1948,8 +1948,10 @@ export function Arena3D({
       <BattleMapModel />
 
       {/* spawn pads: player starts on the Red base (top), bot on Blue */}
-      <SpawnCircle position={[8.5, 0.03, 0.8]} color="#e63946" />
-      <SpawnCircle position={[8.5, 0.03, 10.2]} color="#3a86ff" />
+      {/* Spawn pads follow the new -90° map rotation: red base bottom-left
+          (400,100) px, blue base top-right (1300,1000) px (/100). */}
+      <SpawnCircle position={[4, 0.03, 1]} color="#e63946" />
+      <SpawnCircle position={[13, 0.03, 10]} color="#3a86ff" />
 
       {/* fighters */}
       <FighterRig fighter={playerRef} other={botRef} isPlayer />

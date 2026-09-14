@@ -5,7 +5,14 @@ import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 
 const MAP_URL = "/models/5v5_game_map.glb";
-const ROT_Y = (-135 * Math.PI) / 180;
+// The map is a ~square MOBA battlefield with the two bases on OPPOSITE
+// corners. -135° put the red→blue lane vertically along the world Z axis
+// (the classic portrait-fight arrangement) but left the square island
+// diamond-rotated, so the island edges/jungle lines read as diagonal
+// "baklava" corridors on screen. Rotating +45° to -90° aligns the island
+// edges with the world axes while the lane runs corner-to-corner,
+// LoL/Wild Rift style.
+const ROT_Y = (-90 * Math.PI) / 180;
 // Arena footprint in 3D units — must match Arena3D (S=50). The terrain is
 // spread over this larger footprint so the map reads big and fighters small.
 const ARENA_W = 34;
@@ -14,11 +21,14 @@ const ARENA_CX = ARENA_W / 2;
 const ARENA_CZ = ARENA_D / 2;
 /** px per 3D unit (Arena3D S) — geometry is rasterized into game px. */
 const PX = 50;
-const FALLBACK_SCALE = ARENA_W / 32962.3;
+// Terrain world AABB at ROT_Y=-90° is ~29054 (x) × 29137 (z), centered at
+// (0, 25.5) in GLB space, so the -90° fit centers the island at ARENA_CX and
+// ARENA_CZ. Only used when the terrain meshes cannot be measured.
+const FALLBACK_SCALE = (ARENA_D - 0.3) / 29054;
 const FALLBACK_POS = [
-  ARENA_CX - -590.9 * FALLBACK_SCALE,
+  ARENA_CX,
   8.9 * FALLBACK_SCALE,
-  ARENA_CZ - -15242.1 * FALLBACK_SCALE,
+  ARENA_CZ - 25.5 * FALLBACK_SCALE,
 ] as [number, number, number];
 
 /* ------------------------------------------------------------------ */
@@ -1049,10 +1059,13 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   return grid;
 }
 
-/** Spawn base centers in game-space px (must match BattleScene). */
+/** Spawn base centers in game-space px (must match BattleScene). At
+ *  ROT_Y=-90° the bases sit on opposite corners of the fitted square: red
+ *  bottom-left, blue top-right, with the lane running diagonally between
+ *  them (LoL-style). */
 const BASE_CENTERS: [number, number][] = [
-  [850, 80], // player (red) base
-  [850, 1020], // enemy (blue) base
+  [400, 100], // player (red) base
+  [1300, 1000], // enemy (blue) base
 ];
 
 /** Distance from a point to a segment, in px. */
@@ -1148,6 +1161,7 @@ function carveBaseExits(grid: RockGrid) {
   for (const [bx, by] of BASE_CENTERS) {
     if (bx < 0 || bx > ARENA_W * PX || by < 0 || by > ARENA_D * PX) continue;
     const dir = by < MID ? 1 : -1; // player base exits down, enemy base up
+    const dirX = bx < MID ? 1 : -1; // toward the enemy base horizontally
     const ey = by + dir * LEN;
     // Fan of corridors: straight toward the centre lane, diagonal flanks
     // toward the two side lanes, and horizontal flanks. carveBaseCorridor
@@ -1157,6 +1171,10 @@ function carveBaseExits(grid: RockGrid) {
     carveBaseCorridor(grid, bx, by, bx + SPREAD, ey, HALF);
     carveBaseCorridor(grid, bx, by, bx - SPREAD, by, HALF);
     carveBaseCorridor(grid, bx, by, bx + SPREAD, by, HALF);
+    // With the -90° rotation the lane runs corner-to-corner diagonally, so
+    // the bases also need a diagonal corridor pointing straight at the enemy
+    // base; the axis-only fan above would miss it and seal the base exit.
+    carveBaseCorridor(grid, bx, by, bx + dirX * SPREAD, by + dir * LEN, HALF);
   }
 
   const after = grid.blocked.reduce((a, b) => a + b, 0);
@@ -1264,8 +1282,10 @@ function MapModelInner() {
           keeps its own neutral fill lighting; these add cool/warm side color
           so each base reads like a live team fight. Purely decorative, never
           used by movement or collision. */}
-      <pointLight position={[7, 5, 1.5]} color="#38d9ff" distance={18} decay={2} intensity={2.4} />
-      <pointLight position={[7, 5, 10]} color="#ff426f" distance={18} decay={2} intensity={2.2} />
+      {/* Faction rim lights sit over the two bases as fitted at -90°:
+          red base (8, 2), blue base (26, 20). */}
+      <pointLight position={[8, 5, 2]} color="#ff426f" distance={18} decay={2} intensity={2.4} />
+      <pointLight position={[26, 5, 20]} color="#38d9ff" distance={18} decay={2} intensity={2.2} />
       <primitive object={clone} />
     </group>
   );

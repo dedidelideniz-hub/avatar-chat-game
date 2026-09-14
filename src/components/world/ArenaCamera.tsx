@@ -17,16 +17,18 @@
 //   2. Aspect ratio — `camera.aspect` is always set from the real drawing
 //      buffer, so geometry keeps its proportions on every device.
 //   3. Landscape lens — instead of backing away, the wide view uses a longer
-//      lens (42° FOV) at a closer distance (14.5 units) from a 45° isometric
-//      elevation (Wild Rift / LoL angle). The player's surroundings and the
-//      lane stay large and readable; the map edges never enter the frustum.
+//      lens (42° FOV) at a close follow distance (8.7 units) from a 37° MOBA
+//      pitch (35–40° requested). The camera height is about half the old
+//      framing (~5.2 units), so only the player and the 10–15 m around them
+//      are visible — never the whole map.
 //   4. Atmosphere — outside the arena are near-black, and a dense FogExp2
 //      (0x0a0a12, tuned by FOG_DENSITY) swallows anything approaching the
 //      frustum border, so the "space around the island" is gone. Portrait is
 //      untouched: fog density 0 + the original sky-blue background.
-//   5. Tracking — the lookAt target is bound tightly to the player's X/Z
-//      (plus a small movement lookahead), clamped to the arena, so the map's
-//      outside never appears on screen no matter where the player walks.
+//   5. Tracking — the camera is a close offset follow (player X/Z plus a
+//      small movement lookahead), then clamped to a thin margin inside the
+//      arena, so the player always sits near screen center and the map's
+//      dark, fogged edge can never dominate the view.
 //
 // The arena constants below must stay in sync with Arena3D (`S`) and
 // BattleMapModel.tsx — they mirror that file's export convention.
@@ -52,14 +54,17 @@ const WIDE_TO = 1.8;
 const FOV_P = 60;
 const FOV_L = 42; // 40–45 requested: a tighter lens keeps the map proportioned
 const DIST_P = 12;
-const DIST_L = 14.5; // pulled IN, not away — close fight framing
+const DIST_L = 8.7; // very close follow: height ~5.2, back ~6.9 (offset style)
 const EL_P = 1.0; // ~57° elevation (portrait, unchanged)
-const EL_L = Math.PI / 4; // 45° isometric elevation (Wild Rift / LoL angle)
+const EL_L = 0.6458; // 37° MOBA pitch (35–40°) — behind-and-above, not top-down
 const CLAMP_P = 3;
-const CLAMP_L = 5.5; // keeps the whole visible ground on the map
+// The -90° map runs its lane from the red base (~z 2) to the blue base
+// (~z 20) diagonally, so landscape must let the camera follow the player the
+// whole way; only a thin margin keeps it from leaving the island outright.
+const CLAMP_L = 2.2;
 // Lookahead (units the camera leads the fighter) — smaller lens, smaller lead.
 const LOOK_P = 1.1;
-const LOOK_L = 2.2;
+const LOOK_L = 1.6;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
 const SKY = new THREE.Color("#aacde4"); // portrait sky (unchanged)

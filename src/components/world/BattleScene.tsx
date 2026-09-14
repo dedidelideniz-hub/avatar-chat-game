@@ -472,10 +472,10 @@ export default function BattleScene({
   onExitRef.current = onExit;
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 850, 80, 1, 1),
+    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 400, 100, 1, 1),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 850, 1020, -1, opponentLevel),
+    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1300, 1000, -1, opponentLevel),
   );
   bot.current.atkCd = 0.4;
   // The GLB collision mask is asynchronous. Resolve both initial refs once
