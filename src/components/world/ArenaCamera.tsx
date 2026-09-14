@@ -6,7 +6,8 @@
 // there. On a landscape viewport that same vertical FOV opens a ~100°
 // horizontal cone: the near edge of the arena balloons while the far corner
 // collapses to a point, so the map read as a squashed pyramid instead of a
-// battlefield.
+// battlefield. Pulling the camera far back fixed the pyramid but exposed the
+// void around the island, which read as a floating diorama.
 //
 // What this controller guarantees:
 //   1. Responsive — the projection is re-derived from the renderer's live
@@ -15,12 +16,17 @@
 //      world→screen x/y are scaled differently).
 //   2. Aspect ratio — `camera.aspect` is always set from the real drawing
 //      buffer, so geometry keeps its proportions on every device.
-//   3. Camera — smooth (exponential) follow with lookahead in the direction
-//      the fighter is actually moving, so you see where you are heading.
-//   4. View — portrait keeps the original close framing untouched; as the
-//      viewport widens the lens pulls back and rises (60°→48° FOV,
-//      12→19.5 units, 57°→62.5° elevation) so the whole lane is visible
-//      instead of the map feeling cramped.
+//   3. Landscape lens — instead of backing away, the wide view uses a longer
+//      lens (42° FOV) at a closer distance (14.5 units) from a 45° isometric
+//      elevation (Wild Rift / LoL angle). The player's surroundings and the
+//      lane stay large and readable; the map edges never enter the frustum.
+//   4. Atmosphere — outside the arena are near-black, and a dense FogExp2
+//      (0x0a0a12, tuned by FOG_DENSITY) swallows anything approaching the
+//      frustum border, so the "space around the island" is gone. Portrait is
+//      untouched: fog density 0 + the original sky-blue background.
+//   5. Tracking — the lookAt target is bound tightly to the player's X/Z
+//      (plus a small movement lookahead), clamped to the arena, so the map's
+//      outside never appears on screen no matter where the player walks.
 //
 // The arena constants below must stay in sync with Arena3D (`S`) and
 // BattleMapModel.tsx — they mirror that file's export convention.
@@ -40,17 +46,25 @@ const WIDE_FROM = 0.9;
 const WIDE_TO = 1.8;
 
 // Portrait framing (unchanged) → landscape framing.
+// Landscape is a closer, longer lens from an isometric 45° elevation: only
+// the player's surroundings and the lane are in view, so the open void
+// around the island never appears.
 const FOV_P = 60;
-const FOV_L = 48; // longer lens: the wide cone flattens the perspective
+const FOV_L = 42; // 40–45 requested: a tighter lens keeps the map proportioned
 const DIST_P = 12;
-const DIST_L = 19.5; // pulled back so the whole arena fits when it is wide
-const EL_P = 1.0; // ~57° elevation
-const EL_L = 1.09; // ~62.5° — a touch more top-down when the view is wide
+const DIST_L = 14.5; // pulled IN, not away — close fight framing
+const EL_P = 1.0; // ~57° elevation (portrait, unchanged)
+const EL_L = Math.PI / 4; // 45° isometric elevation (Wild Rift / LoL angle)
 const CLAMP_P = 3;
-const CLAMP_L = 6; // a wide viewport sees both side lanes at once
-// Lookahead (units the camera leads the fighter) — MOBA anticipation.
+const CLAMP_L = 5.5; // keeps the whole visible ground on the map
+// Lookahead (units the camera leads the fighter) — smaller lens, smaller lead.
 const LOOK_P = 1.1;
-const LOOK_L = 3.2;
+const LOOK_L = 2.2;
+// Fog: dense dark haze in landscape so anything at/behind the map edge melts
+// into the background instead of reading as "island floating in space".
+const SKY = new THREE.Color("#aacde4"); // portrait sky (unchanged)
+const FOG = new THREE.Color("#0a0a12"); // landscape horizon = fog color
+const FOG_DENSITY = 0.015; // FogExp2 density at full landscape
 
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
@@ -63,16 +77,21 @@ export function useArenaCamera(
 ) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
 
   const target = useRef(new THREE.Vector3(CX, 0.6, CZ));
   const smoothed = useRef(new THREE.Vector3(CX, 0.6, CZ));
   // Smoothed world-space velocity (units/s) used for the lookahead.
   const vel = useRef({ x: 0, z: 0 });
   const prev = useRef({ x: 0, z: 0, ready: false });
+  // Reusable fog/background state (no per-frame allocation).
+  const fog = useRef<THREE.FogExp2 | null>(null);
+  const bg = useRef<THREE.Color | null>(null);
+
   // Orientation changes and window resizes are handled by the renderer's own
-  // resize observer, but we also re-assert the projection right away so the
-  // new aspect is applied on the very next frame instead of after a measure
-  // tick (otherwise a rotated phone renders one stretched frame).
+  // resize observer, but we also re-assert the projection (and atmosphere)
+  // right away so the new aspect is applied on the very next frame instead of
+  // after a measure tick (otherwise a rotated phone renders one stale frame).
   useEffect(() => {
     const sync = () => {
       // The canvas' own CSS box is the authoritative size: whatever the
@@ -131,6 +150,24 @@ export function useArenaCamera(
     const dist = THREE.MathUtils.lerp(DIST_P, DIST_L, wide);
     const clamp = THREE.MathUtils.lerp(CLAMP_P, CLAMP_L, wide);
     const look = THREE.MathUtils.lerp(LOOK_P, LOOK_L, wide);
+    const smoothK = THREE.MathUtils.lerp(5, 7, wide);
+
+    // --- atmosphere: fog fades in with the landscape view, background lerps
+    // from the portrait sky to the fog color so the horizon never shows the
+    // gray/blue void around the island. Portrait stays pixel-identical
+    // (density 0 + original sky).
+    if (!fog.current) {
+      fog.current = new THREE.FogExp2(FOG.getHex(), 0);
+      scene.fog = fog.current;
+    }
+    fog.current.density = FOG_DENSITY * wide;
+    if (scene.background instanceof THREE.Color) {
+      bg.current = scene.background;
+    } else if (!bg.current) {
+      bg.current = new THREE.Color(SKY);
+      scene.background = bg.current;
+    }
+    bg.current.lerpColors(SKY, FOG, wide);
 
     // --- delta-time based (frame rate independent) ---
     const dt = Math.min(rawDt, 1 / 20);
@@ -149,22 +186,21 @@ export function useArenaCamera(
     // Lead the camera by an amount proportional to the current speed, capped
     // so a dash does not yank the view and a stand-still does not drift.
     const speed = Math.hypot(vel.current.x, vel.current.z);
-    const lead = speed > 0.05 ? Math.min(look, speed * 0.3) : 0;
+    const lead = speed > 0.05 ? Math.min(look, speed * 0.25) : 0;
     const lx = speed > 0.05 ? (vel.current.x / speed) * lead : 0;
     const lz = speed > 0.05 ? (vel.current.z / speed) * lead : 0;
 
-    // Follow the player (looking ahead), then clamp so the camera stays over
-    // the map instead of drifting past the island edge into the void.
+    // Tight lookAt binding: the target sits on the player's X/Z (plus the
+    // lookahead), nudged toward the lane center only in portrait. In
+    // landscape the camera centers exactly on the player, then both are
+    // clamped so the visible ground always stays over the map.
+    const centerNudge = (CZ - pz) * 0.22 * (1 - wide);
     target.current.set(
       THREE.MathUtils.clamp(px + lx, clamp, ARENA_W - clamp),
       0.6,
-      THREE.MathUtils.clamp(
-        pz + (CZ - pz) * 0.22 + lz,
-        clamp,
-        ARENA_D - clamp,
-      ),
+      THREE.MathUtils.clamp(pz + centerNudge + lz, clamp, ARENA_D - clamp),
     );
-    smoothed.current.lerp(target.current, Math.min(1, dt * 5));
+    smoothed.current.lerp(target.current, Math.min(1, dt * smoothK));
     camera.position.set(
       smoothed.current.x,
       smoothed.current.y + Math.sin(el) * dist,

@@ -1935,9 +1935,10 @@ export function Arena3D({
       className="absolute inset-0"
     >
       <FollowCamera playerRef={playerRef} />
-      {/* Neutral sky — the exported battle map renders as-is with its own
-          textures and lighting; no artificial ground plane or fog overlay. */}
-      <color attach="background" args={["#aacde4"]} />
+      {/* Atmosphere (background + fog) is managed by useArenaCamera in
+          ArenaCamera.tsx - aspect-aware: portrait keeps the original sky,
+          landscape gets a dark FogExp2 horizon that hides the void around
+          the island. */}
       <ambientLight intensity={0.7} />
       <hemisphereLight args={["#ffffff", "#8a9aa8", 0.8]} />
       <directionalLight position={[12, 16, 8]} intensity={1.2} />
