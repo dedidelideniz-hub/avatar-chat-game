@@ -859,6 +859,122 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   }
 }
 
+/* ═══ SAVAŞ ALANI HUD'U — cihaz ölçüsüne göre orantılı ═══
+   Üstteki skor barları ve ekran kontrolleri sabit piksel yerine viewport'a
+   göre ölçeklenir. 360px yüksekliğindeki yatay bir telefonda 112px'lik
+   joystick ekranın üçte birini kaplıyor, can barı ve isimler ise okunmuyordu.
+   clamp(min, tercih, max) her cihazda aynı görsel ağırlığı korur.
+   Not: bu dosyadaki katmansız kurallar Tailwind yardımcı sınıflarından
+   (utilities katmanı) önce uygulanır, bu yüzden !important gerekmez. */
+.battle-hud-bar {
+  display: flex;
+  width: clamp(46px, 15vw, 116px);
+  height: clamp(5px, 1.1vh, 8px);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(2 6 23 / 0.55);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+.battle-hud-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.18s ease-out;
+}
+.battle-hud-avatar {
+  width: clamp(26px, 4.2vh, 36px);
+  height: clamp(26px, 4.2vh, 36px);
+  font-size: clamp(11px, 1.7vh, 14px);
+}
+.battle-hud-name {
+  font-size: clamp(10px, 1.5vh, 12px);
+  line-height: 1.1;
+}
+.battle-hud-chip,
+.battle-hud-hpnum {
+  font-size: clamp(9px, 1.35vh, 11px);
+}
+.battle-hud-clock {
+  font-size: clamp(11px, 1.7vh, 14px);
+}
+
+/* Yatay (telefon) modu: kısa ekranda üst şerit ve kontroller küçülür,
+   oynanabilir arena alanı büyür. Ölçüler ekran YÜKSEKLİĞİNE (yh) göre
+   verilir — yatay modda kısa kenar odur, yani gerçek "vmin" ölçeği. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .battle-hud-top {
+    padding: 3px 10px;
+  }
+  .battle-hud-bar {
+    width: clamp(58px, 13vw, 150px);
+    height: clamp(5px, 1.6vh, 8px);
+  }
+  .battle-hud-avatar {
+    width: clamp(22px, 8vh, 34px);
+    height: clamp(22px, 8vh, 34px);
+    font-size: clamp(10px, 3.4vh, 15px);
+  }
+  .battle-hud-name {
+    font-size: clamp(9px, 3.1vh, 13px);
+  }
+  .battle-hud-chip,
+  .battle-hud-hpnum {
+    font-size: clamp(8px, 2.7vh, 12px);
+  }
+  .battle-hud-clock {
+    font-size: clamp(10px, 3.3vh, 14px);
+  }
+  /* Hareket joystick'i (sol alt) */
+  .battle-hud-stick {
+    width: clamp(68px, 22vh, 112px);
+    height: clamp(68px, 22vh, 112px);
+    border-width: clamp(2px, 0.7vh, 4px);
+    left: clamp(8px, 2.6vh, 18px);
+    bottom: clamp(8px, 2.6vh, 18px);
+  }
+  .battle-hud-stick-knob {
+    width: clamp(28px, 9.6vh, 48px);
+    height: clamp(28px, 9.6vh, 48px);
+  }
+  /* Yetenek / saldırı kümesi (sağ alt) */
+  .battle-hud-controls {
+    right: clamp(8px, 2.6vh, 18px);
+    bottom: clamp(8px, 2.6vh, 18px);
+    gap: clamp(4px, 1.4vh, 9px);
+  }
+  .battle-hud-ult {
+    width: clamp(38px, 12.6vh, 56px);
+    height: clamp(38px, 12.6vh, 56px);
+    border-width: clamp(2px, 0.6vh, 4px);
+  }
+  .battle-hud-ult .battle-hud-icon {
+    font-size: clamp(14px, 5.2vh, 24px);
+  }
+  .battle-hud-super {
+    width: clamp(44px, 14.6vh, 64px);
+    height: clamp(44px, 14.6vh, 64px);
+    border-width: clamp(2px, 0.6vh, 4px);
+  }
+  .battle-hud-super .battle-hud-icon {
+    font-size: clamp(16px, 6.2vh, 28px);
+  }
+  .battle-hud-attack {
+    width: clamp(56px, 18.6vh, 80px);
+    height: clamp(56px, 18.6vh, 80px);
+    border-width: clamp(2px, 0.7vh, 4px);
+    font-size: clamp(20px, 7.6vh, 34px);
+  }
+  .battle-hud-attack-knob {
+    width: clamp(20px, 7vh, 28px);
+    height: clamp(20px, 7vh, 28px);
+    font-size: clamp(8px, 2.4vh, 11px);
+  }
+  /* Uzun dokunma ipucu kısa ekranda kırpılıyordu; kolun kendisi zaten
+     öğretiyor, bu yüzden yatay modda gizlenir. */
+  .battle-hud-hint {
+    display: none;
+  }
+}
+
 /* ═══ PERFORMANCE: SVG containment ═══ */
 svg {
   will-change: auto;

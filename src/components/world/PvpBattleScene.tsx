@@ -33,6 +33,10 @@ import {
 } from "@/components/world/BattleMapModel";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
 import {
+  HudClock,
+  HudFighter,
+} from "@/components/world/BattleTopHud";
+import {
   DUEL_LEAVE_EVENT,
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
@@ -45,7 +49,7 @@ import {
   stopBattleAmbience,
 } from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
-import { Swords, Trophy, X, Zap } from "lucide-react";
+import { Trophy, X } from "lucide-react";
 import {
   Component,
   type MutableRefObject,
@@ -319,6 +323,10 @@ export default function PvpBattleScene({
     atkReady: true,
     hidden: false,
   });
+  // Üst şeritteki maç saati (simülasyonla senkron ilerler).
+  const [clock, setClock] = useState(0);
+  const matchTRef = useRef(0);
+  const clockShownRef = useRef(0);
   const lastHudRef = useRef({
     ph: -1,
     ohp: -1,
@@ -702,6 +710,10 @@ export default function PvpBattleScene({
 
   useEffect(() => {
     let superReadyPlayed = false;
+    // Sabit zaman adımı: kare hızı düşse bile simülasyon gerçek zamanda
+    // ilerler (oyun ağır çekime düşmez).
+    const SIM_STEP = 1 / 60;
+    let simAcc = 0;
     let stepAcc = 0;
     let lastPub = 0;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -996,9 +1008,25 @@ export default function PvpBattleScene({
           // Dikey mod: yerel simülasyon durur (karakterler donar).
           last = now;
         } else {
-          const dt = Math.min((now - last) / 1000, 0.05);
+          const dt = Math.min(now - last, 500) / 1000;
           last = now;
-          step(dt);
+          simAcc += dt;
+          let steps = 0;
+          while (simAcc >= SIM_STEP && steps < 5) {
+            step(SIM_STEP);
+            simAcc -= SIM_STEP;
+            steps++;
+          }
+          if (steps === 5) simAcc = 0;
+          // --- maç saati (üst şerit) ---
+          if (!resultRef.current) {
+            matchTRef.current += dt;
+            const secs = Math.floor(matchTRef.current);
+            if (secs !== clockShownRef.current) {
+              clockShownRef.current = secs;
+              setClock(secs);
+            }
+          }
         }
 
         // merged render list: my projectiles (blue) + remote (red)
@@ -1163,6 +1191,15 @@ export default function PvpBattleScene({
     return () => window.clearTimeout(t);
   }, [phase, gate.required]);
 
+  /** Nişan topuzu: hem tabanın ortasına hizalanır hem sürükleme yönüne
+   *  kaydırılır (yatay modda HUD küçüldüğü için yüzdeyle ortalanır). */
+  const setAimKnob = (dx: number, dy: number) => {
+    if (attackKnobRef.current) {
+      attackKnobRef.current.style.transform =
+        `translate(${dx}px, ${dy}px)`;
+    }
+  };
+
   const abilityEmoji = abilityOf(playerAbility).emoji;
   const oppAbilityEmoji = abilityOf(opponentAbility).emoji;
 
@@ -1194,21 +1231,16 @@ export default function PvpBattleScene({
       <div className="relative flex h-full w-full max-w-[1400px] flex-col overflow-hidden rounded-3xl border-4 border-[#3d2f2a]/40 bg-[#1b2233] shadow-2xl">
         {/* HUD top — compact strip: HP bars and names now float above each
             fighter's head inside the arena (world-space UI) */}
-        <div className="flex shrink-0 items-center justify-between gap-2 bg-gradient-to-r from-[#232b40] to-[#2a3350] px-3 py-2 text-white">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/25 text-sm font-extrabold">
-              {playerName.slice(0, 1).toUpperCase()}
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-extrabold text-sky-300">
-              <Zap className="size-3.5" />
-              {Math.round(hud.pc * 100)}%
-            </div>
-          </div>
+        <div className="battle-hud-top flex shrink-0 items-center gap-1.5 bg-gradient-to-r from-[#232b40] to-[#2a3350] px-3 py-2 text-white">
+          <HudFighter
+            name={playerName}
+            pct={hud.ph / HP}
+            abilityPct={hud.pc}
+            tone="sky"
+          />
 
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs font-extrabold">
-              <Swords className="size-3.5" /> PVP
-            </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <HudClock seconds={clock} />
             <Button
               size="icon-sm"
               variant="ghost"
@@ -1220,15 +1252,13 @@ export default function PvpBattleScene({
             </Button>
           </div>
 
-          <div className="flex min-w-0 items-center justify-end gap-2">
-            <div className="hidden items-center gap-1 text-[11px] font-extrabold text-rose-300 sm:flex">
-              <Zap className="size-3.5" />
-              {Math.round(hud.oc * 100)}%
-            </div>
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-rose-500/25 text-sm font-extrabold">
-              {opponentName.slice(0, 1).toUpperCase()}
-            </div>
-          </div>
+          <HudFighter
+            name={opponentName}
+            pct={hud.ohp / HP}
+            abilityPct={hud.oc}
+            tone="rose"
+            align="right"
+          />
         </div>
 
         {/* arena */}
@@ -1313,7 +1343,7 @@ export default function PvpBattleScene({
           {/* controls */}
           <BattleJoystick stickRef={joystickRef} />
 
-          <div className="pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
+          <div className="battle-hud-controls pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
             {isSamuraiFighter(player.current) && (
               <button
                 type="button"
@@ -1323,13 +1353,13 @@ export default function PvpBattleScene({
                   actionsRef.current.samuraiSuper();
                 }}
                 aria-label="Samuray yere vuruş ultisi"
-                className={`pointer-events-auto flex size-14 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
+                className={`battle-hud-ult pointer-events-auto flex size-14 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
                   player.current.samuraiCharge >= 1
                     ? "border-amber-200 bg-gradient-to-br from-amber-300 to-orange-600 text-amber-950"
                     : "border-white/30 bg-white/10 text-white/70"
                 }`}
               >
-                <span className="text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
+                <span className="battle-hud-icon text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
               </button>
             )}
             <button
@@ -1340,13 +1370,13 @@ export default function PvpBattleScene({
                 actionsRef.current.super();
               }}
               aria-label="Süper yetenek"
-              className={`pointer-events-auto flex size-16 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
+              className={`battle-hud-super pointer-events-auto flex size-16 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
                 hud.pc >= 1
                   ? "super-ready border-yellow-300 bg-gradient-to-br from-yellow-400 to-amber-500 text-amber-950"
                   : "border-white/30 bg-white/10 text-white/70"
               }`}
             >
-              <span className="text-2xl font-extrabold">
+              <span className="battle-hud-icon text-2xl font-extrabold">
                 {hud.pc >= 1 ? abilityEmoji : Math.round(hud.pc * 100) + "%"}
               </span>
             </button>
@@ -1359,7 +1389,7 @@ export default function PvpBattleScene({
                 aimRef.current = { active: true, dx: 0, dy: 0 };
                 setAttackHeld(true);
                 if (attackKnobRef.current)
-                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
+                  setAimKnob(0, 0);
               }}
               onPointerMove={(e) => {
                 if (!aimRef.current.active) return;
@@ -1369,7 +1399,7 @@ export default function PvpBattleScene({
                 let dx = e.clientX - cx;
                 let dy = e.clientY - cy;
                 const d = Math.hypot(dx, dy);
-                const R = 42;
+                const R = Math.max(30, rect.width * 0.55);
                 if (d > R) {
                   dx = (dx / d) * R;
                   dy = (dy / d) * R;
@@ -1380,29 +1410,29 @@ export default function PvpBattleScene({
                   player.current.facing = aimRef.current.dx >= 0 ? 1 : -1;
                 }
                 if (attackKnobRef.current)
-                  attackKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
+                  setAimKnob(dx, dy);
               }}
               onPointerUp={() => {
                 tryAttack(aimRef.current.dx, aimRef.current.dy);
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
                 if (attackKnobRef.current)
-                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
+                  setAimKnob(0, 0);
               }}
               onPointerCancel={() => {
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
                 if (attackKnobRef.current)
-                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
+                  setAimKnob(0, 0);
               }}
               onLostPointerCapture={() => {
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
                 if (attackKnobRef.current)
-                  attackKnobRef.current.style.transform = "translate(0px, 0px)";
+                  setAimKnob(0, 0);
               }}
               aria-label="Saldır — basılı tut ve sürükle: nişan al"
-              className={`pointer-events-auto relative flex size-20 touch-none items-center justify-center overflow-visible rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${
+              className={`battle-hud-attack pointer-events-auto relative flex size-20 touch-none items-center justify-center overflow-visible rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${
                 attackHeld
                   ? "scale-90 border-yellow-200 bg-gradient-to-br from-sky-300 to-blue-500 shadow-[0_0_28px_rgba(56,189,248,0.85)]"
                   : "bg-gradient-to-br from-sky-400 to-blue-600 active:scale-90"
@@ -1411,12 +1441,12 @@ export default function PvpBattleScene({
               💥
               <span
                 ref={attackKnobRef}
-                className="pointer-events-none absolute top-1/2 left-1/2 -ml-3.5 -mt-3.5 flex size-7 items-center justify-center rounded-full border-2 border-white bg-white/85 text-[10px] shadow-lg"
+                className="battle-hud-attack-knob pointer-events-none absolute inset-0 m-auto flex size-7 items-center justify-center rounded-full border-2 border-white bg-white/85 text-[10px] shadow-lg"
               >
                 🎯
               </span>
             </button>
-            <span className="rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-extrabold tracking-wide text-white/85">
+            <span className="battle-hud-hint rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-extrabold tracking-wide text-white/85">
               BAS → SÜRÜKLE → NİŞAN AL
             </span>
           </div>
