@@ -39,6 +39,12 @@ import {
 } from "@/engine/GroundCrack";
 import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import {
+  RIG_ROOT_SCALE,
+  measureStrideRatio,
+  stripRootMotion,
+  walkTimeScale,
+} from "@/engine/LocomotionSync";
+import {
   applyFlash,
   HIT_FLASH_MS,
   snapshotFlash,
@@ -338,9 +344,15 @@ export function isHiddenFrom(f: BattleFighter, o: BattleFighter): boolean {
 /* drawn as a procedural low-poly humanoid built from avatar colors.   */
 /* ------------------------------------------------------------------ */
 
-/** GLB normalized height inside the 0.72-scaled rig root — matches the
- *  procedural body's ~1.5-unit silhouette so scale never jumps. */
+/** GLB'nin normalize edildiği gövde yüksekliği (rig içi birim) — prosedürel
+ *  gövdenin ~1.5 birimlik siluetiyle aynı, böylece ölçek zıplamıyor. Dünya
+ *  cinsinden yükseklik bunun RIG_ROOT_SCALE ile çarpımıdır. */
 const FIGHTER_MODEL_H = 1.5;
+
+/** Adım senkronu: ışınlanma sıçramalarını kırpan üst sınır ve "duruyor"
+ *  eşiği (px/sn). */
+const MAX_TRACKED_SPEED = 1400;
+const MIN_MOVING_SPEED = 5;
 
 /** One rigged GLB character instance driven by a battle-fighter ref. */
 function GlbFighterBodyCore({
@@ -357,9 +369,17 @@ function GlbFighterBodyCore({
   const skinUrl = useMemo(() => (equipped ? resolveSkinUrl(equipped) : null), [equipped]);
   const { scene, animations } = useGLTF(skinUrl || url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
-  const { actions } = useAnimations(animations, groupRef);
+  // Root motion temizliği: zırh/skin klipleri kalça konum eğrilerini de
+  // taşıyor; oyun konumu ayrıca kendisi sürdüğü için bu kayma çakışıp
+  // karakteri her adımda kendi kendine kaydırıyordu.
+  const cleanAnimations = useMemo(
+    () => stripRootMotion(animations),
+    [animations],
+  );
+  const { actions } = useAnimations(cleanAnimations, groupRef);
   const movingRef = useRef(fighter.current.moving);
   const previousPosition = useRef({ x: fighter.current.x, y: fighter.current.y });
+
   // Kraliyet Savaşçısı: elindeki kılıçla iki elli yere vurma pozu.
   const royalSlammer = isSamuraiFighter(fighter.current);
   const slamRig = useMemo(() => findRoyalSlamRig(clone), [clone]);
@@ -409,13 +429,37 @@ function GlbFighterBodyCore({
     });
   }, [clone]);
 
+  // Hareket klibi seçimi + adım oranı (modelden BİR KEZ ölçülür).
+  //
+  // Yürüme/koşu adaylarının her biri için, klibin 1x hızda kendi kendine
+  // kat ettiği yol ölçülür ve en hızlısı seçilir: karakter 2.4x hızlandırılmış
+  // bir yürüme döngüsü yerine ~1.6x'lik koşu döngüsüyle gösterilir. İkisi de
+  // ayakları zemine oturtur; koşu adımı daha uzun olduğu için daha doğal
+  // durur. Klip süresi modele göre değiştiği için kalibrasyon her zırh/skin
+  // için kendi kendine yapılır.
   const clips = useMemo(() => {
     const keys = Object.keys(actions);
-    const walk = keys.find((key) => key.toLowerCase().includes("walk"));
-    const run = keys.find((key) => key.toLowerCase().includes("run"));
     const idle = keys.find((key) => key.toLowerCase().includes("idle"));
-    return { idle, walk: walk ?? run };
-  }, [actions]);
+    const worldHeight = FIGHTER_MODEL_H * RIG_ROOT_SCALE;
+    let walk: string | undefined;
+    let strideRatio = 0;
+    let bestSpeed = -1;
+    for (const key of keys) {
+      if (!/walk|run/i.test(key)) continue;
+      const clip = cleanAnimations.find((c) => c.name === key);
+      if (!clip) continue;
+      const ratio = measureStrideRatio(clone, clip);
+      const impliedSpeed =
+        (2 * ratio * worldHeight) / Math.max(clip.duration, 0.05);
+      if (impliedSpeed > bestSpeed) {
+        bestSpeed = impliedSpeed;
+        walk = key;
+        strideRatio = ratio;
+      }
+    }
+    if (!walk) walk = keys.find((key) => key !== idle);
+    return { idle, walk, strideRatio };
+  }, [actions, cleanAnimations, clone]);
 
   // Start with the idle clip (or the first clip if none is named idle).
   useEffect(() => {
@@ -432,13 +476,35 @@ function GlbFighterBodyCore({
   const currentClip = useRef<"idle" | "walk">("idle");
   useFrame((_, dt) => {
     const f = fighter.current;
+    const dts = Math.max(dt, 1e-4);
     const movedX = f.x - previousPosition.current.x;
     const movedY = f.y - previousPosition.current.y;
-    const actuallyMoving = f.moving && Math.hypot(movedX, movedY) > 0.01;
+    // Gerçek yer değiştirmeden ölçülen hız (px/sn). Simülasyonda atalet yok:
+    // joystick bırakıldığı karede girdi sıfırlanır ve bu ölçüm de sıfır olur.
+    // (Sabit hızda oynayan klip yüzünden "arkadan kayma" görünüyordu.)
+    const speed = Math.min(Math.hypot(movedX, movedY) / dts, MAX_TRACKED_SPEED);
+    const actuallyMoving = f.moving && speed > MIN_MOVING_SPEED;
     movingRef.current = actuallyMoving;
     previousPosition.current.x = f.x;
     previousPosition.current.y = f.y;
     const next: "idle" | "walk" = actuallyMoving ? "walk" : "idle";
+    // ── Adım senkronu (foot sliding / ice skating'i bitirir) ──
+    // Klip hızı gerçek hıza eşitlenir: yavaşlarken adımlar yavaşlar,
+    // bırakınca döngü neredeyse anında sabitlenir (donmuş poz bırakmadan).
+    const walkAction = clips.walk ? actions[clips.walk] : undefined;
+    if (walkAction) {
+      const target = walkTimeScale(
+        speed / S,
+        clips.strideRatio,
+        walkAction.getClip().duration,
+        FIGHTER_MODEL_H,
+        RIG_ROOT_SCALE,
+      );
+      // Hızlanma yumuşak, durma çok daha keskin (ani fren hissi).
+      const rate = speed > MIN_MOVING_SPEED ? 10 : 26;
+      walkAction.timeScale +=
+        (target - walkAction.timeScale) * Math.min(1, rate * dt);
+    }
     const slamActive = royalSlammer && f.samuraiUltT > 0;
     const slamProgress = slamActive
       ? 1 - Math.max(0, f.samuraiUltT) / ROYAL_ULT_LOCK
@@ -473,8 +539,11 @@ function GlbFighterBodyCore({
     const from =
       actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
     const to = actions[next === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
-    if (from) from.fadeOut(0.15);
-    if (to) to.reset().fadeIn(0.15).play();
+    // Dururken hızlı, başlarken biraz daha yumuşak geçiş: karakter bıraktığın
+    // anda adım atmayı bırakır (ayak zeminde sürüklenmez).
+    const fade = next === "idle" ? 0.07 : 0.12;
+    if (from) from.fadeOut(fade);
+    if (to) to.reset().fadeIn(fade).play();
     currentClip.current = next;
   });
 
@@ -866,7 +935,12 @@ function FighterRig({
     let yawDiff = targetYaw - root.current.rotation.y;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-    root.current.rotation.y += yawDiff * Math.min(1, (ulting ? 22 : 12) * dt);
+    // Keskin dönüş (rotateTowards): üstel yumuşatma yerine sabit açısal hız.
+    // Üstel yaklaşımda karakter yön değiştirirken geniş bir kavis çizip
+    // sürükleniyordu; şimdi sınırlı adımla tek karede hedefe oturuyor
+    // (16 rad/sn ≈ 917°/sn → 180° dönüş ~0.2 sn).
+    const maxTurn = (ulting ? 26 : 16) * dt;
+    root.current.rotation.y += Math.max(-maxTurn, Math.min(maxTurn, yawDiff));
     if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
     // spinning identity ring under the player's feet — dashed ring + orbit
     // dot turning around them, with a soft pulsing glow disc
@@ -1207,7 +1281,7 @@ function FighterRig({
 
   return (
     <>
-    <group ref={root} scale={0.575}>
+    <group ref={root} scale={RIG_ROOT_SCALE}>
       {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
       <group ref={bodyWrap}>
