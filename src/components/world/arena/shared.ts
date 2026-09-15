@@ -99,12 +99,25 @@ export const COLD_FLAME = {
   /** Rakip ateşi aynı ruhani stil, ama pembe tonla ayrılır (PvP okunurluğu). */
   enemyA: "#f5d0fe",
   enemyB: "#f0abfc",
-  /** Düşmanın sürekli attığı ana mermi: fiziksel ateş değil, eflatun/ buzlu
-   *  ruhani bir alev oku (oyuncunun çiyan enerji küresinden ayrı kalsın). */
-  boltCore: "#ede9fe", // buzlu beyaz-mor çekirdek
-  boltGlow: "#c4b5fd", // iç ışıma (eflatun)
-  boltTail: "#8b5cf6", // arkaya savrulan alev kuyruğu
-  boltTrail: "#a78bfa", // uçuş izi
+  /** "Güçlü Vuruş" ana mermisi — fiziksel ateş değil, antik büyüyle
+   *  harmanlanmış soğuk/ruhani alev oku. İki taraf da aynı stili kullanır,
+   *  ton farkıyla ayrılır: oyuncu buz mavisi, düşman eflatun. */
+  bolt: {
+    player: {
+      core: "#e0f2fe", // buzlu beyaz çekirdek
+      emissive: "#0891b2", // soğuk çiyan ışıma
+      glow: "#a5f3fc", // additive dış ışıma
+      tail: "#67e8f9", // alev kuyruğu
+      trail: "#7dd3fc", // uçuş izi
+    },
+    enemy: {
+      core: "#ede9fe",
+      emissive: "#7c3aed",
+      glow: "#c4b5fd",
+      tail: "#8b5cf6",
+      trail: "#a78bfa",
+    },
+  },
 };
 
 /** Görsel patlama yarıçapı = hasar yarıçapı × bu değer.

@@ -1,14 +1,15 @@
 // ⚔️ Mermi havuzu.
 //
-// Üç ayrı görünüm:
-//   1) Oyuncunun normal atışı   → eskisi gibi çiyan enerji küresi + beyaz hale.
-//   2) Düşmanın normal atışı    → "ana ateş": fiziksel ateş yerine eflatun/buzlu
-//      ruhani bir alev oku (küçük çekirdek + soğuk ışıma + arkaya savrulan
-//      titreyen alev kuyruğu). Düşman sürekli ateş ettiği için asıl görünen bu.
-//   3) Ateş Topu (süper, `explodeR`) → antik büyü halkaları ve alev dilleriyle
+// İki görünüm:
+//   1) "Güçlü Vuruş" ana mermisi (varsayılan yetenek, her iki taraf da bunu
+//      kullanır) → fiziksel ateş yerine antik büyüyle harmanlanmış soğuk /
+//      ruhani bir alev oku: küçük buzlu çekirdek, additive soğuk ışıma ve
+//      arkaya savrulan titreyen alev kuyruğu. Oyuncu buz mavisi, düşman
+//      eflatun tonundadır (kim kime atıyor belli kalsın).
+//   2) Ateş Topu (süper, `explodeR`) → antik büyü halkaları ve alev dilleriyle
 //      dönen, buzlu, animasyonlu soğuk alev küresi.
 //
-// Havuzlar ayrıdır: bir görünümü değiştirmek diğerlerini etkilemez.
+// Havuzlar ayrıdır: bir görünümü değiştirmek diğerini etkilemez.
 import { useFrame } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
 import { useRef } from "react";
@@ -34,8 +35,7 @@ export function ProjectilePool({
 }) {
   const meshes = useRef<(THREE.Mesh | null)[]>([]);
   const halos = useRef<(THREE.Mesh | null)[]>([]);
-  const enemyAuras = useRef<(THREE.Mesh | null)[]>([]);
-  const enemyTails = useRef<(THREE.Mesh | null)[]>([]);
+  const boltTails = useRef<(THREE.Mesh | null)[]>([]);
   const trails = useRef<(THREE.Mesh | null)[]>([]);
 
   // Ateş Topu (soğuk alev) havuzu.
@@ -58,104 +58,82 @@ export function ProjectilePool({
     for (let i = 0; i < PROJ_POOL; i++) {
       const m = meshes.current[i];
       const h = halos.current[i];
-      const ea = enemyAuras.current[i];
-      const et = enemyTails.current[i];
+      const tail = boltTails.current[i];
       const tr = trails.current[i];
       const p = list[i];
       const flame = isFireballProj(p); // süper: Ateş Topu
       const normal = !!p && !flame;
-      const enemyBolt = !!p && !flame && p.owner === "bot";
-      const showHalo = !!p && !flame && p.owner === "player";
+      const pal = p ? COLD_FLAME.bolt[p.owner === "player" ? "player" : "enemy"] : null;
 
-      // ── çekirdek ──
+      // ── çekirdek: küçük, buzlu, titreyen ruhani alev ──
       if (m) {
-        if (normal && p) {
+        if (normal && p && pal) {
           m.visible = true;
           m.position.set(p.x / S, 0.85, p.y / S);
+          m.scale.setScalar(0.88 + 0.08 * Math.sin(time * 13 + i * 2.1));
           const mat = m.material as THREE.MeshStandardMaterial;
-          if (enemyBolt) {
-            // düşman ana ateşi: küçültülmüş, buzlu-mor, titreyen ruhani çekirdek
-            m.scale.setScalar(0.86 + 0.08 * Math.sin(time * 13 + i * 2.1));
-            mat.color.set(COLD_FLAME.boltCore);
-            mat.emissive.set(COLD_FLAME.boltTail);
-            mat.emissiveIntensity = 2.4 + 0.8 * Math.sin(time * 11 + i);
-          } else {
-            m.scale.setScalar(1);
-            mat.color.set(p.owner === "player" ? "#38bdf8" : "#fb7185");
-            mat.emissive.set(p.owner === "player" ? "#0ea5e9" : "#f43f5e");
-            mat.emissiveIntensity = 2.2;
-          }
+          mat.color.set(pal.core);
+          mat.emissive.set(pal.emissive);
+          mat.emissiveIntensity = 2.4 + 0.8 * Math.sin(time * 11 + i);
         } else {
           m.visible = false;
         }
       }
 
-      // ── oyuncunun beyaz halesi (yalnızca oyuncu atışı) ──
+      // ── soğuk ışıma (additive — "ruhani" parlaklık) ──
       if (h) {
-        h.visible = showHalo;
-        if (showHalo && p) h.position.set(p.x / S, 0.85, p.y / S);
-      }
-
-      // ── düşmanın soğuk ışıması (additive) ──
-      if (ea) {
-        if (enemyBolt && p) {
-          ea.visible = true;
-          ea.position.set(p.x / S, 0.85, p.y / S);
-          ea.scale.setScalar(1 + 0.16 * Math.sin(time * 8 + i * 1.4));
-          (ea.material as THREE.MeshBasicMaterial).opacity =
-            0.3 + 0.14 * Math.sin(time * 9 + i);
+        if (normal && p && pal) {
+          h.visible = true;
+          h.position.set(p.x / S, 0.85, p.y / S);
+          h.scale.setScalar(1 + 0.16 * Math.sin(time * 8 + i * 1.4));
+          const hm = h.material as THREE.MeshBasicMaterial;
+          hm.color.set(pal.glow);
+          hm.opacity = 0.3 + 0.14 * Math.sin(time * 9 + i);
         } else {
-          ea.visible = false;
+          h.visible = false;
         }
       }
 
-      // ── düşmanın alev kuyruğu: hız yönünün tersine savrulur ──
-      if (et) {
-        if (enemyBolt && p) {
-          et.visible = true;
+      // ── alev kuyruğu: hız yönünün tersine savrulur ──
+      if (tail) {
+        if (normal && p && pal) {
+          tail.visible = true;
           const sp = Math.hypot(p.vx, p.vy) || 1;
           dirVec.set(p.vx / sp, 0, p.vy / sp);
           dirQuat.setFromUnitVectors(UP, dirVec);
-          et.quaternion.copy(dirQuat);
+          tail.quaternion.copy(dirQuat);
           const stretch = Math.min(1.35, 0.7 + sp / 1100);
           const sy = stretch * (0.9 + 0.25 * Math.sin(time * 13 + i));
-          et.scale.set(0.85 + 0.12 * Math.sin(time * 16 + i * 3), sy, 0.85);
+          tail.scale.set(0.85 + 0.12 * Math.sin(time * 16 + i * 3), sy, 0.85);
           // koni ortadan büyüdüğü için yarı boyu kadar geriye it
           const off = (0.38 * HUD * sy) / 2 + 0.05 * HUD;
-          et.position.set(
+          tail.position.set(
             p.x / S - dirVec.x * off,
             0.85,
             p.y / S - dirVec.z * off,
           );
-          (et.material as THREE.MeshBasicMaterial).opacity =
-            0.55 + 0.25 * Math.sin(time * 15 + i * 2);
+          const tm = tail.material as THREE.MeshBasicMaterial;
+          tm.color.set(pal.tail);
+          tm.opacity = 0.55 + 0.25 * Math.sin(time * 15 + i * 2);
         } else {
-          et.visible = false;
+          tail.visible = false;
         }
       }
 
       // ── uçuş izi ──
       if (tr) {
-        if (normal && p) {
+        if (normal && p && pal) {
           tr.visible = true;
           const sp = Math.hypot(p.vx, p.vy) || 1;
-          const len =
-            Math.min(0.9 * HUD, sp * 0.055 * HUD) * (enemyBolt ? 0.72 : 1);
+          const len = Math.min(0.9 * HUD, sp * 0.055 * HUD) * 0.72;
           tr.position.set(
             (p.x - (p.vx / sp) * len * 0.55) / S,
             0.85,
             (p.y - (p.vy / sp) * len * 0.55) / S,
           );
-          const th = (enemyBolt ? 0.05 : 0.06) * HUD;
-          tr.scale.set(len, th, th);
+          tr.scale.set(len, 0.05 * HUD, 0.05 * HUD);
           tr.rotation.y = Math.atan2(p.vy, p.vx);
-          (tr.material as THREE.MeshBasicMaterial).color.set(
-            enemyBolt
-              ? COLD_FLAME.boltTrail
-              : p.owner === "player"
-                ? "#7dd3fc"
-                : "#fda4af",
-          );
+          (tr.material as THREE.MeshBasicMaterial).color.set(pal.trail);
         } else {
           tr.visible = false;
         }
@@ -276,51 +254,41 @@ export function ProjectilePool({
     <group>
       {Array.from({ length: PROJ_POOL }).map((_, i) => (
         <group key={i}>
-          {/* enerji çekirdeği */}
+          {/* buzlu ruhani çekirdek */}
           <mesh
             ref={(el) => {
               meshes.current[i] = el;
             }}
           >
             <sphereGeometry args={[0.15 * HUD, 12, 12]} />
-            <meshStandardMaterial emissive="#0ea5e9" emissiveIntensity={2.2} />
+            <meshStandardMaterial emissive="#0891b2" emissiveIntensity={2.2} />
           </mesh>
-          {/* oyuncunun beyaz halesi */}
+          {/* soğuk ışıma */}
           <mesh
             ref={(el) => {
               halos.current[i] = el;
             }}
             visible={false}
           >
-            <sphereGeometry args={[0.28 * HUD, 10, 10]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.25} />
-          </mesh>
-          {/* düşmanın soğuk ışıması */}
-          <mesh
-            ref={(el) => {
-              enemyAuras.current[i] = el;
-            }}
-            visible={false}
-          >
-            <sphereGeometry args={[0.23 * HUD, 12, 12]} />
+            <sphereGeometry args={[0.22 * HUD, 12, 12]} />
             <meshBasicMaterial
-              color={COLD_FLAME.boltGlow}
+              color="#a5f3fc"
               transparent
-              opacity={0.32}
+              opacity={0.3}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
-          {/* düşmanın alev kuyruğu (yön her karede hız vektörüne hizalanır) */}
+          {/* alev kuyruğu (yön her karede hız vektörüne hizalanır) */}
           <mesh
             ref={(el) => {
-              enemyTails.current[i] = el;
+              boltTails.current[i] = el;
             }}
             visible={false}
           >
             <coneGeometry args={[0.09 * HUD, 0.38 * HUD, 10]} />
             <meshBasicMaterial
-              color={COLD_FLAME.boltTail}
+              color="#67e8f9"
               transparent
               opacity={0.7}
               blending={THREE.AdditiveBlending}
