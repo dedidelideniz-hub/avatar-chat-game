@@ -32,6 +32,7 @@ import {
 import {
   DUEL_LEAVE_EVENT,
   LandscapeGate,
+  useAndroidBattleOrientation,
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
 import {
@@ -494,6 +495,9 @@ export default function BattleScene({
   // Gaming-style loading sequence runs before the fight unlocks.
   const [phase, setPhase] = useState<"loading" | "fight">("loading");
   const startedRef = useRef(false);
+  // Android APK: savaş alanı bağlıyken ekran yataya kilitlenir, çıkışta
+  // (ya da web'de köprü yokken) hiçbir şey değişmez.
+  useAndroidBattleOrientation();
   // Yatay mod: telefon dikeyken yükleme ilerlemez ve savaş duraklar.
   const gate = useLandscapeGate();
   const rotateRef = useRef(gate.required);

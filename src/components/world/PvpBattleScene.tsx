@@ -44,6 +44,7 @@ import {
 } from "@/components/world/BattleTopHud";
 import {
   DUEL_LEAVE_EVENT,
+  useAndroidBattleOrientation,
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
 import { usePresenceOthers, usePresencePublisher } from "@/hooks/use-presence";
@@ -331,6 +332,9 @@ export default function PvpBattleScene({
   const [phase, setPhase] = useState<"loading" | "waiting" | "fight">("loading");
   phaseRef.current = phase;
   const startedRef = useRef(false);
+  // Android APK: savaş alanı bağlıyken ekran yataya kilitlenir, çıkışta
+  // (ya da web'de köprü yokken) hiçbir şey değişmez.
+  useAndroidBattleOrientation();
   // Yatay mod: telefon dikeyken düello başlamaz ve simülasyon duraklar.
   const gate = useLandscapeGate();
   const rotateRef = useRef(gate.required);

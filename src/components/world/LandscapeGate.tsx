@@ -40,6 +40,88 @@ function getOrientation(): LockableOrientation | null {
   return (screen.orientation as LockableOrientation | undefined) ?? null;
 }
 
+/**
+ * Android APK'daki MainActivity'nin enjekte ettiği ekran yönü köprüsü.
+ * Normal tarayıcı sürümünde hiç bulunmaz; bu yüzden her çağrı varlık
+ * kontrolünden geçer ve asla hata fırlatmaz — web davranışı bozulmaz.
+ */
+type AndroidOrientationBridge = {
+  landscape?: () => void;
+  portrait?: () => void;
+};
+
+function androidBridge(): AndroidOrientationBridge | null {
+  if (typeof window === "undefined") return null;
+  const bridge = (
+    window as unknown as { AndroidOrientation?: AndroidOrientationBridge }
+  ).AndroidOrientation;
+  return bridge ?? null;
+}
+
+/** Android APK'yı yatay (savaş alanı) moduna alır. Web'de sessizce geçer. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function lockAndroidLandscape() {
+  try {
+    androidBridge()?.landscape?.();
+  } catch {
+    // Köprü yok ya da çağrı reddedildi: mevcut web davranışı aynen sürer.
+  }
+}
+
+/** Android APK'yı dikey (uygulama) moduna döndürür. Web'de sessizce geçer. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function lockAndroidPortrait() {
+  try {
+    androidBridge()?.portrait?.();
+  } catch {
+    // Köprü yok ya da çağrı reddedildi: mevcut web davranışı aynen sürer.
+  }
+}
+
+// Savaş alanına bağlı sahne sayısı ve bekleyen "dikeye dön" zamanlayıcısı.
+let activeBattles = 0;
+let portraitTimer: number | null = null;
+
+function cancelPortraitRestore() {
+  if (portraitTimer === null) return;
+  window.clearTimeout(portraitTimer);
+  portraitTimer = null;
+}
+
+function schedulePortraitRestore() {
+  cancelPortraitRestore();
+  portraitTimer = window.setTimeout(() => {
+    portraitTimer = null;
+    // Bu arada yeni bir savaş alanı bağlanmadıysa uygulama dikeye döner.
+    if (activeBattles === 0) lockAndroidPortrait();
+  }, 150);
+}
+
+/**
+ * Savaş alanına giriş/çıkışta Android APK'nın ekran yönünü yönetir: sahne
+ * bağlanınca yatay, savaş alanından çıkılınca tekrar dikey.
+ *
+ * Dikeye dönüş kısa bir gecikmeyle yapılır ve sahne bu arada yeniden
+ * bağlanırsa iptal edilir; böylece bir düellodan diğerine geçerken ya da
+ * React StrictMode'un geliştirme modundaki mount-unmount-mount döngüsünde
+ * ekran gereksiz yere dikeye dönmez. Tarayıcıda köprü olmadığı için hiçbir
+ * yan etkisi yoktur.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useAndroidBattleOrientation() {
+  useEffect(() => {
+    activeBattles += 1;
+    cancelPortraitRestore();
+    lockAndroidLandscape();
+    return () => {
+      activeBattles -= 1;
+      if (activeBattles > 0) return;
+      activeBattles = 0;
+      schedulePortraitRestore();
+    };
+  }, []);
+}
+
 function readState(): LandscapeState {
   if (typeof window === "undefined") {
     return {
@@ -67,7 +149,11 @@ function readState(): LandscapeState {
     required: portrait && (touch || phoneish),
     touch,
     compact: !portrait && Math.min(w, h) <= 560,
-    canLock: !!orientation && typeof orientation.lock === "function",
+    // Android APK': native köprü varsa yatay kilidi o taraf üstlenir, bu
+    // yüzden "Tam ekran yap ve yataya kilitle" düğmesi orada da gösterilir.
+    canLock:
+      (!!orientation && typeof orientation.lock === "function") ||
+      androidBridge() !== null,
   };
 }
 
@@ -118,6 +204,8 @@ export function LandscapeGate({
   canLock?: boolean;
 }) {
   const goLandscape = async () => {
+    // Android APK: köprü varsa önce native ekran yönünü yataya çevir.
+    lockAndroidLandscape();
     try {
       const el = document.documentElement;
       if (!document.fullscreenElement && el.requestFullscreen) {
