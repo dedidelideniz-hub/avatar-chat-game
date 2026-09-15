@@ -116,7 +116,7 @@ const schema = defineSchema(
         pants: v.string(), // pants color hex
         shoes: v.string(), // shoe color hex
       }),
-      // Game economy: Sanalika Parası balance + owned product ids (bag).
+      // Game economy: Vaelos Parası balance + owned product ids (bag).
       // Optional so pre-existing profiles keep working; defaults are applied
       // when reading/writing (see src/convex/profiles.ts).
       coins: v.optional(v.number()),

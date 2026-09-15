@@ -81,7 +81,7 @@ const FALLBACK_PRESETS: Partial<Record<SoundName, string>> = {
   whoosh: "jump",
 };
 
-const STORAGE_KEY = "sanalika-ses-kapali";
+const STORAGE_KEY = "vaelos-ses-kapali";
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;

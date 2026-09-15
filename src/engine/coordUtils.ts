@@ -1,5 +1,5 @@
 /**
- * SANALIKA 3D GAME ENGINE — Coordinate Utilities
+ * VAELOS 3D GAME ENGINE — Coordinate Utilities
  *
  * Converts SVG 2D ↔ Three.js 3D.
  * SVG: x=0..1600, y=0..900 (top=0)

@@ -315,7 +315,7 @@ export function SkinPreviewModal({
   );
 }
 
-/** Vendor stall — browse & buy products with Sanalika Parası. */
+/** Vendor stall — browse & buy products with Vaelos Parası. */
 /* ── ShopSheet cinematic variants ────────────────────────── */
 
 const shopBackdropVariants = {
@@ -467,7 +467,7 @@ export function ShopSheet({
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3, type: "spring" as const, stiffness: 400, damping: 20 }}
               className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-sm font-extrabold text-amber-600 dark:text-amber-400"
-              title="Sanalika Parası"
+              title="Vaelos Parası"
             >
               {CURRENCY_EMOJI} {formatCoins(coins)} SP
             </motion.span>
@@ -736,7 +736,7 @@ export function BagSheet({
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2, duration: 0.3 }}
               className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-extrabold"
-              title="Sanalika Parası"
+              title="Vaelos Parası"
             >
               {CURRENCY_EMOJI} {formatCoins(coins)} SP
             </motion.span>
@@ -769,7 +769,7 @@ export function BagSheet({
             </motion.span>
             <p className="text-base font-extrabold">Çantan şimdilik boş</p>
             <p className="max-w-xs text-sm text-muted-foreground">
-              Caddedeki tezgâhlara uğra, sevdiğin ürünleri Sanalika Paranla
+              Caddedeki tezgâhlara uğra, sevdiğin ürünleri Vaelos Paranla
               topla.
             </p>
             <Button className="mt-1 rounded-full" onClick={onBrowseStalls}>
@@ -934,7 +934,7 @@ export function VipSheet({
           <div className="flex items-center gap-2">
             <span
               className="flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-sm font-extrabold"
-              title="Sanalika Parası"
+              title="Vaelos Parası"
             >
               {CURRENCY_EMOJI} {formatCoins(coins)} SP
             </span>

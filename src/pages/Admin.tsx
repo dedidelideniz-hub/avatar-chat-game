@@ -1,4 +1,4 @@
-// 👑 Sanalika Yönetici Paneli — /admin
+// 👑 Vaelos Yönetici Paneli — /admin
 // Demo giriş: kullanıcı adı "admin", şifre "admin".
 // (Güvenlik notu: bu bilgiler istemcide ve Convex fonksiyonlarında sabittir;
 // gerçek bir yayında env değişkeni + rol kontrolüne taşınmalıdır.)
@@ -150,7 +150,7 @@ export default function Admin() {
                 Yönetici Paneli
               </h1>
               <p className="mt-1 text-sm font-medium text-slate-400">
-                Sanalika oyun yönetimi
+                Vaelos oyun yönetimi
               </p>
             </div>
             <form onSubmit={handleLogin} className="space-y-4 p-6">

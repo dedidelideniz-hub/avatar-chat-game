@@ -1,5 +1,5 @@
 /**
- * SANALIKA 3D GAME ENGINE — Visual Polish Pass
+ * VAELOS 3D GAME ENGINE — Visual Polish Pass
  *
  * All positions, coordinates, zones, and dimensions are UNCHANGED.
  * This file only improves: materials, colors, lighting, detail geometry.

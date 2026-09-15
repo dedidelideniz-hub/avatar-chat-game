@@ -5,7 +5,7 @@ import { mutation, query } from "./_generated/server";
 /**
  * Public street chat — append-only messages broadcast to everyone in a room.
  * Every phone subscribes to `list` and appends new messages in real time, so
- * the Sanalika street feels genuinely online: what one player types shows up
+ * the Vaelos street feels genuinely online: what one player types shows up
  * on every other phone within a moment.
  *
  * Rooms are plain strings (\"world\" today; a future per-location room is just

@@ -78,7 +78,7 @@ export const listGuests = query({
 });
 
 /**
- * Credit Sanalika Parası to a player's wallet (admin only). Positive integer
+ * Credit Vaelos Parası to a player's wallet (admin only). Positive integer
  * between 1 and 1.000.000. Returns the new balance.
  */
 export const addCoins = mutation({

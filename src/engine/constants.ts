@@ -1,5 +1,5 @@
 /**
- * SANALIKA 3D GAME ENGINE — Street Prototype Constants
+ * VAELOS 3D GAME ENGINE — Street Prototype Constants
  *
  * Coordinate system:
  *   X = left/right (centered, -16..+16)

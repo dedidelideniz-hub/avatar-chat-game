@@ -44,7 +44,7 @@ function GameLogo() {
         />
       </svg>
       <div className="flex flex-col leading-none">
-        <span className="text-xl font-extrabold tracking-tight">Sanalika</span>
+        <span className="text-xl font-extrabold tracking-tight">Vaelos</span>
         <span className="mt-1 text-[9px] font-extrabold uppercase tracking-[0.22em] text-primary">
           Avatar Chat
         </span>

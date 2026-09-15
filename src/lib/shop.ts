@@ -1,11 +1,11 @@
 /**
- * Sanalika Avatar Chat — street economy.
+ * Vaelos Avatar Chat — street economy.
  * Shared between the Convex backend (buyItem / claimDailyBonus) and the World
  * page, so prices and stock are defined in exactly one place. Keep this file
  * dependency-free (no React imports).
  */
 
-export const CURRENCY_NAME = "Sanalika Parası";
+export const CURRENCY_NAME = "Vaelos Parası";
 export const CURRENCY_EMOJI = "🪙";
 export const STARTING_COINS = 500;
 export const DAILY_BONUS = 150;
@@ -185,7 +185,7 @@ export function bubbleColorOf(id: string): BubbleColor {
 
 /** VIP membership — unlocks every speech-bubble color at the VIP stand. */
 export const VIP_VENDOR_ID = "vip";
-export const VIP_PRICE = 1500; // Sanalika Parası
+export const VIP_PRICE = 1500; // Vaelos Parası
 export const VIP_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 gün
 export const VIP_DURATION_DAYS = 30;
 
@@ -233,7 +233,7 @@ export interface Product {
   id: string;
   name: string;
   emoji: string;
-  price: number; // in Sanalika Parası
+  price: number; // in Vaelos Parası
   description: string;
   vendorId: string;
   /** Body slot where the item is shown while equipped. */

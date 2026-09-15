@@ -3,7 +3,7 @@
  *
  * Replaces the SVG StreetScene with a stylized low-poly3D world.
  * Uses @react-three/fiber with orthographic camera for
- * the Brawl Stars / Sanalika top-down feel.
+ * the Brawl Stars / Vaelos top-down feel.
  *
  * Characters remain as SVG overlays (z-index 3 in World.tsx).
  * This component only renders the environment.
@@ -20,7 +20,7 @@ const WORLD_H = 900;
 const CAM_HEIGHT = 600; // How high the camera sits — controls zoom
 
 // ════════════════════════════════════════════════════════════════
-// COLOR PALETTE — warm, cozy Sanalika style
+// COLOR PALETTE — warm, cozy Vaelos style
 // ════════════════════════════════════════════════════════════════
 const C = {
   sky: "#b8d4e8",

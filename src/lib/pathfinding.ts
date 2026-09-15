@@ -1,5 +1,5 @@
 /**
- * Grid-based A* pathfinding for the Sanalika street map.
+ * Grid-based A* pathfinding for the Vaelos street map.
  *
  * The world is discretised into cells.  Obstacle rectangles are
  * "burned" into the grid (inflated by PLAYER_RADIUS so the character

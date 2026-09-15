@@ -43,7 +43,7 @@ function GameLogo({ className }: { className?: string }) {
     <div className={`flex items-center gap-2.5 ${className ?? ""}`}>
       <LogoMark className="size-9" />
       <div className="flex flex-col leading-none">
-        <span className="text-xl font-extrabold tracking-tight">Sanalika</span>
+        <span className="text-xl font-extrabold tracking-tight">Vaelos</span>
         <span className="mt-1 text-[9px] font-extrabold uppercase tracking-[0.22em] text-primary">
           Avatar Chat
         </span>
@@ -59,7 +59,7 @@ function WorldScene({ className }: { className?: string }) {
       viewBox="0 0 420 380"
       className={className}
       role="img"
-      aria-label="Sanalika dünyasından bir sahne"
+      aria-label="Vaelos dünyasından bir sahne"
     >
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -187,7 +187,7 @@ const FEATURES = [
     icon: Map,
     color: "bg-accent text-accent-foreground",
     title: "Sanal Cadde",
-    desc: "Cadde boyunca yürü, tezgâhların önünde dur, satıcılardan alışveriş yap. Çantan ve Sanalika Paran cebinde.",
+    desc: "Cadde boyunca yürü, tezgâhların önünde dur, satıcılardan alışveriş yap. Çantan ve Vaelos Paran cebinde.",
     badge: "Canlı",
   },
   {
@@ -204,7 +204,7 @@ export default function Landing() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">            <Link to="/" aria-label="Sanalika ana sayfa">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">            <Link to="/" aria-label="Vaelos ana sayfa">
             <GameLogo />
           </Link>
           <nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex">
@@ -250,7 +250,7 @@ export default function Landing() {
               <span className="text-primary">dünyaya</span> adım at
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              Sanalika Avatar Chat — tarayıcında oynanan avatar sohbet dünyası.
+              Vaelos Avatar Chat — tarayıcında oynanan avatar sohbet dünyası.
               Karakterini özelleştir, sanal dünyada gez, yeni insanlarla tanış
               ve sohbet et. Hepsi tamamen ücretsiz.
             </p>
@@ -293,7 +293,7 @@ export default function Landing() {
                 <span className="size-2.5 rounded-full bg-[#febc2e]" />
                 <span className="size-2.5 rounded-full bg-[#28c840]" />
                 <span className="ml-3 text-xs font-bold text-background/80">
-                  sanalika.world — Ana Kafe
+                  Vaelos.world — Ana Kafe
                 </span>
               </div>
               <div className="animate-float-slow">
@@ -321,7 +321,7 @@ export default function Landing() {
             Neler var?
           </span>
           <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Sanalika dünyasında buluş
+            Vaelos dünyasında buluş
           </h2>
           <p className="mt-4 text-base leading-7 text-muted-foreground">
             Sohbetten keşfe, arkadaşlıktan kişiselleştirmeye — sanal bir dünyada
@@ -461,7 +461,7 @@ export default function Landing() {
           </h2>
           <p className="relative mx-auto mt-4 max-w-xl text-base leading-7 text-background/70">
             Bir dakika bile sürmüyor. E-postanı gir veya misafir olarak devam et —
-            Sanalika seni bekliyor.
+            Vaelos seni bekliyor.
           </p>
           <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button
@@ -494,7 +494,7 @@ export default function Landing() {
             </Link>
           </nav>
           <p className="text-sm text-muted-foreground">
-            © 2026 Sanalika Avatar Chat
+            © 2026 Vaelos Avatar Chat
           </p>
         </div>
       </footer>

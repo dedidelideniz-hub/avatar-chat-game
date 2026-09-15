@@ -1,4 +1,4 @@
-// The Sanalika street — tap to walk, chat with vendors, shop with SP.
+// The Vaelos street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
 import { GameEngine3D, raycastScreenToSVG, svgToWorld, worldToScreen } from "@/engine/GameEngine3D";
@@ -387,7 +387,7 @@ const sheetPanel = {
   transition: { duration: 0.25, ease: "easeOut" as const },
 };
 
-/** Bottom control bar button — gradient circle like the Sanalika client. */
+/** Bottom control bar button — gradient circle like the Vaelos client. */
 function BarBtn({
   icon: Icon,
   label,
@@ -649,7 +649,7 @@ function ProfileSheet({
   onEdit: () => void;
 }) {
   return (
-    <GameSheet title={`👤 ${username}`} subtitle="Sanalika Kimliği" onClose={onClose}>
+    <GameSheet title={`👤 ${username}`} subtitle="Vaelos Kimliği" onClose={onClose}>
       <div className="mt-5 flex items-center gap-5">
         <div className="relative shrink-0">
           <AvatarPreview config={config} className="block h-32 w-auto" />
@@ -1965,7 +1965,7 @@ export default function World() {
     appendMessage({
       id: nextIdRef.current++,
       from: "Cadde",
-      text: "👋 Sanalika Caddesi'ne hoş geldin! Satıcıya dokunup market sayfasını açabilirsin.",
+      text: "👋 Vaelos Caddesi'ne hoş geldin! Satıcıya dokunup market sayfasını açabilirsin.",
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
@@ -2272,7 +2272,7 @@ export default function World() {
               <CharacterCard
                 key="me"
                 name={username}
-                subtitle={`Sanalika Caddesi sakini · Level ${level}`}
+                subtitle={`Vaelos Caddesi sakini · Level ${level}`}
                 badge={
                   <>
                     <span className="flex shrink-0 items-center rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">
@@ -2319,7 +2319,7 @@ export default function World() {
               <CharacterCard
                 key={viewedBot.id}
                 name={viewedBot.name}
-                subtitle={`Sanalika Caddesi sakini · Level ${viewedBot.level}`}
+                subtitle={`Vaelos Caddesi sakini · Level ${viewedBot.level}`}
                 badge={<span className="animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">✦ LV {viewedBot.level}</span>}
                 avatar={
                   <GlbProfileAvatar
@@ -2365,7 +2365,7 @@ export default function World() {
               <CharacterCard
                 key={viewedRemote.sessionId}
                 name={viewedRemote.data?.name ?? "Oyuncu"}
-                subtitle="Sanalika Caddesi sakini"
+                subtitle="Vaelos Caddesi sakini"
                 badge={
                   viewedRemote.data?.vip ? (
                     <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
@@ -2562,7 +2562,7 @@ export default function World() {
 
         </main>
 
-        {/* bottom control bar — Sanalika style: all buttons centered in one
+        {/* bottom control bar — Vaelos style: all buttons centered in one
             row (visible at once, no scrolling needed) with a full-width chat
             input below. Clear of the phone's home indicator (safe-area). */}
         <div className="shrink-0 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] pb-[max(env(safe-area-inset-bottom),0.5rem)]">
@@ -2619,7 +2619,7 @@ export default function World() {
               <input
                 value={chatDraft}
                 onChange={(e) => setChatDraft(e.target.value)}
-                placeholder="Merhaba Sanalika! Mesajını yaz…"
+                placeholder="Merhaba Vaelos! Mesajını yaz…"
                 maxLength={120}
                 autoComplete="off"
                 aria-label="Sohbet mesajı"
@@ -2727,7 +2727,7 @@ export default function World() {
               Hesabın oyundan yasaklandı
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Yönetici tarafından engellendin. Sanalika Caddesi'ne girişin şu
+              Yönetici tarafından engellendin. Vaelos Caddesi'ne girişin şu
               an kapalı — detay için yöneticiye başvurabilirsin.
             </p>
             <Button

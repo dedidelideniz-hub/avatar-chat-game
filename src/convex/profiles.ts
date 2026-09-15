@@ -167,7 +167,7 @@ export const saveProfile = mutation({
 });
 
 /**
- * Buy a product from a street vendor. Deducts Sanalika Parası and adds the
+ * Buy a product from a street vendor. Deducts Vaelos Parası and adds the
  * item to the player's bag (each product can be owned once).
  */
 export const buyItem = mutation({
@@ -196,7 +196,7 @@ export const buyItem = mutation({
     }
     if (coins < product.price) {
       throw new Error(
-        `Yeterli Sanalika Paran yok — ${product.price} SP gerekiyor.`,
+        `Yeterli Vaelos Paran yok — ${product.price} SP gerekiyor.`,
       );
     }
     await ctx.db.patch(profile._id, {
@@ -404,7 +404,7 @@ export const buyAbility = mutation({
     const coins = profile.coins ?? STARTING_COINS;
     if (coins < ability.price) {
       throw new Error(
-        `Yeterli Sanalika Paran yok — ${ability.price} SP gerekiyor.`,
+        `Yeterli Vaelos Paran yok — ${ability.price} SP gerekiyor.`,
       );
     }
     await ctx.db.patch(profile._id, {
