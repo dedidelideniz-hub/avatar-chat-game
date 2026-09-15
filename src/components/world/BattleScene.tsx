@@ -12,6 +12,7 @@ import {
   isHiddenFrom,
   isSamuraiFighter,
   pushColdFlameFx,
+  pushColdFlameImpact,
   SAMURAI_ULTIMATE_DAMAGE,
   stepHitStun,
   supportsWebGL,
@@ -1366,7 +1367,7 @@ export default function BattleScene({
           // sweep going, so they reposition instead of relying on shots
           // passing through cover.
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
-          burstFx(nx, ny, 55, "#d9c29a", 0.3);
+          pushColdFlameImpact(addFx, nx, ny, 46);
           projs.current.splice(i, 1);
           continue;
         }
@@ -1383,6 +1384,8 @@ export default function BattleScene({
               target,
               pr.dmg,
             );
+            // Soğuk alev oku düşmana değdi: temas noktasında buzlu patlama.
+            pushColdFlameImpact(addFx, pr.x, pr.y, 62);
           }
           if (!pr.pierce) {
             projs.current.splice(i, 1);

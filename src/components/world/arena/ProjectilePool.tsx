@@ -3,9 +3,15 @@
 // İki görünüm:
 //   1) "Güçlü Vuruş" ana mermisi (varsayılan yetenek, her iki taraf da bunu
 //      kullanır) → fiziksel ateş yerine antik büyüyle harmanlanmış soğuk /
-//      ruhani bir alev oku: küçük buzlu çekirdek, additive soğuk ışıma ve
-//      arkaya savrulan titreyen alev kuyruğu. Oyuncu buz mavisi, düşman
-//      eflatun tonundadır (kim kime atıyor belli kalsın).
+//      ruhani bir alev oku:
+//        · nabız gibi atan buzlu çekirdek + iki katman yumuşak ışıma,
+//            · çevresinde dönen büyü halkaları (gyroscope),
+//        · gövdeye yapışık, sürekli yalayan 3 alev dili,
+//        · hız yönüne savrulan uzun alev kuyruğu,
+//        · arkada uzayan iki kademeli kuyruklu yıldız izi,
+//        · zemine vuran soğuk ışık lekesi,
+//        · namludan çıkış anında genişleyip sönen bir ateşleme şimşeği.
+//      Oyuncu buz mavisi, düşman eflatun tonundadır (kim kime atıyor belli kalsın).
 //   2) Ateş Topu (süper, `explodeR`) → antik büyü halkaları ve alev dilleriyle
 //      dönen, buzlu, animasyonlu soğuk alev küresi.
 //
@@ -14,7 +20,15 @@ import { useFrame } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
 import { useRef } from "react";
 import * as THREE from "three";
-import { COLD_FLAME, HUD, isFireballProj, PROJ_POOL, S, type BattleProj } from "./shared";
+import {
+  BOLT_VFX,
+  COLD_FLAME,
+  HUD,
+  isFireballProj,
+  PROJ_POOL,
+  S,
+  type BattleProj,
+} from "./shared";
 
 /** Aynı anda ekranda çizilecek en fazla ateş topu (süper). */
 const FLAME_POOL = 4;
@@ -22,6 +36,10 @@ const FLAME_POOL = 4;
 const TONGUES = 5;
 /** Ateş küresi başına yükselen buz kırıntısı sayısı. */
 const EMBERS = 3;
+/** Ana mermi gövdesine yapışık yalayan alev dili sayısı. */
+const BOLT_TONGUES = 3;
+/** Namlu şimşeği yalnızca ilk slotlarda çizilir (aynı anda birkaç atış olur). */
+const MUZZLE_POOL = 8;
 
 /* Uçuş yönü hesaplarında kullanılan geçici nesneler (kare başına ayırma yok). */
 const UP = new THREE.Vector3(0, 1, 0);
@@ -33,10 +51,22 @@ export function ProjectilePool({
 }: {
   projsRef: MutableRefObject<BattleProj[]>;
 }) {
-  const meshes = useRef<(THREE.Mesh | null)[]>([]);
-  const halos = useRef<(THREE.Mesh | null)[]>([]);
+  // ── ana mermi (soğuk alev oku) ──
+  const boltRoots = useRef<(THREE.Group | null)[]>([]); // konum + görünürlük
+  const boltSpins = useRef<(THREE.Group | null)[]>([]); // dönen alev kümesi
+  const boltCores = useRef<(THREE.Mesh | null)[]>([]);
+  const boltGlows = useRef<(THREE.Mesh | null)[]>([]);
+  const boltHalos = useRef<(THREE.Mesh | null)[]>([]);
+  const boltRingA = useRef<(THREE.Mesh | null)[]>([]);
+  const boltRingB = useRef<(THREE.Mesh | null)[]>([]);
   const boltTails = useRef<(THREE.Mesh | null)[]>([]);
-  const trails = useRef<(THREE.Mesh | null)[]>([]);
+  const boltNearTrails = useRef<(THREE.Mesh | null)[]>([]);
+  const boltFarTrails = useRef<(THREE.Mesh | null)[]>([]);
+  const boltTongues = useRef<(THREE.Mesh | null)[][]>([]);
+  const boltGrounds = useRef<(THREE.Mesh | null)[]>([]);
+  // ── namlu şimşeği (mermi ilk çıktığı an) ──
+  const muzzleFlashes = useRef<(THREE.Mesh | null)[]>([]);
+  const muzzleRings = useRef<(THREE.Mesh | null)[]>([]);
 
   // Ateş Topu (soğuk alev) havuzu.
   const flameRoots = useRef<(THREE.Group | null)[]>([]); // konum + görünürlük
@@ -54,96 +84,180 @@ export function ProjectilePool({
     const list = projsRef.current;
     const time = state.clock.elapsedTime;
     let flameSlot = 0;
+    let boltSlot = 0;
 
     for (let i = 0; i < PROJ_POOL; i++) {
-      const m = meshes.current[i];
-      const h = halos.current[i];
-      const tail = boltTails.current[i];
-      const tr = trails.current[i];
       const p = list[i];
       const flame = isFireballProj(p); // süper: Ateş Topu
       const normal = !!p && !flame;
       const pal = p ? COLD_FLAME.bolt[p.owner === "player" ? "player" : "enemy"] : null;
 
-      // ── çekirdek: küçük, buzlu, titreyen ruhani alev ──
-      if (m) {
-        if (normal && p && pal) {
-          m.visible = true;
-          m.position.set(p.x / S, 0.85, p.y / S);
-          m.scale.setScalar(0.88 + 0.08 * Math.sin(time * 13 + i * 2.1));
-          const mat = m.material as THREE.MeshStandardMaterial;
+      // ── namlu şimşeği: mermi yeni çıktıysa ateşlendiği noktada bir an ──
+      if (i < MUZZLE_POOL) {
+        const mf = muzzleFlashes.current[i];
+        const mr = muzzleRings.current[i];
+        const showMuzzle = normal && p && p.travelled < BOLT_VFX.muzzlePx;
+        if (showMuzzle && p && pal) {
+          const k = 1 - p.travelled / BOLT_VFX.muzzlePx; // 1 → 0
+          const sp = Math.hypot(p.vx, p.vy) || 1;
+          const ox = (p.x - (p.vx / sp) * p.travelled) / S;
+          const oz = (p.y - (p.vy / sp) * p.travelled) / S;
+          if (mf) {
+            mf.visible = true;
+            mf.position.set(ox, 0.85, oz);
+            const sc = (0.2 + 0.55 * (1 - k)) * HUD;
+            mf.scale.setScalar(sc);
+            const mat = mf.material as THREE.MeshBasicMaterial;
+            mat.color.set(pal.halo);
+            mat.opacity = k * 0.9;
+          }
+          if (mr) {
+            mr.visible = true;
+            mr.position.set(ox, 0.75, oz);
+            mr.scale.setScalar((0.24 + 1.1 * (1 - k)) * HUD);
+            const mat = mr.material as THREE.MeshBasicMaterial;
+            mat.color.set(pal.ring);
+            mat.opacity = k * 0.7;
+          }
+        } else {
+          if (mf && mf.visible) mf.visible = false;
+          if (mr && mr.visible) mr.visible = false;
+        }
+      }
+
+      // ── ana mermi gövdesi ──
+      const root = boltRoots.current[boltSlot];
+      if (normal && p && pal && root) {
+        const si = boltSlot++;
+        const spin = boltSpins.current[si];
+        const core = boltCores.current[si];
+        const glow = boltGlows.current[si];
+        const halo = boltHalos.current[si];
+        const ringA = boltRingA.current[si];
+        const ringB = boltRingB.current[si];
+        const tail = boltTails.current[si];
+        const near = boltNearTrails.current[si];
+        const far = boltFarTrails.current[si];
+        const ground = boltGrounds.current[si];
+        const sp = Math.hypot(p.vx, p.vy) || 1;
+        const dx = p.vx / sp;
+        const dz = p.vy / sp;
+
+        root.visible = true;
+        root.position.set(p.x / S, 0.85, p.y / S);
+
+        // Dönen alev kümesi: nabız gibi atan çekirdek + iki ışıma + halkalar +
+        // yalayan alev dilleri.
+        if (spin) {
+          spin.rotation.y = time * 2.4 + i * 1.1;
+          spin.rotation.z = 0.18 * Math.sin(time * 3.1 + i);
+        }
+        if (core) {
+          core.scale.setScalar(1 + 0.16 * Math.sin(time * 17 + i * 2.1));
+          const mat = core.material as THREE.MeshStandardMaterial;
           mat.color.set(pal.core);
           mat.emissive.set(pal.emissive);
-          mat.emissiveIntensity = 2.4 + 0.8 * Math.sin(time * 11 + i);
-        } else {
-          m.visible = false;
+          mat.emissiveIntensity = 3.2 + 1.2 * Math.sin(time * 14 + i);
         }
-      }
-
-      // ── soğuk ışıma (additive — "ruhani" parlaklık) ──
-      if (h) {
-        if (normal && p && pal) {
-          h.visible = true;
-          h.position.set(p.x / S, 0.85, p.y / S);
-          h.scale.setScalar(1 + 0.16 * Math.sin(time * 8 + i * 1.4));
-          const hm = h.material as THREE.MeshBasicMaterial;
-          hm.color.set(pal.glow);
-          hm.opacity = 0.3 + 0.14 * Math.sin(time * 9 + i);
-        } else {
-          h.visible = false;
+        if (glow) {
+          glow.scale.setScalar(1 + 0.24 * Math.sin(time * 9 + i * 1.4));
+          const mat = glow.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.glow);
+          mat.opacity = 0.42 + 0.16 * Math.sin(time * 11 + i);
         }
-      }
+        if (halo) {
+          halo.scale.setScalar(1 + 0.16 * Math.sin(time * 6 + i * 0.8));
+          const mat = halo.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.halo);
+          mat.opacity = 0.16 + 0.08 * Math.sin(time * 7 + i * 0.6);
+        }
+        if (ringA) {
+          ringA.rotation.x = Math.PI / 2 + 0.6 * Math.sin(time * 2.1 + i);
+          ringA.rotation.y = time * 3.1;
+          ringA.scale.setScalar(1 + 0.1 * Math.sin(time * 10 + i));
+          const mat = ringA.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.ring);
+          mat.opacity = 0.55 + 0.3 * Math.sin(time * 12 + i * 2);
+        }
+        if (ringB) {
+          ringB.rotation.x = time * -2.6;
+          ringB.rotation.y = Math.PI / 3 + 0.6 * Math.cos(time * 1.7 + i);
+          const mat = ringB.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.wisp);
+          mat.opacity = 0.4 + 0.25 * Math.sin(time * 9 + i * 1.5);
+        }
+        const tongues = boltTongues.current[si];
+        if (tongues) {
+          for (let k = 0; k < BOLT_TONGUES; k++) {
+            const tg = tongues[k];
+            if (!tg) continue;
+            const ph = time * 11 + k * 2.1 + i;
+            const a = (k / BOLT_TONGUES) * Math.PI * 2 + time * 2.2;
+            const rad = (0.1 + 0.02 * Math.sin(ph * 0.8)) * HUD;
+            tg.position.set(Math.cos(a) * rad, 0.02 * HUD * Math.sin(ph * 0.9), Math.sin(a) * rad);
+            tg.rotation.z = -Math.cos(a) * 0.85;
+            tg.rotation.x = Math.sin(a) * 0.85;
+            const len = 1 + 0.45 * Math.sin(ph);
+            tg.scale.set(0.85 + 0.18 * Math.cos(ph * 1.3), len, 0.85 + 0.18 * Math.sin(ph));
+            const mat = tg.material as THREE.MeshBasicMaterial;
+            mat.color.set(k % 2 === 0 ? pal.tail : pal.wisp);
+            mat.opacity = 0.5 + 0.3 * Math.sin(ph * 1.1 + k);
+          }
+        }
 
-      // ── alev kuyruğu: hız yönünün tersine savrulur ──
-      if (tail) {
-        if (normal && p && pal) {
-          tail.visible = true;
-          const sp = Math.hypot(p.vx, p.vy) || 1;
-          dirVec.set(p.vx / sp, 0, p.vy / sp);
+        // Alev kuyruğu: uçuş yönünün tersine savrulur, hızla uzar.
+        if (tail) {
+          dirVec.set(dx, 0, dz);
           dirQuat.setFromUnitVectors(UP, dirVec);
           tail.quaternion.copy(dirQuat);
-          const stretch = Math.min(1.35, 0.7 + sp / 1100);
-          const sy = stretch * (0.9 + 0.25 * Math.sin(time * 13 + i));
-          tail.scale.set(0.85 + 0.12 * Math.sin(time * 16 + i * 3), sy, 0.85);
-          // koni ortadan büyüdüğü için yarı boyu kadar geriye it
-          const off = (0.38 * HUD * sy) / 2 + 0.05 * HUD;
-          tail.position.set(
-            p.x / S - dirVec.x * off,
-            0.85,
-            p.y / S - dirVec.z * off,
-          );
-          const tm = tail.material as THREE.MeshBasicMaterial;
-          tm.color.set(pal.tail);
-          tm.opacity = 0.55 + 0.25 * Math.sin(time * 15 + i * 2);
-        } else {
-          tail.visible = false;
+          const stretch = Math.min(1.55, 0.85 + sp / 1000);
+          const sy = stretch * (0.92 + 0.22 * Math.sin(time * 16 + i));
+          tail.scale.set(0.9 + 0.15 * Math.sin(time * 21 + i * 3), sy, 0.9);
+          const off = (BOLT_VFX.tailLen * HUD * sy) / 2 + 0.05 * HUD;
+          tail.position.set(-dirVec.x * off, 0, -dirVec.z * off);
+          const mat = tail.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.tail);
+          mat.opacity = 0.55 + 0.25 * Math.sin(time * 18 + i * 2);
         }
-      }
-
-      // ── uçuş izi ──
-      if (tr) {
-        if (normal && p && pal) {
-          tr.visible = true;
-          const sp = Math.hypot(p.vx, p.vy) || 1;
-          const len = Math.min(0.9 * HUD, sp * 0.055 * HUD) * 0.72;
-          tr.position.set(
-            (p.x - (p.vx / sp) * len * 0.55) / S,
-            0.85,
-            (p.y - (p.vy / sp) * len * 0.55) / S,
-          );
-          tr.scale.set(len, 0.05 * HUD, 0.05 * HUD);
-          tr.rotation.y = Math.atan2(p.vy, p.vx);
-          (tr.material as THREE.MeshBasicMaterial).color.set(pal.trail);
-        } else {
-          tr.visible = false;
+        // Kuyruklu yıldız izi: biri kalın-parlak (yakın), diğeri ince-solgun (uzak).
+        const trailLen = Math.min(1.1 * HUD, sp * 0.075 * HUD);
+        if (near) {
+          near.position.set(-dx * (0.3 * HUD + trailLen * 0.5), 0, -dz * (0.3 * HUD + trailLen * 0.5));
+          near.scale.set(trailLen, 0.055 * HUD, 0.055 * HUD);
+          near.rotation.y = Math.atan2(-dz, dx);
+          const mat = near.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.trail);
+          mat.opacity = 0.5 + 0.2 * Math.sin(time * 15 + i);
         }
+        if (far) {
+          const farLen = trailLen * 1.55;
+          far.position.set(
+            -dx * (0.3 * HUD + trailLen + farLen * 0.5),
+            0,
+            -dz * (0.3 * HUD + trailLen + farLen * 0.5),
+          );
+          far.scale.set(farLen, 0.03 * HUD, 0.03 * HUD);
+          far.rotation.y = Math.atan2(-dz, dx);
+          const mat = far.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.wisp);
+          mat.opacity = 0.22 + 0.12 * Math.sin(time * 13 + i);
+        }
+        // Zemindeki soğuk ışık lekesi (arena okunurluğu).
+        if (ground) {
+          ground.scale.setScalar(1 + 0.12 * Math.sin(time * 8 + i * 1.7));
+          const mat = ground.material as THREE.MeshBasicMaterial;
+          mat.color.set(pal.ground);
+          mat.opacity = 0.3 + 0.12 * Math.sin(time * 8 + i);
+        }
+      } else if (root) {
+        root.visible = false;
       }
 
       // ── Ateş Topu: animasyonlu soğuk alev küresi ──
       if (flame && p) {
         const si = flameSlot++;
         if (si >= FLAME_POOL) continue;
-        const root = flameRoots.current[si];
+        const fRoot = flameRoots.current[si];
         const spin = flameSpins.current[si];
         const core = flameCores.current[si];
         const shellA = flameShellA.current[si];
@@ -156,9 +270,9 @@ export function ProjectilePool({
           ? [COLD_FLAME.enemyA, COLD_FLAME.enemyB]
           : [COLD_FLAME.wispA, COLD_FLAME.wispB];
 
-        if (root) {
-          root.visible = true;
-          root.position.set(p.x / S, 0.85, p.y / S);
+        if (fRoot) {
+          fRoot.visible = true;
+          fRoot.position.set(p.x / S, 0.85, p.y / S);
         }
         if (spin) spin.rotation.y = time * 1.5 + i * 1.3;
 
@@ -216,11 +330,7 @@ export function ProjectilePool({
             const kk = (time * 0.5 + k * 0.33 + i * 0.2) % 1;
             const ang = k * 2.1 + time * 1.6;
             const rad = 0.08 * HUD + kk * 0.24 * HUD;
-            em.position.set(
-              Math.cos(ang) * rad,
-              kk * 0.68 * HUD,
-              Math.sin(ang) * rad,
-            );
+            em.position.set(Math.cos(ang) * rad, kk * 0.68 * HUD, Math.sin(ang) * rad);
             em.scale.setScalar(0.035 * HUD * (1 - kk * 0.45));
             const mat = em.material as THREE.MeshBasicMaterial;
             mat.color.set(k % 2 === 0 ? COLD_FLAME.core : COLD_FLAME.wispA);
@@ -248,67 +358,229 @@ export function ProjectilePool({
       const root = flameRoots.current[i];
       if (root) root.visible = false;
     }
+    for (let i = boltSlot; i < PROJ_POOL; i++) {
+      const root = boltRoots.current[i];
+      if (root && root.visible) root.visible = false;
+    }
   });
 
   return (
     <group>
+      {/* ══ "Güçlü Vuruş" ana mermisi — antik büyülü soğuk alev oku ══ */}
       {Array.from({ length: PROJ_POOL }).map((_, i) => (
-        <group key={i}>
-          {/* buzlu ruhani çekirdek */}
+        <group
+          key={`bolt-${i}`}
+          visible={false}
+          ref={(el) => {
+            boltRoots.current[i] = el;
+          }}
+        >
+          {/* zemindeki soğuk ışık lekesi (mermi 0.85 birim yukarıda) */}
           <mesh
             ref={(el) => {
-              meshes.current[i] = el;
+              boltGrounds.current[i] = el;
             }}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, -0.8, 0]}
+            raycast={() => null}
           >
-            <sphereGeometry args={[0.15 * HUD, 12, 12]} />
-            <meshStandardMaterial emissive="#0891b2" emissiveIntensity={2.2} />
-          </mesh>
-          {/* soğuk ışıma */}
-          <mesh
-            ref={(el) => {
-              halos.current[i] = el;
-            }}
-            visible={false}
-          >
-            <sphereGeometry args={[0.22 * HUD, 12, 12]} />
+            <circleGeometry args={[BOLT_VFX.ground * HUD, 24]} />
             <meshBasicMaterial
-              color="#a5f3fc"
+              color={COLD_FLAME.bolt.player.ground}
               transparent
               opacity={0.3}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
-          {/* alev kuyruğu (yön her karede hız vektörüne hizalanır) */}
+
+          {/* kuyruklu yıldız izinin uzak (solgun) parçası */}
+          <mesh
+            ref={(el) => {
+              boltFarTrails.current[i] = el;
+            }}
+            raycast={() => null}
+          >
+            <boxGeometry args={[1, 1, 1]} />
+            <meshBasicMaterial
+              color={COLD_FLAME.bolt.player.wisp}
+              transparent
+              opacity={0.22}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* kuyruklu yıldız izinin yakın (parlak) parçası */}
+          <mesh
+            ref={(el) => {
+              boltNearTrails.current[i] = el;
+            }}
+            raycast={() => null}
+          >
+            <boxGeometry args={[1, 1, 1]} />
+            <meshBasicMaterial
+              color={COLD_FLAME.bolt.player.trail}
+              transparent
+              opacity={0.5}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* hız yönüne savrulan alev kuyruğu */}
           <mesh
             ref={(el) => {
               boltTails.current[i] = el;
             }}
-            visible={false}
+            raycast={() => null}
           >
-            <coneGeometry args={[0.09 * HUD, 0.38 * HUD, 10]} />
+            <coneGeometry args={[BOLT_VFX.tailR * HUD, BOLT_VFX.tailLen * HUD, 12]} />
             <meshBasicMaterial
-              color="#67e8f9"
+              color={COLD_FLAME.bolt.player.tail}
               transparent
               opacity={0.7}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
-          {/* uçuş izi */}
+
+          <group
+            ref={(el) => {
+              boltSpins.current[i] = el;
+            }}
+          >
+            {/* dönen büyü halkaları */}
+            <mesh ref={(el) => { boltRingA.current[i] = el; }} raycast={() => null}>
+              <torusGeometry args={[0.26 * HUD, 0.012 * HUD, 6, 30]} />
+              <meshBasicMaterial
+                color={COLD_FLAME.bolt.player.ring}
+                transparent
+                opacity={0.7}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+            <mesh ref={(el) => { boltRingB.current[i] = el; }} raycast={() => null}>
+              <torusGeometry args={[0.19 * HUD, 0.01 * HUD, 6, 26]} />
+              <meshBasicMaterial
+                color={COLD_FLAME.bolt.player.wisp}
+                transparent
+                opacity={0.55}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+            {/* dış hale (en geniş, en solgun) */}
+            <mesh
+              ref={(el) => {
+                boltHalos.current[i] = el;
+              }}
+              raycast={() => null}
+            >
+              <sphereGeometry args={[BOLT_VFX.halo * HUD, 12, 12]} />
+              <meshBasicMaterial
+                color={COLD_FLAME.bolt.player.halo}
+                transparent
+                opacity={0.18}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+            {/* iç ışıma */}
+            <mesh
+              ref={(el) => {
+                boltGlows.current[i] = el;
+              }}
+              raycast={() => null}
+            >
+              <sphereGeometry args={[BOLT_VFX.glow * HUD, 14, 14]} />
+              <meshBasicMaterial
+                color={COLD_FLAME.bolt.player.glow}
+                transparent
+                opacity={0.45}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+            {/* buzlu çekirdek */}
+            <mesh
+              ref={(el) => {
+                boltCores.current[i] = el;
+              }}
+              raycast={() => null}
+            >
+              <sphereGeometry args={[BOLT_VFX.core * HUD, 16, 16]} />
+              <meshStandardMaterial
+                color={COLD_FLAME.bolt.player.core}
+                emissive={COLD_FLAME.bolt.player.emissive}
+                emissiveIntensity={3}
+                roughness={0.2}
+                toneMapped={false}
+              />
+            </mesh>
+            {/* gövdeye yapışık, yalayan alev dilleri */}
+            {Array.from({ length: BOLT_TONGUES }).map((_, k) => (
+              <mesh
+                key={`bt-${k}`}
+                raycast={() => null}
+                ref={(el) => {
+                  if (!boltTongues.current[i]) boltTongues.current[i] = [];
+                  boltTongues.current[i][k] = el;
+                }}
+              >
+                <coneGeometry args={[0.075 * HUD, 0.3 * HUD, 8]} />
+                <meshBasicMaterial
+                  color={k % 2 === 0 ? COLD_FLAME.bolt.player.tail : COLD_FLAME.bolt.player.wisp}
+                  transparent
+                  opacity={0.6}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+            ))}
+          </group>
+        </group>
+      ))}
+
+      {/* ══ namlu şimşeği: merminin ateşlendiği noktada genişleyen halka ══ */}
+      {Array.from({ length: MUZZLE_POOL }).map((_, i) => (
+        <group key={`muzzle-${i}`}>
           <mesh
             ref={(el) => {
-              trails.current[i] = el;
+              muzzleRings.current[i] = el;
             }}
             visible={false}
+            rotation={[-Math.PI / 2, 0, 0]}
+            raycast={() => null}
           >
-            <boxGeometry args={[1, 1, 1]} />
-            <meshBasicMaterial transparent opacity={0.75} />
+            <torusGeometry args={[1, 0.06, 6, 32]} />
+            <meshBasicMaterial
+              color={COLD_FLAME.bolt.player.ring}
+              transparent
+              opacity={0}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+          <mesh
+            ref={(el) => {
+              muzzleFlashes.current[i] = el;
+            }}
+            visible={false}
+            raycast={() => null}
+          >
+            <sphereGeometry args={[1, 12, 12]} />
+            <meshBasicMaterial
+              color={COLD_FLAME.bolt.player.halo}
+              transparent
+              opacity={0}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
           </mesh>
         </group>
       ))}
 
-      {/* Ateş Topu — antik büyüyle harmanlanmış soğuk alev küresi */}
+      {/* ══ Ateş Topu — antik büyüyle harmanlanmış soğuk alev küresi ══ */}
       {Array.from({ length: FLAME_POOL }).map((_, i) => (
         <group
           key={`flame-${i}`}

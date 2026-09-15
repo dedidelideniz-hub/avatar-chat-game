@@ -78,6 +78,7 @@ export {
   FIREBALL_VFX_SCALE,
   isFireballProj,
   pushColdFlameFx,
+  pushColdFlameImpact,
 } from "./arena/shared";
 export type { BattleFx, BattleProj } from "./arena/shared";
 
@@ -930,7 +931,8 @@ function FighterRig({
         d.s = 1.0 + Math.random() * 1.7;
         d.u = 1.1 + Math.random() * 1.7;
         d.sz = 0.03 + Math.random() * 0.035;
-        d.c = i % 2 === 0 ? "#ffe066" : "#ff9a2e";
+        // Soğuk alev teması: vuruş kıvılcımları da buzlu beyaz / eflatun.
+        d.c = i % 2 === 0 ? "#e0f2fe" : "#a78bfa";
       }
     }
     const se = (now - sparkStart.current) / 1000;
@@ -1164,7 +1166,7 @@ function FighterRig({
           >
             <sphereGeometry args={[1, 6, 6]} />
             <meshBasicMaterial
-              color="#ffe066"
+              color="#e0f2fe"
               transparent
               opacity={0}
               depthWrite={false}

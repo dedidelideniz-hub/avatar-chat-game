@@ -20,6 +20,7 @@ import {
   isHiddenFrom,
   isSamuraiFighter,
   pushColdFlameFx,
+  pushColdFlameImpact,
   SAMURAI_ULTIMATE_DAMAGE,
   stepHitStun,
   supportsWebGL,
@@ -951,7 +952,7 @@ export default function PvpBattleScene({
         const ny = pr.y + pr.vy * dt;
         if (hitsObstacle(nx, ny, pr.r)) {
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
-          burstFx(nx, ny, 55, "#d9c29a", 0.3);
+          pushColdFlameImpact(addFx, nx, ny, 46);
           ownProjs.current.splice(i, 1);
           continue;
         }
@@ -965,7 +966,7 @@ export default function PvpBattleScene({
             pushEvent({ type: "hit", dmg: pr.dmg });
             floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
             hitRemote(pr.dmg);
-            burstFx(pr.x, pr.y - 40, 60, "#fda4af", 0.3);
+            pushColdFlameImpact(addFx, pr.x, pr.y - 40, 62);
             playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
             player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
           }

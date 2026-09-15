@@ -104,21 +104,69 @@ export const COLD_FLAME = {
    *  ton farkıyla ayrılır: oyuncu buz mavisi, düşman eflatun. */
   bolt: {
     player: {
-      core: "#e0f2fe", // buzlu beyaz çekirdek
-      emissive: "#0891b2", // soğuk çiyan ışıma
-      glow: "#a5f3fc", // additive dış ışıma
-      tail: "#67e8f9", // alev kuyruğu
-      trail: "#7dd3fc", // uçuş izi
+      core: "#f8fdff", // buzlu beyaz çekirdek
+      emissive: "#0284c7", // soğuk büyü ışıması
+      glow: "#7dd3fc", // additive iç ışıma
+      halo: "#bae6fd", // geniş dış hale
+      tail: "#22d3ee", // alev kuyruğu
+      trail: "#38bdf8", // uçuş izi (yakın, kalın)
+      wisp: "#a78bfa", // ruhani ikinci alev tonu
+      ring: "#67e8f9", // dönen büyü halkası
+      ground: "#0ea5e9", // zemindeki soğuk ışık lekesi
     },
     enemy: {
-      core: "#ede9fe",
-      emissive: "#7c3aed",
+      core: "#fbf7ff",
+      emissive: "#6d28d9",
       glow: "#c4b5fd",
-      tail: "#8b5cf6",
-      trail: "#a78bfa",
+      halo: "#ddd6fe",
+      tail: "#a855f7",
+      trail: "#c084fc",
+      wisp: "#67e8f9",
+      ring: "#e9d5ff",
+      ground: "#7c3aed",
     },
   },
 };
+
+/** Ana merminin (soğuk alev oku) VFX ölçüleri — tek yerden ayar için. */
+export const BOLT_VFX = {
+  core: 0.16, // çekirdek yarıçapı (× HUD)
+  glow: 0.24, // iç ışıma yarıçapı
+  halo: 0.4, // dış hale yarıçapı
+  tailLen: 0.52, // alev kuyruğu uzunluğu
+  tailR: 0.12, // alev kuyruğu taban yarıçapı
+  streak: 0.62, // uçuş izi uzunluğu
+  ground: 0.46, // zemindeki ışık lekesi yarıçapı
+  /** Namlu şimşeği mermi çıktıktan sonra kaç dünya-px boyunca görünür kalır. */
+  muzzlePx: 78,
+};
+
+/**
+ * Ana mermi çarptığında (düşmana ya da engele) soğuk alev kıvılcımı: ince bir
+ * büyü halkası + buzlu/ruhani alev pufları. Fiziksel turuncu patlama yerine
+ * antik büyü hissi verir; hasar değerlerine dokunmaz.
+ */
+export function pushColdFlameImpact(
+  add: (fx: BattleFx) => void,
+  x: number,
+  y: number,
+  size = 56,
+): void {
+  add({ kind: "ring", x, y, ttl: 0.34, maxTtl: 0.34, grow: size, color: COLD_FLAME.ring });
+  const n = size > 60 ? 6 : 4;
+  for (let i = 0; i < n; i++) {
+    const life = 0.22 + Math.random() * 0.24;
+    add({
+      kind: "smoke",
+      x: x + (Math.random() - 0.5) * size * 0.6,
+      y: y + (Math.random() - 0.5) * size * 0.6,
+      ttl: life,
+      maxTtl: life,
+      grow: size * (0.45 + Math.random() * 0.4),
+      color: i % 3 === 0 ? COLD_FLAME.core : i % 3 === 1 ? COLD_FLAME.wispB : COLD_FLAME.wispA,
+    });
+  }
+}
 
 /** Görsel patlama yarıçapı = hasar yarıçapı × bu değer.
  *  Eski ateş topu karakterin ~3.5 katı büyüklükteydi; artık sıkı ve okunur. */
@@ -177,14 +225,15 @@ export function pushColdFlameFx(
 }
 
 /* Efekt havuzlarının boyutları. */
-export const PROJ_POOL = 26;
+export const PROJ_POOL = 18;
 export const TEXT_POOL = 8;
 export const RING_POOL = 12;
 export const BURST_POOL = 8;
 export const BEAM_POOL = 2;
-/* Ateş Topu patlaması tek başına 15 alev bulutu eklediği için havuz, ayak
- * tozu/duman girdileri onları kırpmasın diye geniş tutulur. */
-export const SMOKE_POOL = 36;
+/* Ateş Topu patlaması tek başına 15 alev bulutu, mermi çarpmaları da birkaç
+ * soğuk puf eklediği için havuz, ayak tozu/duman girdileri onları kırpmasın
+ * diye geniş tutulur. */
+export const SMOKE_POOL = 44;
 export const CRACK_POOL = 3;
 
 /* Brawl tarzı vuruş geri bildirimi */
