@@ -319,6 +319,67 @@ export type BattleFx =
       maxTtl: number;
     };
 
+/** Ateş Topu (ana ateş) — fiziksel ateş yerine antik büyüyle harmanlanmış
+ *  ruhani / soğuk alev paleti. Hasar yarıçapı DEĞİŞMEZ; sadece patlamanın
+ *  görseli küçülür ve soğuk (buz mavisi → mor) bir büyüye dönüşür. */
+export const COLD_FLAME = {
+  core: "#ede9fe", // buzlu mor-beyaz çekirdek
+  ring: "#67e8f9", // çiyan yer dalgası / soğuk şok dalgası
+  wispA: "#a5f3fc", // soğuk alev dili (buz mavisi)
+  wispB: "#c4b5fd", // ruhani alev dili (eflatun)
+};
+
+/** Görsel patlama yarıçapı = hasar yarıçapı × bu değer.
+ *  Eski ateş topu karakterin ~3.5 katı büyüklükteydi; artık sıkı ve okunur. */
+export const FIREBALL_VFX_SCALE = 0.55;
+
+/**
+ * Ateş Topu patlaması için soğuk alev VFX'i ekler. Fiziksel turuncu ateş
+ * yerine: zeminde ince bir büyü halkası + buzlu bir çekirdek parlaması +
+ * yükselip sönen ruhani alev dilleri.
+ *
+ * NOT: 3D patlama havuzu (`burst` mesh'i) rengi sabit turuncuya boyanmıştır,
+ * bu yüzden fiziksel ateş görüntüsünü vermemesi için "burst" yerine rengi
+ * efekt başına taşıyan "smoke"/alev katmanı kullanılır. `damageR` yalnızca
+ * hasar içindir; görsel onun küçültülmüş hâlidir, oyun hissi değişmez.
+ */
+export function pushColdFlameFx(
+  add: (fx: BattleFx) => void,
+  x: number,
+  y: number,
+  damageR: number,
+): void {
+  const r = damageR * FIREBALL_VFX_SCALE;
+  // Zeminde yayılan ince büyü halkası (soğuk şok dalgası).
+  add({ kind: "ring", x, y, ttl: 0.5, maxTtl: 0.5, grow: r * 1.15, color: COLD_FLAME.ring });
+  // Buzlu çekirdek: kısa ömürlü, parlak ve hızla yükselen ruhani alev kütlesi.
+  for (let i = 0; i < 6; i++) {
+    const life = 0.3 + Math.random() * 0.18;
+    add({
+      kind: "smoke",
+      x: x + (Math.random() - 0.5) * 34,
+      y: y + (Math.random() - 0.5) * 34,
+      ttl: life,
+      maxTtl: life,
+      grow: r * 0.6 + Math.random() * 20,
+      color: i % 3 === 0 ? COLD_FLAME.core : COLD_FLAME.wispA,
+    });
+  }
+  // Dışa saçılan soğuk alev dilleri — buz mavisi ve eflatun.
+  for (let i = 0; i < 9; i++) {
+    const life = 0.6 + Math.random() * 0.55;
+    add({
+      kind: "smoke",
+      x: x + (Math.random() - 0.5) * 76,
+      y: y + (Math.random() - 0.5) * 76,
+      ttl: life,
+      maxTtl: life,
+      grow: r * 0.7 + Math.random() * 26,
+      color: i % 2 === 0 ? COLD_FLAME.wispA : COLD_FLAME.wispB,
+    });
+  }
+}
+
 const PROJ_POOL = 26;
 const TEXT_POOL = 8;
 const RING_POOL = 12;

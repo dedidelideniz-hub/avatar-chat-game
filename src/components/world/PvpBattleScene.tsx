@@ -19,6 +19,7 @@ import {
   applyHitReaction,
   isHiddenFrom,
   isSamuraiFighter,
+  pushColdFlameFx,
   SAMURAI_ULTIMATE_DAMAGE,
   stepHitStun,
   supportsWebGL,
@@ -428,8 +429,8 @@ export default function PvpBattleScene({
         damageMe(ev.dmg);
         break;
       case "explode": {
-        burstFx(ev.x, ev.y, ev.r, "#fdba74", 0.45);
-        smokeFx(ev.x, ev.y, 7, 120);
+        // Ateş Topu: soğuk / ruhani alev patlaması (fiziksel ateş değil).
+        pushColdFlameFx(addFx, ev.x, ev.y, ev.r);
         if (ev.hit) damageMe(ev.dmg);
         break;
       }
@@ -551,8 +552,9 @@ export default function PvpBattleScene({
   const explodeAt = (pr: PvpProj) => {
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
-    burstFx(pr.x, pr.y, r, "#fdba74", 0.45);
-    smokeFx(pr.x, pr.y, 7, 120);
+    // Ateş Topu: fiziksel turuncu ateş yerine antik büyü / soğuk alev.
+    // Hasar yarıçapı (r) aynı kalır — sadece görsel küçülür.
+    pushColdFlameFx(addFx, pr.x, pr.y, r);
     const b = bot.current;
     const hit = Math.hypot(b.x - pr.x, b.y - pr.y) < r;
     pushEvent({ type: "explode", x: pr.x, y: pr.y, r, dmg: pr.dmg, hit });

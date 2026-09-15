@@ -11,6 +11,7 @@ import {
   applyHitReaction,
   isHiddenFrom,
   isSamuraiFighter,
+  pushColdFlameFx,
   SAMURAI_ULTIMATE_DAMAGE,
   stepHitStun,
   supportsWebGL,
@@ -715,8 +716,9 @@ export default function BattleScene({
   const explodeAt = (pr: BattleProj) => {
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
-    burstFx(pr.x, pr.y, r, "#fdba74", 0.45);
-    smokeFx(pr.x, pr.y, 7, 120);
+    // Ateş Topu: fiziksel turuncu ateş yerine antik büyüyle harmanlanmış
+    // ruhani / soğuk alev patlaması. Hasar yarıçapı (r) aynı kalır.
+    pushColdFlameFx(addFx, pr.x, pr.y, r);
     const target = pr.owner === "player" ? bot.current : player.current;
     const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
     if (dist < r) {
