@@ -4,8 +4,10 @@
 // the scene in 3D (Three.js). React only renders the HUD, controls and the
 // result screen.
 import { Button } from "@/components/ui/button";
+// 3D arena memo'lu sarmalayıcıdan gelir: HUD/sayaç state güncellemeleri
+// tüm three.js öğe ağacını yeniden kurmasın (bkz. Arena3DView.tsx).
+import { Arena3DView as Arena3D } from "@/components/world/Arena3DView";
 import {
-  Arena3D,
   ATK_CD,
   BUSH_REVEAL_MS,
   applyHitReaction,

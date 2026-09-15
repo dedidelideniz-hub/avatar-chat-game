@@ -12,8 +12,11 @@
 // The arena rendering (Arena3D / FallbackArena2D) is reused unchanged —
 // it just reads fighter/projectile/FX refs every frame.
 import { Button } from "@/components/ui/button";
+// 3D arena memo'lu sarmalayıcıdan gelir: HUD/sayaç state güncellemeleri
+// tüm three.js öğe ağacını yeniden kurmasın (bkz. Arena3DView.tsx).
+import { Arena3DView as Arena3D } from "@/components/world/Arena3DView";
+import { createObjectPool, swapRemove, sweepInPlace } from "@/lib/pool";
 import {
-  Arena3D,
   ATK_CD,
   BUSH_REVEAL_MS,
   applyHitReaction,
@@ -75,22 +78,22 @@ const PUBLISH_MS = 100; // presence snapshot cadence
 const EVENT_TTL_MS = 3500; // how long a combat event stays in the publish queue
 const DISCONNECT_MS = 4000; // no remote snapshot for this long → opponent gone
 
-/** One live projectile on my side (has a stable id for the network). */
-interface PvpProj {
+/** One live projectile on my side (has a stable id for the network).
+ *
+ *  `BattleProj` alanlarını taşır: böylece render listesi nesneleri KOPYALAMAZ,
+ *  doğrudan aynı nesneleri gösterir (kare başına ayırma yok). */
+interface PvpProj extends BattleProj {
   id: string;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  dmg: number;
-  r: number;
-  travelled: number;
-  pierce: boolean;
-  explodeR?: number;
+  /** Snapshot eşleştirme damgası: snapshot'ta görünmeyen mermi havuza döner. */
+  seenTick?: number;
 }
 
 /** One-shot combat events. Damage is shooter-side: `hit` was decided by the
  *  shooter against its view of the target; the receiver just applies it. */
+/** Ölü efektleri elemek için modül seviyesinde yüklem: kare/adım başına yeni
+ *  closure (ve dolayısıyla çöp) üretilmesin. */
+const fxAlive = (fx: BattleFx) => fx.ttl > 0;
+
 /** Distribute Omit over the PvpEvent union (TS's Omit collapses unions). */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
@@ -274,6 +277,28 @@ export default function PvpBattleScene({
   const seenEvents = useRef(new Map<string, number>());
   const evSeq = useRef(0);
   const projSeq = useRef(0);
+  /** Uzak mermi eşleştirmesi için artan damga. */
+  const remoteTick = useRef(0);
+  // ♻️ Nesne havuzu (object pooling): mermiler `destroy()` edilmez — havuza geri
+  // verilir ve bir sonraki atışta yeniden kullanılır. Böylece ateş/çarpışma
+  // sırasında yeni nesne ayrılmaz ve Garbage Collector takılma yaratmaz.
+  const projPool = useMemo(
+    () =>
+      createObjectPool<PvpProj>(() => ({
+        id: "",
+        owner: "player",
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        dmg: 0,
+        r: 0,
+        travelled: 0,
+        pierce: false,
+        explodeR: undefined,
+      })),
+    [],
+  );
 
   // Latest snapshot of the remote fighter (targets for the lerp).
   const remoteTarget = useRef({
@@ -502,12 +527,36 @@ export default function PvpBattleScene({
       bot.current.revealUntil =
         performance.now() + Math.max(0, d.revealAt - Date.now());
     }
-    // reconcile remote projectiles with the snapshot (corrects drift)
-    const next = new Map<string, PvpProj>();
+    // Rakip mermileri snapshot ile eşitlenir (drift düzeltmesi). Harita ve
+    // nesneler yeniden kullanılır: id zaten varsa alanlar yerinde güncellenir
+    // (yeni Map/nesne ayrılmaz), snapshot'ta olmayan mermi havuza geri verilir.
+    const live = remoteProjs.current;
+    const tick = ++remoteTick.current;
     for (const pr of d.projs ?? []) {
-      next.set(pr.id, { ...pr });
+      let obj = live.get(pr.id);
+      if (!obj) {
+        obj = projPool.acquire();
+        live.set(pr.id, obj);
+      }
+      obj.id = pr.id;
+      obj.owner = "bot";
+      obj.x = pr.x;
+      obj.y = pr.y;
+      obj.vx = pr.vx;
+      obj.vy = pr.vy;
+      obj.dmg = pr.dmg;
+      obj.r = pr.r;
+      obj.travelled = pr.travelled;
+      obj.pierce = pr.pierce;
+      obj.explodeR = pr.explodeR;
+      obj.seenTick = tick;
     }
-    remoteProjs.current = next;
+    for (const [id, obj] of live) {
+      if (obj.seenTick !== tick) {
+        live.delete(id);
+        projPool.release(obj);
+      }
+    }
     // apply unseen one-shot events
     for (const ev of d.events ?? []) {
       if (!ev || !ev.id) continue;
@@ -538,20 +587,25 @@ export default function PvpBattleScene({
     const d = Math.hypot(dx, dy) || 1;
     const speed = opts.speed ?? PROJ_SPEED;
     playSound("shoot", { volume: 0.6 });
-    ownProjs.current.push({
-      id: `pr${projSeq.current++}`,
-      x: p.x,
-      y: p.y,
-      vx: (dx / d) * speed,
-      vy: (dy / d) * speed,
-      dmg,
-      r: opts.r ?? 14,
-      travelled: 0,
-      pierce: opts.pierce ?? false,
-      explodeR: opts.explodeR,
-    });
+    // ♻️ Havuzdan alınır: yeni nesne ayrılmaz, eski mermi nesnesi yeniden dolar.
+    const proj = projPool.acquire();
+    proj.id = `pr${projSeq.current++}`;
+    proj.owner = "player";
+    proj.x = p.x;
+    proj.y = p.y;
+    proj.vx = (dx / d) * speed;
+    proj.vy = (dy / d) * speed;
+    proj.dmg = dmg;
+    proj.r = opts.r ?? 14;
+    proj.travelled = 0;
+    proj.pierce = opts.pierce ?? false;
+    proj.explodeR = opts.explodeR;
+    ownProjs.current.push(proj);
+    // Tavanı aşan en eski mermiler yok edilmez, havuza geri verilir.
     if (ownProjs.current.length > 24) {
-      ownProjs.current.splice(0, ownProjs.current.length - 24);
+      const excess = ownProjs.current.length - 24;
+      for (let i = 0; i < excess; i++) projPool.release(ownProjs.current[i]);
+      ownProjs.current.splice(0, excess);
     }
   };
 
@@ -832,7 +886,10 @@ export default function PvpBattleScene({
         pr.x += pr.vx * dt;
         pr.y += pr.vy * dt;
         pr.travelled += Math.hypot(pr.vx, pr.vy) * dt;
-        if (pr.travelled >= PROJ_RANGE) remoteProjs.current.delete(pr.id);
+        if (pr.travelled >= PROJ_RANGE) {
+          remoteProjs.current.delete(pr.id);
+          projPool.release(pr);
+        }
       }
 
       // freeze the sim until both fighters are connected + loading finished
@@ -951,7 +1008,8 @@ export default function PvpBattleScene({
         if (hitsObstacle(nx, ny, pr.r)) {
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
           pushColdFlameImpact(addFx, nx, ny, 46);
-          ownProjs.current.splice(i, 1);
+          swapRemove(ownProjs.current, i);
+          projPool.release(pr);
           continue;
         }
         pr.x = nx;
@@ -969,23 +1027,26 @@ export default function PvpBattleScene({
             player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
           }
           if (!pr.pierce) {
-            ownProjs.current.splice(i, 1);
+            swapRemove(ownProjs.current, i);
+            projPool.release(pr);
             continue;
           }
         }
         if (pr.explodeR && pr.travelled >= 720) {
           explodeAt(pr);
-          ownProjs.current.splice(i, 1);
+          swapRemove(ownProjs.current, i);
+          projPool.release(pr);
         } else if (pr.travelled >= PROJ_RANGE && !pr.explodeR) {
-          ownProjs.current.splice(i, 1);
+          swapRemove(ownProjs.current, i);
+          projPool.release(pr);
         }
       }
 
       // --- one-shot FX decay ---
-      for (let i = fxs.current.length - 1; i >= 0; i--) {
-        fxs.current[i].ttl -= dt;
-        if (fxs.current[i].ttl <= 0) fxs.current.splice(i, 1);
-      }
+      // Yerinde süzülür: `splice(i, 1)` her ölü efektte dizinin kalanını
+      // kaydırıyordu (ve dizi tamponunu yeniden ayırabiliyordu).
+      for (let i = 0; i < fxs.current.length; i++) fxs.current[i].ttl -= dt;
+      sweepInPlace(fxs.current, fxAlive);
 
       // --- super ready jingle ---
       if (p.superCharge >= 1 && !superReadyPlayed) {
@@ -1030,44 +1091,36 @@ export default function PvpBattleScene({
           }
         }
 
-        // merged render list: my projectiles (blue) + remote (red)
-        const merged: BattleProj[] = [];
+        // ♻️ Render listesi: kare başına yeni dizi/nesne ayrılmaz. Aynı dizi
+        // yerinde doldurulur ve mermi nesneleri kopyalanmaz — PvpProj zaten
+        // BattleProj alanlarını taşır, tek fark `owner` etiketi.
+        const merged = projs.current;
+        let n = 0;
         for (const pr of ownProjs.current) {
-          merged.push({
-            owner: "player",
-            x: pr.x,
-            y: pr.y,
-            vx: pr.vx,
-            vy: pr.vy,
-            dmg: pr.dmg,
-            r: pr.r,
-            travelled: pr.travelled,
-            pierce: pr.pierce,
-            explodeR: pr.explodeR,
-          });
+          pr.owner = "player";
+          merged[n++] = pr;
         }
         for (const pr of remoteProjs.current.values()) {
-          merged.push({
-            owner: "bot",
-            x: pr.x,
-            y: pr.y,
-            vx: pr.vx,
-            vy: pr.vy,
-            dmg: pr.dmg,
-            r: pr.r,
-            travelled: pr.travelled,
-            pierce: pr.pierce,
-            explodeR: pr.explodeR,
-          });
+          pr.owner = "bot";
+          merged[n++] = pr;
         }
-        projs.current = merged.slice(0, 26);
+        // Eski kareden kalan referanslar kırpılır (yeni dizi ayrılmaz).
+        merged.length = n;
 
-        // drop expired events from the publish queue + prune seen-ids
+        // Süresi geçen olaylar YERİNDE süzülür: `.filter()` her karede yeni bir
+        // dizi ayırıyordu (saniyede ~60 dizi + ~60 closure). Burada ne dizi ne
+        // closure ayrılır, sadece elemanlar kaydırılır.
         const cutoff = performance.now() - EVENT_TTL_MS;
-        pendingEvents.current = pendingEvents.current.filter((e) => {
-          const born = eventBornAt.current.get(e.id);
-          return born === undefined || born > cutoff;
-        });
+        const events = pendingEvents.current;
+        const bornAt = eventBornAt.current;
+        let w = 0;
+        for (let i = 0; i < events.length; i++) {
+          const ev = events[i];
+          const born = bornAt.get(ev.id);
+          if (born === undefined || born > cutoff) events[w++] = ev;
+          else bornAt.delete(ev.id);
+        }
+        events.length = w;
         for (const [id, ts] of seenEvents.current) {
           if (ts < cutoff) seenEvents.current.delete(id);
         }
