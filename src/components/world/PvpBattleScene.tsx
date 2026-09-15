@@ -30,7 +30,6 @@ import {
 } from "@/components/world/Arena3D";
 import {
   findNearestWalkablePosition,
-  findWalkablePath,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
@@ -249,8 +248,6 @@ export default function PvpBattleScene({
   const aimRef = useRef({ active: false, dx: 0, dy: 0 });
   const attackKnobRef = useRef<HTMLSpanElement>(null);
   const keysRef = useRef(new Set<string>());
-  const clickTargetRef = useRef<{ x: number; y: number } | null>(null);
-  const movementPathRef = useRef<[number, number][]>([]);
 
   const player = useRef<BattleFighter>(
     newFighter(playerName, playerConfig, playerEquipped, playerAbility, 400, 100, 1),
@@ -754,12 +751,8 @@ export default function PvpBattleScene({
       attack: tryAttack,
       super: trySuper,
       samuraiSuper: useSamuraiSuper,
-      click: (x: number, y: number) => {
-        const p = player.current;
-        const route = findWalkablePath(p.x, p.y, x, y, FIGHTER_R);
-        movementPathRef.current = route.slice(1);
-        clickTargetRef.current = route.length > 0 ? null : { x, y };
-      },
+      // Savaş alanında tıklayarak gitme kapalı: tek hareket girdisi joystick.
+      click: (_x: number, _y: number) => {},
     };
 
     let raf = 0;
@@ -857,7 +850,7 @@ export default function PvpBattleScene({
         tryAttack(aimRef.current.dx, aimRef.current.dy);
       }
 
-      // --- movement (keys + joystick + click target) ---
+      // --- movement (joystick + klavye) ---
       let vx = 0;
       let vy = 0;
       const keys = keysRef.current;
@@ -870,8 +863,6 @@ export default function PvpBattleScene({
           if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
           else vx = 0;
         }
-        clickTargetRef.current = null;
-        movementPathRef.current = [];
       } else {
         const jx = joystickRef.current.x;
         const jy = joystickRef.current.y;
@@ -884,30 +875,6 @@ export default function PvpBattleScene({
           // diagonal drags snap and occasionally look like input was lost.
           vx = joystickRef.current.x;
           vy = joystickRef.current.y;
-          clickTargetRef.current = null;
-          movementPathRef.current = [];
-        }
-      }
-      if (vx === 0 && vy === 0 && movementPathRef.current.length > 0) {
-        const [tx, ty] = movementPathRef.current[0];
-        const dx = tx - p.x;
-        const dy = ty - p.y;
-        const d = Math.hypot(dx, dy);
-        if (d < Math.max(8, FIGHTER_R * 0.45)) {
-          movementPathRef.current.shift();
-        } else {
-          vx = dx / d;
-          vy = dy / d;
-        }
-      }
-      if (vx === 0 && vy === 0 && clickTargetRef.current) {
-        const dx = clickTargetRef.current.x - p.x;
-        const dy = clickTargetRef.current.y - p.y;
-        const d = Math.hypot(dx, dy);
-        if (d < 24) clickTargetRef.current = null;
-        else {
-          if (Math.abs(dx) >= Math.abs(dy)) { vx = dx > 0 ? 1 : -1; vy = 0; }
-          else { vx = 0; vy = dy > 0 ? 1 : -1; }
         }
       }
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
