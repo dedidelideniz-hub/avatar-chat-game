@@ -87,12 +87,20 @@ export function loadEquipmentGlbCached(url: string): THREE.Object3D {
 }
 
 // Imported lazily to keep this module free of heavy top-level deps.
-import { SkeletonUtils } from "three-stdlib";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
 function SkeletonUtilsClone(scene: THREE.Group) {
   return SkeletonUtils.clone(scene);
 }
-class GLTFLoaderShim extends GLTFLoader {}
+class GLTFLoaderShim extends GLTFLoader {
+  // The armour GLBs are Meshopt-compressed (EXT_meshopt_compression is in
+  // their `extensionsRequired`) and the decoder ships inside three-stdlib.
+  // Without it the loader rejects every armour model and equipped pieces
+  // silently stay invisible.
+  constructor() {
+    super();
+    this.setMeshoptDecoder(MeshoptDecoder());
+  }
+}
 
 /** Read the cached (normalized) GLB for an equipment URL, if loaded. */
 export function getCachedEquipmentGlb(url: string): THREE.Group | undefined {

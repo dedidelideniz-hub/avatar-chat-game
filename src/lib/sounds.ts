@@ -3,7 +3,12 @@
 // fetched + decoded lazily and cached as AudioBuffers. If a file can't load
 // (offline / missing), the old jsfxr procedural blips are used as a fallback so
 // audio never breaks. Muted state is remembered in localStorage.
+//
+// The MP3s ship as ASCII base64 companions ("<file>.mp3.b64") because the
+// hosting pipeline re-encodes binary files as UTF-8 and destroys their frames
+// (which is exactly how the game went silent). See @/lib/binaryAssets.
 import { sfxr } from "jsfxr";
+import { loadAssetBytes } from "@/lib/binaryAssets";
 
 export type SoundName =
   | "click"
@@ -115,9 +120,7 @@ function loadBuffer(name: FileName): Promise<AudioBuffer | null> {
   const p = (async () => {
     if (!ac) return null;
     try {
-      const res = await fetch(FILES[name]);
-      if (!res.ok) return null;
-      const data = await res.arrayBuffer();
+      const data = await loadAssetBytes(FILES[name]);
       return await ac.decodeAudioData(data);
     } catch {
       return null;

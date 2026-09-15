@@ -44,7 +44,7 @@ import {
   snapshotFlash,
   type FlashBase,
 } from "@/engine/HitFlash";
-import { BattleMapModel } from "@/components/world/BattleMapModel";
+import { BattleMapModel } from "@/components/world/BattleMapGuard";
 import { useArenaCamera } from "@/components/world/ArenaCamera";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
