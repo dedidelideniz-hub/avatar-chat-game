@@ -22,6 +22,8 @@ import {
   pushColdFlameFx,
   pushColdFlameImpact,
   SAMURAI_ULTIMATE_DAMAGE,
+  startAttackAnim,
+  stepAttackAnim,
   stepHitStun,
   supportsWebGL,
   type BattleFighter,
@@ -150,6 +152,9 @@ interface PvpPayload {
   /** Vuruş sarsıntısı: kalan stun süresi (saniye). Rakip ekranında da
    *  karakterin titremesi/savrulması için yayınlanır. */
   stun?: number;
+  /** Düz vuruş animasyonunun kalan süresi (saniye) — rakip ekranında da
+   *  vuruş pozu ve cancel penceresi aynı okunsun diye yayınlanır. */
+  atkAnimT?: number;
   ts: number;
 }
 
@@ -176,6 +181,8 @@ function newFighter(
     phase: 0,
     moving: false,
     atkCd: 0,
+    /* Düz vuruş animasyonunun kalan süresi (0 = hazır). */
+    atkAnimT: 0,
     superCharge: 0,
     samuraiCharge: 0,
     samuraiUltT: 0,
@@ -279,6 +286,7 @@ export default function PvpBattleScene({
     superCharge: 0,
     phase: 0,
     stun: 0,
+    atkAnimT: 0,
   });
   const lastRemoteAt = useRef(0);
   const remoteConnected = useRef(false);
@@ -484,6 +492,7 @@ export default function PvpBattleScene({
       superCharge: d.superCharge,
       phase: d.phase,
       stun: typeof d.stun === "number" ? d.stun : 0,
+      atkAnimT: typeof d.atkAnimT === "number" ? d.atkAnimT : 0,
     };
     // Bush stealth: mirror the opponent's reveal deadline. It travels as a
     // wall-clock timestamp so both phones agree even though
@@ -655,6 +664,8 @@ export default function PvpBattleScene({
       ty = bot.current.y - 40;
     }
     p.facing = tx >= p.x ? 1 : -1;
+    // Düz vuruş animasyonu: kısa köklenme (windup) + kesilebilir bitiş.
+    startAttackAnim(p);
     spawnProj(tx, ty, BASE_DMG);
     // Firing (even from a bush) reveals the shooter for a moment.
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
@@ -802,6 +813,9 @@ export default function PvpBattleScene({
       // yerel vuruş tepkisi. Proxy'de süre kendiliğinden azalır.
       b.hitStunT = Math.max(b.hitStunT - dt, t.stun);
       b.hitStunK = b.hitStunT > 0 ? Math.max(b.hitStunK, 1) : 0;
+      // Rakibin düz vuruş animasyonu (kendi telefonundan yayınlanır) —
+      // proxy'de süre kendiliğinden azalır, snapshot onu tazeler.
+      b.atkAnimT = Math.max(b.atkAnimT - dt, t.atkAnimT);
       if (t.hp < b.hp - 1) {
         // enemy took a hit on their phone — reflect it here
         const diff = Math.round(b.hp - t.hp);
@@ -875,6 +889,23 @@ export default function PvpBattleScene({
           // diagonal drags snap and occasionally look like input was lost.
           vx = joystickRef.current.x;
           vy = joystickRef.current.y;
+        }
+      }
+      // ── Düz vuruş animasyonu + cancel penceresi (kiting / hit-and-run) ──
+      // Windup boyunca karakter köklenir; pencere açıldıktan sonra joystick'e
+      // dokunmak bitiş animasyonunu keser ve karakter hemen yürümeye başlar.
+      if (p.hitStunT > 0 || p.dashT > 0) {
+        // Sarsılma / dash animasyonu devralır: vuruş animasyonu iptal edilir.
+        p.atkAnimT = 0;
+      } else {
+        const atkAnim = stepAttackAnim(p, dt, vx !== 0 || vy !== 0);
+        if (atkAnim.locked) {
+          // Windup: karakter köklenmiş → hareket girdisi yok sayılır.
+          vx = 0;
+          vy = 0;
+        } else if (atkAnim.canceled) {
+          // Bitiş animasyonu kesildi — adım tozu ile hissettir.
+          smokeFx(p.x, p.y - 4, 2, 26);
         }
       }
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
@@ -1060,6 +1091,8 @@ export default function PvpBattleScene({
             phase: p.phase,
             // Rakip ekranında da sarsıntı görünsün diye kalan stun süresi.
             stun: p.hitStunT,
+            // Rakip ekranında da vuruş pozu / cancel penceresi okunsun.
+            atkAnimT: p.atkAnimT,
             projs: ownProjs.current.map((pr) => ({ ...pr })),
             events: pendingEvents.current.map((e) => ({ ...e })),
             // Bush stealth: remaining reveal time as a wall-clock deadline.

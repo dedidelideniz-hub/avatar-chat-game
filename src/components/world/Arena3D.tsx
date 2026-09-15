@@ -108,6 +108,14 @@ function SpawnCircle(_props: {
 /** Base attack cooldown (seconds) — shared with the sim and the aim guides. */
 export const ATK_CD = 0.85;
 
+/** Düz vuruş animasyonu — köklenme (windup) + kesilebilir bitiş (recovery).
+ *  Hasar çıktıktan sonra cancel penceresi açılır: bu pencerede hareket girdisi
+ *  bitiş animasyonunu anında keser ve karakter hemen yürümeye başlar
+ *  (kiting / hit-and-run). Toplam animasyon = ATK_WINDUP + ATK_RECOVER. */
+export const ATK_WINDUP = 0.1;
+export const ATK_RECOVER = 0.24;
+export const ATK_ANIM = ATK_WINDUP + ATK_RECOVER;
+
 /** Kraliyet Savaşçısı ikinci ultiyi (iki elli kılıç yere vuruş) kullanır:
  *  elinde zaten kraliyet kılıcı olduğu için ulti tam olarak o skine bağlı. */
 export function isSamuraiFighter(fighter: BattleFighter): boolean {
@@ -174,6 +182,50 @@ export function stepHitStun(
   return true;
 }
 
+/** Vuruş animasyonunu başlatır (ateş anında çağrılır): karakter kısa süre
+ *  köklenir, ardından kesilebilir bir bitiş animasyonu oynar. */
+export function startAttackAnim(f: BattleFighter): void {
+  f.atkAnimT = ATK_ANIM;
+}
+
+/** Vuruş animasyonunun anlık "atılma" eğrisi (0..1): windup'ta yükselir,
+ *  bitiş animasyonunda geri söner. Animasyon kesilmişse (atkAnimT = 0) 0'dır,
+ *  yani gövde anında dinlenme duruşuna döner. */
+export function attackPunch(f: BattleFighter): number {
+  if (f.atkAnimT <= 0) return 0;
+  const elapsed = ATK_ANIM - f.atkAnimT;
+  const rise = Math.min(1, elapsed / ATK_WINDUP);
+  const recover = Math.max(0, Math.min(1, f.atkAnimT / ATK_RECOVER));
+  return rise * recover;
+}
+
+/** Vuruş animasyonunu ilerletir ve cancel penceresini yönetir.
+ *  - `wantsMove`: bu karede hareket girdisi var mı (joystick / klavye).
+ *  `locked` true ise karakter hâlâ windup'ta köklenmiştir → hareket girdisi
+ *  yok sayılır. Pencere açıldıktan sonraki ilk hareket girdisi bitiş
+ *  animasyonunu keser (`canceled`) ve karakter hemen yürümeye başlar. */
+export function stepAttackAnim(
+  f: BattleFighter,
+  dt: number,
+  wantsMove: boolean,
+): { locked: boolean; canceled: boolean } {
+  if (f.atkAnimT <= 0) return { locked: false, canceled: false };
+  f.atkAnimT = Math.max(0, f.atkAnimT - dt);
+  if (f.atkAnimT > ATK_RECOVER) return { locked: true, canceled: false };
+  // ── Cancel penceresi açık: hareket girdisi bitiş animasyonunu keser. ──
+  if (wantsMove) {
+    f.atkAnimT = 0;
+    return { locked: false, canceled: true };
+  }
+  return { locked: false, canceled: false };
+}
+
+/** Sadece animasyonu ilerletir (köklenme/cancel yok). Botlar run-and-gun
+ *  yapar ama vuruş pozları yine de görünsün diye kullanılır. */
+export function tickAttackAnim(f: BattleFighter, dt: number): void {
+  if (f.atkAnimT > 0) f.atkAnimT = Math.max(0, f.atkAnimT - dt);
+}
+
 /** True when the browser can render WebGL (used to pick 3D vs 2D arena). */
 export function supportsWebGL(): boolean {
   if (typeof window === "undefined") return false;
@@ -207,6 +259,9 @@ export interface BattleFighter {
   phase: number;
   moving: boolean;
   atkCd: number;
+  /** Düz vuruş animasyonunun kalan süresi (windup + bitiş). 0 = animasyon
+   *  bitmiş. Cancel penceresinde hareket girdisi bunu anında 0'lar. */
+  atkAnimT: number;
   superCharge: number;
   /** Samuray'a özel ikinci ulti şarjı. Diğer skinlerde 0 kalır. */
   samuraiCharge: number;
@@ -962,6 +1017,8 @@ function FighterRig({
     // okunur — böylece vurulan karakter "hiç etkilenmemiş" gibi durmaz. ──
     const stunK =
       f.hitStunT > 0 ? Math.min(1, f.hitStunT / HIT_STUN_MAX) * f.hitStunK : 0;
+    // Vuruş animasyonu eğrisi (cancel edilmişse 0 → gövde anında dinlenir).
+    const punch = attackPunch(f);
     const bw = bodyWrap.current;
     if (bw) {
       if (stunK > 0.002) {
@@ -976,6 +1033,13 @@ function FighterRig({
         bw.rotation.x = -0.34 * stunK * (0.7 + 0.3 * Math.sin(tw * 33));
         bw.rotation.z = Math.sin(tw * 43) * 0.18 * stunK;
         bw.scale.setScalar(1 + 0.07 * stunK * Math.sin(tw * 31));
+      } else if (punch > 0.002) {
+        // ── Düz vuruş animasyonu: windup'ta öne atılma, bitişte toparlanma.
+        // Cancel penceresinde hareket girdisi gelirse atkAnimT anında 0'lanır
+        // ve gövde bir sonraki karede dinlenme duruşuna döner. ──
+        bw.rotation.x = 0.24 * punch;
+        bw.position.z = 0.12 * punch;
+        bw.scale.setScalar(1 + 0.05 * punch);
       } else if (
         bw.position.x !== 0 ||
         bw.position.z !== 0 ||

@@ -14,8 +14,11 @@ import {
   pushColdFlameFx,
   pushColdFlameImpact,
   SAMURAI_ULTIMATE_DAMAGE,
+  startAttackAnim,
+  stepAttackAnim,
   stepHitStun,
   supportsWebGL,
+  tickAttackAnim,
   type BattleFighter,
   type BattleFx,
   type BattleProj,
@@ -130,6 +133,8 @@ function newFighter(
     phase: 0,
     moving: false,
     atkCd: 0,
+    /* Düz vuruş animasyonunun kalan süresi (0 = hazır). */
+    atkAnimT: 0,
     superCharge: 0,
     samuraiCharge: 0,
     samuraiUltT: 0,
@@ -818,6 +823,8 @@ export default function BattleScene({
       ty = b.y - 40;
     }
     p.facing = tx >= p.x ? 1 : -1;
+    // Düz vuruş animasyonu: kısa köklenme (windup) + kesilebilir bitiş.
+    startAttackAnim(p);
     spawnProj(p, "player", tx, ty, BASE_DMG);
     // Firing (even from a bush) reveals the shooter for a moment.
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
@@ -989,6 +996,8 @@ export default function BattleScene({
 
       p.atkCd = Math.max(0, p.atkCd - dt);
       b.atkCd = Math.max(0, b.atkCd - dt);
+      // Botun vuruş pozu zamanla söner (botlar köklenmez).
+      tickAttackAnim(b, dt);
 
       // Run-and-gun: keep firing while the attack button is held (or Space
       // is down) so you can shoot while walking with the joystick. The shot
@@ -1032,6 +1041,23 @@ export default function BattleScene({
       // arenasındaki ile aynı) — yoksa ult hiç erişilemiyor görünüyordu.
       if (isSamuraiFighter(p)) {
         p.samuraiCharge = Math.min(1, p.samuraiCharge + dt * 0.16);
+      }
+      // ── Düz vuruş animasyonu + cancel penceresi (kiting / hit-and-run) ──
+      // Windup boyunca karakter köklenir; pencere açıldıktan sonra joystick'e
+      // dokunmak bitiş animasyonunu keser ve karakter hemen yürümeye başlar.
+      if (p.hitStunT > 0 || p.dashT > 0) {
+        // Sarsılma / dash animasyonu devralır: vuruş animasyonu iptal edilir.
+        p.atkAnimT = 0;
+      } else {
+        const atkAnim = stepAttackAnim(p, dt, vx !== 0 || vy !== 0);
+        if (atkAnim.locked) {
+          // Windup: karakter köklenmiş → hareket girdisi yok sayılır.
+          vx = 0;
+          vy = 0;
+        } else if (atkAnim.canceled) {
+          // Bitiş animasyonu kesildi — adım tozu ile hissettir.
+          smokeFx(p.x, p.y - 4, 2, 26);
+        }
       }
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
       // kaybeder; savrulma hareketi burada (çarpışma kontrollü) uygulanır. ──
@@ -1248,6 +1274,8 @@ export default function BattleScene({
       // hidden, and resume the instant it is revealed again.
       if (b.atkCd <= 0 && botCanSee) {
         b.atkCd = botFireInterval(b.level);
+        // Botun da vuruş pozu görünsün — botlar köklenmez (run-and-gun).
+        startAttackAnim(b);
         // Aim jitter shrinks with level — low levels genuinely miss.
         const err = (Math.random() - 0.5) * 2 * botAimError(b.level);
         spawnProj(

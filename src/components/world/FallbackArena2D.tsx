@@ -8,6 +8,7 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import {
   BATTLE_OBSTACLES,
+  attackPunch,
   isHiddenFrom,
   isInBush,
   type BattleFighter,
@@ -221,6 +222,10 @@ export function FallbackArena2D({
         if (!sprite) return;
         const flip = f.facing < 0 ? -1 : 1;
         const bob = f.moving ? Math.sin(f.phase) * 5 : 0;
+        // Düz vuruş animasyonu: gövde ayaklardan öne yatar. Cancel penceresinde
+        // hareket girdisi animasyonu keserse punch anında 0 olur → karakter
+        // sıfır gecikmeyle yürüyüş duruşuna döner (kiting / stutter step).
+        const punch = attackPunch(f);
         sprite.classList.toggle("walking", f.moving);
         // Directional pose (walk-up / walk-down / walk-side / idle)
         const svgEl = sprite.querySelector("svg[data-pose]") as HTMLElement | null;
@@ -240,7 +245,7 @@ export function FallbackArena2D({
         spriteEl.dataset.vscale = String(smoothVS);
         sprite.setAttribute(
           "transform",
-          `translate(${-CHAR_W / 2} ${-CHAR_H + bob}) translate(${CHAR_W / 2} ${CHAR_H / 2}) scale(${flip} ${smoothVS.toFixed(3)}) translate(${-CHAR_W / 2} ${-CHAR_H / 2})`,
+          `translate(${-CHAR_W / 2} ${-CHAR_H + bob}) rotate(${(punch * 8 * flip).toFixed(2)}) translate(${CHAR_W / 2} ${CHAR_H / 2}) scale(${flip} ${smoothVS.toFixed(3)}) translate(${-CHAR_W / 2} ${-CHAR_H / 2})`,
         );
       };
       applySprite(p, pSpriteRef.current);
