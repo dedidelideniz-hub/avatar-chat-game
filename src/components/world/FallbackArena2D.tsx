@@ -387,7 +387,8 @@ export function FallbackArena2D({
           // "Güçlü Vuruş" ana mermisi ve Ateş Topu (süper): fiziksel ateş
           // yerine soğuk / ruhani alev (3D ile aynı görünüm).
           const flame = pr.explodeR !== undefined;
-          el.setAttribute("r", flame ? "17" : "10");
+          // 3D'deki mermi küçültmesine paralel: ana mermi 10 → 6, ateş topu 17 → 12.
+          el.setAttribute("r", flame ? "12" : "6");
           el.setAttribute(
             "fill",
             flame
