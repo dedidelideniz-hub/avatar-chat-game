@@ -63,7 +63,7 @@ const ARENA_W = 1700;
 const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
-const PROJ_SPEED = 620;
+const PROJ_SPEED = 445; // mermi uçuş hızı (%28 yavaşlatıldı: 620 → 445)
 /** Long enough to cross the arena diagonally so bot shots from any
  *  distance always reach the player instead of vanishing mid-air. */
 const PROJ_RANGE = 1500;
@@ -761,7 +761,7 @@ export default function BattleScene({
   const fireballAttack = (f: BattleFighter, enemy: BattleFighter) => {
     spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 320, {
       r: 17,
-      speed: 400,
+      speed: 290,
       explodeR: 130,
     });
   };
@@ -793,7 +793,7 @@ export default function BattleScene({
         spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 240, {
           r: 20,
           pierce: true,
-          speed: 560,
+          speed: 400,
         });
     }
   };

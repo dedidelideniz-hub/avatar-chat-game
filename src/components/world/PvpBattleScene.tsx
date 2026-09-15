@@ -71,7 +71,7 @@ const ARENA_W = 1700;
 const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
-const PROJ_SPEED = 620;
+const PROJ_SPEED = 445; // mermi uçuş hızı (%28 yavaşlatıldı: 620 → 445)
 const PROJ_RANGE = 660;
 const FIGHTER_R = 22;
 const PUBLISH_MS = 100; // presence snapshot cadence
@@ -693,10 +693,10 @@ export default function PvpBattleScene({
         break;
       }
       case "ates":
-        spawnProj(bot.current.x, bot.current.y, 320, { r: 17, speed: 400, explodeR: 130 });
+        spawnProj(bot.current.x, bot.current.y, 320, { r: 17, speed: 290, explodeR: 130 });
         break;
       default:
-        spawnProj(bot.current.x, bot.current.y, 240, { r: 20, pierce: true, speed: 560 });
+        spawnProj(bot.current.x, bot.current.y, 240, { r: 20, pierce: true, speed: 400 });
     }
   };
 
