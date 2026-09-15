@@ -384,18 +384,22 @@ export function FallbackArena2D({
           el.setAttribute("visibility", "visible");
           el.setAttribute("cx", `${pr.x}`);
           el.setAttribute("cy", `${pr.y}`);
-          // Ateş Topu: fiziksel ateş yerine soğuk / ruhani alev (3D ile aynı).
+          // Ateş Topu (süper) ve düşmanın sürekli attığı ana ateş: fiziksel
+          // ateş yerine soğuk / ruhani alev (3D ile aynı görünüm).
           const flame = pr.explodeR !== undefined;
-          el.setAttribute("r", flame ? "17" : "12");
+          const enemyBolt = !flame && pr.owner === "bot";
+          el.setAttribute("r", flame ? "17" : enemyBolt ? "10" : "12");
           el.setAttribute(
             "fill",
             flame
               ? pr.owner === "player"
                 ? "#a5f3fc"
                 : "#f0abfc"
-              : pr.owner === "player"
-                ? "#38bdf8"
-                : "#fb7185",
+              : enemyBolt
+                ? "#8b5cf6"
+                : pr.owner === "player"
+                  ? "#38bdf8"
+                  : "#fb7185",
           );
         } else {
           el.setAttribute("visibility", "hidden");

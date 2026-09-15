@@ -99,6 +99,12 @@ export const COLD_FLAME = {
   /** Rakip ateşi aynı ruhani stil, ama pembe tonla ayrılır (PvP okunurluğu). */
   enemyA: "#f5d0fe",
   enemyB: "#f0abfc",
+  /** Düşmanın sürekli attığı ana mermi: fiziksel ateş değil, eflatun/ buzlu
+   *  ruhani bir alev oku (oyuncunun çiyan enerji küresinden ayrı kalsın). */
+  boltCore: "#ede9fe", // buzlu beyaz-mor çekirdek
+  boltGlow: "#c4b5fd", // iç ışıma (eflatun)
+  boltTail: "#8b5cf6", // arkaya savrulan alev kuyruğu
+  boltTrail: "#a78bfa", // uçuş izi
 };
 
 /** Görsel patlama yarıçapı = hasar yarıçapı × bu değer.
