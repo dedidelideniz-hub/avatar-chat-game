@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { GLTFLoader, SkeletonUtils } from "three-stdlib";
+import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
 import { DRACOLoader } from "three-stdlib";
 import {
   equipMat,
@@ -43,9 +43,14 @@ const ROYAL_SKIN_URLS = new Set([
 /** CC0 kraliyet kılıcı (Sword606 — cc0gameassets lowpoly pack, public domain). */
 const ROYAL_SWORD_URL = "/models/royal-kilic.glb";
 
-/** Draco decoder lives in public/draco (royal-kilic.glb is Draco-compressed). */
+/**
+ * royal-kilic.glb is Meshopt-compressed (EXT_meshopt_compression). The decoder
+ * ships inside three-stdlib, so nothing has to be fetched at runtime. The Draco
+ * loader stays configured in public/draco as a fallback for legacy DRACO assets.
+ */
 const royalSwordLoader = (() => {
   const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder());
   const draco = new DRACOLoader();
   draco.setDecoderPath("/draco/");
   loader.setDRACOLoader(draco);
