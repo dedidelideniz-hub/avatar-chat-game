@@ -130,13 +130,13 @@ export const COLD_FLAME = {
 
 /** Ana merminin (soğuk alev oku) VFX ölçüleri — tek yerden ayar için. */
 export const BOLT_VFX = {
-  core: 0.16, // çekirdek yarıçapı (× HUD)
-  glow: 0.24, // iç ışıma yarıçapı
-  halo: 0.4, // dış hale yarıçapı
-  tailLen: 0.52, // alev kuyruğu uzunluğu
-  tailR: 0.12, // alev kuyruğu taban yarıçapı
-  streak: 0.62, // uçuş izi uzunluğu
-  ground: 0.46, // zemindeki ışık lekesi yarıçapı
+  core: 0.1, // çekirdek yarıçapı (× HUD)
+  glow: 0.145, // iç ışıma yarıçapı
+  halo: 0.22, // dış hale yarıçapı (mermi, karakterden küçük kalsın)
+  tailLen: 0.34, // alev kuyruğu uzunluğu
+  tailR: 0.072, // alev kuyruğu taban yarıçapı
+  streak: 0.42, // uçuş izi uzunluğu
+  ground: 0.26, // zemindeki ışık lekesi yarıçapı
   /** Namlu şimşeği mermi çıktıktan sonra kaç dünya-px boyunca görünür kalır. */
   muzzlePx: 78,
 };

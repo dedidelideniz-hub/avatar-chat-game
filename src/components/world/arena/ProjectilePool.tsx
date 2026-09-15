@@ -105,7 +105,7 @@ export function ProjectilePool({
           if (mf) {
             mf.visible = true;
             mf.position.set(ox, 0.85, oz);
-            const sc = (0.2 + 0.55 * (1 - k)) * HUD;
+            const sc = (0.11 + 0.22 * (1 - k)) * HUD;
             mf.scale.setScalar(sc);
             const mat = mf.material as THREE.MeshBasicMaterial;
             mat.color.set(pal.halo);
@@ -114,7 +114,7 @@ export function ProjectilePool({
           if (mr) {
             mr.visible = true;
             mr.position.set(ox, 0.75, oz);
-            mr.scale.setScalar((0.24 + 1.1 * (1 - k)) * HUD);
+            mr.scale.setScalar((0.12 + 0.4 * (1 - k)) * HUD);
             const mat = mr.material as THREE.MeshBasicMaterial;
             mat.color.set(pal.ring);
             mat.opacity = k * 0.7;
@@ -193,7 +193,7 @@ export function ProjectilePool({
             if (!tg) continue;
             const ph = time * 11 + k * 2.1 + i;
             const a = (k / BOLT_TONGUES) * Math.PI * 2 + time * 2.2;
-            const rad = (0.1 + 0.02 * Math.sin(ph * 0.8)) * HUD;
+            const rad = (0.065 + 0.015 * Math.sin(ph * 0.8)) * HUD;
             tg.position.set(Math.cos(a) * rad, 0.02 * HUD * Math.sin(ph * 0.9), Math.sin(a) * rad);
             tg.rotation.z = -Math.cos(a) * 0.85;
             tg.rotation.x = Math.sin(a) * 0.85;
@@ -220,10 +220,10 @@ export function ProjectilePool({
           mat.opacity = 0.55 + 0.25 * Math.sin(time * 18 + i * 2);
         }
         // Kuyruklu yıldız izi: biri kalın-parlak (yakın), diğeri ince-solgun (uzak).
-        const trailLen = Math.min(1.1 * HUD, sp * 0.075 * HUD);
+        const trailLen = Math.min(0.72 * HUD, sp * 0.05 * HUD);
         if (near) {
-          near.position.set(-dx * (0.3 * HUD + trailLen * 0.5), 0, -dz * (0.3 * HUD + trailLen * 0.5));
-          near.scale.set(trailLen, 0.055 * HUD, 0.055 * HUD);
+          near.position.set(-dx * (0.22 * HUD + trailLen * 0.5), 0, -dz * (0.22 * HUD + trailLen * 0.5));
+          near.scale.set(trailLen, 0.04 * HUD, 0.04 * HUD);
           near.rotation.y = Math.atan2(-dz, dx);
           const mat = near.material as THREE.MeshBasicMaterial;
           mat.color.set(pal.trail);
@@ -232,11 +232,11 @@ export function ProjectilePool({
         if (far) {
           const farLen = trailLen * 1.55;
           far.position.set(
-            -dx * (0.3 * HUD + trailLen + farLen * 0.5),
+            -dx * (0.22 * HUD + trailLen + farLen * 0.5),
             0,
-            -dz * (0.3 * HUD + trailLen + farLen * 0.5),
+            -dz * (0.22 * HUD + trailLen + farLen * 0.5),
           );
-          far.scale.set(farLen, 0.03 * HUD, 0.03 * HUD);
+          far.scale.set(farLen, 0.022 * HUD, 0.022 * HUD);
           far.rotation.y = Math.atan2(-dz, dx);
           const mat = far.material as THREE.MeshBasicMaterial;
           mat.color.set(pal.wisp);
@@ -450,7 +450,7 @@ export function ProjectilePool({
           >
             {/* dönen büyü halkaları */}
             <mesh ref={(el) => { boltRingA.current[i] = el; }} raycast={() => null}>
-              <torusGeometry args={[0.26 * HUD, 0.012 * HUD, 6, 30]} />
+              <torusGeometry args={[0.16 * HUD, 0.009 * HUD, 6, 30]} />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.ring}
                 transparent
@@ -460,7 +460,7 @@ export function ProjectilePool({
               />
             </mesh>
             <mesh ref={(el) => { boltRingB.current[i] = el; }} raycast={() => null}>
-              <torusGeometry args={[0.19 * HUD, 0.01 * HUD, 6, 26]} />
+              <torusGeometry args={[0.115 * HUD, 0.008 * HUD, 6, 26]} />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.wisp}
                 transparent
@@ -527,7 +527,7 @@ export function ProjectilePool({
                   boltTongues.current[i][k] = el;
                 }}
               >
-                <coneGeometry args={[0.075 * HUD, 0.3 * HUD, 8]} />
+                <coneGeometry args={[0.05 * HUD, 0.2 * HUD, 8]} />
                 <meshBasicMaterial
                   color={k % 2 === 0 ? COLD_FLAME.bolt.player.tail : COLD_FLAME.bolt.player.wisp}
                   transparent
