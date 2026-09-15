@@ -163,7 +163,9 @@ export const TEXT_POOL = 8;
 export const RING_POOL = 12;
 export const BURST_POOL = 8;
 export const BEAM_POOL = 2;
-export const SMOKE_POOL = 22;
+/* Ateş Topu patlaması tek başına 15 alev bulutu eklediği için havuz, ayak
+ * tozu/duman girdileri onları kırpmasın diye geniş tutulur. */
+export const SMOKE_POOL = 36;
 export const CRACK_POOL = 3;
 
 /* Brawl tarzı vuruş geri bildirimi */
