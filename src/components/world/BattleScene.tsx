@@ -203,10 +203,18 @@ export function BattleJoystick({
     setKnob(dx, dy);
   };
 
+  // Dokunma durumu bir CSS sınıfıyla bildirilir: Android WebView'de bir <div>
+  // üzerinde :active güvenilir tetiklenmediği için kolun %85 opaklığa
+  // çıkması bu sınıfa bağlıdır (React state yok, yeniden çizim yok).
+  const setActive = (on: boolean) => {
+    baseRef.current?.classList.toggle("is-active", on);
+  };
+
   const reset = () => {
     draggingRef.current = false;
     activePointerRef.current = null;
     stickRef.current = { x: 0, y: 0 };
+    setActive(false);
     setKnob(0, 0);
   };
 
@@ -258,6 +266,7 @@ export function BattleJoystick({
           activePointerRef.current = e.pointerId;
           draggingRef.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
+          setActive(true);
           move(e.clientX, e.clientY);
         }}
         onPointerMove={(e) => {

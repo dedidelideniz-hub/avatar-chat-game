@@ -897,6 +897,118 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   font-size: clamp(11px, 1.7vh, 14px);
 }
 
+/* ── Dokunmatik kontroller — Wild Rift / LoL Mobile yerleşimi ──
+   Sol altta hareket joystick'i, sağ altta başparmağın kavis çizdiği
+yetenek kümesi (en büyüğü ana saldırı). Küme geometrisi --hud-*
+değişkenlerinden türetilir; yatay telefon modunda yalnızca bu değişkenler
+küçülür, kavis bozulmaz. Kontroller varsayılan olarak yarı saydamdır
+(%45) ve sadece dokunulduğunda/nişan alındığında öne çıkar (%85) — böylece
+arenanın görüşünü kapatmazlar. */
+.battle-hud-stick,
+.battle-hud-controls .battle-hud-attack,
+.battle-hud-controls .battle-hud-super,
+.battle-hud-controls .battle-hud-ult {
+  opacity: 0.45;
+  border-width: 1.5px;
+  border-style: solid;
+  /* İnce parlak kenar: outline kutu gölgesiyle çakışmaz, bu yüzden
+     "hazır" durumdaki renkli çerçeve ve parlama efektleri korunur. */
+  outline: 1px solid rgb(255 255 255 / 0.22);
+  outline-offset: 1px;
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out,
+    box-shadow 0.12s ease-out;
+}
+.battle-hud-stick.is-active {
+  opacity: 0.85;
+  box-shadow: 0 0 22px rgb(186 230 253 / 0.45);
+}
+.battle-hud-controls .battle-hud-attack:active {
+  opacity: 0.85;
+  box-shadow: 0 0 28px rgb(56 189 248 / 0.75);
+}
+.battle-hud-controls .battle-hud-super:active {
+  opacity: 0.85;
+  box-shadow: 0 0 24px rgb(250 204 21 / 0.6);
+}
+.battle-hud-controls .battle-hud-ult:active {
+  opacity: 0.85;
+  box-shadow: 0 0 24px rgb(252 211 77 / 0.6);
+}
+
+/* Hareket joystick'i — ekranın sol/alt kenarından 60px içeride ve %20 daha
+   büyük. Çentik/gesture çubuğu olan cihazlarda güvenli alan kadar eklenir
+   (env() yoksa 0 döner ve 60px geçerli kalır). */
+.battle-hud-stick {
+  left: max(60px, calc(env(safe-area-inset-left, 0px) + 12px));
+  bottom: max(60px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  width: 134px;
+  height: 134px;
+}
+.battle-hud-stick-knob {
+  width: 58px;
+  height: 58px;
+}
+
+/* Yetenek kümesi — kavis (fan) yerleşimi. Kapsayıcının sağ-alt köşesi
+   referanstır: ana saldırı butonu tam o köşeye oturur, yetenekler soluna ve
+   üstüne başparmak yayı çizecek şekilde dizilir (kavis ~25° ve ~82°). */
+.battle-hud-controls {
+  --hud-atk: 88px;
+  --hud-skill: 68px;
+  --hud-ult: 74px;
+  right: max(50px, calc(env(safe-area-inset-right, 0px) + 12px));
+  bottom: max(40px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  display: block;
+  width: 0;
+  height: 0;
+}
+.battle-hud-controls .battle-hud-attack {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--hud-atk);
+  height: var(--hud-atk);
+  font-size: calc(var(--hud-atk) * 0.37);
+}
+.battle-hud-controls .battle-hud-attack-knob {
+  width: calc(var(--hud-atk) * 0.3);
+  height: calc(var(--hud-atk) * 0.3);
+  font-size: calc(var(--hud-atk) * 0.12);
+}
+/* Yetenek 1 — ana saldırının sol-üstü. */
+.battle-hud-controls .battle-hud-super {
+  position: absolute;
+  width: var(--hud-skill);
+  height: var(--hud-skill);
+  right: calc(var(--hud-atk) * 1.02);
+  bottom: calc(var(--hud-atk) * 0.54);
+}
+.battle-hud-controls .battle-hud-super .battle-hud-icon {
+  font-size: calc(var(--hud-skill) * 0.34);
+}
+/* Ulti — kavisin tepesi, diğerlerinden biraz büyük ve altın kenarıyla
+   ayırt edilir. */
+.battle-hud-controls .battle-hud-ult {
+  position: absolute;
+  width: var(--hud-ult);
+  height: var(--hud-ult);
+  right: calc(var(--hud-atk) * 0.22);
+  bottom: calc(var(--hud-atk) * 1.1);
+  outline-color: rgb(252 211 77 / 0.55);
+}
+.battle-hud-controls .battle-hud-ult .battle-hud-icon {
+  font-size: calc(var(--hud-ult) * 0.36);
+}
+/* Dokunma ipucu kümenin üstünde durur (kavis ile çakışmasın). */
+.battle-hud-hint {
+  position: absolute;
+  right: 0;
+  bottom: calc(var(--hud-ult) + var(--hud-atk) * 1.1 + 10px);
+  white-space: nowrap;
+}
+
 /* Yatay (telefon) modu: kısa ekranda üst şerit ve kontroller küçülür,
    oynanabilir arena alanı büyür. Ölçüler ekran YÜKSEKLİĞİNE (yh) göre
    verilir — yatay modda kısa kenar odur, yani gerçek "vmin" ölçeği. */
@@ -923,56 +1035,34 @@ svg[data-pose="walk-side"] .avatar-pose-side {
   .battle-hud-clock {
     font-size: clamp(10px, 3.3vh, 14px);
   }
-  /* Hareket joystick'i (sol alt) */
+  /* Hareket joystick'i (sol alt) — %20 daha büyük dokunma alanı. Kenar
+     mesafesi ve güvenli alan temel kuraldan (max()) gelir. */
   .battle-hud-stick {
-    width: clamp(68px, 22vh, 112px);
-    height: clamp(68px, 22vh, 112px);
-    border-width: clamp(2px, 0.7vh, 4px);
-    left: clamp(8px, 2.6vh, 18px);
-    bottom: clamp(8px, 2.6vh, 18px);
+    width: clamp(80px, 26.4vh, 134px);
+    height: clamp(80px, 26.4vh, 134px);
   }
   .battle-hud-stick-knob {
-    width: clamp(28px, 9.6vh, 48px);
-    height: clamp(28px, 9.6vh, 48px);
+    width: clamp(34px, 11.5vh, 58px);
+    height: clamp(34px, 11.5vh, 58px);
   }
-  /* Yetenek / saldırı kümesi (sağ alt) */
+  /* Yetenek / saldırı kümesi (sağ alt) — yalnızca ölçek küçülür; kavis
+     geometrisi --hud-* üzerinden aynı kalır. */
   .battle-hud-controls {
-    right: clamp(8px, 2.6vh, 18px);
-    bottom: clamp(8px, 2.6vh, 18px);
-    gap: clamp(4px, 1.4vh, 9px);
-  }
-  .battle-hud-ult {
-    width: clamp(38px, 12.6vh, 56px);
-    height: clamp(38px, 12.6vh, 56px);
-    border-width: clamp(2px, 0.6vh, 4px);
-  }
-  .battle-hud-ult .battle-hud-icon {
-    font-size: clamp(14px, 5.2vh, 24px);
-  }
-  .battle-hud-super {
-    width: clamp(44px, 14.6vh, 64px);
-    height: clamp(44px, 14.6vh, 64px);
-    border-width: clamp(2px, 0.6vh, 4px);
-  }
-  .battle-hud-super .battle-hud-icon {
-    font-size: clamp(16px, 6.2vh, 28px);
-  }
-  .battle-hud-attack {
-    width: clamp(56px, 18.6vh, 80px);
-    height: clamp(56px, 18.6vh, 80px);
-    border-width: clamp(2px, 0.7vh, 4px);
-    font-size: clamp(20px, 7.6vh, 34px);
-  }
-  .battle-hud-attack-knob {
-    width: clamp(20px, 7vh, 28px);
-    height: clamp(20px, 7vh, 28px);
-    font-size: clamp(8px, 2.4vh, 11px);
+    --hud-atk: clamp(58px, 19vh, 80px);
+    --hud-skill: clamp(46px, 15vh, 62px);
+    --hud-ult: clamp(50px, 16.5vh, 68px);
   }
   /* Uzun dokunma ipucu kısa ekranda kırpılıyordu; kolun kendisi zaten
      öğretiyor, bu yüzden yatay modda gizlenir. */
   .battle-hud-hint {
     display: none;
   }
+}
+
+/* Geliştirici (debug) butonu kaldırıldı: World ekranındaki her zaman görünen
+   🔧 düğmesi. Visual Debug paneline Ctrl+Shift+D ile erişilebilir. */
+button.fixed.bottom-4.right-4.z-\[99999\] {
+  display: none !important;
 }
 
 /* ═══ PERFORMANCE: SVG containment ═══ */

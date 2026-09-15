@@ -8,7 +8,6 @@ import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import "./index.css";
-import { DebugConsole } from "./components/DebugConsole";
 
 // Lazy load route components for better code splitting
 
@@ -142,9 +141,6 @@ function RouteSyncer() {
 }
 
 
-// Temporary on-screen debug console — activate with ?debug in URL
-const showDebug = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
@@ -184,7 +180,6 @@ createRoot(document.getElementById("root")!).render(
           </Suspense>
         </BrowserRouter>
         <Toaster />
-        {showDebug && <DebugConsole maxEntries={80} />}
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,
