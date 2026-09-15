@@ -384,7 +384,19 @@ export function FallbackArena2D({
           el.setAttribute("visibility", "visible");
           el.setAttribute("cx", `${pr.x}`);
           el.setAttribute("cy", `${pr.y}`);
-          el.setAttribute("fill", pr.owner === "player" ? "#38bdf8" : "#fb7185");
+          // Ateş Topu: fiziksel ateş yerine soğuk / ruhani alev (3D ile aynı).
+          const flame = pr.explodeR !== undefined;
+          el.setAttribute("r", flame ? "17" : "12");
+          el.setAttribute(
+            "fill",
+            flame
+              ? pr.owner === "player"
+                ? "#a5f3fc"
+                : "#f0abfc"
+              : pr.owner === "player"
+                ? "#38bdf8"
+                : "#fb7185",
+          );
         } else {
           el.setAttribute("visibility", "hidden");
         }

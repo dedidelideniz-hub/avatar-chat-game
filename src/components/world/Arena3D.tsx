@@ -50,6 +50,36 @@ import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { ProjectilePool } from "./arena/ProjectilePool";
+import {
+  ARENA_D,
+  ARENA_W,
+  BEAM_POOL,
+  BURST_POOL,
+  CRACK_POOL,
+  CX,
+  CZ,
+  HIT_SPARKS,
+  HUD,
+  RING_POOL,
+  S,
+  SMOKE_POOL,
+  SPARK_LIFE,
+  TEXT_POOL,
+  type BattleFx,
+  type BattleProj,
+} from "./arena/shared";
+
+/* Arena sabitleri, tipleri ve efekt yardımcıları `./arena/shared` içinde.
+ * Genel API eskisi gibi Arena3D üzerinden de erişilebilir kalsın diye
+ * aşağıdaki isimler yeniden dışa aktarılır. */
+export {
+  COLD_FLAME,
+  FIREBALL_VFX_SCALE,
+  isFireballProj,
+  pushColdFlameFx,
+} from "./arena/shared";
+export type { BattleFx, BattleProj } from "./arena/shared";
 
 /** Game-space (px) obstacle list — shared with the simulation in BattleScene. */
 export type ObstacleKind = "crate" | "fence" | "bush" | "barrel";
@@ -158,18 +188,8 @@ export function supportsWebGL(): boolean {
   }
 }
 
-/** World px → 3D units.
- *  Enlarged battlefield: the whole 5v5 terrain is now spread over a much
- *  wider world footprint, so the map reads as a big arena while the
- *  fighters (fixed 1.5-unit bodies) stay small figures on it. The sim
- *  still runs in 0..1700px; this only changes how those px map to 3D. */
-const S = 50;
-const ARENA_W = 34; // 1700 px / S
-const ARENA_D = 22; // 1100 px / S
-const CX = ARENA_W / 2;
-const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
-/** Readability scale for fixed-size world HUD/effects on the larger map. */
-const HUD = 2;
+/* Arena ölçek/Dünya sabitleri (S, HUD, ARENA_W…) `./arena/shared` modülüne
+ *  taşındı — dosya boyutu limiti için modüllere bölündü. */
 
 export interface BattleFighter {
   name: string;
@@ -250,147 +270,11 @@ export function isHiddenFrom(f: BattleFighter, o: BattleFighter): boolean {
   return fi !== bushIndexOf(o.x, o.y);
 }
 
-export interface BattleProj {
-  owner: "player" | "bot";
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  dmg: number;
-  r: number;
-  travelled: number;
-  pierce: boolean;
-  explodeR?: number;
-}
+/* BattleProj / BattleFx tipleri `./arena/shared` modülüne taşındı ve yukarıda
+ *  yeniden dışa aktarılıyor. */
 
-export type BattleFx =
-  | {
-      kind: "text";
-      x: number;
-      y: number;
-      ttl: number;
-      maxTtl: number;
-      text: string;
-      color: string;
-    }
-  | {
-      kind: "ring";
-      x: number;
-      y: number;
-      ttl: number;
-      maxTtl: number;
-      grow: number;
-      color: string;
-    }
-  | {
-      kind: "burst";
-      x: number;
-      y: number;
-      ttl: number;
-      maxTtl: number;
-      grow: number;
-      color: string;
-    }
-  | {
-      kind: "beam";
-      x1: number;
-      y1: number;
-      x2: number;
-      y2: number;
-      ttl: number;
-      maxTtl: number;
-    }
-  | {
-      kind: "smoke";
-      x: number;
-      y: number;
-      ttl: number;
-      maxTtl: number;
-      grow: number;
-      color: string;
-    }
-  | {
-      kind: "samuraiCrack";
-      x1: number;
-      y1: number;
-      x2: number;
-      y2: number;
-      ttl: number;
-      maxTtl: number;
-    };
-
-/** Ateş Topu (ana ateş) — fiziksel ateş yerine antik büyüyle harmanlanmış
- *  ruhani / soğuk alev paleti. Hasar yarıçapı DEĞİŞMEZ; sadece patlamanın
- *  görseli küçülür ve soğuk (buz mavisi → mor) bir büyüye dönüşür. */
-export const COLD_FLAME = {
-  core: "#ede9fe", // buzlu mor-beyaz çekirdek
-  ring: "#67e8f9", // çiyan yer dalgası / soğuk şok dalgası
-  wispA: "#a5f3fc", // soğuk alev dili (buz mavisi)
-  wispB: "#c4b5fd", // ruhani alev dili (eflatun)
-};
-
-/** Görsel patlama yarıçapı = hasar yarıçapı × bu değer.
- *  Eski ateş topu karakterin ~3.5 katı büyüklükteydi; artık sıkı ve okunur. */
-export const FIREBALL_VFX_SCALE = 0.55;
-
-/**
- * Ateş Topu patlaması için soğuk alev VFX'i ekler. Fiziksel turuncu ateş
- * yerine: zeminde ince bir büyü halkası + buzlu bir çekirdek parlaması +
- * yükselip sönen ruhani alev dilleri.
- *
- * NOT: 3D patlama havuzu (`burst` mesh'i) rengi sabit turuncuya boyanmıştır,
- * bu yüzden fiziksel ateş görüntüsünü vermemesi için "burst" yerine rengi
- * efekt başına taşıyan "smoke"/alev katmanı kullanılır. `damageR` yalnızca
- * hasar içindir; görsel onun küçültülmüş hâlidir, oyun hissi değişmez.
- */
-export function pushColdFlameFx(
-  add: (fx: BattleFx) => void,
-  x: number,
-  y: number,
-  damageR: number,
-): void {
-  const r = damageR * FIREBALL_VFX_SCALE;
-  // Zeminde yayılan ince büyü halkası (soğuk şok dalgası).
-  add({ kind: "ring", x, y, ttl: 0.5, maxTtl: 0.5, grow: r * 1.15, color: COLD_FLAME.ring });
-  // Buzlu çekirdek: kısa ömürlü, parlak ve hızla yükselen ruhani alev kütlesi.
-  for (let i = 0; i < 6; i++) {
-    const life = 0.3 + Math.random() * 0.18;
-    add({
-      kind: "smoke",
-      x: x + (Math.random() - 0.5) * 34,
-      y: y + (Math.random() - 0.5) * 34,
-      ttl: life,
-      maxTtl: life,
-      grow: r * 0.6 + Math.random() * 20,
-      color: i % 3 === 0 ? COLD_FLAME.core : COLD_FLAME.wispA,
-    });
-  }
-  // Dışa saçılan soğuk alev dilleri — buz mavisi ve eflatun.
-  for (let i = 0; i < 9; i++) {
-    const life = 0.6 + Math.random() * 0.55;
-    add({
-      kind: "smoke",
-      x: x + (Math.random() - 0.5) * 76,
-      y: y + (Math.random() - 0.5) * 76,
-      ttl: life,
-      maxTtl: life,
-      grow: r * 0.7 + Math.random() * 26,
-      color: i % 2 === 0 ? COLD_FLAME.wispA : COLD_FLAME.wispB,
-    });
-  }
-}
-
-const PROJ_POOL = 26;
-const TEXT_POOL = 8;
-const RING_POOL = 12;
-const BURST_POOL = 8;
-const BEAM_POOL = 2;
-const SMOKE_POOL = 22;
-const CRACK_POOL = 3;
-
-/* Brawl tarzı vuruş geri bildirimi */
-const HIT_SPARKS = 10; // vuruş başına kıvılcım tanesi
-const SPARK_LIFE = 0.42; // kıvılcım ömrü (saniye)
+/* COLD_FLAME, pushColdFlameFx ve efekt havuzu boyutları `./arena/shared`
+ *  modülüne taşındı; yukarıda içe aktarılıyor. */
 
 /* ------------------------------------------------------------------ */
 /* Fighters — the same rigged GLB character used in the street world.  */
@@ -1404,101 +1288,9 @@ function FighterRig({
 }
 
 /* ------------------------------------------------------------------ */
-/* Projectiles — pooled glowing orbs with a soft halo.                 */
+/* Projectiles — `./arena/ProjectilePool` modülüne taşındı: normal mermi   */
+/* havuzu + Ateş Topu'nun animasyonlu soğuk alev küresi.               */
 /* ------------------------------------------------------------------ */
-
-function ProjectilePool({
-  projsRef,
-}: {
-  projsRef: MutableRefObject<BattleProj[]>;
-}) {
-  const meshes = useRef<(THREE.Mesh | null)[]>([]);
-  const halos = useRef<(THREE.Mesh | null)[]>([]);
-  const trails = useRef<(THREE.Mesh | null)[]>([]);
-
-  useFrame(() => {
-    const list = projsRef.current;
-    for (let i = 0; i < PROJ_POOL; i++) {
-      const m = meshes.current[i];
-      const h = halos.current[i];
-      const tr = trails.current[i];
-      const p = list[i];
-      if (m) {
-        if (p) {
-          m.visible = true;
-          m.position.set(p.x / S, 0.85, p.y / S);
-          (m.material as THREE.MeshStandardMaterial).color.set(
-            p.owner === "player" ? "#38bdf8" : "#fb7185",
-          );
-          (m.material as THREE.MeshStandardMaterial).emissive.set(
-            p.owner === "player" ? "#0ea5e9" : "#f43f5e",
-          );
-        } else {
-          m.visible = false;
-        }
-      }
-      if (h) {
-        h.visible = !!p;
-        if (p) h.position.set(p.x / S, 0.85, p.y / S);
-      }
-      // glowing energy trail stretched along the flight direction
-      if (tr) {
-        if (p) {
-          tr.visible = true;
-          const sp = Math.hypot(p.vx, p.vy) || 1;
-          const len = Math.min(0.9 * HUD, sp * 0.055 * HUD);
-          tr.position.set(
-            (p.x - (p.vx / sp) * len * 0.55) / S,
-            0.85,
-            (p.y - (p.vy / sp) * len * 0.55) / S,
-          );
-          tr.scale.set(len, 0.06 * HUD, 0.06 * HUD);
-          tr.rotation.y = Math.atan2(p.vy, p.vx);
-          (tr.material as THREE.MeshBasicMaterial).color.set(
-            p.owner === "player" ? "#7dd3fc" : "#fda4af",
-          );
-        } else {
-          tr.visible = false;
-        }
-      }
-    }
-  });
-
-  return (
-    <group>
-      {Array.from({ length: PROJ_POOL }).map((_, i) => (
-        <group key={i}>
-          <mesh
-            ref={(el) => {
-              meshes.current[i] = el;
-            }}
-          >
-            <sphereGeometry args={[0.15 * HUD, 12, 12]} />
-            <meshStandardMaterial emissive="#0ea5e9" emissiveIntensity={2.2} />
-          </mesh>
-          <mesh
-            ref={(el) => {
-              halos.current[i] = el;
-            }}
-            visible={false}
-          >
-            <sphereGeometry args={[0.28 * HUD, 10, 10]} />
-            <meshBasicMaterial color="#ffffff" transparent opacity={0.25} />
-          </mesh>
-          <mesh
-            ref={(el) => {
-              trails.current[i] = el;
-            }}
-            visible={false}
-          >
-            <boxGeometry args={[1, 1, 1]} />
-            <meshBasicMaterial transparent opacity={0.75} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Effects — damage numbers (canvas sprites), expanding rings, bursts  */
