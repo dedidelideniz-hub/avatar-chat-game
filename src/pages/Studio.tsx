@@ -132,6 +132,9 @@ export default function Studio() {
       toast.success(
         hasProfile ? "Avatarın güncellendi! ✨" : "Avatarın oluşturuldu! 🎉",
       );
+      // Yeni oyuncu karakterini yarattığında doğrudan oyun girişine geçer
+      // (yükleme ekranı → lig/üyelik kartı → savaşa hazır).
+      if (!hasProfile) navigate("/entry");
     } catch (error) {
       console.error("Profil kaydedilemedi:", error);
       toast.error(
@@ -358,10 +361,10 @@ export default function Studio() {
                 <Button
                   type="button"
                   className="w-full rounded-full text-base"
-                  onClick={() => navigate("/world")}
+                  onClick={() => navigate("/entry")}
                 >
                   <Gamepad2 className="size-4" />
-                  Dünyaya gir — caddeye adım at
+                  Oyun girişine git — savaşa hazırlan
                 </Button>
               )}
 

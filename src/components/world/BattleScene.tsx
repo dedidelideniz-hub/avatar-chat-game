@@ -396,7 +396,7 @@ export function BattleLoading({
         </span>
       </h2>
       <p className="relative z-10 mt-1 text-xs font-bold tracking-[0.35em] text-sky-300/80">
-        SANALİKA DUEL ARENASI
+        VAELOS DUEL ARENASI
       </p>
 
       {/* fighter cards + VS emblem */}
@@ -450,7 +450,7 @@ export function BattleLoading({
           />
         </div>
         <div className="mt-2 flex justify-between text-[9px] font-bold text-white/35">
-          <span>⚙️ SANALİKA GAMES</span>
+          <span>⚙️ VAELOS GAMES</span>
           <span>v2.0</span>
         </div>
       </div>

@@ -262,9 +262,9 @@ export default function Landing() {
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="rounded-full px-7 text-base">
-                <Link to="/world">
+                <Link to="/entry">
                   <Map className="size-5" />
-                  Dünyayı keşfet
+                  Oyun girişi
                 </Link>
               </Button>
             </div>

@@ -37,6 +37,7 @@ function lazyRetry<T extends React.ComponentType<any>>(
 
 const Landing = lazyRetry(() => import("./pages/Landing.tsx"));
 const AuthPage = lazyRetry(() => import("./pages/Auth.tsx"));
+const Entry = lazyRetry(() => import("./pages/Entry.tsx"));
 const Studio = lazyRetry(() => import("./pages/Studio.tsx"));
 const World = lazyRetry(() => import("./pages/World.tsx"));
 const Admin = lazyRetry(() => import("./pages/Admin.tsx"));
@@ -155,7 +156,17 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Landing />} />
               <Route
                 path="/auth"
-                element={<AuthPage redirectAfterAuth="/studio" />}
+                element={<AuthPage redirectAfterAuth="/entry" />}
+              />
+              {/* MOBA tarzı oyun girişi: yükleme ekranı → lig/üyelik kartı ve
+                  karakter rengi seçimi → oyun dünyası. */}
+              <Route
+                path="/entry"
+                element={
+                  <RequireAuth>
+                    <Entry />
+                  </RequireAuth>
+                }
               />
               <Route
                 path="/studio"

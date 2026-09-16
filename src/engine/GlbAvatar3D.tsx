@@ -798,10 +798,19 @@ interface PortraitCoreProps {
   equipped: string[];
   height: number;
   spin: boolean;
+  /**
+   * Oyun girişinde seçilen "karakter rengi". Verilirse modelin dokusu bu
+   * renge doğru yumuşakça boyanır (siluet + zırh tonu), böylece oyuncu
+   * seçimini anında görür. Gameplay avatarları bundan etkilenmez.
+   */
+  tint?: string;
 }
 
+/** Karakter tonunun dokunun içine ne kadar karışacağı (0-1). */
+const TINT_STRENGTH = 0.55;
+
 /** Static character shown facing the camera with its idle animation. */
-function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
+function GlbPortraitCore({ url, equipped, height, spin, tint }: PortraitCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
   const { scene, animations } = useGLTF(skinUrl || url);
@@ -827,6 +836,56 @@ function GlbPortraitCore({ url, equipped, height, spin }: PortraitCoreProps) {
     const h = Math.max(size.y, 0.0001);
     return { normScale: height / h, modelHeight: h };
   }, [clone, height, skinUrl]);
+
+  // ── Renk tonu altyapısı (oyun girişindeki "karakter rengi") ──────
+  // Paylaşımlı GLB'nin materyalleri asla değiştirilmez: her mesh için BİR
+  // kez klon üretilir ve ton, klonun rengi hep ASIL renkten yeniden
+  // hesaplanarak uygulanır. Böylece renk seçimini art arda değiştirmek
+  // rengi koyulaştırmaz (lerp üstüne lerp birikmez).
+  const tintBases = useRef(
+    new Map<
+      THREE.MeshStandardMaterial,
+      { color: THREE.Color; emissive: THREE.Color | null }
+    >(),
+  );
+
+  useEffect(() => {
+    const bases = new Map<
+      THREE.MeshStandardMaterial,
+      { color: THREE.Color; emissive: THREE.Color | null }
+    >();
+    clone.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      if (obj.userData?.isEquipment) return;
+      const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const next = list.map((src) => {
+        const m = src.clone() as THREE.MeshStandardMaterial;
+        bases.set(m, {
+          color: m.color ? m.color.clone() : new THREE.Color("#ffffff"),
+          emissive: m.emissive ? m.emissive.clone() : null,
+        });
+        return m;
+      });
+      mesh.material = (Array.isArray(mesh.material) ? next : next[0]) as
+        | THREE.Material
+        | THREE.Material[];
+    });
+    tintBases.current = bases;
+  }, [clone]);
+
+  useEffect(() => {
+    const target = tint ? new THREE.Color(tint) : null;
+    tintBases.current.forEach((base, material) => {
+      material.color.copy(base.color);
+      if (base.emissive) material.emissive.copy(base.emissive);
+      if (target) {
+        material.color.lerp(target, TINT_STRENGTH);
+        material.emissive?.lerp(target, 0.28);
+      }
+      material.needsUpdate = true;
+    });
+  }, [tint, clone]);
 
   // Play the idle clip (or the first clip as a fallback).
   useEffect(() => {
@@ -878,6 +937,8 @@ export interface GlbCharacterPortraitProps {
   height?: number;
   /** Slow turntable rotation (default true). */
   spin?: boolean;
+  /** Karakter rengi (oyun girişindeki renk seçimi) — modele boyanır. */
+  tint?: string;
 }
 
 /**
@@ -907,13 +968,20 @@ export function GlbCharacterPortrait({
   equipped = [],
   height = 2.2,
   spin = true,
+  tint,
 }: GlbCharacterPortraitProps) {
   const primary = characterModelUrl();
 
   if (primary === FALLBACK_MODEL_URL) {
     return (
       <Suspense fallback={null}>
-        <GlbPortraitCore url={primary} equipped={equipped} height={height} spin={spin} />
+        <GlbPortraitCore
+          url={primary}
+          equipped={equipped}
+          height={height}
+          spin={spin}
+          tint={tint}
+        />
       </Suspense>
     );
   }
@@ -921,12 +989,24 @@ export function GlbCharacterPortrait({
     <GlbModelBoundary
       fallback={
         <Suspense fallback={null}>
-          <GlbPortraitCore url={FALLBACK_MODEL_URL} equipped={equipped} height={height} spin={spin} />
+          <GlbPortraitCore
+            url={FALLBACK_MODEL_URL}
+            equipped={equipped}
+            height={height}
+            spin={spin}
+            tint={tint}
+          />
         </Suspense>
       }
     >
       <Suspense fallback={null}>
-        <GlbPortraitCore url={primary} equipped={equipped} height={height} spin={spin} />
+        <GlbPortraitCore
+          url={primary}
+          equipped={equipped}
+          height={height}
+          spin={spin}
+          tint={tint}
+        />
       </Suspense>
     </GlbModelBoundary>
   );

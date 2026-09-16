@@ -95,6 +95,32 @@ export const SHOE_COLORS = [
   "#ffffff",
 ] as const;
 
+/**
+ * MOBA oyun girişindeki "karakter rengi" paleti. Oyuncu girişte yalnızca
+ * rengini seçer; renk karakterin üst (kıyafet) rengi olarak kaydedilir, bu
+ * yüzden değerler SHIRT_COLORS ile birebir aynı hex'lerden seçildi —
+ * stüdyodaki renk de aynı kalır.
+ */
+export const CHARACTER_COLORS = [
+  { id: "crimson", label: "Kızıl", hex: "#ef4444" },
+  { id: "ember", label: "Alev", hex: "#f97316" },
+  { id: "gold", label: "Altın", hex: "#eab308" },
+  { id: "jade", label: "Zümrüt", hex: "#22c55e" },
+  { id: "teal", label: "Deniz", hex: "#14b8a6" },
+  { id: "azure", label: "Mavi", hex: "#3b82f6" },
+  { id: "violet", label: "Mor", hex: "#a855f7" },
+  { id: "rose", label: "Gül", hex: "#f43f5e" },
+  { id: "pink", label: "Pembe", hex: "#ec4899" },
+  { id: "slate", label: "Çelik", hex: "#64748b" },
+  { id: "obsidian", label: "Obsidyen", hex: "#1c1917" },
+  { id: "ivory", label: "Fildişi", hex: "#ffffff" },
+] as const;
+
+/** Hex renkten palet etiketi (girişte "Karakter Rengi: Kızıl" gibi). */
+export function characterColorLabel(hex: string): string {
+  return CHARACTER_COLORS.find((c) => c.hex === hex)?.label ?? "Özel";
+}
+
 export const HAIR_STYLE_LABELS: Record<string, string> = {
   short: "Kısa",
   spiky: "Dikenli",

@@ -1077,6 +1077,161 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
   display: none !important;
 }
 
+/* ------------------------------------------------------------------ */
+/* MOBA OYUN GİRİŞİ (Entry) — karanlık "rift kapısı" yükleme ekranı.   */
+/* LoL Mobile / Wild Rift tarzı: altıgen çerçeve, dönen rün halkaları, */
+/* akan zemin ızgarası, adım adım yanan yükleme adımları ve lig kartı. */
+/* ------------------------------------------------------------------ */
+
+/* Dönen rün halkaları (biri saat yönü, diğeri ters). */
+@keyframes entry-rune-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.entry-rune {
+  animation: entry-rune-spin 18s linear infinite;
+  will-change: transform;
+}
+.entry-rune-rev {
+  animation: entry-rune-spin 11s linear infinite reverse;
+  will-change: transform;
+}
+
+/* Altıgen çerçeve — köşeleri kesik MOBA paneli. */
+.entry-hex {
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+}
+
+/* Nefes alan altın parlama (altıgenin arkasında). */
+@keyframes entry-glow-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.97); }
+  50% { opacity: 0.95; transform: scale(1.04); }
+}
+.entry-glow {
+  animation: entry-glow-pulse 3.4s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Altıgenin üzerinden geçen ışık süpürmesi (cam parlaması). */
+@keyframes entry-sweep {
+  0% { transform: translateY(-130%) rotate(10deg); opacity: 0; }
+  30% { opacity: 0.5; }
+  100% { transform: translateY(150%) rotate(10deg); opacity: 0; }
+}
+.entry-sweep {
+  animation: entry-sweep 4.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Adım işareti yanınca zıplayarak belirir. */
+@keyframes entry-tick-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  70% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.entry-tick {
+  display: inline-flex;
+  animation: entry-tick-pop 0.3s ease-out both;
+}
+
+/* Tavandan süzülen ışık sütunları. */
+@keyframes entry-beam-pulse {
+  0%, 100% { opacity: 0.14; transform: scaleX(1); }
+  50% { opacity: 0.34; transform: scaleX(1.08); }
+}
+.entry-beam {
+  animation: entry-beam-pulse 3s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Karanlık zeminde akan altın ızgara. */
+.entry-grid {
+  background-image:
+    linear-gradient(rgba(224, 178, 92, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(224, 178, 92, 0.09) 1px, transparent 1px);
+  background-size: 46px 46px;
+  animation: load-grid-move 1.8s linear infinite;
+  mask-image: radial-gradient(ellipse at center, black 18%, transparent 74%);
+  -webkit-mask-image: radial-gradient(
+    ellipse at center,
+    black 18%,
+    transparent 74%
+  );
+}
+
+/* Rift kapısı ölçüsü: tek bir değişkenden türetilir, böylece altıgen,
+   rün halkaları ve parlama her ekranda aynı oranda kalır. Yatay ve kısa
+   ekranlarda (telefon yatay modu) kapı küçülür ve yazı bloğu yanına
+   geçer — yükleme ekranı tek ekrana sığar. */
+.entry-stage {
+  --entry-gate: clamp(150px, 38vh, 320px);
+}
+.entry-gate {
+  height: calc(var(--entry-gate) * 1.06);
+  width: calc(var(--entry-gate) * 0.88);
+}
+.entry-rune-ring {
+  width: calc(var(--entry-gate) * 1.62);
+  height: calc(var(--entry-gate) * 1.62);
+}
+.entry-rune-ring-sm {
+  width: calc(var(--entry-gate) * 1.34);
+  height: calc(var(--entry-gate) * 1.34);
+}
+.entry-glow-ring {
+  width: calc(var(--entry-gate) * 1.15);
+  height: calc(var(--entry-gate) * 1.15);
+}
+
+/* Sırayla değişen ipucu satırı. */
+@keyframes entry-tip-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.entry-tip {
+  display: inline-block;
+  animation: entry-tip-in 0.45s ease-out both;
+}
+
+/* "Oyuna gir" çağrısı — hazır olduğunda altın nabız. */
+@keyframes entry-ready-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.5); }
+  50% { box-shadow: 0 0 32px 6px rgba(250, 204, 21, 0.42); }
+}
+.entry-ready {
+  animation: entry-ready-pulse 1.8s ease-in-out infinite;
+}
+
+/* Yatay ve kısa ekran (telefon yatay / APK yatay): kapı sola, yükleme
+   bilgisi sağa geçer. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .entry-stage {
+    --entry-gate: clamp(126px, 56vh, 210px);
+  }
+  .entry-main {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 1.75rem;
+  }
+  .entry-side {
+    width: auto;
+    max-width: 30rem;
+  }
+  .entry-headline {
+    font-size: 1.9rem;
+  }
+}
+
+/* Renk seçildiğinde karakter kaidesindeki halka kısa bir vurgu yapar. */
+@keyframes entry-color-pop {
+  0% { transform: scale(0.86); opacity: 0.4; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.entry-color-pop {
+  animation: entry-color-pop 0.35s ease-out both;
+}
+
 /* ═══ PERFORMANCE: SVG containment ═══ */
 svg {
   will-change: auto;
