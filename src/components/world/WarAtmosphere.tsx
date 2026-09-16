@@ -711,86 +711,13 @@ function GroundHaze() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Lane yolları — yalnızca düz taş/toprak koridor gövdesi.            */
+/* LANE YOLLARI (LaneRoads / LANES) TAMAMEN KALDIRILDI.                */
 /* ------------------------------------------------------------------ */
-/* Kenar ışık çizgileri ve yolu saran enerji çekirdeği KALDIRILDI:
-   zemindeki "anlamsız çizgi" görüntüsünün kaynağı o additive tüplerdi.
-   Koridor artık haritanın kendi dokusu üstünde sade bir yol olarak okunur. */
-
-/* `offsetNodes` (kenar çizgisi üreticisi) da bu yüzden silindi. */
-/**
- * Üç koridor: yalnızca yol gövdesi olarak çizilir. Renkler haritanın iki
- * yarısının paletiyle uyumlu — kırmızı yanda sıcak taş/toprak, mavi yanda
- * soğuk taş tonu. (Eskiden her yolun bir "glow" rengi ve akan enerji çizgisi
- * vardı; zemindeki anlamsız çizgi görüntüsü yüzünden kaldırıldı.)
- */
-const LANES: { nodes: [number, number][]; road: string }[] = [
-  {
-    nodes: [
-      [2.5, 4],
-      [7.5, 7.6],
-      [13, 10.8],
-      [18.5, 14],
-      [24, 17.2],
-      [29.5, 20.2],
-    ],
-    road: "#8a7a63",
-  },
-  {
-    nodes: [
-      [-2.5, 10.5],
-      [4, 13],
-      [10, 15.4],
-      [16.5, 16.6],
-      [23, 17.2],
-      [29.5, 17.4],
-    ],
-    road: "#6f6a74",
-  },
-  {
-    nodes: [
-      [2.5, 18.5],
-      [7, 16.6],
-      [11.5, 13.2],
-      [16, 9.2],
-      [20.5, 6.4],
-      [25.5, 4.6],
-    ],
-    road: "#6b7482",
-  },
-];
-
-function LaneRoads() {
-  const curves = useMemo(
-    () =>
-      LANES.map(
-        (lane) =>
-          new THREE.CatmullRomCurve3(
-            lane.nodes.map(([x, z]) => new THREE.Vector3(x, 0.02, z)),
-          ),
-      ),
-    [],
-  );
-  return (
-    <group>
-      {curves.map((curve, i) => (
-        <group key={i}>
-          {/* Yol gövdesi: zemine GÖMÜLÜ, pürüzsüz taş/toprak şerit. Kabartma,
-              yansıma ve kendinden parlama yok — zeminin kendi dokusu okunur. */}
-          <mesh scale={[1, 0.035, 1]} receiveShadow raycast={() => null}>
-            <tubeGeometry args={[curve, 150, 0.98, 12, false]} />
-            <meshStandardMaterial
-              color={LANES[i].road}
-              roughness={1}
-              metalness={0}
-              envMapIntensity={0}
-            />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
+/* Koridorun tam ortasına serilen düz gri tubeGeometry şeritleri haritanın
+   kendi zemin kaplamasını (çimen/taş/toprak) örtüyordu; artık hiçbir yol
+   overlay mesh'i yok. Zemin yalnızca haritanın kendi dokusu.
+   Daha önce kaldırılanlar: kenar ışık çizgileri, akan enerji çekirdeği ve
+   bunların üreticisi olan `offsetNodes`. */
 
 /* Zeminin üstüne binen bölge auraları TAMAMEN KALDIRILDI: iki dev additive
    düzlem tüm arenayı kaplayıp zeminin kendi dokusunu (çimen/taş/toprak) neon
@@ -1110,8 +1037,7 @@ export function WarAtmosphere() {
       <VolcanicKeyLight />
       <MagmaLights />
       <GroundHaze />
-      {/* Ortam detayı: pürüzsüz lane yolları ve taş yapılar */}
-      <LaneRoads />
+      {/* Ortam detayı: taş yapılar (lane yolu kaplaması kaldırıldı) */}
       <StoneStructures />
       <LavaPools />
       {NEXUS.map((n) => (
