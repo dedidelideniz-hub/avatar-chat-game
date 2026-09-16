@@ -29,6 +29,7 @@ import {
   S,
   type BattleProj,
 } from "./shared";
+import { FIREBALL_RANGE_PX, MAX_RANGE_PX, rangeFade } from "./skillshot";
 
 /** Aynı anda ekranda çizilecek en fazla ateş topu (süper). */
 const FLAME_POOL = 4;
@@ -143,7 +144,14 @@ export function ProjectilePool({
         const dx = p.vx / sp;
         const dz = p.vy / sp;
 
-        root.visible = true;
+        // Menzil sınırında sönme: mermi MAX_RANGE sonuna yaklaşınca küçülüp
+        // kaybolur ("menzil sonunda sönüp yok olsun").
+        const boltFade = rangeFade(
+          p.travelled,
+          p.explodeR ? FIREBALL_RANGE_PX : MAX_RANGE_PX,
+        );
+        root.visible = boltFade > 0.04;
+        root.scale.setScalar(boltFade);
         root.position.set(p.x / S, 0.85, p.y / S);
 
         // Dönen alev kümesi: nabız gibi atan çekirdek + iki ışıma + halkalar +
@@ -271,7 +279,12 @@ export function ProjectilePool({
           : [COLD_FLAME.wispA, COLD_FLAME.wispB];
 
         if (fRoot) {
-          fRoot.visible = true;
+          const flameFade = rangeFade(
+            p.travelled,
+            p.explodeR ? FIREBALL_RANGE_PX : MAX_RANGE_PX,
+          );
+          fRoot.visible = flameFade > 0.04;
+          fRoot.scale.setScalar(flameFade);
           fRoot.position.set(p.x / S, 0.85, p.y / S);
         }
         if (spin) spin.rotation.y = time * 1.5 + i * 1.3;

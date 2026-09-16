@@ -937,6 +937,18 @@ arenanın görüşünü kapatmazlar. */
   box-shadow: 0 0 24px rgb(252 211 77 / 0.6);
 }
 
+/* Skillshot nişanı: yetenek butonu basılı tutulduğunda buton sabit bir
+   parlamayla "nişan alıyorum" der (nabız animasyonu durur, titremesin) ve
+   zeminde menzil çemberi + yön oku belirir (bkz. SkillshotIndicator.tsx). */
+.battle-hud-controls .battle-hud-super.is-aiming,
+.battle-hud-controls .battle-hud-ult.is-aiming {
+  animation: none;
+  opacity: 0.85;
+  outline-color: rgb(255 255 255 / 0.85);
+  outline-offset: 2px;
+  box-shadow: 0 0 26px rgb(252 211 77 / 0.7);
+}
+
 /* Hareket joystick'i — ekranın sol/alt kenarından 60px içeride ve %20 daha
    büyük. Çentik/gesture çubuğu olan cihazlarda güvenli alan kadar eklenir
    (env() yoksa 0 döner ve 60px geçerli kalır). */

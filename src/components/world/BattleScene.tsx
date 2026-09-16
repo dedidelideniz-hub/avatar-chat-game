@@ -25,6 +25,17 @@ import {
   type BattleFx,
   type BattleProj,
 } from "@/components/world/Arena3D";
+// 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik
+// kilit. Yetenekler artık düşmanı haritanın öbür ucundan kilitleyemez.
+import {
+  MAX_RANGE_PX,
+  aimState,
+  aimedHit,
+  facingDir,
+  rangePoint,
+  resolveAim,
+} from "@/components/world/arena/skillshot";
+import { useAbilityAim } from "@/components/world/useAbilityAim";
 import {
   findNearestWalkablePosition,
   hitsRockCollision,
@@ -65,9 +76,10 @@ const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
 const PROJ_SPEED = 445; // mermi uçuş hızı (%28 yavaşlatıldı: 620 → 445)
-/** Long enough to cross the arena diagonally so bot shots from any
- *  distance always reach the player instead of vanishing mid-air. */
-const PROJ_RANGE = 1500;
+/** Skillshot menzili (MAX_RANGE = 12 birim). Eskiden 1500 px'di yani atış
+ *  haritanın öbür ucuna kadar gidiyordu; artık menzil sonunda sönüp yok olur
+ *  (sönme efekti ProjectilePool'da çizilir). */
+const PROJ_RANGE = MAX_RANGE_PX;
 const FIGHTER_R = 22;
 
 /** Bot difficulty curves, all driven by the opponent's profile level (1-10).
@@ -477,6 +489,25 @@ export default function BattleScene({
   // so you can shoot while walking (run-and-gun).
   const aimRef = useRef({ active: false, dx: 0, dy: 0 });
   const attackKnobRef = useRef<HTMLSpanElement>(null);
+  // Yetenek butonları: basılı tut → nişan al, bırak → ateş et (skillshot).
+  // Butonların kendi "basınca ateş et" davranışı paketlenir; nişan durumu
+  // `aimState` üzerinden hem ateşlemeye hem zemindeki göstergeye gider.
+  useAbilityAim(
+    arenaRef,
+    (kind, dx, dy) => {
+      aimState.kind = kind;
+      aimState.dx = dx;
+      aimState.dy = dy;
+      if (kind === "ult") actionsRef.current.samuraiSuper();
+      else actionsRef.current.super();
+    },
+    (kind) => {
+      const f = player.current;
+      if (kind === "ult")
+        return isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0;
+      return f.superCharge >= 1;
+    },
+  );
 
   const keysRef = useRef(new Set<string>());
   const projs = useRef<BattleProj[]>([]);
@@ -746,50 +777,61 @@ export default function BattleScene({
     }
   };
 
-  const beamAttack = (f: BattleFighter, enemy: BattleFighter) => {
-    const ang = Math.atan2(enemy.y - f.y, enemy.x - f.x);
-    const len = 560;
+  const beamAttack = (
+    f: BattleFighter,
+    enemy: BattleFighter,
+    aim: { x: number; y: number },
+  ) => {
+    // Işın artık düşmanı hedeflemez: nişan yönüne gider ve MAX_RANGE ile sınırlı.
+    const ang = Math.atan2(aim.y, aim.x);
+    const len = Math.min(560, MAX_RANGE_PX);
     const ex = f.x + Math.cos(ang) * len;
     const ey = f.y + Math.sin(ang) * len;
     addFx({ kind: "beam", x1: f.x, y1: f.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
-    const dist = Math.hypot(enemy.x - f.x, enemy.y - f.y);
-    const a1 = Math.atan2(enemy.y - f.y, enemy.x - f.x);
-    let da = Math.abs(a1 - ang);
-    if (da > Math.PI) da = Math.PI * 2 - da;
-    if (dist < len && da < 0.42) {
+    // Hasar yalnızca ışının menzili ve açısı içindeki hedefe gider.
+    if (aimedHit(f, aim, enemy, { rangePx: len })) {
       damageEnemy(f, enemy, 300);
     }
   };
 
-  const startDash = (f: BattleFighter, enemy: BattleFighter) => {
-    const ang = Math.atan2(enemy.y - f.y, enemy.x - f.x);
-    f.dashVX = Math.cos(ang);
-    f.dashVY = Math.sin(ang);
+  const startDash = (f: BattleFighter, aim: { x: number; y: number }) => {
+    // Dash de nişan yönüne gider (eskiden düşmanın olduğu yöne, nerede olursa).
+    f.dashVX = aim.x;
+    f.dashVY = aim.y;
     f.dashT = 0.32;
     f.dashHit = false;
     circleFx(f.x, f.y - 40, 60, "#a5f3fc", 0.35);
     circleFx(f.x, f.y - 60, 40, "#e0f2fe", 0.3);
   };
 
-  const fireballAttack = (f: BattleFighter, enemy: BattleFighter) => {
-    spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 320, {
+  const fireballAttack = (f: BattleFighter, aim: { x: number; y: number }) => {
+    // Hedef: nişan yönünde MAX_RANGE sonundaki nokta (düşmanın konumu değil).
+    const end = rangePoint(f, aim);
+    spawnProj(f, f === player.current ? "player" : "bot", end.x, end.y, 320, {
       r: 17,
       speed: 290,
       explodeR: 130,
     });
   };
 
-  const useSuper = (f: BattleFighter, enemy: BattleFighter) => {
+  /** `aim` verilmezse (ör. bot) nişan, menzil kuralıyla burada çözülür. */
+  const useSuper = (
+    f: BattleFighter,
+    enemy: BattleFighter,
+    aimIn?: { x: number; y: number },
+  ) => {
+    const aim =
+      aimIn ?? resolveAim(f, enemy, 0, 0, { canLock: !isHiddenFrom(enemy, f) });
     f.superCharge = 0;
     playSound("super", { volume: 0.9 });
     smokeFx(f.x, f.y - 20, 4, 80);
     switch (f.ability.id) {
       case "isik":
-        beamAttack(f, enemy);
+        beamAttack(f, enemy, aim);
         break;
       case "simsek":
         playSound("dash");
-        startDash(f, enemy);
+        startDash(f, aim);
         break;
       case "sifa": {
         const heal = Math.round(f.maxHp * 0.45);
@@ -800,14 +842,17 @@ export default function BattleScene({
         break;
       }
       case "ates":
-        fireballAttack(f, enemy);
+        fireballAttack(f, aim);
         break;
-      default: // temel — piercing strong shot
-        spawnProj(f, f === player.current ? "player" : "bot", enemy.x, enemy.y, 240, {
+      default: {
+        // temel — delici güçlü atış: nişan yönünde, menzil sonuna kadar.
+        const end = rangePoint(f, aim);
+        spawnProj(f, f === player.current ? "player" : "bot", end.x, end.y, 240, {
           r: 20,
           pierce: true,
           speed: 400,
         });
+      }
     }
   };
 
@@ -823,20 +868,13 @@ export default function BattleScene({
     )
       return;
     p.atkCd = ATK_CD;
-    let tx: number;
-    let ty: number;
-    const aimMag = Math.hypot(aimX ?? 0, aimY ?? 0);
-    if (aimMag > 0.15) {
-      // aimed shot — fire along the dragged joystick direction
-      tx = p.x + (aimX! / aimMag) * 120;
-      ty = p.y + (aimY! / aimMag) * 120;
-    } else {
-      // no drag (or keyboard) — auto-aim at the enemy. A fighter hiding in
-      // a bush cannot be auto-locked (Brawl-style).
-      if (isHiddenFrom(b, p)) return;
-      tx = b.x;
-      ty = b.y - 40;
-    }
+    // Skillshot hedefi: nişan varsa tam o yön; nişan yoksa yalnızca MENZİL
+    // İÇİNDEKİ düşmana otomatik kilit; o da yoksa karakterin baktığı yön.
+    // (Eskiden düşman haritanın neresinde olursa olsun kilitleniyordu.)
+    const aim = resolveAim(p, b, aimX, aimY, { canLock: !isHiddenFrom(b, p) });
+    const end = rangePoint(p, aim);
+    const tx = end.x;
+    const ty = end.y;
     p.facing = tx >= p.x ? 1 : -1;
     // Düz vuruş animasyonu: kısa köklenme (windup) + kesilebilir bitiş.
     startAttackAnim(p);
@@ -859,12 +897,17 @@ export default function BattleScene({
     p.samuraiCharge = 0;
     p.samuraiUltT = 0.82;
     p.samuraiUltHit = false;
-    // Gövde rakibe döner (yatay: facing, dikey: vy) → kılıç ve yarık aynı yöne.
-    const ultAng = Math.atan2(b.y - p.y, b.x - p.x);
-    const ultDirX = Math.cos(ultAng);
-    const ultDirY = Math.sin(ultAng);
-    p.facing = ultDirX >= 0 ? 1 : -1;
-    p.vy = Math.abs(ultDirY) > 0.5 ? (ultDirY > 0 ? 1 : -1) : 0;
+    // Gövde nişan yönüne döner (yatay: facing, dikey: vy) → kılıç ve yarık
+    // aynı yöne gider. Yön sırası: nişan > menzil içi düşman > bakış yönü.
+    const ultAim = resolveAim(
+      p,
+      b,
+      aimState.ability ? aimState.dx : 0,
+      aimState.ability ? aimState.dy : 0,
+      { canLock: !isHiddenFrom(b, p) },
+    );
+    p.facing = ultAim.x >= 0 ? 1 : -1;
+    p.vy = Math.abs(ultAim.y) > 0.5 ? (ultAim.y > 0 ? 1 : -1) : 0;
     playSound("super", { volume: 1, rate: 0.72 });
     circleFx(p.x, p.y, 90, "#fbbf24", 0.55);
     smokeFx(p.x, p.y, 5, 100);
@@ -881,9 +924,17 @@ export default function BattleScene({
       p.superCharge < 1
     )
       return;
-    // Targeted supers cannot lock a fighter hiding in a bush (heal is fine).
-    if (p.ability.id !== "sifa" && isHiddenFrom(b, p)) return;
-    useSuper(p, b);
+    // Skillshot: buton basılı tutulup nişan alındıysa o yön; yoksa yalnızca
+    // menzil içindeki düşmana kilit; o da yoksa bakış yönü. Çalıdaki düşmana
+    // otomatik kilit yok (şifa zaten kendine kullanılır).
+    const aim = resolveAim(
+      p,
+      b,
+      aimState.ability ? aimState.dx : 0,
+      aimState.ability ? aimState.dy : 0,
+      { canLock: !isHiddenFrom(b, p) },
+    );
+    useSuper(p, b, aim);
     // Using an ability inside a bush reveals the caster for a moment.
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
   }, []);
@@ -1018,6 +1069,11 @@ export default function BattleScene({
       // is down) so you can shoot while walking with the joystick. The shot
       // follows the dragged aim direction; zero means auto-aim.
       // Sarsılırken ateş edilemez: ulti/beam yiyen karakter bir an "kilitli".
+      // Zemindeki nişan göstergesi (menzil çemberi + yön oku) düz vuruş
+      // nişanını paylaşılan durumdan okur.
+      aimState.basic = aimRef.current.active;
+      aimState.basicDx = aimRef.current.dx;
+      aimState.basicDy = aimRef.current.dy;
       if (aimRef.current.active && p.atkCd <= 0 && p.hitStunT <= 0) {
         tryAttack(aimRef.current.dx, aimRef.current.dy);
       }
@@ -1079,19 +1135,18 @@ export default function BattleScene({
       const pStunned = stepHitStun(p, dt, moveFighter);
       if (p.samuraiUltT > 0) {
         p.samuraiUltT -= dt;
-        const targetX = b.x;
-        const targetY = b.y;
         const progress = 1 - Math.max(0, p.samuraiUltT) / 0.82;
         if (!p.samuraiUltHit && progress > 0.62) {
           p.samuraiUltHit = true;
           // Yarık, kılıcın YERE İNDİĞİ noktadan (karakterin önünden) başlar
-          // ve rakibe doğru ilerler.
-          const katanaAng = Math.atan2(targetY - p.y, targetX - p.x);
-          const dirX = Math.cos(katanaAng);
-          const dirY = Math.sin(katanaAng);
+          // ve karakterin BAKTIĞI yöne doğru en fazla MAX_RANGE ilerler.
+          // (Eskiden düşmanın konumuna, yani haritanın öbür ucuna uzuyordu.)
+          const dir = facingDir(p);
+          const dirX = dir.x;
+          const dirY = dir.y;
           const impactX = p.x + dirX * 50;
           const impactY = p.y + dirY * 50;
-          const reach = Math.max(180, Math.hypot(targetX - p.x, targetY - p.y) + 50);
+          const reach = MAX_RANGE_PX;
           addFx({
             kind: "samuraiCrack",
             x1: impactX,
@@ -1106,7 +1161,10 @@ export default function BattleScene({
           for (let s = 1; s <= 3; s++) {
             smokeFx(impactX + dirX * 55 * s, impactY + dirY * 55 * s, 2, 70);
           }
-          damageEnemy(p, b, SAMURAI_ULTIMATE_DAMAGE);
+          // Hasar yalnızca hat menzil içinde ve yönündeyse verilir.
+          if (aimedHit(p, dir, b, { rangePx: reach })) {
+            damageEnemy(p, b, SAMURAI_ULTIMATE_DAMAGE);
+          }
           playSound("hit", { volume: 1, rate: 0.7 });
         }
         p.moving = false;
@@ -1287,7 +1345,8 @@ export default function BattleScene({
       // bullets. The one exception: a player hiding in a bush cannot be
       // engaged at all — bots stop tracking AND firing while the target is
       // hidden, and resume the instant it is revealed again.
-      if (b.atkCd <= 0 && botCanSee) {
+      // Skillshot menzili: bot da menzil dışına boşa ateş etmez, önce yaklaşır.
+      if (b.atkCd <= 0 && botCanSee && dist <= MAX_RANGE_PX) {
         b.atkCd = botFireInterval(b.level);
         // Botun da vuruş pozu görünsün — botlar köklenmez (run-and-gun).
         startAttackAnim(b);

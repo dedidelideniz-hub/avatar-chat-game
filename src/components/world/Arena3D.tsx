@@ -52,6 +52,7 @@ import {
 } from "@/engine/HitFlash";
 import { BattleMapModel } from "@/components/world/BattleMapGuard";
 import { useArenaCamera } from "@/components/world/ArenaCamera";
+import { SkillshotIndicator } from "@/components/world/SkillshotIndicator";
 import { SkeletonUtils } from "three-stdlib";
 import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
@@ -1314,6 +1315,9 @@ function FighterRig({
         ))}
       </group>
     </group>
+      {/* Skillshot nişan göstergesi: zeminde menzil çemberi + yön oku.
+          Yalnızca oyuncunun rig'inde çizilir (düşmanın menzili görünmez). */}
+      {isPlayer && <SkillshotIndicator fighter={fighter} other={other} />}
       {/* spinning "this is you" ring under the player's feet */}
       {isPlayer && (
         <>

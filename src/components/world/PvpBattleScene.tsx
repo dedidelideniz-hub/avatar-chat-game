@@ -37,6 +37,16 @@ import {
   findNearestWalkablePosition,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
+// 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik kilit.
+import {
+  MAX_RANGE_PX,
+  aimState,
+  aimedHit,
+  facingDir,
+  rangePoint,
+  resolveAim,
+} from "@/components/world/arena/skillshot";
+import { useAbilityAim } from "@/components/world/useAbilityAim";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
 import {
   HudClock,
@@ -73,7 +83,8 @@ const ARENA_H = 1100;
 const HP = 1000;
 const BASE_DMG = 120;
 const PROJ_SPEED = 445; // mermi uçuş hızı (%28 yavaşlatıldı: 620 → 445)
-const PROJ_RANGE = 660;
+/** Skillshot menzili (MAX_RANGE = 12 birim) — mermi menzil sonunda söner. */
+const PROJ_RANGE = MAX_RANGE_PX;
 const FIGHTER_R = 22;
 const PUBLISH_MS = 100; // presence snapshot cadence
 const EVENT_TTL_MS = 3500; // how long a combat event stays in the publish queue
@@ -335,6 +346,23 @@ export default function PvpBattleScene({
   // Android APK: savaş alanı bağlıyken ekran yataya kilitlenir, çıkışta
   // (ya da web'de köprü yokken) hiçbir şey değişmez.
   useAndroidBattleOrientation();
+  // Yetenek butonları: basılı tut → nişan al, bırak → ateş et (skillshot).
+  useAbilityAim(
+    arenaRef,
+    (kind, dx, dy) => {
+      aimState.kind = kind;
+      aimState.dx = dx;
+      aimState.dy = dy;
+      if (kind === "ult") actionsRef.current.samuraiSuper();
+      else actionsRef.current.super();
+    },
+    (kind) => {
+      const f = player.current;
+      if (kind === "ult")
+        return isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0;
+      return f.superCharge >= 1;
+    },
+  );
   // Yatay mod: telefon dikeyken düello başlamaz ve simülasyon duraklar.
   const gate = useLandscapeGate();
   const rotateRef = useRef(gate.required);
@@ -630,16 +658,17 @@ export default function PvpBattleScene({
     }
   };
 
-  const beamAttack = () => {
+  const beamAttack = (aim: { x: number; y: number }) => {
     const p = player.current;
     const b = bot.current;
-    const ang = Math.atan2(b.y - p.y, b.x - p.x);
-    const len = 560;
+    // Işın nişan yönüne gider ve MAX_RANGE ile sınırlıdır; hasar yalnızca
+    // ışının menzili + açısı içindeki rakibe işler.
+    const ang = Math.atan2(aim.y, aim.x);
+    const len = Math.min(560, MAX_RANGE_PX);
     const ex = p.x + Math.cos(ang) * len;
     const ey = p.y + Math.sin(ang) * len;
     addFx({ kind: "beam", x1: p.x, y1: p.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
-    const dist = Math.hypot(b.x - p.x, b.y - p.y);
-    const hit = dist < len;
+    const hit = aimedHit(p, aim, b, { rangePx: len });
     pushEvent({ type: "beam", x1: p.x, y1: p.y, angle: ang, len, dmg: 300, hit });
     if (hit) {
       floatText(b.x, b.y - 130, "-300", "#ff6b6b");
@@ -647,12 +676,11 @@ export default function PvpBattleScene({
     }
   };
 
-  const startDash = () => {
+  const startDash = (aim: { x: number; y: number }) => {
     const p = player.current;
-    const b = bot.current;
-    const ang = Math.atan2(b.y - p.y, b.x - p.x);
-    p.dashVX = Math.cos(ang);
-    p.dashVY = Math.sin(ang);
+    // Dash de nişan yönüne gider (eskiden rakibin olduğu yöne).
+    p.dashVX = aim.x;
+    p.dashVY = aim.y;
     p.dashT = 0.32;
     p.dashHit = false;
     circleFx(p.x, p.y - 40, 60, "#a5f3fc", 0.35);
@@ -663,30 +691,37 @@ export default function PvpBattleScene({
     const p = player.current;
     const b = bot.current;
     if (!isSamuraiFighter(p) || p.samuraiCharge < 1 || p.samuraiUltT > 0) return;
-    const ang = Math.atan2(b.y - p.y, b.x - p.x);
+    // Skillshot: nişan > menzil içi rakip > bakış yönü.
+    const ultAim = resolveAim(
+      p,
+      b,
+      aimState.ability ? aimState.dx : 0,
+      aimState.ability ? aimState.dy : 0,
+      { canLock: !isHiddenFrom(b, p) },
+    );
     p.samuraiCharge = 0;
     p.samuraiUltT = 0.82;
     p.samuraiUltHit = false;
-    // Gövde rakibe döner (yatay: facing, dikey: vy) → kılıç ve yarık aynı yöne.
-    p.facing = Math.cos(ang) >= 0 ? 1 : -1;
-    p.vy = Math.abs(Math.sin(ang)) > 0.5 ? (Math.sin(ang) > 0 ? 1 : -1) : 0;
+    // Gövde nişan yönüne döner (yatay: facing, dikey: vy).
+    p.facing = ultAim.x >= 0 ? 1 : -1;
+    p.vy = Math.abs(ultAim.y) > 0.5 ? (ultAim.y > 0 ? 1 : -1) : 0;
     // Rakip cihazda da aynı yöne dönüp aynı animasyonu oynasın.
     pushEvent({ type: "samuraiStart", facing: p.facing, vy: p.vy });
     playSound("super", { volume: 1, rate: 0.72 });
   };
 
-  const useSuper = () => {
+  const useSuper = (aim: { x: number; y: number }) => {
     const p = player.current;
     p.superCharge = 0;
     playSound("super", { volume: 0.9 });
     smokeFx(p.x, p.y - 20, 4, 80);
     switch (p.ability.id) {
       case "isik":
-        beamAttack();
+        beamAttack(aim);
         break;
       case "simsek":
         playSound("dash");
-        startDash();
+        startDash(aim);
         break;
       case "sifa": {
         const heal = Math.round(p.maxHp * 0.45);
@@ -696,11 +731,16 @@ export default function PvpBattleScene({
         circleFx(p.x, p.y - 40, 45, "#bbf7d0", 0.4);
         break;
       }
-      case "ates":
-        spawnProj(bot.current.x, bot.current.y, 320, { r: 17, speed: 290, explodeR: 130 });
+      case "ates": {
+        const end = rangePoint(p, aim);
+        spawnProj(end.x, end.y, 320, { r: 17, speed: 290, explodeR: 130 });
         break;
-      default:
-        spawnProj(bot.current.x, bot.current.y, 240, { r: 20, pierce: true, speed: 400 });
+      }
+      default: {
+        // Delici güçlü atış: nişan yönünde, menzil sonuna kadar.
+        const end = rangePoint(p, aim);
+        spawnProj(end.x, end.y, 240, { r: 20, pierce: true, speed: 400 });
+      }
     }
   };
 
@@ -709,18 +749,14 @@ export default function PvpBattleScene({
     if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.atkCd > 0)
       return;
     p.atkCd = ATK_CD;
-    let tx: number;
-    let ty: number;
-    const aimMag = Math.hypot(aimX ?? 0, aimY ?? 0);
-    if (aimMag > 0.15) {
-      tx = p.x + (aimX! / aimMag) * 120;
-      ty = p.y + (aimY! / aimMag) * 120;
-    } else {
-      // No auto-lock on a fighter hiding in a bush (Brawl-style).
-      if (isHiddenFrom(bot.current, p)) return;
-      tx = bot.current.x;
-      ty = bot.current.y - 40;
-    }
+    // Skillshot hedefi: nişan varsa tam o yön; yoksa yalnızca MENZİL İÇİNDEKİ
+    // rakibe otomatik kilit; o da yoksa karakterin baktığı yön.
+    const aim = resolveAim(p, bot.current, aimX, aimY, {
+      canLock: !isHiddenFrom(bot.current, p),
+    });
+    const end = rangePoint(p, aim);
+    const tx = end.x;
+    const ty = end.y;
     p.facing = tx >= p.x ? 1 : -1;
     // Düz vuruş animasyonu: kısa köklenme (windup) + kesilebilir bitiş.
     startAttackAnim(p);
@@ -734,9 +770,16 @@ export default function PvpBattleScene({
     const p = player.current;
     if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.superCharge < 1)
       return;
-    // Targeted supers cannot lock an opponent hiding in a bush (heal is fine).
-    if (p.ability.id !== "sifa" && isHiddenFrom(bot.current, p)) return;
-    useSuper();
+    // Skillshot: buton basılı tutulup nişan alındıysa o yön; yoksa yalnızca
+    // menzil içindeki rakibe kilit; o da yoksa bakış yönü.
+    const aim = resolveAim(
+      p,
+      bot.current,
+      aimState.ability ? aimState.dx : 0,
+      aimState.ability ? aimState.dy : 0,
+      { canLock: !isHiddenFrom(bot.current, p) },
+    );
+    useSuper(aim);
     // Using an ability inside a bush reveals the caster for a moment.
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -837,15 +880,17 @@ export default function PvpBattleScene({
           p.samuraiUltT -= dt;
           if (!p.samuraiUltHit && p.samuraiUltT < 0.31) {
             p.samuraiUltHit = true;
-            const hit = Math.hypot(b.x - p.x, b.y - p.y) < 620;
-            const ang = Math.atan2(b.y - p.y, b.x - p.x);
-            // Yarık kılıcın yere indiği noktadan başlar (rakibe doğru).
-            const dirX = Math.cos(ang);
-            const dirY = Math.sin(ang);
+            // Yarık kılıcın yere indiği noktadan başlar ve karakterin BAKTIĞI
+            // yöne doğru en fazla MAX_RANGE ilerler (eskiden rakibin konumuna).
+            const dir = facingDir(p);
+            const dirX = dir.x;
+            const dirY = dir.y;
             const impactX = p.x + dirX * 50;
             const impactY = p.y + dirY * 50;
-            const x2 = p.x + dirX * 620;
-            const y2 = p.y + dirY * 620;
+            const x2 = p.x + dirX * MAX_RANGE_PX;
+            const y2 = p.y + dirY * MAX_RANGE_PX;
+            // Hasar yalnızca hat menzil içinde ve yönündeyse işler.
+            const hit = aimedHit(p, dir, b, { rangePx: MAX_RANGE_PX });
             addFx({ kind: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, ttl: 1.25, maxTtl: 1.25 });
             pushEvent({ type: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, dmg: SAMURAI_ULTIMATE_DAMAGE, hit });
             if (hit) {
@@ -919,6 +964,10 @@ export default function PvpBattleScene({
 
       p.atkCd = Math.max(0, p.atkCd - dt);
 
+      // Zemindeki nişan göstergesi düz vuruş nişanını paylaşılan durumdan okur.
+      aimState.basic = aimRef.current.active;
+      aimState.basicDx = aimRef.current.dx;
+      aimState.basicDy = aimRef.current.dy;
       // run-and-gun: hold the attack button (or Space) to keep firing
       // Sarsılırken ateş edilemez: ulti/beam yiyen karakter bir an "kilitli".
       if (aimRef.current.active && p.atkCd <= 0 && p.hitStunT <= 0) {
