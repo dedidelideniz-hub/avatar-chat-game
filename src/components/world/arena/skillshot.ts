@@ -47,7 +47,6 @@ export const aimState = {
  * görsel sönme ile patlama aynı noktada gerçekleşsin diye burada tutuluyor.
  */
 export const FIREBALL_RANGE_PX = 720;
-
 /** Menzil sonuna yaklaşan merminin sönme çarpanı (1 → 0). */
 export function rangeFade(travelled: number, range: number): number {
   const start = range - RANGE_FADE_PX;

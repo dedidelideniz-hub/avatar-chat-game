@@ -28,6 +28,7 @@ import {
 // 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik
 // kilit. Yetenekler artık düşmanı haritanın öbür ucundan kilitleyemez.
 import {
+  FIREBALL_RANGE_PX,
   MAX_RANGE_PX,
   aimState,
   aimedHit,
