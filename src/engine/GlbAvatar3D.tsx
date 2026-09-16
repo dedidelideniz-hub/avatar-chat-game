@@ -154,7 +154,10 @@ export function applyCharacterTint(
             : new THREE.Color("#ffffff"),
           emissive: material.emissive ? material.emissive.clone() : null,
         };
-        TINT_BASES.set(src, entry);
+        // KRİTİK: yalnızca KLON kaydedilir. Paylaşılan kaynak materyal
+        // işaretlenirse ikinci karakter klon üretmez ve paylaşılan dokuyu
+        // boyar — o zaman herkes aynı renge döner (kim ne seçerse herkes
+        // o renk görünür). Her karakter kendi klonunu üretmeli.
         TINT_BASES.set(material, entry);
       }
       material.color.copy(entry.color);
