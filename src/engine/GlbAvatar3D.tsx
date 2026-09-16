@@ -659,6 +659,20 @@ function GlbAvatarCore({
     };
   }, [clone]);
 
+  // ── Satıcı kafa hareketi (SADECE kafa) ────────────────────────
+  // Tezgâh başındaki satıcı yerinde durduğu için gövde, omuzlar ve
+  // ayaklar tamamen sabit kalır; yalnızca HEAD kemiğinin yerel Y ekseni
+  // sağa-sola döner ("etrafı kolaçan etme"). Bone rotasyonu gövdeye
+  // değil sadece kafaya ve ona bağlı eşyalara (şapka vb.) uygulanır.
+  const headBone = useMemo(
+    () => (sparkle ? findBoneRegistry(clone, "HEAD") : null),
+    [clone, sparkle],
+  );
+  /** Kafanın dinlenme açısı — ilk karede yakalanır, her karede üstüne eklenir. */
+  const headRestY = useRef<number | null>(null);
+  /** Karakter başına rastgele faz: satıcılar senkron hareket etmesin. */
+  const headScanPhase = useRef(Math.random() * Math.PI * 2);
+
   useFrame((_, dt) => {
     const inner = innerRef.current;
     if (!inner) return;
@@ -813,6 +827,19 @@ function GlbAvatarCore({
         mats[i].emissiveIntensity = 0.85 + 0.65 * Math.sin(
           state.clock.elapsedTime * 2.6 + i * 0.7,
         );
+      }
+
+      // Kafa sağa-sola taraması. İki farklı frekansın toplamı, tekdüze bir
+      // sarkaç yerine doğal bir "bakınma" hissi verir; hedefe yumuşak
+      // yaklaşılır ki hareket ani sıçramasın. Gövde hiç dokunulmaz.
+      if (headBone) {
+        if (headRestY.current === null) headRestY.current = headBone.rotation.y;
+        const ht = state.clock.elapsedTime + headScanPhase.current;
+        const scan =
+          Math.sin(ht * 0.55) * 0.55 + // ana sağ-sol tarama (~±31°)
+          Math.sin(ht * 1.75 + 0.9) * 0.07; // küçük doğal titreşim
+        const next = headRestY.current + scan;
+        headBone.rotation.y += (next - headBone.rotation.y) * Math.min(1, 7 * dt);
       }
     }
 
