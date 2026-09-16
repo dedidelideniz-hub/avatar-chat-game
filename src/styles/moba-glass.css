@@ -180,3 +180,67 @@
     background: rgb(2 6 23 / 0.88);
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   SAĞ ALT KONTROL KÜMESİ — emoji glifi yerine vektör ikon.
+
+   Arenanın eski kontrol kümesi (joystick katmanındaki saldırı/süper/ulti
+   düğmeleri) simgeyi emoji olarak çizer (💥 / 🎯 / ⚔️). Emoji, tarayıcıya ve
+   cihaza göre değişen renkli bir gliftir; oyunun vektör ikon diline ait
+   değildir ve MOBA arayüzündeki lucide ikonlarıyla karışır.
+
+   Bu blok yalnızca GÖRSELİ değiştirir: emoji glifi gizlenir ve yerine aynı
+   ölçüde maskelenmiş bir vektör ikon çizilir. Düğmelerin boyutu, yeri ve tüm
+   dokunma davranışı (basılı tut → sürükle → nişan al) aynen korunur.
+   Kurallar burada (index.css yerine) duruyor çünkü düğümler iki savaş
+   sahnesinin de düzenleme aracının pencere sınırının dışındaki JSX'inde.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Temel saldırı düğmesi (size-20): 💥 → kılıç */
+.battle-hud-attack.battle-hud-attack {
+  font-size: 0 !important;
+}
+.battle-hud-attack.battle-hud-attack::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 34px;
+  height: 34px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.5 17.5 3 6V3h3l11.5 11.5'/%3E%3Cpath d='M13 19l6-6'/%3E%3Cpath d='M16 16l4 4'/%3E%3Cpath d='M19 21l2-2'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  pointer-events: none;
+}
+
+/* Nişan topuzu (🎯 → artı nişan işareti) */
+.battle-hud-attack-knob.battle-hud-attack-knob {
+  font-size: 0 !important;
+}
+.battle-hud-attack-knob.battle-hud-attack-knob::after {
+  content: "";
+  width: 15px;
+  height: 15px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f172a' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='7'/%3E%3Cpath d='M12 2v4M12 18v4M2 12h4M18 12h4'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+/* Süper hazırken yalnızca ikon gösterilir; hazır değilken yüzde okuması
+   (ör. %64) olduğu gibi kalır — o yüzden gizleme düğmeye değil, yalnızca
+   hazır durumundaki ikon yuvasına uygulanır. */
+.battle-hud-super.super-ready .battle-hud-icon {
+  font-size: 0 !important;
+  width: 26px;
+  height: 26px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M13 2 4 14h7l-1 8 9-12h-7z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+/* Kraliyet ultisi yalnızca dolduğunda (altın zemin) emoji çizer: o durumda
+   taç ikonuna dönüşür, dolmamışken yüzde yazar. */
+.battle-hud-ult[class*="from-amber-300"] .battle-hud-icon {
+  font-size: 0 !important;
+  width: 22px;
+  height: 22px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M3 18 4.6 8l4.4 3.6L12 5l3 6.6L19.4 8 21 18z'/%3E%3Cpath d='M4.5 21h15'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}

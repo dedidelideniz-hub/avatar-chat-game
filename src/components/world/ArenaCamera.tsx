@@ -111,20 +111,23 @@ export function useArenaCamera(
       const light = obj as THREE.Light;
       if (!light.isLight || light.userData?.mobaLight) return;
       if ((light as THREE.AmbientLight).isAmbientLight) {
-        light.intensity = 0.11;
+        // Dolgu biraz yukarı: sahne turuncuya yıkanmadan gölgelerin içindeki
+        // detay (taş dokusu, lane çizgileri) okunabilsin.
+        light.intensity = 0.15;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
         hemi.color.set("#41528f");
-        hemi.groundColor.set("#c4611f");
-        // Dolgu ışığı kısıldı: tüm haritayı turuncuya boyayan asıl katman
-        // burasıydı, siyahlar artık gerçekten siyah kalıyor.
-        hemi.intensity = 0.24;
+        // Zemin rengi "magma yansıması" olarak kalır ama artık kor değil,
+        // sönmüş kor: tüm araziyi kahverengiye boyayan asıl katman buydu.
+        hemi.groundColor.set("#7f3712");
+        hemi.intensity = 0.2;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
         // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
-        // dönüşür (atmosferin kendi ışıkları yukarıda atlanır). Doygunluğu
-        // düşürülüp şiddeti azaltıldı — zemin kahverengiye yıkanmıyor.
-        light.color.set("#ffd0a4");
-        light.intensity = 0.8;
+        // dönüşür (atmosferin kendi ışıkları yukarıda atlanır). Şiddeti
+        // düşürülüp tonu nötre yaklaştırıldı: zemin kavrulmuyor, kontrast
+        // atmosferin kendi turuncu/cyan ışıklarından geliyor.
+        light.color.set("#ffdcbc");
+        light.intensity = 0.6;
       }
     });
   }, [scene]);

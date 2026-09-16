@@ -514,15 +514,15 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 .arena-vignette {
   background:
     radial-gradient(
-      ellipse at 50% 118%,
-      rgba(255 106 31 / 0.12) 0%,
-      transparent 52%
+      ellipse at 50% 120%,
+      rgba(255 106 31 / 0.08) 0%,
+      transparent 48%
     ),
     radial-gradient(
       ellipse at center,
-      transparent 42%,
-      rgba(5, 8, 20, 0.5) 82%,
-      rgba(2, 4, 12, 0.76) 100%
+      transparent 34%,
+      rgba(5, 8, 20, 0.58) 78%,
+      rgba(2, 4, 12, 0.88) 100%
     );
 }
 

@@ -280,7 +280,7 @@ function LavaPools() {
       const m = refs.current[i];
       if (!m) continue;
       const mat = m.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.16 + 0.05 * Math.sin(t * 1.5 + i * 1.7);
+      mat.opacity = 0.11 + 0.035 * Math.sin(t * 1.5 + i * 1.7);
       m.scale.setScalar(1 + 0.05 * Math.sin(t * 1.1 + i));
     }
   });
@@ -296,12 +296,12 @@ function LavaPools() {
             rotation={[-Math.PI / 2, 0, 0]}
             raycast={() => null}
           >
-            <planeGeometry args={[p.r * 2.4, p.r * 2.4]} />
+            <planeGeometry args={[p.r * 2.0, p.r * 2.0]} />
             <meshBasicMaterial
               map={tex}
               color="#ff8c2e"
               transparent
-              opacity={0.18}
+              opacity={0.12}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               toneMapped={false}
@@ -309,11 +309,11 @@ function LavaPools() {
           </mesh>
           {/* çatlaklı kenar halkası */}
           <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-            <ringGeometry args={[p.r * 0.78, p.r * 0.92, 40]} />
+            <ringGeometry args={[p.r * 0.72, p.r * 0.85, 40]} />
             <meshBasicMaterial
-              color="#ffb066"
+              color="#ff8a3c"
               transparent
-              opacity={0.2}
+              opacity={0.13}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               side={THREE.DoubleSide}
@@ -375,19 +375,19 @@ function NexusCrystal({
     // altında: dört katman birlikte bloom eşiğini aşıp üssü bembeyaz bir
     // lekeye çeviriyordu. Artık hepsi "parlar ama taşmaz" seviyesinde.
     if (crystalMat.current) {
-      crystalMat.current.emissiveIntensity = 0.55 + 0.28 * pulse;
+      crystalMat.current.emissiveIntensity = 0.4 + 0.2 * pulse;
     }
     if (beam.current) {
       const mat = beam.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.055 + 0.028 * pulse;
+      mat.opacity = 0.03 + 0.016 * pulse;
       beam.current.scale.set(1 + 0.03 * pulse, 1, 1 + 0.03 * pulse);
     }
     if (haloRef.current) {
       (haloRef.current.material as THREE.SpriteMaterial).opacity =
-        0.08 + 0.035 * pulse;
-      haloRef.current.scale.setScalar(3.6 + 0.28 * pulse);
+        0.05 + 0.02 * pulse;
+      haloRef.current.scale.setScalar(2.6 + 0.2 * pulse);
     }
-    if (light.current) light.current.intensity = 0.5 + 0.22 * pulse;
+    if (light.current) light.current.intensity = 0.34 + 0.14 * pulse;
   });
 
   return (
@@ -399,7 +399,7 @@ function NexusCrystal({
           <meshBasicMaterial
             color={accent}
             transparent
-            opacity={0.26}
+            opacity={0.19}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             side={THREE.DoubleSide}
@@ -411,7 +411,7 @@ function NexusCrystal({
           <meshBasicMaterial
             color={core}
             transparent
-            opacity={0.17}
+            opacity={0.12}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             side={THREE.DoubleSide}
@@ -430,7 +430,7 @@ function NexusCrystal({
             <meshBasicMaterial
               color={color}
               transparent
-              opacity={0.24}
+              opacity={0.18}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               side={THREE.DoubleSide}
@@ -441,13 +441,13 @@ function NexusCrystal({
       </group>
 
       {/* ışık sütunu (gökyüzüne uzanan huzme) */}
-      <mesh ref={beam} position={[0, 4.6, 0]} raycast={() => null}>
-        <cylinderGeometry args={[0.72, 1.05, 9.2, 16, 1, true]} />
+      <mesh ref={beam} position={[0, 3.7, 0]} raycast={() => null}>
+        <cylinderGeometry args={[0.46, 0.74, 7.4, 16, 1, true]} />
         <meshBasicMaterial
           map={beamTex}
           color={color}
           transparent
-          opacity={0.045}
+          opacity={0.03}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           side={THREE.DoubleSide}
@@ -549,9 +549,9 @@ function NexusCrystal({
         ref={light}
         position={[0, 2.6, 0]}
         color={color}
-        distance={9}
+        distance={8}
         decay={2}
-        intensity={0.5}
+        intensity={0.34}
       />
     </group>
   );
@@ -613,7 +613,7 @@ function VolcanicKeyLight() {
  */
 function ArenaEnvironment() {
   return (
-    <Environment resolution={96} frames={1} environmentIntensity={0.18}>
+    <Environment resolution={96} frames={1} environmentIntensity={0.26}>
       <Lightformer
         form="rect"
         intensity={0.85}
@@ -760,7 +760,7 @@ function BattleSky() {
               <meshBasicMaterial
                 color="#ff9a4d"
                 transparent
-                opacity={0.03}
+                opacity={0.022}
                 blending={THREE.AdditiveBlending}
                 side={THREE.DoubleSide}
                 depthWrite={false}
@@ -768,12 +768,12 @@ function BattleSky() {
             </mesh>
           ))}
         </group>
-        <sprite scale={[7, 7, 1]} raycast={() => null}>
+        <sprite scale={[5.5, 5.5, 1]} raycast={() => null}>
           <spriteMaterial
             map={sunTex}
             color="#ff8a44"
             transparent
-            opacity={0.3}
+            opacity={0.16}
             depthWrite={false}
             blending={THREE.AdditiveBlending}
           />
@@ -786,7 +786,7 @@ function BattleSky() {
           size={0.14}
           sizeAttenuation
           transparent
-          opacity={0.3}
+          opacity={0.2}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
@@ -1041,13 +1041,16 @@ function ZoneAuras() {
 
   useFrame(() => {
     const t = performance.now() / 1000;
+    // Bölge auraları artık zemin detayını yıkamıyor: iki dev additive düzlem
+    // tüm arenayı kapladığında kare turuncu-mor bir sise dönüşüyordu. Şimdi
+    // her aura kendi yarısına oturur ve şiddeti yarıya indirildi.
     if (warmRef.current) {
       (warmRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.045 + 0.014 * Math.sin(t * 0.9);
+        0.028 + 0.01 * Math.sin(t * 0.9);
     }
     if (coldRef.current) {
       (coldRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.05 + 0.014 * Math.sin(t * 1.1 + 1.5);
+        0.032 + 0.01 * Math.sin(t * 1.1 + 1.5);
     }
   });
 
@@ -1056,15 +1059,15 @@ function ZoneAuras() {
       <mesh
         ref={warmRef}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[10, 0.045, 8]}
+        position={[9, 0.045, 7]}
         raycast={() => null}
       >
-        <planeGeometry args={[28, 24]} />
+        <planeGeometry args={[19, 15]} />
         <meshBasicMaterial
           map={warmTex}
           color="#ff3d12"
           transparent
-          opacity={0.045}
+          opacity={0.028}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
@@ -1072,15 +1075,15 @@ function ZoneAuras() {
       <mesh
         ref={coldRef}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[25, 0.045, 13]}
+        position={[25.5, 0.045, 14]}
         raycast={() => null}
       >
-        <planeGeometry args={[24, 22]} />
+        <planeGeometry args={[17, 15]} />
         <meshBasicMaterial
           map={coldTex}
           color="#7c5cff"
           transparent
-          opacity={0.05}
+          opacity={0.032}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
@@ -1380,7 +1383,7 @@ function ReflectiveFloor() {
         roughness={0.2}
         envMapIntensity={1.5}
         transparent
-        opacity={0.12}
+        opacity={0.16}
         depthWrite={false}
       />
     </mesh>
