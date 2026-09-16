@@ -12,7 +12,7 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
 import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
-import type { AvatarConfig } from "@/lib/avatar";
+import { VENDOR_COLOR, type AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
 import {
   WORLD_WIDTH,
@@ -785,7 +785,13 @@ function BotAvatar3D({
 }: {
   index: number;
   botsDataRef: React.RefObject<Array<{
-    def: { id: string; config: AvatarConfig; equipped: string[] };
+    def: {
+      id: string;
+      config: AvatarConfig;
+      equipped: string[];
+      /** Satıcı NPC'ler sabit ve simli renkte görünür. */
+      isVendor?: boolean;
+    };
     pos: { x: number; y: number };
     facing: number;
     moving: boolean;
@@ -804,7 +810,13 @@ function GlbBotAvatar3D({
 }: {
   index: number;
   botsDataRef: React.RefObject<Array<{
-    def: { id: string; config: AvatarConfig; equipped: string[] };
+    def: {
+      id: string;
+      config: AvatarConfig;
+      equipped: string[];
+      /** Satıcı NPC'ler sabit ve simli renkte görünür. */
+      isVendor?: boolean;
+    };
     pos: { x: number; y: number };
     facing: number;
     moving: boolean;
@@ -829,8 +841,21 @@ function GlbBotAvatar3D({
   // Read config from ref (only used at mount — bots don't change equipment).
   const bot = botsDataRef.current?.[index];
   const equipped = bot?.def.equipped ?? [];
+  // Her bot kendi karakter rengiyle dolaşır (caddede karışık renkler),
+  // ama satıcılar tanınsın diye SABİT simli altın renkte boyanır.
+  const isVendor = bot?.def.isVendor === true;
+  const tint = isVendor ? VENDOR_COLOR : bot?.def.config?.shirt;
 
-  return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={equipped} lerpSpeed={12} />;
+  return (
+    <GlbAvatar3D
+      posRef={posRef}
+      facingRef={facingRef}
+      equipped={equipped}
+      lerpSpeed={12}
+      tint={tint}
+      sparkle={isVendor}
+    />
+  );
 }
 
 /** Legacy SVG bot avatar (debug only — ?svg=1). */
@@ -840,7 +865,13 @@ function SvgBotAvatar3D({
 }: {
   index: number;
   botsDataRef: React.RefObject<Array<{
-    def: { id: string; config: AvatarConfig; equipped: string[] };
+    def: {
+      id: string;
+      config: AvatarConfig;
+      equipped: string[];
+      /** Satıcı NPC'ler sabit ve simli renkte görünür. */
+      isVendor?: boolean;
+    };
     pos: { x: number; y: number };
     facing: number;
     moving: boolean;
@@ -924,7 +955,13 @@ export interface GameEngine3DProps {
   playerEquipped: string[];
   facingRef: React.RefObject<number>;
   botsRef: React.RefObject<Array<{
-    def: { id: string; config: AvatarConfig; equipped: string[] };
+    def: {
+      id: string;
+      config: AvatarConfig;
+      equipped: string[];
+      /** Satıcı NPC'ler sabit ve simli renkte görünür. */
+      isVendor?: boolean;
+    };
     pos: { x: number; y: number };
     facing: number;
     moving: boolean;

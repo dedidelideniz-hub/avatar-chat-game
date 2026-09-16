@@ -116,6 +116,14 @@ export const CHARACTER_COLORS = [
   { id: "ivory", label: "Fildişi", hex: "#ffffff" },
 ] as const;
 
+/**
+ * Satıcı NPC'lerin SABİT rengi. Gezinen botlar ve oyuncular kendi
+ * renkleriyle dolaşırken tezgâh başındaki satıcı hemen tanınsın diye
+ * hepsi aynı simli altın tonda boyanır (+ parıltı efekti, bkz.
+ * src/engine/VendorSparkle.tsx).
+ */
+export const VENDOR_COLOR = "#ffcf4d";
+
 /** Hex renkten palet etiketi (girişte "Karakter Rengi: Kızıl" gibi). */
 export function characterColorLabel(hex: string): string {
   return CHARACTER_COLORS.find((c) => c.hex === hex)?.label ?? "Özel";

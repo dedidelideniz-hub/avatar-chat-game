@@ -21,6 +21,7 @@ import {
   emitWarriorPuff,
   advanceWarriorPuffs,
 } from "./RoyalWarriorEffects";
+import { VendorSparkle } from "./VendorSparkle";
 
 // Re-export for backward compatibility
 export type { EquipSlot, EquipmentDef } from "./EquipmentRegistry";
@@ -454,6 +455,27 @@ interface GlbAvatarCoreProps {
    * görünür. Verilmezse model asıl renklerinde kalır.
    */
   tint?: string;
+  /**
+   * Satıcı işareti: etrafta yıldız tozu parıltısı döner ve karakterin
+   * kendi ışıması nabız gibi salınır (simli görünüm).
+   */
+  sparkle?: boolean;
+}
+
+/** Işıması salınacak materyaller — boyanmış (klon) materyaller toplanır. */
+function collectShimmerMaterials(root: THREE.Object3D) {
+  const found: THREE.MeshStandardMaterial[] = [];
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    if (obj.userData?.isEquipment) return;
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of list) {
+      const standard = material as THREE.MeshStandardMaterial;
+      if (standard.emissive) found.push(standard);
+    }
+  });
+  return found;
 }
 
 function GlbAvatarCore({
@@ -463,6 +485,7 @@ function GlbAvatarCore({
   equipped,
   lerpSpeed = 14,
   tint,
+  sparkle = false,
 }: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   // Scaled inner group: model transform (scale + feet offset) lives here so
@@ -761,6 +784,22 @@ function GlbAvatarCore({
     }
     advanceWarriorPuffs(warriorSmoke, dt);
 
+    // Satıcı simi: boyanmış materyallerin ışıması nabız gibi salınır.
+    // Liste ilk karede toplanır, yani renk tonu uygulandıktan SONRAKİ
+    // (klon) materyaller kullanılır ve paylaşımlı GLB materyalleri
+    // etkilenmez.
+    if (sparkle) {
+      if (shimmerMats.current.length === 0) {
+        shimmerMats.current = collectShimmerMaterials(group);
+      }
+      const mats = shimmerMats.current;
+      for (let i = 0; i < mats.length; i++) {
+        mats[i].emissiveIntensity = 0.85 + 0.65 * Math.sin(
+          state.clock.elapsedTime * 2.6 + i * 0.7,
+        );
+      }
+    }
+
     // Fade near-camera characters (see applyFade above). Only touch
     // materials when the opacity actually changes — not every frame.
     const dist = state.camera.position.distanceTo(group.position);
@@ -787,6 +826,7 @@ function GlbAvatarCore({
   const equippedRef = useRef(equipped.join(","));
   const cleanupEquipRef = useRef<(() => void) | null>(null);
   const equipAttachedFrame = useRef(false);
+  const shimmerMats = useRef<THREE.MeshStandardMaterial[]>([]);
 
   useFrame(() => {
     const key = equipped.join(",");
@@ -817,6 +857,9 @@ function GlbAvatarCore({
       <group ref={innerRef} scale={normScale} position={[0, feetOffset * normScale, 0]}>
         <primitive object={clone} />
       </group>
+      {/* Satıcı parıltısı: dış grupta (ölçeksiz) durur, görsel efektin
+          boyutu karakter ölçeğinden bağımsız kalır. */}
+      {sparkle && <VendorSparkle color={tint ?? "#ffe9a8"} />}
     </group>
   );
 }
@@ -830,6 +873,8 @@ export interface GlbAvatar3DProps {
   lerpSpeed?: number;
   /** Karakter rengi (oyun girişindeki renk seçimi). */
   tint?: string;
+  /** Satıcı parıltısı (simli görünüm + yıldız tozu). */
+  sparkle?: boolean;
 }
 
 /** Primary URL can be overridden per-instance (used by the fallback). */
