@@ -650,7 +650,15 @@ function PlayerAvatar3D({
   if (SVG_DEBUG_MODE) {
     return <SvgPlayerAvatar3D posRef={posRef} config={config} equipped={equipped} facingRef={facingRef} />;
   }
-  return <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={equipped} />;
+  // Oyuncunun oyun girişinde seçtiği renk karakterin dokusuna boyanır.
+  return (
+    <GlbAvatar3D
+      posRef={posRef}
+      facingRef={facingRef}
+      equipped={equipped}
+      tint={config.shirt}
+    />
+  );
 }
 
 /** Legacy SVG avatar (debug only — ?svg=1). */
@@ -748,7 +756,13 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       </group>
-      <GlbAvatar3D posRef={posRef} facingRef={facingRef} equipped={data.equipped ?? []} lerpSpeed={12} />
+      <GlbAvatar3D
+        posRef={posRef}
+        facingRef={facingRef}
+        equipped={data.equipped ?? []}
+        lerpSpeed={12}
+        tint={data.config?.shirt}
+      />
     </>
   );
 }

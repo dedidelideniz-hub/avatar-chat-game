@@ -110,6 +110,67 @@ function applySkinAccent(root: THREE.Object3D, hex: string | null) {
   });
 }
 
+/* ── Karakter rengi (oyun girişinde seçilen renk) ──────────────
+ * Oyuncu oyun girişinde yalnızca bir renk seçer; o renk karakterin
+ * dokusuna boyanır ve hem caddede hem savaş alanında görünür.
+ *
+ * Paylaşımlı GLB materyalleri asla değiştirilmez: her mesh için BİR kez
+ * klon üretilir ve ton her zaman klonun ASIL renginden yeniden hesaplanır
+ * (lerp üstüne lerp binip rengi koyulaştırmaz). WeakMap sayesinde aynı
+ * materyale ikinci kez uygulanması yeni klon üretmez.
+ */
+export const TINT_STRENGTH = 0.55;
+
+const TINT_BASES = new WeakMap<
+  THREE.Material,
+  { color: THREE.Color; emissive: THREE.Color | null }
+>();
+
+/** Bir karakter kökünü verilen renge boyar (renk yoksa asıl renge döner). */
+export function applyCharacterTint(
+  root: THREE.Object3D,
+  tint?: string | null,
+  strength: number = TINT_STRENGTH,
+): void {
+  // Renk seçilmemişse hiçbir şeye dokunma: materyaller paylaşımlı kalsın
+  // (renksiz karakterler ekstra klon üretmez).
+  if (!tint) return;
+  const target = new THREE.Color(tint);
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.material) return;
+    // Kuşanılmış eşyalar kendi renklerini korur.
+    if (obj.userData?.isEquipment) return;
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const next = list.map((src) => {
+      let entry = TINT_BASES.get(src);
+      let material = src as THREE.MeshStandardMaterial;
+      if (!entry) {
+        material = src.clone() as THREE.MeshStandardMaterial;
+        entry = {
+          color: material.color
+            ? material.color.clone()
+            : new THREE.Color("#ffffff"),
+          emissive: material.emissive ? material.emissive.clone() : null,
+        };
+        TINT_BASES.set(src, entry);
+        TINT_BASES.set(material, entry);
+      }
+      material.color.copy(entry.color);
+      if (entry.emissive) material.emissive.copy(entry.emissive);
+      if (target) {
+        material.color.lerp(target, strength);
+        material.emissive?.lerp(target, strength * 0.5);
+      }
+      material.needsUpdate = true;
+      return material;
+    });
+    mesh.material = (Array.isArray(mesh.material) ? next : next[0]) as
+      | THREE.Material
+      | THREE.Material[];
+  });
+}
+
 // Position conversion constants (mirror GameEngine3D's sX/sZ helpers).
 const WORLD_W = WORLD_WIDTH / 2;
 const WORLD_D = WORLD_DEPTH / 2;
@@ -387,9 +448,22 @@ interface GlbAvatarCoreProps {
   facingRef: React.RefObject<number>;
   equipped: string[];
   lerpSpeed?: number;
+  /**
+   * Oyuncunun oyun girişinde seçtiği karakter rengi. Verilirse model bu
+   * renge boyanır — hem caddede hem savaş alanında herkes kendi rengiyle
+   * görünür. Verilmezse model asıl renklerinde kalır.
+   */
+  tint?: string;
 }
 
-function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: GlbAvatarCoreProps) {
+function GlbAvatarCore({
+  url,
+  posRef,
+  facingRef,
+  equipped,
+  lerpSpeed = 14,
+  tint,
+}: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   // Scaled inner group: model transform (scale + feet offset) lives here so
   // the per-frame world position on the outer group can never clobber it.
@@ -459,6 +533,12 @@ function GlbAvatarCore({ url, posRef, facingRef, equipped, lerpSpeed = 14 }: Glb
   useEffect(() => {
     applySkinAccent(clone, skinAccent);
   }, [clone, skinAccent]);
+
+  // Seçilen karakter rengi. Aksan renginden SONRA uygulanır, böylece zırh
+  // tonu korunur ve oyuncunun rengi üstüne biner.
+  useEffect(() => {
+    applyCharacterTint(clone, tint);
+  }, [clone, tint]);
 
   // Resolve idle/walk clips once. Prefer a real walk cycle over run so the
   // feet visibly alternate while the avatar moves through the world.
@@ -748,6 +828,8 @@ export interface GlbAvatar3DProps {
   facingRef: React.RefObject<number>;
   equipped: string[];
   lerpSpeed?: number;
+  /** Karakter rengi (oyun girişindeki renk seçimi). */
+  tint?: string;
 }
 
 /** Primary URL can be overridden per-instance (used by the fallback). */
@@ -806,9 +888,6 @@ interface PortraitCoreProps {
   tint?: string;
 }
 
-/** Karakter tonunun dokunun içine ne kadar karışacağı (0-1). */
-const TINT_STRENGTH = 0.55;
-
 /** Static character shown facing the camera with its idle animation. */
 function GlbPortraitCore({ url, equipped, height, spin, tint }: PortraitCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -837,55 +916,10 @@ function GlbPortraitCore({ url, equipped, height, spin, tint }: PortraitCoreProp
     return { normScale: height / h, modelHeight: h };
   }, [clone, height, skinUrl]);
 
-  // ── Renk tonu altyapısı (oyun girişindeki "karakter rengi") ──────
-  // Paylaşımlı GLB'nin materyalleri asla değiştirilmez: her mesh için BİR
-  // kez klon üretilir ve ton, klonun rengi hep ASIL renkten yeniden
-  // hesaplanarak uygulanır. Böylece renk seçimini art arda değiştirmek
-  // rengi koyulaştırmaz (lerp üstüne lerp birikmez).
-  const tintBases = useRef(
-    new Map<
-      THREE.MeshStandardMaterial,
-      { color: THREE.Color; emissive: THREE.Color | null }
-    >(),
-  );
-
+  // Karakter rengi: oyun girişindeki renk seçimi (bkz. applyCharacterTint).
   useEffect(() => {
-    const bases = new Map<
-      THREE.MeshStandardMaterial,
-      { color: THREE.Color; emissive: THREE.Color | null }
-    >();
-    clone.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.material) return;
-      if (obj.userData?.isEquipment) return;
-      const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const next = list.map((src) => {
-        const m = src.clone() as THREE.MeshStandardMaterial;
-        bases.set(m, {
-          color: m.color ? m.color.clone() : new THREE.Color("#ffffff"),
-          emissive: m.emissive ? m.emissive.clone() : null,
-        });
-        return m;
-      });
-      mesh.material = (Array.isArray(mesh.material) ? next : next[0]) as
-        | THREE.Material
-        | THREE.Material[];
-    });
-    tintBases.current = bases;
-  }, [clone]);
-
-  useEffect(() => {
-    const target = tint ? new THREE.Color(tint) : null;
-    tintBases.current.forEach((base, material) => {
-      material.color.copy(base.color);
-      if (base.emissive) material.emissive.copy(base.emissive);
-      if (target) {
-        material.color.lerp(target, TINT_STRENGTH);
-        material.emissive?.lerp(target, 0.28);
-      }
-      material.needsUpdate = true;
-    });
-  }, [tint, clone]);
+    applyCharacterTint(clone, tint);
+  }, [clone, tint]);
 
   // Play the idle clip (or the first clip as a fallback).
   useEffect(() => {
@@ -1018,6 +1052,8 @@ interface ProfileModelProps {
   url: string;
   equipped: string[];
   height: number;
+  /** Oyuncunun seçtiği karakter rengi (profil kartı da aynı renkte görünsün). */
+  tint?: string;
 }
 
 /**
@@ -1025,7 +1061,7 @@ interface ProfileModelProps {
  * periodically looks left/right (head/eye motion) instead of staring
  * straight ahead. Faces the camera at all times.
  */
-function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
+function GlbProfileModel({ url, equipped, height, tint }: ProfileModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
   const { scene, animations } = useGLTF(skinUrl || url);
@@ -1063,6 +1099,11 @@ function GlbProfileModel({ url, equipped, height }: ProfileModelProps) {
       action.fadeOut(0.3);
     };
   }, [actions]);
+
+  // Karakter rengi (profil kartı oyundaki karakterle aynı renkte olsun).
+  useEffect(() => {
+    applyCharacterTint(clone, tint);
+  }, [clone, tint]);
 
   // Bone-based equipment — deferred to useFrame so model is in the scene.
   const equippedRef = useRef(equipped.join(","));
@@ -1110,6 +1151,8 @@ export interface GlbProfileAvatarProps {
   height?: number;
   /** Wrapper className — size it here (e.g. "h-24 w-24"). */
   className?: string;
+  /** Karakter rengi — oyundaki karakterle aynı renkte görünmesi için. */
+  tint?: string;
 }
 
 /**
@@ -1122,6 +1165,7 @@ export function GlbProfileAvatar({
   equipped = [],
   height = 2,
   className,
+  tint,
 }: GlbProfileAvatarProps) {
   const primary = characterModelUrl();
 
@@ -1142,7 +1186,12 @@ export function GlbProfileAvatar({
       <ambientLight intensity={1.1} />
       <directionalLight position={[2, 3, 4]} intensity={1.4} />
       <Suspense fallback={null}>
-        <GlbProfileModel url={url} equipped={equipped} height={height} />
+        <GlbProfileModel
+          url={url}
+          equipped={equipped}
+          height={height}
+          tint={tint}
+        />
       </Suspense>
     </Canvas>
   );
