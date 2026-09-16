@@ -22,6 +22,7 @@ import {
   advanceWarriorPuffs,
 } from "./RoyalWarriorEffects";
 import { VendorSparkle } from "./VendorSparkle";
+import { VENDOR_COLOR } from "@/lib/avatar";
 
 // Re-export for backward compatibility
 export type { EquipSlot, EquipmentDef } from "./EquipmentRegistry";
@@ -122,6 +123,13 @@ function applySkinAccent(root: THREE.Object3D, hex: string | null) {
  */
 export const TINT_STRENGTH = 0.7;
 
+/**
+ * Bu parlaklığın altındaki materyaller boyanmaz. Karakter modelinde gözler
+ * ve kaşlar "Black" materyalini kullanır (base color ≈ 0.046); boyanınca
+ * gözler seçilen renge dönüyordu. Siyaha yakın parçalar aynı siyah kalır.
+ */
+const TINT_SKIP_LUMA = 0.14;
+
 const TINT_BASES = new WeakMap<
   THREE.Material,
   { color: THREE.Color; emissive: THREE.Color | null }
@@ -147,11 +155,16 @@ export function applyCharacterTint(
       let entry = TINT_BASES.get(src);
       let material = src as THREE.MeshStandardMaterial;
       if (!entry) {
+        const baseColor = material.color
+          ? material.color.clone()
+          : new THREE.Color("#ffffff");
+        // Gözler/kaşlar gibi siyaha yakın parçalar boyanmadan bırakılır.
+        if (Math.max(baseColor.r, baseColor.g, baseColor.b) < TINT_SKIP_LUMA) {
+          return src;
+        }
         material = src.clone() as THREE.MeshStandardMaterial;
         entry = {
-          color: material.color
-            ? material.color.clone()
-            : new THREE.Color("#ffffff"),
+          color: baseColor,
           emissive: material.emissive ? material.emissive.clone() : null,
         };
         // KRİTİK: yalnızca KLON kaydedilir. Paylaşılan kaynak materyal
@@ -891,7 +904,7 @@ function GlbAvatarCore({
       )}
       {/* Satıcı parıltısı: dış grupta (ölçeksiz) durur, görsel efektin
           boyutu karakter ölçeğinden bağımsız kalır. */}
-      {sparkle && <VendorSparkle color={tint ?? "#ffe9a8"} />}
+      {sparkle && <VendorSparkle color={tint ?? VENDOR_COLOR} />}
     </group>
   );
 }

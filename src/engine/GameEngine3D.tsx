@@ -12,7 +12,7 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
 import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
-import { VENDOR_COLOR, type AvatarConfig } from "@/lib/avatar";
+import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
 import {
   WORLD_WIDTH,
@@ -841,10 +841,11 @@ function GlbBotAvatar3D({
   // Read config from ref (only used at mount — bots don't change equipment).
   const bot = botsDataRef.current?.[index];
   const equipped = bot?.def.equipped ?? [];
-  // Her bot kendi karakter rengiyle dolaşır (caddede karışık renkler),
-  // ama satıcılar tanınsın diye SABİT simli altın renkte boyanır.
+  // Her bot kendi karakter rengiyle dolaşır (caddede karışık renkler).
+  // Satıcılar boyanmaz — kendi renklerinde kalır, sadece etraflarında
+  // simli parıltı döner (tezgâh başında oldukları belli olsun).
   const isVendor = bot?.def.isVendor === true;
-  const tint = isVendor ? VENDOR_COLOR : bot?.def.config?.shirt;
+  const tint = isVendor ? undefined : bot?.def.config?.shirt;
 
   return (
     <GlbAvatar3D
