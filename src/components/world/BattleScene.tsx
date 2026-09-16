@@ -571,10 +571,10 @@ export default function BattleScene({
     hidden: false,
   });
   const actionsRef = useRef({
-    attack: () => {},    super: () => {},
+    attack: () => {},
+    super: () => {},
     samuraiSuper: () => {},
     click: (_x: number, _y: number) => {},
-
   });
 
   // Animated VS banner plays once the loading sequence finishes.
@@ -1400,7 +1400,9 @@ export default function BattleScene({
           const dirY = Math.sin(katanaAng);
           const impactX = b.x + dirX * 50;
           const impactY = b.y + dirY * 50;
-          const reach = Math.max(180, Math.hypot(p.x - b.x, p.y - b.y) + 50);
+          // Botun yarığı da oyuncunun ulti'siyle aynı MAX_RANGE ile sınırlı:
+          // rakip nerede olursa olsun yarık ona kadar uzamaz (eskiden dist+50).
+          const reach = MAX_RANGE_PX;
           addFx({
             kind: "samuraiCrack",
             x1: impactX,
@@ -1412,7 +1414,13 @@ export default function BattleScene({
           });
           burstFx(impactX, impactY, 90, "#fbbf24", 0.4);
           smokeFx(impactX, impactY, 3, 70);
-          damageEnemy(b, p, SAMURAI_ULTIMATE_DAMAGE);
+          // Hasar yalnızca yarığın menzili ve yönü içindeyse işler
+          // (oyuncu ulti'siyle aynı MAX_RANGE kuralı — eskiden menzilsizdi).
+          if (aimedHit(b, { x: dirX, y: dirY }, p, { rangePx: reach })) {
+            damageEnemy(b, p, SAMURAI_ULTIMATE_DAMAGE);
+          }
+          // Kılıç yere çarpar: vursun vurmasın darbe sesi (oyuncu ile aynı).
+          playSound("hit", { volume: 1, rate: 0.7 });
         }
       }
       // The ult fires the moment the bar is full — unless the target hides
@@ -1459,7 +1467,7 @@ export default function BattleScene({
             continue;
           }
         }
-        if (pr.explodeR && pr.travelled >= 720) {
+        if (pr.explodeR && pr.travelled >= FIREBALL_RANGE_PX) {
           explodeAt(pr);
           projs.current.splice(i, 1);
         } else if (pr.travelled >= PROJ_RANGE && !pr.explodeR) {
@@ -1659,28 +1667,27 @@ export default function BattleScene({
           <BattleJoystick stickRef={joystickRef} />
 
           <div className="battle-hud-controls pointer-events-none absolute right-3 bottom-3 z-10 flex flex-col items-end gap-2">
-              {isSamuraiFighter(player.current) && (
-                <button
-                  type="button"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    actionsRef.current.samuraiSuper();
-                  }}
-                  aria-label="Samuray yere vuruş ultisi"
-                  className={`battle-hud-ult pointer-events-auto flex size-14 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
-                    player.current.samuraiCharge >= 1
-                      ? "border-amber-200 bg-gradient-to-br from-amber-300 to-orange-600 text-amber-950"
-                      : "border-white/30 bg-white/10 text-white/70"
-                  }`}
-                >
-                  <span className="battle-hud-icon text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
-                </button>
-              )}
+            {isSamuraiFighter(player.current) && (
               <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  actionsRef.current.samuraiSuper();
+                }}
+                aria-label="Samuray yere vuruş ultisi"
+                className={`battle-hud-ult pointer-events-auto flex size-14 items-center justify-center rounded-full border-4 shadow-xl transition-transform active:scale-90 ${
+                  player.current.samuraiCharge >= 1
+                    ? "border-amber-200 bg-gradient-to-br from-amber-300 to-orange-600 text-amber-950"
+                    : "border-white/30 bg-white/10 text-white/70"
+                }`}
+              >
+                <span className="battle-hud-icon text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
+              </button>
+            )}
+            <button
               type="button"
               onPointerDown={(e) => {
-
                 // Fire instantly (even while holding the joystick) instead of
                 // waiting for a click, and never let the tap fall through to
                 // the arena's tap-to-move plane.
@@ -1699,10 +1706,9 @@ export default function BattleScene({
                 {hud.pc >= 1 ? abilityEmoji : Math.round(hud.pc * 100) + "%"}
               </span>
             </button>
-              <button
+            <button
               type="button"
               onPointerDown={(e) => {
-
                 // Press the attack button, then drag to aim (Brawl Stars
                 // style): the aim guide follows your finger and releasing
                 // fires in that direction. Holding still keeps firing on

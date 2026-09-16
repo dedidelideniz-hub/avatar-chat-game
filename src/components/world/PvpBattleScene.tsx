@@ -39,6 +39,7 @@ import {
 } from "@/components/world/BattleMapModel";
 // 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik kilit.
 import {
+  FIREBALL_RANGE_PX,
   MAX_RANGE_PX,
   aimState,
   aimedHit,
@@ -1085,7 +1086,7 @@ export default function PvpBattleScene({
             continue;
           }
         }
-        if (pr.explodeR && pr.travelled >= 720) {
+        if (pr.explodeR && pr.travelled >= FIREBALL_RANGE_PX) {
           explodeAt(pr);
           swapRemove(ownProjs.current, i);
           projPool.release(pr);

@@ -43,8 +43,9 @@ export const aimState = {
 
 /**
  * Ateş Topu'nun patlama mesafesi (px). Simülasyondaki
- * `pr.explodeR && pr.travelled >= 720` kontrolüyle AYNI olmak zorunda —
- * görsel sönme ile patlama aynı noktada gerçekleşsin diye burada tutuluyor.
+ * `pr.explodeR && pr.travelled >= FIREBALL_RANGE_PX` kontrolü hem bot
+ * arenasında hem PvP'de bu sabiti okur — görsel sönme ile patlama aynı
+ * noktada gerçekleşsin diye tek yerden tutuluyor.
  */
 export const FIREBALL_RANGE_PX = 720;
 /** Menzil sonuna yaklaşan merminin sönme çarpanı (1 → 0). */
