@@ -120,7 +120,7 @@ function applySkinAccent(root: THREE.Object3D, hex: string | null) {
  * (lerp üstüne lerp binip rengi koyulaştırmaz). WeakMap sayesinde aynı
  * materyale ikinci kez uygulanması yeni klon üretmez.
  */
-export const TINT_STRENGTH = 0.55;
+export const TINT_STRENGTH = 0.7;
 
 const TINT_BASES = new WeakMap<
   THREE.Material,
@@ -857,6 +857,35 @@ function GlbAvatarCore({
       <group ref={innerRef} scale={normScale} position={[0, feetOffset * normScale, 0]}>
         <primitive object={clone} />
       </group>
+      {/* Karakter rengi halkası (MOBA takım rengi mantığı): ayakların
+          altındaki ince halka, rengi modelden bağımsız olarak her mesafeden
+          okunur — uzaktan da "kim hangi renkte" belli olur. */}
+      {tint && (
+        <>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+            <ringGeometry args={[0.33, 0.46, 32]} />
+            <meshBasicMaterial
+              color={tint}
+              transparent
+              opacity={0.6}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+              toneMapped={false}
+            />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+            <circleGeometry args={[0.33, 28]} />
+            <meshBasicMaterial
+              color={tint}
+              transparent
+              opacity={0.16}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+              toneMapped={false}
+            />
+          </mesh>
+        </>
+      )}
       {/* Satıcı parıltısı: dış grupta (ölçeksiz) durur, görsel efektin
           boyutu karakter ölçeğinden bağımsız kalır. */}
       {sparkle && <VendorSparkle color={tint ?? "#ffe9a8"} />}

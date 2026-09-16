@@ -1297,6 +1297,20 @@ function FighterRig({
           </Suspense>
         </GlbModelBoundary>
       </group>
+      {/* Takım rengi halkası: dövüşçünün (oyuncunun seçtiği) karakter rengi
+          ayakların altında okunur — hem yakından hem uzaktan kim hangi
+          renkte olduğu belli olur. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+        <ringGeometry args={[0.42, 0.56, 32]} />
+        <meshBasicMaterial
+          color={c.shirt}
+          transparent
+          opacity={0.6}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+          toneMapped={false}
+        />
+      </mesh>
       {/* Vuruş kıvılcımları: karakterin merkezinden dışa saçılan küçük kor
           parçacıkları. Beyaz parlama artık model kaplamasına uygulanıyor. */}
       <group position={[0, 0.85, 0]}>
