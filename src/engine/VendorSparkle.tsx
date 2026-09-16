@@ -61,6 +61,74 @@ function makeSparkTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * Satıcı rozeti: başının üstünde süzülen, kendi ekseninde dönerek parlayan
+ * altın sikke + nabız atan hale.
+ *
+ * Satıcıların gövdesi bilinçli olarak boyanmıyor; bu yüzden onları
+ * kalabalıkta ayırt eden şey bu animasyonlu rozet (ve etraflarındaki yıldız
+ * tozu). Uzaktan da "burada alışveriş var" diye okunur.
+ */
+export function VendorBadge({
+  height = 2,
+  color = "#ffd75e",
+}: {
+  /** Karakterin dünya cinsinden yüksekliği — rozet başın üstüne oturur. */
+  height?: number;
+  color?: string;
+}) {
+  const glow = useMemo(makeSparkTexture, []);
+  useEffect(() => () => glow.dispose(), [glow]);
+
+  const bob = useRef<THREE.Group>(null);
+  const spin = useRef<THREE.Group>(null);
+  const halo = useRef<THREE.Sprite>(null);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    // Yukarı-aşağı süzülme
+    if (bob.current) {
+      bob.current.position.y = height + 0.34 + Math.sin(t * 1.7) * 0.07;
+    }
+    // Sikke kendi ekseninde döner (madeni para gibi)
+    if (spin.current) spin.current.rotation.y = t * 2.1;
+    // Hale nabız atar
+    if (halo.current) {
+      const k = 0.8 + 0.2 * Math.sin(t * 3.1);
+      halo.current.scale.setScalar(1.05 * k);
+      (halo.current.material as THREE.SpriteMaterial).opacity = 0.42 * k;
+    }
+  });
+
+  return (
+    <group ref={bob} position={[0, height + 0.34, 0]}>
+      <sprite ref={halo} scale={[1.05, 1.05, 1.05]}>
+        <spriteMaterial
+          map={glow}
+          color={color}
+          transparent
+          opacity={0.42}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </sprite>
+      <group ref={spin}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.17, 0.17, 0.035, 22]} />
+          <meshStandardMaterial
+            color={color}
+            metalness={0.85}
+            roughness={0.25}
+            emissive="#8a5a10"
+            emissiveIntensity={0.7}
+          />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 export function VendorSparkle({
   count = 9,
   radius = 0.42,

@@ -21,7 +21,7 @@ import {
   emitWarriorPuff,
   advanceWarriorPuffs,
 } from "./RoyalWarriorEffects";
-import { VendorSparkle } from "./VendorSparkle";
+import { VendorBadge, VendorSparkle } from "./VendorSparkle";
 import { VENDOR_COLOR } from "@/lib/avatar";
 
 // Re-export for backward compatibility
@@ -905,6 +905,10 @@ function GlbAvatarCore({
       {/* Satıcı parıltısı: dış grupta (ölçeksiz) durur, görsel efektin
           boyutu karakter ölçeğinden bağımsız kalır. */}
       {sparkle && <VendorSparkle color={tint ?? VENDOR_COLOR} />}
+      {/* Satıcı rozeti: başının üstünde süzülen, dönen altın sikke. */}
+      {sparkle && (
+        <VendorBadge height={PLAYER_3D_HEIGHT} color={VENDOR_COLOR} />
+      )}
     </group>
   );
 }
