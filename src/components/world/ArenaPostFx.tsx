@@ -6,10 +6,11 @@
 //
 //   RenderPass → UnrealBloomPass → OutputPass
 //
-// * Bloom artık ÖLÇÜLÜ: eşik yüksek (0.78), şiddet düşük (0.42), yarıçap dar
-//   (0.28). Böylece yalnızca gerçekten parlak olan öğeler (lav çekirdeği,
-//   kristal, yetenek ışınları) hafifçe taşar; zemin, HUD ve genel sahne
-//   referanstaki gibi "her yeri saran turuncu sis"e dönüşmez.
+// * Bloom artık DENGELİ: eşik orta (0.62), şiddet orta (0.7), yarıçap 0.35.
+//   Lav damarları, kristaller, lane kenar çizgileri, menzil halkaları ve
+//   yetenek efektleri etraflarına ışık saçar; ama eşik yüksek kaldığı için
+//   zemin/gövde gibi normal parlaklıktaki yüzeyler taşmaz ve kare "her yeri
+//   saran sis"e dönüşmez.
 // * OutputPass, tone mapping + sRGB dönüşümünü kapanışta yapar; three render
 //   target'lara çizerken tone mapping'i kendisi kapatır (WebGLPrograms:
 //   `currentRenderTarget === null ? toneMapping : NoToneMapping`), yani görüntü
@@ -40,9 +41,9 @@ function isCoarsePointer() {
 }
 
 export function ArenaPostFx({
-  strength = 0.42,
-  radius = 0.28,
-  threshold = 0.78,
+  strength = 0.7,
+  radius = 0.35,
+  threshold = 0.62,
 }: {
   strength?: number;
   radius?: number;

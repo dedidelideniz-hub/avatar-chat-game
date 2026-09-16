@@ -603,11 +603,38 @@ function GlbAvatarCore({
     return { normScale: PLAYER_3D_HEIGHT / h, modelHeight: h, feetOffset: feetY };
   }, [clone, skinUrl]);
 
-  // Shadow casting on every mesh.
+  // Gölge + materyal detayı.
+  //
+  // Gölge DÜŞÜRME (castShadow) ve gölge ALMA (receiveShadow) birlikte açılır:
+  // savaş alanındaki gölge düşüren ışık (WarAtmosphere › ArenaShadowLight)
+  // sayesinde karakter hem zemine gölge bırakır hem de üzerine düşen gölgeyi
+  // (kemer, duvar, diğer dövüşçü) alır — düz duran bir model yerine sahnenin
+  // parçası gibi okunur.
+  //
+  // Materyal detayı: zırh/deri ışığı hafifçe yansıtır (envMapIntensity +
+  // metalness, daha pürüzsüz roughness). Model böylece "basit baloncuk"
+  // görünümünden çıkıp çevre ışığını yakalar.
   useEffect(() => {
     clone.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        obj.castShadow = true;
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const list = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      for (const entry of list) {
+        const material = entry as THREE.MeshStandardMaterial;
+        if (!material?.isMeshStandardMaterial) continue;
+        if (material.userData?.detailApplied) continue;
+        material.userData = { ...material.userData, detailApplied: true };
+        material.envMapIntensity = Math.max(material.envMapIntensity || 1, 0.9);
+        if (typeof material.metalness === "number") {
+          material.metalness = Math.min(0.85, material.metalness + 0.12);
+        }
+        if (typeof material.roughness === "number") {
+          material.roughness = Math.max(0.25, material.roughness * 0.85);
+        }
       }
     });
   }, [clone]);

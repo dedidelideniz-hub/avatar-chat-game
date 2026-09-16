@@ -509,14 +509,21 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 }
 
 /* Cinematic vignette over the battle arena — darkens the edges so the
-   action in the middle reads clearly, game-simulation style. */
+   action in the middle reads clearly, game-simulation style. Volkanik
+   MOBA dokunuşu: alt kenardan hafif kor bir sıcaklık sızar. */
 .arena-vignette {
-  background: radial-gradient(
-    ellipse at center,
-    transparent 52%,
-    rgba(4, 8, 20, 0.42) 88%,
-    rgba(3, 6, 16, 0.6) 100%
-  );
+  background:
+    radial-gradient(
+      ellipse at 50% 118%,
+      rgba(255 106 31 / 0.12) 0%,
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse at center,
+      transparent 42%,
+      rgba(5, 8, 20, 0.5) 82%,
+      rgba(2, 4, 12, 0.76) 100%
+    );
 }
 
 /* Brawl-Stars-style aim guide (2D arena) — flowing energy dashes from

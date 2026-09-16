@@ -314,7 +314,7 @@ export function SkillshotIndicator({
           map={rangeTex}
           color={AIM_COLORS.basic}
           transparent
-          opacity={0.6}
+          opacity={0.78}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}
@@ -328,7 +328,7 @@ export function SkillshotIndicator({
           map={pulseTex}
           color={AIM_COLORS.basic}
           transparent
-          opacity={0.4}
+          opacity={0.55}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}
@@ -342,7 +342,7 @@ export function SkillshotIndicator({
           map={shaftTex}
           color={AIM_COLORS.basic}
           transparent
-          opacity={0.5}
+          opacity={0.62}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}
@@ -356,7 +356,7 @@ export function SkillshotIndicator({
           map={headTex}
           color={AIM_COLORS.basic}
           transparent
-          opacity={0.8}
+          opacity={0.95}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}
@@ -369,7 +369,7 @@ export function SkillshotIndicator({
           map={pulseTex}
           color={LOCK_COLOR}
           transparent
-          opacity={0.85}
+          opacity={0.95}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}

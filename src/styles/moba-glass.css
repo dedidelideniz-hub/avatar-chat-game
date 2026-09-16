@@ -108,6 +108,39 @@
     inset 0 1px 0 rgb(255 255 255 / 0.12);
 }
 
+/* ── Vektör ikonlar (emoji butonlar kaldırıldı) ──
+   Yuva/düğme içindeki SVG'ler ortalanır ve ölçüsü clamp'lenen yazı boyutuyla
+   uyumlu kalır. */
+.moba-slot-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e8eefb;
+}
+.moba-slot-icon > svg {
+  width: auto;
+  height: clamp(15px, 2.5vh, 23px);
+}
+.moba-item > svg {
+  width: auto;
+  height: clamp(11px, 1.8vh, 16px);
+}
+.moba-card-avatar-face > svg {
+  width: auto;
+  height: 62%;
+}
+.moba-floater > svg {
+  width: auto;
+  height: clamp(15px, 2.6vh, 24px);
+  color: #fff3d6;
+  filter: drop-shadow(0 0 6px rgb(255 190 90 / 0.5));
+}
+.moba-rail-btn > svg,
+.moba-icon-btn > svg {
+  width: auto;
+  height: 58%;
+}
+
 /* ── Seviye rozeti (altın daire) ──
    index.css'in sonundaki bu kural düzenleme aracının penceresinin dışında
    kaldığı için parlaması buradan azaltılır. */

@@ -420,6 +420,9 @@ function GlbFighterBodyCore({
       if (!(obj as THREE.Mesh).isMesh) return;
       const mesh = obj as THREE.Mesh;
       mesh.castShadow = true;
+      // Karakter artık üzerine düşen gölgeyi de alır (kemer, duvar, diğer
+      // dövüşçü) — dövüşçü sahnenin parçası gibi okunur.
+      mesh.receiveShadow = true;
       // Clone materials so every fighter owns its own material instances —
       // the GLB loader caches + SkeletonUtils.clone share materials between
       // fighters, which would make bush stealth opacity leak across rigs.
@@ -427,6 +430,26 @@ function GlbFighterBodyCore({
         mesh.material = mesh.material.map((m) => m.clone());
       } else if (mesh.material) {
         mesh.material = (mesh.material as THREE.Material).clone();
+      }
+      // Materyal detayı: zırh/deri hafifçe ışığı yansıtır (çevre haritası +
+      // metalik dokunuş). Dövüşçü böylece düz "baloncuk" yerine detaylı,
+      // ışığı yakalayan bir model olarak görünür.
+      const list = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      for (const entry of list) {
+        const material = entry as THREE.MeshStandardMaterial;
+        if (!material?.isMeshStandardMaterial) continue;
+        material.envMapIntensity = Math.max(
+          material.envMapIntensity || 1,
+          0.9,
+        );
+        if (typeof material.metalness === "number") {
+          material.metalness = Math.min(0.85, material.metalness + 0.12);
+        }
+        if (typeof material.roughness === "number") {
+          material.roughness = Math.max(0.25, material.roughness * 0.85);
+        }
       }
     });
     // Oyuncunun oyun girişinde seçtiği renk: savaş alanındaki zırh/beden

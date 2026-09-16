@@ -28,11 +28,29 @@ import {
   useRef,
   useState,
 } from "react";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
+// Emoji butonlar kaldırıldı: yetenek yuvaları ve HUD düğmeleri artık ciddi,
+// tematik vektör ikonlar kullanır (oyun tanımları emoji tutmaya devam eder,
+// eşleme aşağıdaki `AbilityIcon` ile yapılır).
+import {
+  Bomb,
+  Coins,
+  Crown,
+  EyeOff,
+  Flame,
+  HeartPulse,
+  LogOut,
+  ScrollText,
+  Shield,
+  Smile,
+  Sparkles,
+  Sword,
+  Swords,
+  Zap,
+} from "lucide-react";
 import type { BattleFighter } from "@/components/world/Arena3D";
-import { CURRENCY_EMOJI } from "@/lib/shop";
 import { cn } from "@/lib/utils";
 // Cam (glassmorphism) katmanı: index.css'in sonundaki HUD bloklarını bu dosya
 // günceller (index.css düzenleme aracının pencere sınırının dışında kalıyor).
@@ -46,6 +64,31 @@ const ARENA_D = 22;
 /** Bekleme süresi halkası geometrisi (viewBox 36x36). */
 const RING_R = 15.5;
 const RING_C = 2 * Math.PI * RING_R;
+
+/**
+ * Yetenek emojisi → tematik vektör ikon.
+ *
+ * Yetenek tanımları (src/lib/shop.ts) emoji tutar ve savaş sahneleri HUD'a
+ * yalnızca o emojiyi geçer; bu yüzden eşleme emoji üzerinden yapılır ve
+ * arayüzde hiç emoji gösterilmez.
+ */
+function AbilityIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
+  const props = { size, strokeWidth: 2.1 } as const;
+  switch (emoji) {
+    case "💥":
+      return <Bomb {...props} />;
+    case "💚":
+      return <HeartPulse {...props} />;
+    case "✨":
+      return <Sparkles {...props} />;
+    case "⚡":
+      return <Zap {...props} />;
+    case "🔥":
+      return <Flame {...props} />;
+    default:
+      return <Swords {...props} />;
+  }
+}
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
@@ -160,9 +203,27 @@ function toggleClass(el: HTMLElement | null, name: string, on: boolean) {
 /* Uçan tepkiler + beceri duyurusu                                     */
 /* ------------------------------------------------------------------ */
 
+export type MobaBurstIcon =
+  | "super"
+  | "kill"
+  | "hurt"
+  | "clash"
+  | "smile"
+  | "fire";
+
+/** Uçan tepkilerin ikonları (emoji yerine vektör). */
+const BURST_ICONS: Record<MobaBurstIcon, ReactNode> = {
+  super: <Sparkles size={22} strokeWidth={2.2} />,
+  kill: <Crown size={22} strokeWidth={2.2} />,
+  hurt: <Bomb size={22} strokeWidth={2.2} />,
+  clash: <Swords size={22} strokeWidth={2.2} />,
+  smile: <Smile size={22} strokeWidth={2.2} />,
+  fire: <Flame size={22} strokeWidth={2.2} />,
+};
+
 export interface MobaBurstHandle {
-  /** Arena üzerinde bir tepki baloncuğu uçurur; `label` verilirse duyuru çıkar. */
-  burst(emoji: string, label?: string): void;
+  /** Arena üzerinde tematik bir ikon uçurur; `label` verilirse duyuru çıkar. */
+  burst(icon: MobaBurstIcon, label?: string): void;
 }
 
 /** Uçuş yörüngeleri CSS'te (`.moba-floater--0…4`) tanımlıdır. */
@@ -173,16 +234,16 @@ export const MobaEmoteBurst = forwardRef<MobaBurstHandle>(function MobaEmoteBurs
   ref,
 ) {
   const [floaters, setFloaters] = useState<
-    { id: number; emoji: string; i: number }[]
+    { id: number; icon: MobaBurstIcon; i: number }[]
   >([]);
   const [banner, setBanner] = useState<{ id: number; text: string } | null>(null);
   const seq = useRef(0);
 
   useImperativeHandle(ref, () => ({
-    burst(emoji: string, label?: string) {
+    burst(icon: MobaBurstIcon, label?: string) {
       const id = ++seq.current;
       const i = id % FLOATERS.length;
-      setFloaters((prev) => [...prev.slice(-5), { id, emoji, i }]);
+      setFloaters((prev) => [...prev.slice(-5), { id, icon, i }]);
       window.setTimeout(() => {
         setFloaters((prev) => prev.filter((f) => f.id !== id));
       }, 1300);
@@ -203,7 +264,7 @@ export const MobaEmoteBurst = forwardRef<MobaBurstHandle>(function MobaEmoteBurs
           className={`moba-floater moba-floater--${f.i}`}
           style={{ left: `${FLOATERS[f.i].left}%` }}
         >
-          {f.emoji}
+          {BURST_ICONS[f.icon]}
         </span>
       ))}
       {banner && (
@@ -358,15 +419,16 @@ function MobaOpponentCard({
         <div className="moba-card-body">
           <div className="moba-card-avatar">
             <span className="moba-card-avatar-ring" aria-hidden />
-            <span className="moba-card-avatar-face" aria-hidden>
-              {emoji}
+            <span className="moba-card-avatar-face text-violet-200" aria-hidden>
+              <AbilityIcon emoji={emoji} size={30} />
             </span>
             <span className="moba-card-level">{level}</span>
           </div>
           <div className="min-w-0">
             <p className="moba-card-name truncate">{name}</p>
-            <p className="moba-card-sub">
-              Seviye {level} · Yetenek {emoji}
+            <p className="moba-card-sub flex items-center gap-1">
+              Seviye {level} · Yetenek
+              <AbilityIcon emoji={emoji} size={13} />
             </p>
             <div className="moba-card-hp">
               <span style={{ width: `${Math.round(clamp01(hpPct) * 100)}%` }} />
@@ -382,8 +444,11 @@ function MobaOpponentCard({
             <span>
               SEVİYE <b>{level}</b>
             </span>
-            <span>
-              YETENEK <b>{emoji}</b>
+            <span className="inline-flex items-center gap-1">
+              YETENEK
+              <b className="inline-flex items-center">
+                <AbilityIcon emoji={emoji} size={13} />
+              </b>
             </span>
           </div>
         )}
@@ -399,9 +464,10 @@ function MobaOpponentCard({
           <button
             type="button"
             onClick={onStart}
-            className="moba-card-btn moba-card-btn--primary pointer-events-auto"
+            className="moba-card-btn moba-card-btn--primary pointer-events-auto inline-flex items-center gap-1.5"
           >
-            ⚔️ SAVAŞA BAŞLA
+            <Swords size={14} strokeWidth={2.4} aria-hidden />
+            SAVAŞA BAŞLA
           </button>
         </div>
       </div>
@@ -414,11 +480,23 @@ function MobaOpponentCard({
 /* ------------------------------------------------------------------ */
 
 /** Eşya/yetenek karoları — referanstaki renkli karo sırası. */
-const ITEM_CHIPS = [
-  { emoji: "🗡️", tone: "from-violet-500/70 to-fuchsia-600/60" },
-  { emoji: "🔥", tone: "from-orange-500/70 to-red-600/60" },
-  { emoji: "🛡️", tone: "from-emerald-500/70 to-teal-600/60" },
-  { emoji: "⚡", tone: "from-sky-500/70 to-indigo-600/60" },
+const ITEM_CHIPS: { icon: ReactNode; tone: string }[] = [
+  {
+    icon: <Sword size={14} strokeWidth={2.2} />,
+    tone: "from-violet-500/70 to-fuchsia-600/60",
+  },
+  {
+    icon: <Flame size={14} strokeWidth={2.2} />,
+    tone: "from-orange-500/70 to-red-600/60",
+  },
+  {
+    icon: <Shield size={14} strokeWidth={2.2} />,
+    tone: "from-emerald-500/70 to-teal-600/60",
+  },
+  {
+    icon: <Zap size={14} strokeWidth={2.2} />,
+    tone: "from-sky-500/70 to-indigo-600/60",
+  },
 ];
 
 /**
@@ -493,14 +571,14 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
 
       // ── tepki tetikleyicileri: süper kullanımı, ağır hasar, devirme ──
       if (prev.pc >= 1 && l.pc < 0.2) {
-        burstRef.current?.burst("🔥", "SÜPER YETENEK!");
+        burstRef.current?.burst("super", "SÜPER YETENEK!");
       }
       if (prev.ohp > 0 && l.ohp <= 0) {
-        burstRef.current?.burst("🏆", "RAKİP DÜŞTÜ!");
+        burstRef.current?.burst("kill", "RAKİP DÜŞTÜ!");
       } else if (l.ph < prev.ph - 120) {
-        burstRef.current?.burst("💢");
+        burstRef.current?.burst("hurt");
       } else if (l.ohp < prev.ohp - 150) {
-        burstRef.current?.burst("⚔️");
+        burstRef.current?.burst("clash");
       }
       prev.pc = l.pc;
       prev.ph = l.ph;
@@ -541,7 +619,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           <div className="moba-items hidden shrink-0 items-center gap-1 sm:flex">
             {ITEM_CHIPS.map((chip, i) => (
               <span key={i} className={cn("moba-item bg-gradient-to-br", chip.tone)}>
-                {chip.emoji}
+                {chip.icon}
               </span>
             ))}
           </div>
@@ -605,7 +683,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           </div>
           {gold !== undefined && (
             <span className="moba-gold shrink-0 items-center gap-1 font-extrabold">
-              <span className="text-sm">{CURRENCY_EMOJI}</span>
+              <Coins size={14} strokeWidth={2.4} className="text-amber-300" />
               <span className="tabular-nums">{Math.floor(gold)}</span>
             </span>
           )}
@@ -626,7 +704,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
                 cardOpen && "moba-icon-btn--on",
               )}
             >
-              <span aria-hidden>🎴</span>
+              <ScrollText size={15} strokeWidth={2.2} aria-hidden />
             </button>
             <button
               type="button"
@@ -634,7 +712,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
               aria-label="Savaştan çık"
               className="moba-icon-btn moba-icon-btn--danger pointer-events-auto"
             >
-              <span aria-hidden>⏏</span>
+              <LogOut size={15} strokeWidth={2.2} aria-hidden />
             </button>
           </div>
         </div>
@@ -646,21 +724,21 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       <div className="moba-rail pointer-events-auto absolute right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-1.5">
         <button
           type="button"
-          onClick={() => burstRef.current?.burst("😄")}
+          onClick={() => burstRef.current?.burst("smile")}
           title="Gülen tepki gönder"
           aria-label="Gülen tepki gönder"
           className="moba-rail-btn"
         >
-          😄
+          <Smile size={18} strokeWidth={2.2} aria-hidden />
         </button>
         <button
           type="button"
-          onClick={() => burstRef.current?.burst("🔥")}
+          onClick={() => burstRef.current?.burst("fire")}
           title="Ateş tepkisi gönder"
           aria-label="Ateş tepkisi gönder"
           className="moba-rail-btn"
         >
-          🔥
+          <Flame size={18} strokeWidth={2.2} aria-hidden />
         </button>
         <button
           type="button"
@@ -669,7 +747,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           aria-label="Rakip kartını aç"
           className={cn("moba-rail-btn", cardOpen && "moba-rail-btn--on")}
         >
-          🎴
+          <ScrollText size={18} strokeWidth={2.2} aria-hidden />
         </button>
       </div>
 
@@ -701,7 +779,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
                 transform="rotate(-90 18 18)"
               />
             </svg>
-            <span className="moba-slot-icon">💥</span>
+            <span className="moba-slot-icon">
+              <Sword size={22} strokeWidth={2.3} />
+            </span>
           </div>
           <div className="moba-slot" title="Süper yetenek">
             <svg viewBox="0 0 36 36" className="moba-slot-ring">
@@ -727,7 +807,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
                 transform="rotate(-90 18 18)"
               />
             </svg>
-            <span className="moba-slot-icon">{meta.playerEmoji}</span>
+            <span className="moba-slot-icon">
+              <AbilityIcon emoji={meta.playerEmoji} size={22} />
+            </span>
           </div>
           {samurai && (
             <div ref={ultSlot} className="moba-slot" title="Kraliyet ultisi">
@@ -754,7 +836,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
                   transform="rotate(-90 18 18)"
                 />
               </svg>
-              <span className="moba-slot-icon">⚔️</span>
+              <span className="moba-slot-icon">
+                <Crown size={24} strokeWidth={2.3} />
+              </span>
             </div>
           )}
         </div>
@@ -788,7 +872,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       {hidden && (
         <div className="absolute inset-x-0 top-[52px] flex justify-center">
           <span className="battle-hidden-badge flex items-center gap-2 rounded-full border border-emerald-300/60 bg-emerald-950/75 px-4 py-1.5 text-xs font-extrabold tracking-wide text-emerald-200 shadow-lg backdrop-blur-sm">
-            <span className="text-sm">🌿</span>
+            <EyeOff size={14} strokeWidth={2.4} aria-hidden />
             GİZLENDİN
           </span>
         </div>
