@@ -245,7 +245,9 @@ function MagmaLights() {
     for (let i = 0; i < LAVA_POOLS.length; i++) {
       const light = refs.current[i];
       if (!light) continue;
-      light.intensity = 0.95 + 0.35 * Math.sin(t * 1.7 + i * 2.1);
+      // Işık bütçesi: havuz ışıkları sahneyi tek başına aydınlatmaz, sadece
+      // çukurun kenarını belli eder (eskiden 0.95 ile tüm zemini yıkıyordu).
+      light.intensity = 0.34 + 0.1 * Math.sin(t * 1.7 + i * 2.1);
     }
   });
 
@@ -259,8 +261,8 @@ function MagmaLights() {
           }}
           position={[p.x, 0.62, p.z]}
           color="#ff6a1f"
-          intensity={0.95}
-          distance={8.5}
+          intensity={0.34}
+          distance={6.5}
           decay={2}
         />
       ))}
@@ -278,7 +280,7 @@ function LavaPools() {
       const m = refs.current[i];
       if (!m) continue;
       const mat = m.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.32 + 0.1 * Math.sin(t * 1.5 + i * 1.7);
+      mat.opacity = 0.16 + 0.05 * Math.sin(t * 1.5 + i * 1.7);
       m.scale.setScalar(1 + 0.05 * Math.sin(t * 1.1 + i));
     }
   });
@@ -299,7 +301,7 @@ function LavaPools() {
               map={tex}
               color="#ff8c2e"
               transparent
-              opacity={0.34}
+              opacity={0.18}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               toneMapped={false}
@@ -311,7 +313,7 @@ function LavaPools() {
             <meshBasicMaterial
               color="#ffb066"
               transparent
-              opacity={0.38}
+              opacity={0.2}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               side={THREE.DoubleSide}
@@ -369,20 +371,23 @@ function NexusCrystal({
     if (rings.current) rings.current.rotation.y += dt * 0.25;
     if (runes.current) runes.current.rotation.y -= dt * 0.12;
     const pulse = 0.78 + 0.22 * Math.sin(t * 1.8);
+    // Kristal, sütun, hale ve nokta ışık İLK sürümdeki değerlerin çok
+    // altında: dört katman birlikte bloom eşiğini aşıp üssü bembeyaz bir
+    // lekeye çeviriyordu. Artık hepsi "parlar ama taşmaz" seviyesinde.
     if (crystalMat.current) {
-      crystalMat.current.emissiveIntensity = 1.15 + 0.6 * pulse;
+      crystalMat.current.emissiveIntensity = 0.55 + 0.28 * pulse;
     }
     if (beam.current) {
       const mat = beam.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.14 + 0.07 * pulse;
+      mat.opacity = 0.055 + 0.028 * pulse;
       beam.current.scale.set(1 + 0.03 * pulse, 1, 1 + 0.03 * pulse);
     }
     if (haloRef.current) {
       (haloRef.current.material as THREE.SpriteMaterial).opacity =
-        0.2 + 0.08 * pulse;
-      haloRef.current.scale.setScalar(5 + 0.35 * pulse);
+        0.08 + 0.035 * pulse;
+      haloRef.current.scale.setScalar(3.6 + 0.28 * pulse);
     }
-    if (light.current) light.current.intensity = 1.7 + 0.7 * pulse;
+    if (light.current) light.current.intensity = 0.5 + 0.22 * pulse;
   });
 
   return (
@@ -394,7 +399,7 @@ function NexusCrystal({
           <meshBasicMaterial
             color={accent}
             transparent
-            opacity={0.55}
+            opacity={0.26}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             side={THREE.DoubleSide}
@@ -406,7 +411,7 @@ function NexusCrystal({
           <meshBasicMaterial
             color={core}
             transparent
-            opacity={0.35}
+            opacity={0.17}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             side={THREE.DoubleSide}
@@ -425,7 +430,7 @@ function NexusCrystal({
             <meshBasicMaterial
               color={color}
               transparent
-              opacity={0.5}
+              opacity={0.24}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               side={THREE.DoubleSide}
@@ -442,7 +447,7 @@ function NexusCrystal({
           map={beamTex}
           color={color}
           transparent
-          opacity={0.1}
+          opacity={0.045}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           side={THREE.DoubleSide}
@@ -456,7 +461,7 @@ function NexusCrystal({
           map={glowTex}
           color={color}
           transparent
-          opacity={0.16}
+          opacity={0.08}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
           toneMapped={false}
@@ -471,7 +476,7 @@ function NexusCrystal({
             ref={crystalMat}
             color={core}
             emissive={color}
-            emissiveIntensity={1.1}
+            emissiveIntensity={0.55}
             roughness={0.12}
             metalness={0.15}
             transparent
@@ -484,7 +489,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={1.2}
+            emissiveIntensity={0.6}
             roughness={0.1}
             transparent
             opacity={0.94}
@@ -500,7 +505,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={0.9}
+            emissiveIntensity={0.45}
             roughness={0.14}
             transparent
             opacity={0.9}
@@ -528,7 +533,7 @@ function NexusCrystal({
               <meshStandardMaterial
                 color={core}
                 emissive={accent}
-                emissiveIntensity={0.8}
+                emissiveIntensity={0.4}
                 roughness={0.2}
                 transparent
                 opacity={0.85}
@@ -544,9 +549,9 @@ function NexusCrystal({
         ref={light}
         position={[0, 2.6, 0]}
         color={color}
-        distance={13}
+        distance={9}
         decay={2}
-        intensity={1.2}
+        intensity={0.5}
       />
     </group>
   );
@@ -570,9 +575,9 @@ function VolcanicKeyLight() {
     // Arena3D'nin ana ışığı ArenaCamera paletinde sıcak tona çevrildiği
     // için bu iki ışık ince bir renk dolgusudur (parlaklığı şişirmez).
     // Şiddetler ölçülü: sahneyi turuncuya yıkayan asıl katman bunlardı.
-    if (warm.current) warm.current.intensity = 0.48 + 0.07 * Math.sin(t * 0.9);
+    if (warm.current) warm.current.intensity = 0.2 + 0.035 * Math.sin(t * 0.9);
     if (cool.current)
-      cool.current.intensity = 0.3 + 0.05 * Math.sin(t * 1.3 + 2);
+      cool.current.intensity = 0.12 + 0.025 * Math.sin(t * 1.3 + 2);
   });
   return (
     <>
@@ -583,14 +588,14 @@ function VolcanicKeyLight() {
         userData={{ mobaLight: true }}
         position={[20, 12, -10]}
         color="#ff9c3f"
-        intensity={0.48}
+        intensity={0.2}
       />
       <directionalLight
         ref={cool}
         userData={{ mobaLight: true }}
         position={[-14, 9, 18]}
         color="#49daff"
-        intensity={0.3}
+        intensity={0.12}
       />
     </>
   );
@@ -608,10 +613,10 @@ function VolcanicKeyLight() {
  */
 function ArenaEnvironment() {
   return (
-    <Environment resolution={96} frames={1} environmentIntensity={0.4}>
+    <Environment resolution={96} frames={1} environmentIntensity={0.18}>
       <Lightformer
         form="rect"
-        intensity={1.7}
+        intensity={0.85}
         color="#ff8a2b"
         scale={[12, 5, 1]}
         position={[7, 3, -7]}
@@ -619,7 +624,7 @@ function ArenaEnvironment() {
       />
       <Lightformer
         form="rect"
-        intensity={1.35}
+        intensity={0.6}
         color="#3fd8ff"
         scale={[10, 4, 1]}
         position={[-7, 2.5, 7]}
@@ -627,7 +632,7 @@ function ArenaEnvironment() {
       />
       <Lightformer
         form="circle"
-        intensity={0.6}
+        intensity={0.25}
         color="#ffe3bd"
         scale={5}
         position={[0, 7, 0]}
@@ -798,7 +803,7 @@ function GroundHaze() {
     if (!ref.current) return;
     const t = performance.now() / 1000;
     (ref.current.material as THREE.MeshBasicMaterial).opacity =
-      0.05 + 0.018 * Math.sin(t * 0.8);
+      0.024 + 0.008 * Math.sin(t * 0.8);
   });
   return (
     <mesh
@@ -812,7 +817,7 @@ function GroundHaze() {
         map={tex}
         color="#ff6a1f"
         transparent
-        opacity={0.035}
+        opacity={0.018}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
       />
@@ -1038,11 +1043,11 @@ function ZoneAuras() {
     const t = performance.now() / 1000;
     if (warmRef.current) {
       (warmRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.12 + 0.035 * Math.sin(t * 0.9);
+        0.045 + 0.014 * Math.sin(t * 0.9);
     }
     if (coldRef.current) {
       (coldRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.13 + 0.035 * Math.sin(t * 1.1 + 1.5);
+        0.05 + 0.014 * Math.sin(t * 1.1 + 1.5);
     }
   });
 
@@ -1059,7 +1064,7 @@ function ZoneAuras() {
           map={warmTex}
           color="#ff3d12"
           transparent
-          opacity={0.13}
+          opacity={0.045}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
@@ -1075,7 +1080,7 @@ function ZoneAuras() {
           map={coldTex}
           color="#7c5cff"
           transparent
-          opacity={0.14}
+          opacity={0.05}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
@@ -1424,7 +1429,7 @@ function ArenaShadowCaster() {
       userData={{ mobaLight: true }}
       position={[ARENA_W / 2 + 14, 20, ARENA_D / 2 - 10]}
       color="#ffe6c8"
-      intensity={0.62}
+      intensity={0.46}
       castShadow
       shadow-mapSize={[1024, 1024]}
       shadow-camera-left={-24}
@@ -1462,9 +1467,9 @@ export function MapPalette() {
     //   • mavi üs yarısı   (x≈30)  → berrak mavi-mor
     // Tek tip gri çarpan artık yok: arazi iki yarıda farklı renkte okunur ve
     // renk doygunluğu yükseldi (nötr çarpan 0.76 civarı, bölge tonu üstüne).
-    const warm = new THREE.Color(1.06, 0.78, 0.6);
-    const cool = new THREE.Color(0.6, 0.72, 1.12);
-    const neutral = new THREE.Color(0.78, 0.76, 0.8);
+    const warm = new THREE.Color(0.94, 0.82, 0.74);
+    const cool = new THREE.Color(0.76, 0.82, 0.98);
+    const neutral = new THREE.Color(0.72, 0.71, 0.73);
     const warmEmissive = new THREE.Color(0x33_09_03);
     const coolEmissive = new THREE.Color(0x08_0c_33);
     const world = new THREE.Vector3();
@@ -1511,11 +1516,11 @@ export function MapPalette() {
         // Bölgenin rengi çok hafif bir ışıma olarak da zeminin kendisinden
         // gelir (kırmızı yanda kor, mavi yanda kristal ışıması).
         material.emissive = warmEmissive.clone().lerp(coolEmissive, t);
-        material.emissiveIntensity = 0.14;
+        material.emissiveIntensity = 0.05;
         // Çevre haritası yansımaları bu kez İSTENİYOR (yansıtıcı zemin),
         // ama 1.0'ın altında kalır ki doku detayı yıkanmasın.
         if (typeof material.envMapIntensity === "number") {
-          material.envMapIntensity = 0.75;
+          material.envMapIntensity = 0.45;
         }
       }
     });

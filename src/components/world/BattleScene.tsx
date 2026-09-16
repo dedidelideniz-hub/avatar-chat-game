@@ -41,6 +41,9 @@ import {
   findNearestWalkablePosition,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
+// Kapsül tabanlı, sürtünmesiz kayma hareketi (karo dikişlerine takılmayı ve
+// duvara uzaktan yapışmayı çözer — bkz. arena/slide.ts).
+import { slideStep } from "@/components/world/arena/slide";
 import {
   DUEL_LEAVE_EVENT,
   LandscapeGate,
@@ -1020,22 +1023,27 @@ export default function BattleScene({
   }, []);
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
-    let moved = false;
-    let nx = clamp(f.x + dx, 40, ARENA_W - 40);
-    if (!hitsObstacle(nx, f.y, FIGHTER_R)) {
-      f.x = nx;
-      moved = Math.abs(dx) > 0.01;
-    }
-    let ny = clamp(f.y + dy, 40, ARENA_H - 40);
-    if (!hitsObstacle(f.x, ny, FIGHTER_R)) {
-      f.y = ny;
-      moved = moved || Math.abs(dy) > 0.01;
-    }
+    // Sürtünmesiz kayma: hedef nokta reddedilirse karakter engelin önünde
+    // kilitlenmez; hareket engelin teğetine izdüşürülür (wall slide), küçük
+    // arazi dikişleri step offset ile tırmanılır. Alt adımlar sayesinde hızlı
+    // dash sırasında mermi/kaya tünellemesi de olmaz.
+    const toX = clamp(f.x + dx, 40, ARENA_W - 40);
+    const toY = clamp(f.y + dy, 40, ARENA_H - 40);
+    const next = slideStep(
+      f.x,
+      f.y,
+      toX - f.x,
+      toY - f.y,
+      hitsObstacle,
+      FIGHTER_R,
+    );
+    f.x = next.x;
+    f.y = next.y;
     if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
     // Use the actual displacement, not the requested displacement. This
     // keeps the bot from animating/walking in place when a real collider
     // blocks its path.
-    f.moving = moved;
+    f.moving = next.moved;
     // Track vertical direction for body facing (up/down pose)
     if (f.moving) {
       if (Math.abs(dy) > Math.abs(dx)) f.vy = dy > 0 ? 1 : -1;

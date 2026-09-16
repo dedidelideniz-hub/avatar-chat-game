@@ -37,6 +37,8 @@ import {
   findNearestWalkablePosition,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
+// Kapsül tabanlı, sürtünmesiz kayma hareketi (bkz. arena/slide.ts).
+import { slideStep } from "@/components/world/arena/slide";
 // 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik kilit.
 import {
   FIREBALL_RANGE_PX,
@@ -857,12 +859,23 @@ export default function PvpBattleScene({
     hitsRockCollision(cx, cy, r);
 
   const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
-    let nx = clamp(f.x + dx, 40, ARENA_W - 40);
-    if (!hitsObstacle(nx, f.y, FIGHTER_R)) f.x = nx;
-    let ny = clamp(f.y + dy, 40, ARENA_H - 40);
-    if (!hitsObstacle(f.x, ny, FIGHTER_R)) f.y = ny;
+    // Sürtünmesiz kayma (wall slide) + step offset + alt adım: karakter arazi
+    // dikişlerine, kaya ve duvar kenarlarına takılmadan süzülür.
+    const toX = clamp(f.x + dx, 40, ARENA_W - 40);
+    const toY = clamp(f.y + dy, 40, ARENA_H - 40);
+    const next = slideStep(
+      f.x,
+      f.y,
+      toX - f.x,
+      toY - f.y,
+      hitsObstacle,
+      FIGHTER_R,
+    );
+    f.x = next.x;
+    f.y = next.y;
     if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
-    f.moving = Math.hypot(dx, dy) > 0.5;
+    // Gerçek yer değiştirme: engellendiğinde yerinde yürüme animasyonu oynamaz.
+    f.moving = next.moved;
     if (f.moving) {
       if (Math.abs(dy) > Math.abs(dx)) f.vy = dy > 0 ? 1 : -1;
       else f.vy = 0;

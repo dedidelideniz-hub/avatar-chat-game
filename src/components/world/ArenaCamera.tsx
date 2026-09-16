@@ -51,10 +51,10 @@ const WIDE_TO = 1.8;
 // Landscape is a closer, longer lens from an isometric 45° elevation: only
 // the player's surroundings and the lane are in view, so the open void
 // around the island never appears.
-const FOV_P = 60;
-const FOV_L = 42; // 40–45 requested: a tighter lens keeps the map proportioned
-const DIST_P = 12;
-const DIST_L = 8.7; // very close follow: height ~5.2, back ~6.9 (offset style)
+const FOV_P = 56;
+const FOV_L = 50; // istenen lens (50°) — harita oransal kalır, alan biraz genişler
+const DIST_P = 12.8;
+const DIST_L = 9.2; // 50° lensin dengi: görünen alan korunur, kamera yakın kalır
 const EL_P = 1.0; // ~57° elevation (portrait, unchanged)
 const EL_L = 0.6458; // 37° MOBA pitch (35–40°) — behind-and-above, not top-down
 const CLAMP_P = 3;
@@ -111,20 +111,20 @@ export function useArenaCamera(
       const light = obj as THREE.Light;
       if (!light.isLight || light.userData?.mobaLight) return;
       if ((light as THREE.AmbientLight).isAmbientLight) {
-        light.intensity = 0.15;
+        light.intensity = 0.11;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
         hemi.color.set("#41528f");
         hemi.groundColor.set("#c4611f");
         // Dolgu ışığı kısıldı: tüm haritayı turuncuya boyayan asıl katman
         // burasıydı, siyahlar artık gerçekten siyah kalıyor.
-        hemi.intensity = 0.3;
+        hemi.intensity = 0.24;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
         // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
         // dönüşür (atmosferin kendi ışıkları yukarıda atlanır). Doygunluğu
         // düşürülüp şiddeti azaltıldı — zemin kahverengiye yıkanmıyor.
         light.color.set("#ffd0a4");
-        light.intensity = 0.92;
+        light.intensity = 0.8;
       }
     });
   }, [scene]);

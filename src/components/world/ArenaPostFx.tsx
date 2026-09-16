@@ -6,7 +6,9 @@
 //
 //   RenderPass → UnrealBloomPass → OutputPass
 //
-// * Bloom artık DENGELİ: eşik orta (0.62), şiddet orta (0.7), yarıçap 0.35.
+// * Bloom artık ÇOK ÖLÇÜLÜ: yalnızca gerçekten parlak öğeler (lav çekirdeği,
+//   kristal, mermi) taşar. Bir önceki 0.7/0.62 kombinasyonu ekrandaki tüm
+//   ışıkları birbirine karıştırıp sahneyi beyaza boğuyordu.
 //   Lav damarları, kristaller, lane kenar çizgileri, menzil halkaları ve
 //   yetenek efektleri etraflarına ışık saçar; ama eşik yüksek kaldığı için
 //   zemin/gövde gibi normal parlaklıktaki yüzeyler taşmaz ve kare "her yeri
@@ -31,6 +33,16 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 /** Çalışan composer sayısı — hiçbiri yoksa sahneyi biz normal çizeriz. */
 let workingComposers = 0;
 
+/** Işık bütçesi: sahnedeki hiçbir nokta ışığı bu değerin üzerine çıkamaz.
+ *  Arena3D'nin dövüşçü ışıkları (1.2 / 0.9) ve savaş alanı haritasının üs rim
+ *  ışıkları (2.4 / 2.2) aynı karede yanınca zemin turuncu-cyan bir sise
+ *  dönüyor ve TÜM ışıklar birbirine karışıyordu. Bu tavan hepsini ölçülü bir
+ *  seviyeye indirir; altındaki ışıklara (lav havuzları, atmosfer) dokunulmaz. */
+const POINT_LIGHT_CAP = 0.5;
+/** Genel pozlama: arena ACES ile tone map edildiği için tek çarpanla bütün
+ *  sahne kısılabilir. 1'in altındaki değer görüntüyü koyulaştırır. */
+const EXPOSURE = 0.8;
+
 /** Sahne bir kez mount edilir; yine de dokunmatik cihaz kontrolü için. */
 function isCoarsePointer() {
   if (typeof window === "undefined") return false;
@@ -41,9 +53,9 @@ function isCoarsePointer() {
 }
 
 export function ArenaPostFx({
-  strength = 0.7,
-  radius = 0.35,
-  threshold = 0.62,
+  strength = 0.3,
+  radius = 0.3,
+  threshold = 0.82,
 }: {
   strength?: number;
   radius?: number;
@@ -54,6 +66,39 @@ export function ArenaPostFx({
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
   const composerRef = useRef<EffectComposer | null>(null);
+  /** Işık bütçesi için önbelleğe alınmış nokta ışıkları (her kare traverse yok). */
+  const lightsRef = useRef<THREE.PointLight[]>([]);
+  const frameRef = useRef(0);
+
+  // --- Responsive render ayarları: pozlama + canvas yerleşimi + piksel oranı.
+  // WebView'de canvas'ın satır içi (inline) davranışı altında birkaç piksel
+  // boşluk kalabiliyor ve bu, ölçeklenen sahnede "basık" görüntüye katkı
+  // yapıyor; bu yüzden canvas blok olarak tam ekrana sabitlenir. Piksel oranı
+  // cihaz oranıyla sınırlanır (üst sınır 2): düşük çözünürlükte bulanık,
+  // gereksiz yüksek oranda boşa GPU tüketen görüntü engellenir.
+  useEffect(() => {
+    const el = gl.domElement;
+    const prevExposure = gl.toneMappingExposure;
+    const prevStyle = {
+      width: el.style.width,
+      height: el.style.height,
+      display: el.style.display,
+    };
+    const dprCap = isCoarsePointer() ? 1.5 : 2;
+    gl.toneMappingExposure = EXPOSURE;
+    gl.setPixelRatio(
+      Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, dprCap),
+    );
+    el.style.width = "100%";
+    el.style.height = "100%";
+    el.style.display = "block";
+    return () => {
+      gl.toneMappingExposure = prevExposure;
+      el.style.width = prevStyle.width;
+      el.style.height = prevStyle.height;
+      el.style.display = prevStyle.display;
+    };
+  }, [gl]);
 
   useEffect(() => {
     const el = gl.domElement;
@@ -118,6 +163,22 @@ export function ArenaPostFx({
   }, [gl, size]);
 
   useFrame(() => {
+    // --- Işık bütçesi ---------------------------------------------------
+    // Sahne yüklendikçe (harita GLB'si sonradan gelir) ışık listesi tazelenir;
+    // aradaki karelerde önbellek kullanılır, yani kare başına traverse yok.
+    frameRef.current += 1;
+    if (frameRef.current === 1 || frameRef.current % 30 === 0) {
+      const list: THREE.PointLight[] = [];
+      scene.traverse((obj) => {
+        const light = obj as THREE.PointLight;
+        if (light.isPointLight && !light.userData?.mobaLight) list.push(light);
+      });
+      lightsRef.current = list;
+    }
+    for (const light of lightsRef.current) {
+      if (light.intensity > POINT_LIGHT_CAP) light.intensity = POINT_LIGHT_CAP;
+    }
+
     const composer = composerRef.current;
     if (composer) {
       composer.render();

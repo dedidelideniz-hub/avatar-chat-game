@@ -162,26 +162,76 @@ function hasWalkableNeighbour(
 }
 
 /**
- * Navigation clearance test for a fighter-sized circle. A nearby walkable
- * cell is not enough: that old rule let the center sit on a wall/platform
- * edge whenever some road cell was within the tolerance. Sample the actual
- * circle in the walkable mask instead, keeping the corridor open while
- * reserving the fighter radius from every unwalkable surface.
+ * Navigation clearance test for a fighter-sized circle.
+ *
+ * Kapsül yaklaşımı: tabanı yuvarlatılmış karakter, engelin/arazi sınırının
+ * ÜZERİNDEN kayabilir; bu yüzden temel olarak merkez hücresi ve tek bir halka
+ * örneklenir. Eski sürüm yarıçapın tamamında iki halkayı şart koşuyordu ve
+ * zemin binlerce üçgenden rasterize edildiği için dikiş noktalarındaki tek
+ * hücrelik boşluk bile hareketi tamamen reddediyordu — düz yolda takılmanın
+ * asıl kaynağı buydu. Ayrıca birkaç örnek kaybı tolere edilir; gerçek ada ve
+ * duvar sınırları (geniş boşluklar) hâlâ geçilemez.
  */
 function hasWalkableFootprint(g: RockGrid, px: number, py: number, radius: number) {
   if (!isWalkableCell(g, px, py)) return false;
-  const clearance = Math.max(0, radius - g.cell);
-  const rings = [clearance * 0.55, clearance];
-  for (const ring of rings) {
-    const samples = Math.max(12, Math.ceil((Math.PI * 2 * ring) / g.cell));
-    for (let i = 0; i < samples; i++) {
-      const angle = (i / samples) * Math.PI * 2;
-      if (!isWalkableCell(g, px + Math.cos(angle) * ring, py + Math.sin(angle) * ring)) {
-        return false;
-      }
+  const ring = Math.max(0, radius - g.cell) * 0.72;
+  if (ring <= g.cell) return true;
+  const samples = Math.max(8, Math.ceil((Math.PI * 2 * ring) / (g.cell * 1.5)));
+  let misses = 0;
+  for (let i = 0; i < samples; i++) {
+    const angle = (i / samples) * Math.PI * 2;
+    if (
+      !isWalkableCell(g, px + Math.cos(angle) * ring, py + Math.sin(angle) * ring)
+    ) {
+      misses += 1;
+      // Tek/çift hücrelik dikiş artıkları hareketi kilitlemesin.
+      if (misses > 2) return false;
     }
   }
   return true;
+}
+
+/**
+ * Arazi dikişi temizliği (Internal Edge Bug).
+ *
+ * Yürünebilir zemin, haritanın gerçek üçgenlerinden rasterize edilir; iki
+ * üçgenin birleştiği kenarda tek hücrelik boşluklar kalabilir. Karakter düz
+ * yolda yürürken bu GÖRÜNMEZ dikişlere takılıyordu. Çözüm: yürünebilir
+ * maskeye hafif bir "kapatma" (closing) uygulanır — komşularının neredeyse
+ * tamamı yürünebilir olan boş hücre de yürünebilir sayılır.
+ *
+ * Düz bir sınırın dışındaki hücrenin yalnızca 3 yürünebilir komşusu vardır,
+ * bu yüzden eşik (5) ada/duvar hattını DIŞA doğru büyütmez; sadece ince
+ * çatlaklar ve kırıntı delikleri kapanır.
+ */
+function closeWalkableSeams(g: RockGrid, passes = 2) {
+  for (let pass = 0; pass < passes; pass++) {
+    const source = g.walkable;
+    const filled: number[] = [];
+    for (let row = 0; row < g.rows; row++) {
+      for (let col = 0; col < g.cols; col++) {
+        if (source[row * g.cols + col]) continue;
+        let neighbours = 0;
+        for (let dr = -1; dr <= 1 && neighbours < 5; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (!dr && !dc) continue;
+            const r = row + dr;
+            const c = col + dc;
+            if (r < 0 || r >= g.rows || c < 0 || c >= g.cols) continue;
+            if (source[r * g.cols + c]) neighbours += 1;
+          }
+        }
+        if (neighbours >= 5) filled.push(row * g.cols + col);
+      }
+    }
+    if (filled.length === 0) return;
+    for (const index of filled) {
+      if (g.walkable[index] === 0) {
+        g.walkable[index] = 1;
+        g.walkableCount += 1;
+      }
+    }
+  }
 }
 
 /**
@@ -1058,6 +1108,8 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // its base — while thick obstacles (blue props, towers, raised platforms)
   // stay solid.
   carveBaseExits(grid);
+  // Son adım: rasterizasyondan kalan dikiş/çatlak hücrelerini kapat.
+  closeWalkableSeams(grid);
   return grid;
 }
 
