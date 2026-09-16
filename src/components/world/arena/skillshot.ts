@@ -4,7 +4,7 @@
 // kilitliyor ve mermi/efekt onun üzerine gidiyordu (1500 px'e kadar). Bu modül
 // o davranışı kaldırıp LoL / Wild Rift tarzı menzilli nişanı kurar:
 //
-//   1) MAX_RANGE (12 birim = 600 px) — hiçbir atış bu mesafeden öteye gitmez;
+//   1) MAX_RANGE (4 birim = 200 px) — hiçbir atış bu mesafeden öteye gitmez;
 //      menzil sonunda mermi sönüp yok olur (bkz. ProjectilePool).
 //   2) Düşman yalnızca menzil İÇİNDEyse otomatik kilitlenir (quick tap).
 //      Menzil dışındaysa atış karakterin baktığı yöne gider.
@@ -16,15 +16,18 @@
 // nişan alırken hiçbir React yeniden çizimi olmaz.
 import { S } from "./shared";
 
-/** Yeteneğin ulaşabileceği en uzak mesafe (birim). */
-export const MAX_RANGE_UNITS = 12;
+/** Yeteneğin ulaşabileceği en uzak mesafe (birim). Karakter gövdesi 1.5 birim
+ *  olduğundan 4 birim ≈ karakterin hemen önündeki kısa menzil: haritayı
+ *  kaplamaz, "3-4 metre ileri" hissi verir. */
+export const MAX_RANGE_UNITS = 4;
 /** Aynı mesafe oyun biriminde (px) — simülasyon px uzayında çalışır. */
 export const MAX_RANGE_PX = MAX_RANGE_UNITS * S;
-/** Merminin menzil sonunda sönmeye başladığı mesafe (px). */
-export const RANGE_FADE_PX = 110;
+/** Merminin menzil sonunda sönmeye başladığı mesafe (px). Kısa menzilde
+ *  uçuşun yarısı sönük görünmesin diye menzile göre küçük tutulur. */
+export const RANGE_FADE_PX = 40;
 
 /** Skillshot şeridinin (yerdeki ok) genişliği — birim. */
-export const SKILLSHOT_WIDTH = 0.8;
+export const SKILLSHOT_WIDTH = 0.55;
 
 /** Nişan durumu: kim, hangi yöne nişan alıyor? (bkz. dosya başı notu) */
 export const aimState = {
@@ -47,7 +50,7 @@ export const aimState = {
  * arenasında hem PvP'de bu sabiti okur — görsel sönme ile patlama aynı
  * noktada gerçekleşsin diye tek yerden tutuluyor.
  */
-export const FIREBALL_RANGE_PX = 720;
+export const FIREBALL_RANGE_PX = MAX_RANGE_PX;
 /** Menzil sonuna yaklaşan merminin sönme çarpanı (1 → 0). */
 export function rangeFade(travelled: number, range: number): number {
   const start = range - RANGE_FADE_PX;

@@ -1263,10 +1263,12 @@ export default function BattleScene({
             mx = ldx / ld;
             my = ldy / ld;
           }
-        } else if (dist > 340) {
+        } else if (dist > 150) {
+          // Kısa menzil (MAX_RANGE = 200 px): bot menzil dışına boşa
+          // ateş etmesin diye yaklaşma eşiği de menzile göre küçültüldü.
           mx = dx / dist;
           my = dy / dist;
-        } else if (dist < 200) {
+        } else if (dist < 80) {
           mx = -dx / dist;
           my = -dy / dist;
         } else {

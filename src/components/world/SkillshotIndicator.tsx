@@ -350,7 +350,7 @@ export function SkillshotIndicator({
       </mesh>
       {/* Ok başı */}
       <mesh ref={head} raycast={() => null}>
-        <planeGeometry args={[1.3, 1.3]} />
+        <planeGeometry args={[0.7, 0.7]} />
         <meshBasicMaterial
           ref={headMat}
           map={headTex}
@@ -364,7 +364,7 @@ export function SkillshotIndicator({
       </mesh>
       {/* Menzil içinde kilitlenen hedefin işareti */}
       <mesh ref={lock} visible={false} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
-        <planeGeometry args={[3.4, 3.4]} />
+        <planeGeometry args={[2, 2]} />
         <meshBasicMaterial
           map={pulseTex}
           color={LOCK_COLOR}
