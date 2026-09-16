@@ -45,10 +45,11 @@ function makeRangeTexture(): THREE.Texture {
   const cy = size / 2;
   const outer = size / 2 - 4;
 
-  // Dışa doğru solan geniş hale (çemberin kenarı düz bir çizgi gibi durmasın).
-  const halo = g.createRadialGradient(cx, cy, outer * 0.84, cx, cy, outer);
+  // Dışa doğru solan İNCE hale: çemberin kenarı düz bir çizgi gibi durmasın,
+  // ama zeminin üstünü kaplamasın.
+  const halo = g.createRadialGradient(cx, cy, outer * 0.93, cx, cy, outer);
   halo.addColorStop(0, "rgba(255,255,255,0)");
-  halo.addColorStop(0.7, "rgba(255,255,255,0.22)");
+  halo.addColorStop(0.75, "rgba(255,255,255,0.16)");
   halo.addColorStop(1, "rgba(255,255,255,0)");
   g.fillStyle = halo;
   g.beginPath();
@@ -78,15 +79,8 @@ function makeRangeTexture(): THREE.Texture {
   g.arc(cx, cy, outer * 0.975, 0, Math.PI * 2);
   g.stroke();
 
-  // İçe doğru çok zayıf dolgu: alanın tamamı okunur ama görüşü kapatmaz.
-  const fill = g.createRadialGradient(cx, cy, 0, cx, cy, outer);
-  fill.addColorStop(0, "rgba(255,255,255,0.05)");
-  fill.addColorStop(0.7, "rgba(255,255,255,0.025)");
-  fill.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = fill;
-  g.beginPath();
-  g.arc(cx, cy, outer, 0, Math.PI * 2);
-  g.fill();
+  // İç dolgu YOK: çember yalnızca sınırı gösterir, zemini kaplamaz. Böylece
+  // menzil alanı "ekranı kaplayan bir daire" gibi görünmez.
 
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -212,18 +206,19 @@ export function SkillshotIndicator({
   useFrame((state, dt) => {
     const g = root.current;
     if (!g) return;
-    // Menzil çemberi yalnızca YETENEK nişanında çizilir (kural: "yetenek
-    // butonuna basılı tutunca menzil alanı görünür"). Düz vuruşta yalnızca
-    // sürükleyerek nişan alındığında yön oku çıkar — run-and-gun sırasında
-    // ekranı gereksiz doldurmasın.
+    // Menzil çemberi hem YETENEK nişanında hem de DÜZ VURUŞ ateşinde görünür:
+    // oyuncu normal atışta da menzilini görsün. Düz vuruşta çember daha soluk
+    // çizilir ve nabız halkası kapanır (gereksiz görsel gürültü olmasın).
+    // Yön oku yalnızca sürükleyerek nişan alındığında çıkar.
     const ability = aimState.ability;
     const basicAiming =
       aimState.basic && Math.hypot(aimState.basicDx, aimState.basicDy) > 0.15;
-    const active = ability || basicAiming;
+    const showRing = ability || aimState.basic;
+    const active = showRing || basicAiming;
     if (g.visible !== active) g.visible = active;
     if (!active) return;
-    if (ring.current && ring.current.visible !== ability) {
-      ring.current.visible = ability;
+    if (ring.current && ring.current.visible !== showRing) {
+      ring.current.visible = showRing;
     }
     if (pulse.current && pulse.current.visible !== ability) {
       pulse.current.visible = ability;
@@ -251,7 +246,10 @@ export function SkillshotIndicator({
     if (ring.current) ring.current.rotation.z = -t * 0.26;
     if (ringMat.current) {
       ringMat.current.color.set(color);
-      ringMat.current.opacity = 0.55 + 0.14 * Math.sin(t * 2.6);
+      // Düz vuruşta çember daha soluk kalsın (sürekli ateş hâlinde ekranı
+      // boğmasın), yetenek nişanında biraz daha belirgin olsun.
+      const base = ability ? 0.5 : 0.32;
+      ringMat.current.opacity = base + 0.1 * Math.sin(t * 2.6);
     }
     // ── dışa doğru atan nabız halkası (menzil sınırı) ──
     if (pulse.current) {
