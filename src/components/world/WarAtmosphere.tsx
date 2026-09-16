@@ -10,9 +10,10 @@
 // Bileşen BattleMapModel içinde haritanın KARDEŞİ olarak render edilir, yani
 // haritanın fit dönüşümünden etkilenmez ve doğrudan arena uzayında durur.
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { ArenaPostFx } from "./ArenaPostFx";
 
 /** Savaş alanı GLB'sinin tek kaynağı (BattleMapModel de buradan okur). */
 export const MAP_URL = "/models/5v5_game_map.glb";
@@ -221,6 +222,42 @@ const LAVA_POOLS = [
   { x: 13.5, z: 20.2, r: 2.0 },
 ];
 
+/**
+ * Lav göllerinden sahneye vuran turuncu nokta ışıkları. Referanstaki gibi
+ * magma kanalları zemini gerçekten aydınlatsın diye her havuza bir ışık
+ * konur ve nabız gibi soluyarak canlı kalır.
+ */
+function MagmaLights() {
+  const refs = useRef<(THREE.PointLight | null)[]>([]);
+
+  useFrame(() => {
+    const t = performance.now() / 1000;
+    for (let i = 0; i < LAVA_POOLS.length; i++) {
+      const light = refs.current[i];
+      if (!light) continue;
+      light.intensity = 1.7 + 0.7 * Math.sin(t * 1.7 + i * 2.1);
+    }
+  });
+
+  return (
+    <>
+      {LAVA_POOLS.map((p, i) => (
+        <pointLight
+          key={`magma-${i}`}
+          ref={(el) => {
+            refs.current[i] = el;
+          }}
+          position={[p.x, 0.62, p.z]}
+          color="#ff6a1f"
+          intensity={1.8}
+          distance={9.5}
+          decay={2}
+        />
+      ))}
+    </>
+  );
+}
+
 function LavaPools() {
   const tex = useMemo(() => makeGlowTexture("rgba(255,120,30,1)"), []);
   const refs = useRef<(THREE.Mesh | null)[]>([]);
@@ -302,7 +339,10 @@ function NexusCrystal({
   const runes = useRef<THREE.Group>(null);
   const light = useRef<THREE.PointLight>(null);
 
-  const beamTex = useMemo(() => makePillarTexture("rgba(255,255,255,0.85)"), []);
+  const beamTex = useMemo(
+    () => makePillarTexture("rgba(255,255,255,0.85)"),
+    [],
+  );
   const glowTex = useMemo(() => makeGlowTexture("rgba(180,230,255,1)"), []);
   const haloRef = useRef<THREE.Sprite>(null);
 
@@ -332,7 +372,7 @@ function NexusCrystal({
         0.34 + 0.16 * pulse;
       haloRef.current.scale.setScalar(6.4 + 0.5 * pulse);
     }
-    if (light.current) light.current.intensity = 1.9 + 1.1 * pulse;
+    if (light.current) light.current.intensity = 2.6 + 1.4 * pulse;
   });
 
   return (
@@ -441,7 +481,11 @@ function NexusCrystal({
             toneMapped={false}
           />
         </mesh>
-        <mesh position={[0, -1.0, 0]} rotation={[Math.PI, 0, 0]} raycast={() => null}>
+        <mesh
+          position={[0, -1.0, 0]}
+          rotation={[Math.PI, 0, 0]}
+          raycast={() => null}
+        >
           <coneGeometry args={[0.62, 0.7, 6]} />
           <meshStandardMaterial
             color={core}
@@ -462,7 +506,11 @@ function NexusCrystal({
           return (
             <mesh
               key={i}
-              position={[Math.cos(a) * 1.45, Math.sin(a * 1.7) * 0.35, Math.sin(a) * 1.45]}
+              position={[
+                Math.cos(a) * 1.45,
+                Math.sin(a * 1.7) * 0.35,
+                Math.sin(a) * 1.45,
+              ]}
               rotation={[0.4, a, 0.3]}
               raycast={() => null}
             >
@@ -481,7 +529,15 @@ function NexusCrystal({
         })}
       </group>
 
-      <pointLight ref={light} position={[0, 2.6, 0]} color={color} distance={16} decay={2} intensity={2.4} />
+      {/* üs kristali: referanstaki gibi doygun turuncu/cyan bir ışık yayar */}
+      <pointLight
+        ref={light}
+        position={[0, 2.6, 0]}
+        color={color}
+        distance={20}
+        decay={2}
+        intensity={3.1}
+      />
     </group>
   );
 }
@@ -503,8 +559,9 @@ function VolcanicKeyLight() {
     const t = performance.now() / 1000;
     // Arena3D'nin ana ışığı ArenaCamera paletinde sıcak tona çevrildiği
     // için bu iki ışık ince bir renk dolgusudur (parlaklığı şişirmez).
-    if (warm.current) warm.current.intensity = 0.7 + 0.1 * Math.sin(t * 0.9);
-    if (cool.current) cool.current.intensity = 0.38 + 0.06 * Math.sin(t * 1.3 + 2);
+    if (warm.current) warm.current.intensity = 1.0 + 0.14 * Math.sin(t * 0.9);
+    if (cool.current)
+      cool.current.intensity = 0.58 + 0.1 * Math.sin(t * 1.3 + 2);
   });
   return (
     <>
@@ -514,17 +571,58 @@ function VolcanicKeyLight() {
         ref={warm}
         userData={{ mobaLight: true }}
         position={[20, 12, -10]}
-        color="#ffbe86"
-        intensity={0.7}
+        color="#ff9c3f"
+        intensity={1.0}
       />
       <directionalLight
         ref={cool}
         userData={{ mobaLight: true }}
         position={[-14, 9, 18]}
-        color="#8fe3ff"
-        intensity={0.38}
+        color="#49daff"
+        intensity={0.58}
       />
     </>
+  );
+}
+
+/**
+ * Prosedürel çevre haritası (Environment + Lightformer).
+ *
+ * Şampiyonların ve kristalin ışığı gerçekten YANSITMASI için sahneye bir
+ * environment map gerekir: bir yanda lavdan gelen turuncu, karşıda cyan bir
+ * ışık levhası. Ağdan HDRI indirilmez (offline/güvenli) — `frames={1}` ile
+ * yalnızca bir kez 96px'lik bir küpe pişirilir, yani kare başına maliyeti yok.
+ * `environmentIntensity` düşük tutulur: amaç atmosferi aydınlatmak değil
+ * metallere yansıma vermek, bu yüzden kontrast korunur.
+ */
+function ArenaEnvironment() {
+  return (
+    <Environment resolution={96} frames={1} environmentIntensity={0.45}>
+      <Lightformer
+        form="rect"
+        intensity={2.4}
+        color="#ff8a2b"
+        scale={[12, 5, 1]}
+        position={[7, 3, -7]}
+        target={[0, 0, 0]}
+      />
+      <Lightformer
+        form="rect"
+        intensity={1.9}
+        color="#3fd8ff"
+        scale={[10, 4, 1]}
+        position={[-7, 2.5, 7]}
+        target={[0, 0, 0]}
+      />
+      <Lightformer
+        form="circle"
+        intensity={0.8}
+        color="#ffe3bd"
+        scale={5}
+        position={[0, 7, 0]}
+        target={[0, 0, 0]}
+      />
+    </Environment>
   );
 }
 
@@ -746,6 +844,11 @@ export function MapPalette() {
         }
         material.emissive = new THREE.Color(0x14_05_03);
         material.emissiveIntensity = 0.22;
+        // Yeni çevre haritası zemini yıkamasın: bazalt zemin neredeyse hiç
+        // yansıtmaz, kontrast lav ile zemini arasında kalır.
+        if (typeof material.envMapIntensity === "number") {
+          material.envMapIntensity = 0.28;
+        }
       }
     });
   }, [scene]);
@@ -760,7 +863,11 @@ export function MapPalette() {
 export function WarAtmosphere() {
   return (
     <>
+      {/* Bloom zinciri (RenderPass → UnrealBloomPass → OutputPass) */}
+      <ArenaPostFx />
+      <ArenaEnvironment />
       <VolcanicKeyLight />
+      <MagmaLights />
       <GroundHaze />
       <LavaRivers />
       <LavaPools />

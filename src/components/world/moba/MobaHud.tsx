@@ -34,6 +34,9 @@ import { useQuery } from "convex/react";
 import type { BattleFighter } from "@/components/world/Arena3D";
 import { CURRENCY_EMOJI } from "@/lib/shop";
 import { cn } from "@/lib/utils";
+// Cam (glassmorphism) katmanı: index.css'in sonundaki HUD bloklarını bu dosya
+// günceller (index.css düzenleme aracının pencere sınırının dışında kalıyor).
+import "@/styles/moba-glass.css";
 
 /** Arena: 50 px = 1 birim (Arena3D `S`), saha 34 x 22 birim. */
 const S = 50;

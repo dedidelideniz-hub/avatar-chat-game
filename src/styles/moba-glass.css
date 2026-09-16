@@ -1,0 +1,140 @@
+/* MOBA HUD — cam (glassmorphism) katmanı.
+ *
+ * Neden ayrı dosya: index.css 50 KB'ı aşan bir dosya; düzenleme aracı
+ * yalnızca ilk ~43 KB'ını görebildiği için listenin SONUNDAKİ bloklar (rakip
+ * kartı, can/XP barları, yetenek yuvaları) oradan güncellenemiyor. Bu dosya
+ * MobaHud'dan import edilir; yani index.css'ten sonra yüklenir ve kuralları
+ * ekranın tamamı için geçerlidir.
+ *
+ * Sıralama güvencesi: import edilen CSS index.css'ten sonra gelsin diye çift
+ * sınıf yazımı (.moba-card.moba-card) kullanılır. Seçici aynı öğeyi seçer ama
+ * özgüllüğü (0,2,0) olduğu için index.css'in tek sınıflı kurallarını dosya
+ * sırasından bağımsız olarak yener.
+ */
+
+/* ── Yetenek yuvası: koyu cam daire ── */
+.moba-slot.moba-slot {
+  background: radial-gradient(
+    circle at 35% 25%,
+    rgb(43 59 92 / 0.72),
+    rgb(11 17 32 / 0.78)
+  );
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.26),
+    inset 0 1px 0 rgb(255 255 255 / 0.2);
+}
+
+/* ── Can/XP barı ── */
+.moba-vitals-bar.moba-vitals-bar {
+  background: rgb(2 6 23 / 0.52);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.3),
+    inset 0 1px 0 rgb(255 255 255 / 0.2);
+}
+
+/* Dolgu çubukları da hafifçe dışa taşarak parlar (referanstaki UI ışıması). */
+.moba-vitals-hp.moba-vitals-hp {
+  box-shadow: 0 0 10px rgb(103 232 249 / 0.55);
+}
+.moba-vitals-xp.moba-vitals-xp {
+  box-shadow: 0 0 8px rgb(168 85 247 / 0.5);
+}
+
+/* ── Rakip kartı: altın kaplama çerçeve + koyu cam gövde ── */
+.moba-card-wrap.moba-card-wrap {
+  background: radial-gradient(
+    ellipse at center,
+    rgb(8 12 24 / 0.5) 0%,
+    rgb(4 6 14 / 0.72) 70%
+  );
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.moba-card.moba-card {
+  background: linear-gradient(
+    160deg,
+    rgb(22 35 60 / 0.72) 0%,
+    rgb(10 17 32 / 0.66) 60%,
+    rgb(13 22 38 / 0.7) 100%
+  );
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 199 92 / 0.62),
+    inset 0 0 0 6px rgb(10 17 32 / 0.72),
+    inset 0 1px 0 rgb(255 248 225 / 0.2),
+    0 0 28px rgb(255 190 80 / 0.3),
+    0 18px 40px rgb(0 0 0 / 0.6);
+}
+
+/* Altın çerçevenin ve minimap'in dışa doğru ışıması. */
+.moba-map.moba-map {
+  box-shadow:
+    inset 0 0 0 1px rgb(255 214 120 / 0.62),
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 0 0 1px rgb(255 214 120 / 0.22),
+    0 0 18px rgb(255 190 90 / 0.22),
+    0 8px 22px rgb(0 0 0 / 0.5);
+}
+
+/* Yetenek barı: koyu cam + hafif kor ışıması. */
+.moba-abilitybar.moba-abilitybar {
+  filter: drop-shadow(0 0 14px rgb(255 185 90 / 0.22));
+}
+
+/* ── Kart içi can barı ve istatistik şeridi ── */
+.moba-card-hp.moba-card-hp {
+  background: rgb(2 6 23 / 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.3),
+    inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+
+.moba-card-stats.moba-card-stats {
+  background: rgb(4 8 18 / 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.18),
+    inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+/* Cam efekti desteklenmiyorsa (eski Android WebView) paneller daha opak olur:
+   metin okunabilirliği hiçbir cihazda bulanıklığa bağlı kalmaz. */
+@supports not (backdrop-filter: blur(2px)) {
+  .moba-top.moba-top {
+    background: linear-gradient(
+      180deg,
+      rgb(16 23 38 / 0.94),
+      rgb(9 14 26 / 0.92)
+    );
+  }
+  .moba-card.moba-card,
+  .moba-map.moba-map,
+  .moba-abilitybar.moba-abilitybar {
+    background: linear-gradient(
+      180deg,
+      rgb(16 23 40 / 0.92),
+      rgb(8 13 26 / 0.92)
+    );
+  }
+  .moba-slot.moba-slot {
+    background: radial-gradient(
+      circle at 35% 25%,
+      rgb(43 59 92 / 0.95),
+      rgb(11 17 32 / 0.95)
+    );
+  }
+  .moba-plate-bar.moba-plate-bar,
+  .moba-vitals-bar.moba-vitals-bar,
+  .moba-card-hp.moba-card-hp {
+    background: rgb(2 6 23 / 0.88);
+  }
+}

@@ -99,23 +99,29 @@ export function useArenaCamera(
   // gökyüzü/zemin hemisferi) volkanik MOBA paletine çekilir. Fog ve arka
   // planı da bu modül yönettiği için arenanın tüm ışık/atmosfer dili tek
   // yerden ayarlanır. WarAtmosphere'in kendi ışıkları `userData.mobaLight`
-  // ile işaretlidir ve bu geçişte dokunulmaz. ---
+  // ile işaretlidir ve bu geçişte dokunulmaz.
+  //
+  // Renk düzeltmesi: ortam ışığı (düz, yönü olmayan dolgu) kısılır — böylece
+  // siyahlar gerçekten siyah kalır — ve kontrast yönlü ışıklara bindirilir:
+  // ana ışık lav tarafından vuran doygun turuncu, hemisferin zemin rengi de
+  // magma yansıması gibi sıcak kalır. Cyan karşıtlığı WarAtmosphere'in kendi
+  // rim ışığından gelir.
   useEffect(() => {
     scene.traverse((obj) => {
       const light = obj as THREE.Light;
       if (!light.isLight || light.userData?.mobaLight) return;
       if ((light as THREE.AmbientLight).isAmbientLight) {
-        light.intensity = 0.34;
+        light.intensity = 0.2;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
-        hemi.color.set("#54689a");
-        hemi.groundColor.set("#ff8a44");
-        hemi.intensity = 0.62;
+        hemi.color.set("#3f5aa8");
+        hemi.groundColor.set("#ff7a2e");
+        hemi.intensity = 0.46;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
-        // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
-        // dönüşür (atmosferin kendi ışıkları yukarıda atlanır).
-        light.color.set("#ffd0a4");
-        light.intensity = 1.15;
+        // Arena3D'nin nötr ana ışığı lav tarafından vuran doygun sıcak
+        // anahtara dönüşür (atmosferin kendi ışıkları yukarıda atlanır).
+        light.color.set("#ffab5e");
+        light.intensity = 1.45;
       }
     });
   }, [scene]);
