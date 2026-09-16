@@ -6,9 +6,11 @@
 //
 //   RenderPass → UnrealBloomPass → OutputPass
 //
-// * Bloom artık ÇOK ÖLÇÜLÜ: yalnızca gerçekten parlak öğeler (lav çekirdeği,
-//   kristal, mermi) taşar. Bir önceki 0.7/0.62 kombinasyonu ekrandaki tüm
-//   ışıkları birbirine karıştırıp sahneyi beyaza boğuyordu.
+// * SELECTIVE bloom: eşik (threshold) yüksek tutulduğu için yalnızca GERÇEKTEN
+//   parlak öğeler — üs/kule kristalleri, zemindeki nişan çemberi, menzil
+//   halkaları, mermiler, yetenek efektleri ve lav — etraflarına ışık saçar.
+//   Zemin/gövde gibi normal parlaklıktaki yüzeyler eşiği geçmediği için kare
+//   "her yeri saran sis"e dönüşmez.
 //   Lav damarları, kristaller, lane kenar çizgileri, menzil halkaları ve
 //   yetenek efektleri etraflarına ışık saçar; ama eşik yüksek kaldığı için
 //   zemin/gövde gibi normal parlaklıktaki yüzeyler taşmaz ve kare "her yeri
@@ -41,7 +43,7 @@ let workingComposers = 0;
 const POINT_LIGHT_CAP = 0.5;
 /** Genel pozlama: arena ACES ile tone map edildiği için tek çarpanla bütün
  *  sahne kısılabilir. 1'in altındaki değer görüntüyü koyulaştırır. */
-const EXPOSURE = 0.9;
+const EXPOSURE = 1;
 
 /** Sahne bir kez mount edilir; yine de dokunmatik cihaz kontrolü için. */
 function isCoarsePointer() {
@@ -53,9 +55,9 @@ function isCoarsePointer() {
 }
 
 export function ArenaPostFx({
-  strength = 0.22,
-  radius = 0.28,
-  threshold = 0.9,
+  strength = 0.45,
+  radius = 0.32,
+  threshold = 0.8,
 }: {
   strength?: number;
   radius?: number;
@@ -87,7 +89,10 @@ export function ArenaPostFx({
     const dprCap = isCoarsePointer() ? 1.5 : 2;
     gl.toneMappingExposure = EXPOSURE;
     gl.setPixelRatio(
-      Math.min(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, dprCap),
+      Math.min(
+        typeof window === "undefined" ? 1 : window.devicePixelRatio || 1,
+        dprCap,
+      ),
     );
     el.style.width = "100%";
     el.style.height = "100%";
@@ -172,6 +177,30 @@ export function ArenaPostFx({
       scene.traverse((obj) => {
         const light = obj as THREE.PointLight;
         if (light.isPointLight && !light.userData?.mobaLight) list.push(light);
+
+        // --- SEÇİLİ (UNLIT) IŞIMA KATMANLARI ----------------------------
+        // Karakterin altındaki nişan çemberi, menzil halkaları, lav, kor ve
+        // yetenek efektleri additif karışımlıdır; ACES tone mapping bunları
+        // kısıyor, parlak ortam ışığı da üzerlerine bindiğinde soluk/gölgede
+        // kalıyorlardı. Bu katmanlar bir kez `toneMapped = false` ile
+        // işaretlenir: ışık hesabına hiç girmezler ve her koşulda canlı
+        // renkte parlayıp bloom eşiğini geçerler. Opak yüzeyler (zemin, gövde)
+        // additif olmadığı için bu geçişten etkilenmez.
+        const holder = obj as { material?: THREE.Material | THREE.Material[] };
+        const source = holder.material;
+        if (!source) return;
+        const materials = Array.isArray(source) ? source : [source];
+        for (const entry of materials) {
+          if (entry.userData?.vaelosUnlit) continue;
+          if (entry.blending !== THREE.AdditiveBlending) continue;
+          if (entry.toneMapped !== false) {
+            entry.toneMapped = false;
+            // Değişen `toneMapped` shader program anahtarı olduğu için
+            // materyalin yeniden derlenmesi gerekir (her materyal için bir kez).
+            entry.needsUpdate = true;
+          }
+          entry.userData = { ...entry.userData, vaelosUnlit: true };
+        }
       });
       lightsRef.current = list;
     }

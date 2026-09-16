@@ -21,10 +21,12 @@
 //      pitch (35–40° requested). The camera height is about half the old
 //      framing (~5.2 units), so only the player and the 10–15 m around them
 //      are visible — never the whole map.
-//   4. Atmosphere — outside the arena are near-black, and a dense FogExp2
-//      (0x0a0a12, tuned by FOG_DENSITY) swallows anything approaching the
-//      frustum border, so the "space around the island" is gone. Portrait is
-//      untouched: fog density 0 + the original sky-blue background.
+//   4. Atmosphere — the void around the island is closed by a soft night-
+//      violet background (0x1a1a2e) plus an environment haze: a FogExp2
+//      (0x262648) that is gentle in portrait (FOG_DENSITY_P) and dense in
+//      landscape (FOG_DENSITY_L), so the horizon melts into haze instead of
+//      showing black space. The fill lights are raised to a bright ambient
+//      floor (1.5) so grass, lane and fighters read clearly.
 //   5. Tracking — the camera is a close offset follow (player X/Z plus a
 //      small movement lookahead), then clamped to a thin margin inside the
 //      arena, so the player always sits near screen center and the map's
@@ -73,9 +75,10 @@ const LOOK_Y = 1.05;
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,
 // isli mor-kızıl bir ufuk — arenanın lav atmosferiyle bütünleşir.
-const SKY = new THREE.Color("#231a26"); // portrait sky (volcanic dusk)
-const FOG = new THREE.Color("#120e14"); // landscape horizon = fog color
-const FOG_DENSITY = 0.016; // FogExp2 density at full landscape
+const SKY = new THREE.Color("#1a1a2e"); // gökyüzü — gece moru (zifiri siyah değil)
+const FOG = new THREE.Color("#262648"); // ufuk = yumuşak çevre sisi
+const FOG_DENSITY_P = 0.008; // FogExp2 yoğunluğu — dikey mod
+const FOG_DENSITY_L = 0.02; // FogExp2 yoğunluğu — yatay mod
 
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
@@ -105,33 +108,32 @@ export function useArenaCamera(
   // yerden ayarlanır. WarAtmosphere'in kendi ışıkları `userData.mobaLight`
   // ile işaretlidir ve bu geçişte dokunulmaz.
   //
-  // Renk düzeltmesi: ortam ışığı (düz, yönü olmayan dolgu) kısılır — böylece
-  // siyahlar gerçekten siyah kalır — ve kontrast yönlü ışıklara bindirilir:
-  // ana ışık lav tarafından vuran doygun turuncu, hemisferin zemin rengi de
-  // magma yansıması gibi sıcak kalır. Cyan karşıtlığı WarAtmosphere'in kendi
-  // rim ışığından gelir.
+  // Işık dengesi: ortam ışığı (düz, yönü olmayan dolgu) artık PARLAK bir taban
+  // (1.5) — sahne karanlık/boğuk değil; biçim ve derinlik yönlü ışık ile
+  // sise bırakılır. Gökyüzü tarafı gece moru, hemisferin zemin rengi nötr-
+  // sıcak: arazi kahverengi bir peçeyle değil temiz bir dolguyla okunur.
   useEffect(() => {
     scene.traverse((obj) => {
       const light = obj as THREE.Light;
       if (!light.isLight || light.userData?.mobaLight) return;
       if ((light as THREE.AmbientLight).isAmbientLight) {
-        // Dolgu biraz yukarı: sahne turuncuya yıkanmadan gölgelerin içindeki
-        // detay (taş dokusu, lane çizgileri) okunabilsin.
-        light.intensity = 0.22;
+        // PARLAK DOLGU: sahnenin genel karanlığı/boğukluğu buradan kalkar.
+        // Ambians çim, koridor ve karakterleri net okutacak kadar yüksek
+        // (istenen aralık 1.5–2.0); üst sınırda bloom ile beyaza kaçmasın diye
+        // alt uçta tutulur ve derinlik/kontrast yönlü ışık + sise bırakılır.
+        light.intensity = 1.5;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
-        hemi.color.set("#41528f");
-        // Zemin rengi "magma yansıması" olarak kalır ama artık kor değil,
-        // sönmüş kor: tüm araziyi kahverengiye boyayan asıl katman buydu.
-        hemi.groundColor.set("#7f3712");
-        hemi.intensity = 0.32;
+        // Gökyüzü tarafı gece moru, zemin tarafı nötr-sıcak: arazi kahverengi
+        // bir peçeye değil, temiz bir dolguya boyanır.
+        hemi.color.set("#6f7fc4");
+        hemi.groundColor.set("#8d7a63");
+        hemi.intensity = 0.85;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
-        // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
-        // dönüşür (atmosferin kendi ışıkları yukarıda atlanır). Şiddeti
-        // düşürülüp tonu nötre yaklaştırıldı: zemin kavrulmuyor, kontrast
-        // atmosferin kendi turuncu/cyan ışıklarından geliyor.
-        light.color.set("#ffe3c8");
-        light.intensity = 0.95;
+        // Arena3D'nin nötr ana ışığı: yumuşak sıcak. Parlaklığın büyük kısmını
+        // üstlenir ki her yüz aynı düzeyde aydınlanmasın ve form/gölge okunsun.
+        light.color.set("#ffe8cf");
+        light.intensity = 1.15;
       }
     });
   }, [scene]);
@@ -200,15 +202,20 @@ export function useArenaCamera(
     const look = THREE.MathUtils.lerp(LOOK_P, LOOK_L, wide);
     const smoothK = THREE.MathUtils.lerp(5, 7, wide);
 
-    // --- atmosphere: fog fades in with the landscape view, background lerps
-    // from the portrait sky to the fog color so the horizon never shows the
-    // gray/blue void around the island. Portrait stays pixel-identical
-    // (density 0 + original sky).
+    // --- atmosphere: arka plan artık zifiri siyah değil — gece moru bir
+    // gökyüzü (0x1a1a2e) ve yumuşak bir çevre sisi var. Sis dikey modda
+    // hafif (FOG_DENSITY_P), yatayda belirgin (FOG_DENSITY_L); arka plan da
+    // gökyüzü renginden sis rengine yumuşakça geçer, böylece ufukta "harita
+    // bitiyor" hissi yerine pus içinde eriyen bir manzara okunur.
     if (!fog.current) {
       fog.current = new THREE.FogExp2(FOG.getHex(), 0);
       scene.fog = fog.current;
     }
-    fog.current.density = FOG_DENSITY * wide;
+    fog.current.density = THREE.MathUtils.lerp(
+      FOG_DENSITY_P,
+      FOG_DENSITY_L,
+      wide,
+    );
     if (scene.background instanceof THREE.Color) {
       bg.current = scene.background;
     } else if (!bg.current) {

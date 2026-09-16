@@ -45,8 +45,8 @@
 
 /* Game font + custom animations */
 @theme {
-  --font-sans: "Baloo 2", "Nunito", ui-rounded, "Segoe UI", system-ui,
-    sans-serif;
+  --font-sans:
+    "Baloo 2", "Nunito", ui-rounded, "Segoe UI", system-ui, sans-serif;
   --animate-marquee: marquee 30s linear infinite;
   --animate-float: float 6s ease-in-out infinite;
   --animate-float-slow: float 9s ease-in-out infinite;
@@ -187,7 +187,8 @@
   to {
     transform: translateX(-220px);
   }
-}.car-r {
+}
+.car-r {
   animation: street-car-right 35s linear infinite;
   will-change: transform;
 }
@@ -287,7 +288,8 @@
 
 /* ═══ TREE WIND SWAY ═══ */
 @keyframes tree-sway {
-  0%, 100% {
+  0%,
+  100% {
     transform: rotate(0deg) skewX(0deg);
   }
   25% {
@@ -299,7 +301,8 @@
   75% {
     transform: rotate(1.8deg) skewX(1deg);
   }
-}.tree-sway {
+}
+.tree-sway {
   will-change: transform;
   transform-origin: center bottom;
   animation: tree-sway 5s ease-in-out infinite;
@@ -337,14 +340,20 @@
   transform-origin: center center;
 }
 
-
 /* ═══ AVENUE WIND BLOW ═══ */
 @keyframes wind-leaf-1 {
-  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.8); }
-  8% { opacity: 0.9; }
-  100% { opacity: 0; transform: translate(120px, 90px) rotate(720deg) scale(0.5); }
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(0deg) scale(0.8);
+  }
+  8% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(120px, 90px) rotate(720deg) scale(0.5);
+  }
 }
-
 
 /* Avatar pose toggle — idle (front), back (up), side (left/right). */
 .avatar-pose-idle {
@@ -389,22 +398,47 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Walk cycle — realistic natural movement with easing */
 @keyframes arm-swing {
-  0% { transform: rotate(-30deg) translateY(0); }
-  25% { transform: rotate(12deg) translateY(-1px); }
-  50% { transform: rotate(30deg) translateY(0); }
-  75% { transform: rotate(-12deg) translateY(-1px); }
-  100% { transform: rotate(-30deg) translateY(0); }
+  0% {
+    transform: rotate(-30deg) translateY(0);
+  }
+  25% {
+    transform: rotate(12deg) translateY(-1px);
+  }
+  50% {
+    transform: rotate(30deg) translateY(0);
+  }
+  75% {
+    transform: rotate(-12deg) translateY(-1px);
+  }
+  100% {
+    transform: rotate(-30deg) translateY(0);
+  }
 }
 @keyframes leg-swing {
-  0% { transform: rotate(-24deg) translateY(0); }
-  25% { transform: rotate(10deg) translateY(-1px); }
-  50% { transform: rotate(24deg) translateY(0); }
-  75% { transform: rotate(-10deg) translateY(-1px); }
-  100% { transform: rotate(-24deg) translateY(0); }
+  0% {
+    transform: rotate(-24deg) translateY(0);
+  }
+  25% {
+    transform: rotate(10deg) translateY(-1px);
+  }
+  50% {
+    transform: rotate(24deg) translateY(0);
+  }
+  75% {
+    transform: rotate(-10deg) translateY(-1px);
+  }
+  100% {
+    transform: rotate(-24deg) translateY(0);
+  }
 }
 @keyframes walk-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
 }
 .walking .avatar-arm-l {
   transform-box: fill-box;
@@ -436,10 +470,19 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Hand-held items get subtle follow-through motion while walking. */
 @keyframes hand-item-sway {
-  0%, 100% { transform: rotate(0deg) translateY(0); }
-  25% { transform: rotate(3deg) translateY(-0.5px); }
-  50% { transform: rotate(0deg) translateY(0); }
-  75% { transform: rotate(-3deg) translateY(-0.5px); }
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  25% {
+    transform: rotate(3deg) translateY(-0.5px);
+  }
+  50% {
+    transform: rotate(0deg) translateY(0);
+  }
+  75% {
+    transform: rotate(-3deg) translateY(-0.5px);
+  }
 }
 .walking .hand-item {
   animation: hand-item-sway 0.42s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -498,31 +541,43 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Whole-arena screen shake when somebody takes a big hit. */
 @keyframes battle-shake {
-  0%, 100% { transform: translate(0, 0); }
-  20% { transform: translate(-10px, 6px); }
-  40% { transform: translate(9px, -7px); }
-  60% { transform: translate(-7px, -5px); }
-  80% { transform: translate(5px, 4px); }
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-10px, 6px);
+  }
+  40% {
+    transform: translate(9px, -7px);
+  }
+  60% {
+    transform: translate(-7px, -5px);
+  }
+  80% {
+    transform: translate(5px, 4px);
+  }
 }
 .battle-shake {
   animation: battle-shake 0.38s linear;
 }
 
 /* Cinematic vignette over the battle arena — darkens the edges so the
-   action in the middle reads clearly, game-simulation style. Volkanik
-   MOBA dokunuşu: alt kenardan hafif kor bir sıcaklık sızar. */
+   action in the middle reads clearly. Yumuşatıldı: köşeler artık sahneyi
+   boğmuyor (parlak ortam ışığı + sis ile birlikte okunur kalıyor). Volkanik
+   MOBA dokunuşu: alt kenardan çok hafif kor bir sıcaklık sızar. */
 .arena-vignette {
   background:
     radial-gradient(
       ellipse at 50% 120%,
-      rgba(255 106 31 / 0.08) 0%,
+      rgba(255 106 31 / 0.05) 0%,
       transparent 48%
     ),
     radial-gradient(
       ellipse at center,
-      transparent 34%,
-      rgba(5, 8, 20, 0.58) 78%,
-      rgba(2, 4, 12, 0.88) 100%
+      transparent 48%,
+      rgba(5, 8, 20, 0.32) 82%,
+      rgba(2, 4, 12, 0.6) 100%
     );
 }
 
@@ -556,8 +611,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* White/red flash over a fighter right after it is hit. */
 @keyframes battle-hit-flash {
-  0% { opacity: 0.9; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 .battle-hit-flash {
   animation: battle-hit-flash 0.32s ease-out;
@@ -565,8 +624,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Projectile star spins like an animated GIF sprite. */
 @keyframes battle-proj-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .battle-proj-spin {
   transform-box: fill-box;
@@ -576,7 +639,8 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Super button pulses with a golden glow when it is ready. */
 @keyframes super-ready-pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7);
   }
@@ -591,10 +655,22 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* VS intro banner slides in then fades out. */
 @keyframes vs-banner {
-  0% { transform: scale(2.2); opacity: 0; }
-  18% { transform: scale(1); opacity: 1; }
-  80% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0; }
+  0% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  18% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  80% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
 }
 .vs-banner {
   animation: vs-banner 1.6s ease-out forwards;
@@ -602,8 +678,14 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Confetti / star burst raining down on the victory screen. */
 @keyframes confetti-fall {
-  0% { transform: translateY(-12vh) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(105vh) rotate(720deg); opacity: 0.9; }
+  0% {
+    transform: translateY(-12vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(105vh) rotate(720deg);
+    opacity: 0.9;
+  }
 }
 .confetti {
   position: absolute;
@@ -613,8 +695,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Sun rays slowly rotating behind the arena. */
 @keyframes sun-rays {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .sun-rays {
   transform-box: fill-box;
@@ -625,8 +711,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Arena clouds drifting across the top. */
 @keyframes arena-cloud {
-  from { transform: translateX(-220px); }
-  to { transform: translateX(1620px); }
+  from {
+    transform: translateX(-220px);
+  }
+  to {
+    transform: translateX(1620px);
+  }
 }
 .arena-cloud {
   animation: arena-cloud linear infinite;
@@ -634,8 +724,15 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Sparkles twinkling above the grass. */
 @keyframes twinkle {
-  0%, 100% { opacity: 0.12; transform: scale(0.7); }
-  50% { opacity: 0.85; transform: scale(1.15); }
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+  }
 }
 .arena-twinkle {
   transform-box: fill-box;
@@ -645,8 +742,13 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Fighters bob + tilt while they move (GIF-style idle motion). */
 @keyframes fighter-bob {
-  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
-  50% { transform: translateY(-6px) rotate(1.5deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(1.5deg);
+  }
 }
 .fighter-idle {
   transform-box: fill-box;
@@ -660,9 +762,21 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Title slams in from a big blur with a springy settle. */
 @keyframes load-slam {
-  0% { transform: scale(2.6); opacity: 0; filter: blur(8px); }
-  55% { transform: scale(0.94); opacity: 1; filter: blur(0); }
-  100% { transform: scale(1); opacity: 1; filter: blur(0); }
+  0% {
+    transform: scale(2.6);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  55% {
+    transform: scale(0.94);
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
 }
 .battle-load-slam {
   animation: load-slam 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -670,10 +784,20 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* GIF-style emoji FX floating up through the screen. */
 @keyframes load-float {
-  0% { transform: translateY(12vh) rotate(0deg) scale(0.6); opacity: 0; }
-  12% { opacity: 0.9; }
-  88% { opacity: 0.9; }
-  100% { transform: translateY(-14vh) rotate(340deg) scale(1.15); opacity: 0; }
+  0% {
+    transform: translateY(12vh) rotate(0deg) scale(0.6);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(-14vh) rotate(340deg) scale(1.15);
+    opacity: 0;
+  }
 }
 .battle-load-float {
   position: absolute;
@@ -684,8 +808,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Spinning sword on the title. */
 @keyframes load-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .battle-load-spin {
   display: inline-block;
@@ -694,8 +822,15 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* VS emblem blinks hard like an arcade marquee. */
 @keyframes load-flash {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(1.12); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(1.12);
+  }
 }
 .battle-load-flash {
   display: inline-block;
@@ -704,7 +839,8 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Fighter cards glow in alternating pulses. */
 @keyframes load-card-glow {
-  0%, 100% {
+  0%,
+  100% {
     border-color: rgba(255, 255, 255, 0.25);
     box-shadow: 0 0 0 0 rgba(56, 189, 248, 0);
   }
@@ -719,8 +855,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Loading bar with animated diagonal stripes (GIF feel). */
 @keyframes load-bar-stripes {
-  from { background-position: 0 0; }
-  to { background-position: 28px 0; }
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 28px 0;
+  }
 }
 .battle-load-bar {
   background-image: linear-gradient(
@@ -739,8 +879,12 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* A scanline sweeps down the screen like a CRT. */
 @keyframes load-scan {
-  from { transform: translateY(-120%); }
-  to { transform: translateY(120vh); }
+  from {
+    transform: translateY(-120%);
+  }
+  to {
+    transform: translateY(120vh);
+  }
 }
 .battle-load-scan {
   background: linear-gradient(
@@ -756,8 +900,16 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Perspective grid floor scrolling toward the viewer. */
 @keyframes load-grid-move {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 0 42px, 42px 0; }
+  from {
+    background-position:
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      0 42px,
+      42px 0;
+  }
 }
 .battle-load-grid {
   background-image:
@@ -775,8 +927,14 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Status line under the bar pops in when the step changes. */
 @keyframes load-step-pop {
-  0% { opacity: 0; transform: translateY(8px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .battle-load-step {
   display: inline-block;
@@ -806,8 +964,13 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* ─── Neon sign blink ─── */
 @keyframes neon-pulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 0.2; }
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.2;
+  }
 }
 .neon-blink {
   animation: neon-pulse 3s ease-in-out infinite;
@@ -815,8 +978,13 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* ─── String light bulbs twinkling ─── */
 @keyframes bulb-twinkle {
-  0%, 100% { opacity: 0.85; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 .string-bulb {
   animation: bulb-twinkle 4s ease-in-out infinite;
@@ -828,9 +996,18 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* Telefon dikeyden yataya devrilip geri gelir — oyuncu taklit eder. */
 @keyframes rotate-phone-turn {
-  0%, 16% { transform: rotate(0deg); }
-  36%, 64% { transform: rotate(90deg); }
-  86%, 100% { transform: rotate(0deg); }
+  0%,
+  16% {
+    transform: rotate(0deg);
+  }
+  36%,
+  64% {
+    transform: rotate(90deg);
+  }
+  86%,
+  100% {
+    transform: rotate(0deg);
+  }
 }
 .rotate-phone-icon {
   display: inline-flex;
@@ -839,8 +1016,15 @@ svg[data-pose="walk-side"] .avatar-pose-side {
 
 /* İki yanda dışa doğru nabız atan yönlendirme okları. */
 @keyframes rotate-phone-arrow {
-  0%, 100% { opacity: 0.3; transform: scale(0.9); }
-  50% { opacity: 1; transform: scale(1.12); }
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
 }
 .rotate-phone-arrow {
   animation: rotate-phone-arrow 1.4s ease-in-out infinite;
@@ -1092,8 +1276,12 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Dönen rün halkaları (biri saat yönü, diğeri ters). */
 @keyframes entry-rune-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .entry-rune {
   animation: entry-rune-spin 18s linear infinite;
@@ -1111,8 +1299,15 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Nefes alan altın parlama (altıgenin arkasında). */
 @keyframes entry-glow-pulse {
-  0%, 100% { opacity: 0.5; transform: scale(0.97); }
-  50% { opacity: 0.95; transform: scale(1.04); }
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.04);
+  }
 }
 .entry-glow {
   animation: entry-glow-pulse 3.4s ease-in-out infinite;
@@ -1121,9 +1316,17 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Altıgenin üzerinden geçen ışık süpürmesi (cam parlaması). */
 @keyframes entry-sweep {
-  0% { transform: translateY(-130%) rotate(10deg); opacity: 0; }
-  30% { opacity: 0.5; }
-  100% { transform: translateY(150%) rotate(10deg); opacity: 0; }
+  0% {
+    transform: translateY(-130%) rotate(10deg);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(150%) rotate(10deg);
+    opacity: 0;
+  }
 }
 .entry-sweep {
   animation: entry-sweep 4.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -1131,9 +1334,18 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Adım işareti yanınca zıplayarak belirir. */
 @keyframes entry-tick-pop {
-  0% { transform: scale(0.4); opacity: 0; }
-  70% { transform: scale(1.18); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 .entry-tick {
   display: inline-flex;
@@ -1142,8 +1354,15 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Tavandan süzülen ışık sütunları. */
 @keyframes entry-beam-pulse {
-  0%, 100% { opacity: 0.14; transform: scaleX(1); }
-  50% { opacity: 0.34; transform: scaleX(1.08); }
+  0%,
+  100% {
+    opacity: 0.14;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 0.34;
+    transform: scaleX(1.08);
+  }
 }
 .entry-beam {
   animation: entry-beam-pulse 3s ease-in-out infinite;
@@ -1191,8 +1410,14 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Sırayla değişen ipucu satırı. */
 @keyframes entry-tip-in {
-  from { opacity: 0; transform: translateY(7px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .entry-tip {
   display: inline-block;
@@ -1201,8 +1426,13 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* "Oyuna gir" çağrısı — hazır olduğunda altın nabız. */
 @keyframes entry-ready-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.5); }
-  50% { box-shadow: 0 0 32px 6px rgba(250, 204, 21, 0.42); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 32px 6px rgba(250, 204, 21, 0.42);
+  }
 }
 .entry-ready {
   animation: entry-ready-pulse 1.8s ease-in-out infinite;
@@ -1231,9 +1461,18 @@ button.fixed.bottom-4.right-4.z-\[99999\] {
 
 /* Renk seçildiğinde karakter kaidesindeki halka kısa bir vurgu yapar. */
 @keyframes entry-color-pop {
-  0% { transform: scale(0.86); opacity: 0.4; }
-  60% { transform: scale(1.06); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.86);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 .entry-color-pop {
   animation: entry-color-pop 0.35s ease-out both;
@@ -1319,7 +1558,11 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   width: clamp(20px, 3.2vh, 28px);
   height: clamp(20px, 3.2vh, 28px);
   font-size: clamp(9px, 1.5vh, 12px);
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(0 0 0 / 0.35));
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.16),
+    rgb(0 0 0 / 0.35)
+  );
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
 }
 .moba-plate-bar {
@@ -1360,11 +1603,19 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
 }
 .moba-score--ally {
   color: #d9fbff;
-  background: linear-gradient(180deg, rgb(14 165 233 / 0.5), rgb(6 62 92 / 0.6));
+  background: linear-gradient(
+    180deg,
+    rgb(14 165 233 / 0.5),
+    rgb(6 62 92 / 0.6)
+  );
 }
 .moba-score--enemy {
   color: #ffe0e6;
-  background: linear-gradient(180deg, rgb(244 63 94 / 0.5), rgb(94 20 38 / 0.6));
+  background: linear-gradient(
+    180deg,
+    rgb(244 63 94 / 0.5),
+    rgb(94 20 38 / 0.6)
+  );
 }
 .moba-logo {
   display: flex;
@@ -1383,8 +1634,13 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   animation: moba-logo-glow 3.4s ease-in-out infinite;
 }
 @keyframes moba-logo-glow {
-  0%, 100% { filter: drop-shadow(0 0 5px rgb(255 190 90 / 0.24)); }
-  50% { filter: drop-shadow(0 0 9px rgb(255 214 120 / 0.46)); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 5px rgb(255 190 90 / 0.24));
+  }
+  50% {
+    filter: drop-shadow(0 0 9px rgb(255 214 120 / 0.46));
+  }
 }
 .moba-logo-wing {
   font-size: clamp(8px, 1.4vh, 12px);
@@ -1423,7 +1679,9 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   background: rgb(15 23 42 / 0.72);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2);
   color: rgb(226 232 240 / 0.92);
-  transition: transform 0.12s ease-out, background 0.12s ease-out;
+  transition:
+    transform 0.12s ease-out,
+    background 0.12s ease-out;
 }
 .moba-icon-btn {
   width: clamp(22px, 3.4vh, 30px);
@@ -1592,9 +1850,19 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
 
 /* ── Uçan tepkiler + beceri duyurusu ── */
 @keyframes moba-float-up {
-  0% { opacity: 0; transform: translateY(10px) scale(0.7) rotate(0deg); }
-  25% { opacity: 1; transform: translateY(-12px) scale(1.1) rotate(var(--moba-rot, 0deg)); }
-  100% { opacity: 0; transform: translateY(var(--moba-dy, -60px)) scale(0.92) rotate(var(--moba-rot, 0deg)); }
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.7) rotate(0deg);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(-12px) scale(1.1) rotate(var(--moba-rot, 0deg));
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(var(--moba-dy, -60px)) scale(0.92)
+      rotate(var(--moba-rot, 0deg));
+  }
 }
 .moba-floater {
   position: absolute;
@@ -1603,17 +1871,45 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   filter: drop-shadow(0 3px 8px rgb(0 0 0 / 0.55));
   animation: moba-float-up 1.25s ease-out forwards;
 }
-.moba-floater--0 { --moba-dy: -46px; --moba-rot: -12deg; }
-.moba-floater--1 { --moba-dy: -74px; --moba-rot: 9deg; }
-.moba-floater--2 { --moba-dy: -38px; --moba-rot: -6deg; }
-.moba-floater--3 { --moba-dy: -80px; --moba-rot: 14deg; }
-.moba-floater--4 { --moba-dy: -62px; --moba-rot: 4deg; }
+.moba-floater--0 {
+  --moba-dy: -46px;
+  --moba-rot: -12deg;
+}
+.moba-floater--1 {
+  --moba-dy: -74px;
+  --moba-rot: 9deg;
+}
+.moba-floater--2 {
+  --moba-dy: -38px;
+  --moba-rot: -6deg;
+}
+.moba-floater--3 {
+  --moba-dy: -80px;
+  --moba-rot: 14deg;
+}
+.moba-floater--4 {
+  --moba-dy: -62px;
+  --moba-rot: 4deg;
+}
 
 @keyframes moba-banner-in {
-  0% { opacity: 0; transform: scale(0.8) translateY(8px); letter-spacing: 2px; }
-  20% { opacity: 1; transform: scale(1.06); }
-  70% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.02) translateY(-8px); }
+  0% {
+    opacity: 0;
+    transform: scale(0.8) translateY(8px);
+    letter-spacing: 2px;
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.02) translateY(-8px);
+  }
 }
 .moba-banner {
   padding: 4px clamp(10px, 2.4vh, 20px);
@@ -1640,8 +1936,12 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   animation: moba-card-pop 0.32s ease-out both;
 }
 @keyframes moba-card-pop {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .moba-card {
   position: relative;
@@ -1658,8 +1958,14 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   animation: moba-card-rise 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes moba-card-rise {
-  from { transform: translateY(18px) scale(0.94); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
+  from {
+    transform: translateY(18px) scale(0.94);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
 }
 /* Kartın üzerinden soldan sağa geçen altın enerji şeridi. */
 .moba-card-sweep {
@@ -1679,8 +1985,13 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   animation: moba-card-sweep 3.6s ease-in-out infinite;
 }
 @keyframes moba-card-sweep {
-  0% { left: -60%; }
-  55%, 100% { left: 120%; }
+  0% {
+    left: -60%;
+  }
+  55%,
+  100% {
+    left: 120%;
+  }
 }
 .moba-card-head {
   position: relative;
@@ -1813,7 +2124,9 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   color: #e2e8f0;
   background: rgb(15 23 42 / 0.85);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22);
-  transition: transform 0.12s ease-out, filter 0.12s ease-out;
+  transition:
+    transform 0.12s ease-out,
+    filter 0.12s ease-out;
 }
 .moba-card-btn:active {
   transform: scale(0.97);
@@ -1846,7 +2159,9 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
 
 /* Disable animations for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

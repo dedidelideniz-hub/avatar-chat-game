@@ -375,20 +375,23 @@ function NexusCrystal({
     // Kristal, sütun, hale ve nokta ışık İLK sürümdeki değerlerin çok
     // altında: dört katman birlikte bloom eşiğini aşıp üssü bembeyaz bir
     // lekeye çeviriyordu. Artık hepsi "parlar ama taşmaz" seviyesinde.
+    // Kule (üs) kristali: parlak ortam ışığı altında bile sönük kalmasın diye
+    // emissive yükseltildi — neredeyse "unlit" davranır, karanlıkta da gündüzde
+    // de doygun renkte okunur ve bloom eşiğini geçip etrafına ışık saçar.
     if (crystalMat.current) {
-      crystalMat.current.emissiveIntensity = 0.4 + 0.2 * pulse;
+      crystalMat.current.emissiveIntensity = 1.15 + 0.35 * pulse;
     }
     if (beam.current) {
       const mat = beam.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.03 + 0.016 * pulse;
+      mat.opacity = 0.06 + 0.02 * pulse;
       beam.current.scale.set(1 + 0.03 * pulse, 1, 1 + 0.03 * pulse);
     }
     if (haloRef.current) {
       (haloRef.current.material as THREE.SpriteMaterial).opacity =
-        0.05 + 0.02 * pulse;
+        0.09 + 0.03 * pulse;
       haloRef.current.scale.setScalar(2.6 + 0.2 * pulse);
     }
-    if (light.current) light.current.intensity = 0.34 + 0.14 * pulse;
+    if (light.current) light.current.intensity = 0.5 + 0.18 * pulse;
   });
 
   return (
@@ -477,7 +480,7 @@ function NexusCrystal({
             ref={crystalMat}
             color={core}
             emissive={color}
-            emissiveIntensity={0.55}
+            emissiveIntensity={1.15}
             roughness={0.12}
             metalness={0.15}
             transparent
@@ -490,7 +493,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={0.6}
+            emissiveIntensity={1.25}
             roughness={0.1}
             transparent
             opacity={0.94}
@@ -506,7 +509,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={0.45}
+            emissiveIntensity={1.0}
             roughness={0.14}
             transparent
             opacity={0.9}
@@ -534,7 +537,7 @@ function NexusCrystal({
               <meshStandardMaterial
                 color={core}
                 emissive={accent}
-                emissiveIntensity={0.4}
+                emissiveIntensity={0.95}
                 roughness={0.2}
                 transparent
                 opacity={0.85}
@@ -552,7 +555,7 @@ function NexusCrystal({
         color={color}
         distance={8}
         decay={2}
-        intensity={0.34}
+        intensity={0.5}
       />
     </group>
   );
@@ -699,11 +702,13 @@ function WarEmbers() {
             refs.current[i] = el;
           }}
           raycast={() => null}
-        >            <spriteMaterial
-              map={ember.cold ? coldTex : warmTex}
-              color={ember.cold ? "#9fe8ff" : "#ffb050"}
-              transparent
-              opacity={0.45}
+        >
+          {" "}
+          <spriteMaterial
+            map={ember.cold ? coldTex : warmTex}
+            color={ember.cold ? "#9fe8ff" : "#ffb050"}
+            transparent
+            opacity={0.45}
             depthWrite={false}
             blending={THREE.AdditiveBlending}
           />
@@ -827,33 +832,20 @@ function GroundHaze() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Lane yolları — netleştirilmiş, kenarları ışıyan koridor.           */
+/* Lane yolları — yalnızca düz taş/toprak koridor gövdesi.            */
 /* ------------------------------------------------------------------ */
+/* Kenar ışık çizgileri ve yolu saran enerji çekirdeği KALDIRILDI:
+   zemindeki "anlamsız çizgi" görüntüsünün kaynağı o additive tüplerdi.
+   Koridor artık haritanın kendi dokusu üstünde sade bir yol olarak okunur. */
 
+/* `offsetNodes` (kenar çizgisi üreticisi) da bu yüzden silindi. */
 /**
- * Düğüm listesini teğete DİK yönde kaydırır. Yolun iki kenar çizgisi bu
- * kaydırılmış eğrilerden çizilir; böylece koridor "yol" olarak okunur.
+ * Üç koridor: yalnızca yol gövdesi olarak çizilir. Renkler haritanın iki
+ * yarısının paletiyle uyumlu — kırmızı yanda sıcak taş/toprak, mavi yanda
+ * soğuk taş tonu. (Eskiden her yolun bir "glow" rengi ve akan enerji çizgisi
+ * vardı; zemindeki anlamsız çizgi görüntüsü yüzünden kaldırıldı.)
  */
-function offsetNodes(
-  nodes: [number, number][],
-  dist: number,
-): THREE.Vector3[] {
-  return nodes.map(([x, z], i) => {
-    const prev = nodes[Math.max(0, i - 1)];
-    const next = nodes[Math.min(nodes.length - 1, i + 1)];
-    const tx = next[0] - prev[0];
-    const tz = next[1] - prev[1];
-    const len = Math.hypot(tx, tz) || 1;
-    return new THREE.Vector3(x + (-tz / len) * dist, 0.1, z + (tx / len) * dist);
-  });
-}
-
-/**
- * Üç koridor: üst (sıcak amber), orta (mor), alt (buz mavisi). Renkler
- * haritanın iki yarısının paletiyle uyumlu — kırmızı yanda sıcak, mavi yanda
- * soğuk/berrak tonlar.
- */
-const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
+const LANES: { nodes: [number, number][]; road: string }[] = [
   {
     nodes: [
       [2.5, 4],
@@ -864,7 +856,6 @@ const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
       [29.5, 20.2],
     ],
     road: "#8a7a63",
-    glow: "#ffc08a",
   },
   {
     nodes: [
@@ -876,7 +867,6 @@ const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
       [29.5, 17.4],
     ],
     road: "#6f6a74",
-    glow: "#cfc0ff",
   },
   {
     nodes: [
@@ -888,14 +878,10 @@ const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
       [25.5, 4.6],
     ],
     road: "#6b7482",
-    glow: "#9fe4ff",
   },
 ];
 
 function LaneRoads() {
-  // Akış dokusu yalnızca ince enerji çizgisinde kullanılır: yol gövdesi düz
-  // taş/toprak rengindedir, zemine doku/projeksiyon binmez.
-  const tex = useMemo(() => makeFlowTexture(), []);
   const curves = useMemo(
     () =>
       LANES.map(
@@ -906,19 +892,6 @@ function LaneRoads() {
       ),
     [],
   );
-  const edges = useMemo(
-    () =>
-      LANES.flatMap((lane) => [
-        new THREE.CatmullRomCurve3(offsetNodes(lane.nodes, 1.5)),
-        new THREE.CatmullRomCurve3(offsetNodes(lane.nodes, -1.5)),
-      ]),
-    [],
-  );
-
-  useFrame((_, dt) => {
-    tex.offset.x -= dt * 0.09;
-  });
-
   return (
     <group>
       {curves.map((curve, i) => (
@@ -934,95 +907,7 @@ function LaneRoads() {
               envMapIntensity={0.1}
             />
           </mesh>
-          {/* Yolun enerji çekirdeği: çok ince ve soluk akan çizgi. */}
-          <mesh raycast={() => null}>
-            <tubeGeometry args={[curve, 150, 0.05, 6, false]} />
-            <meshBasicMaterial
-              map={tex}
-              color={LANES[i].glow}
-              transparent
-              opacity={0.14}
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-              toneMapped={false}
-            />
-          </mesh>
         </group>
-      ))}
-      {/* Kenar çizgileri: koridor kenarında kalan ÇOK ince, soluk sınır. */}
-      {edges.map((curve, i) => (
-        <mesh key={`edge${i}`} raycast={() => null}>
-          <tubeGeometry args={[curve, 150, 0.03, 5, false]} />
-          <meshBasicMaterial
-            color={LANES[Math.floor(i / 2)].glow}
-            transparent
-            opacity={0.12}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-            toneMapped={false}
-          />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Enerji hatları — ince koridor ışıkları                              */
-/* ------------------------------------------------------------------ */
-
-/** Üslerden arenanın merkezine akan enerji hatları (kor ↔ kristal). */
-function EnergyLines() {
-  const tex = useMemo(() => makeFlowTexture(), []);
-  const curves = useMemo(() => {
-    const mid = new THREE.Vector3(ARENA_W / 2, 0.14, ARENA_D / 2);
-    return NEXUS.map(
-      (n, i) =>
-        new THREE.CatmullRomCurve3([
-          new THREE.Vector3(n.x, 0.14, n.z),
-          new THREE.Vector3(
-            (n.x + mid.x) / 2 + (i === 0 ? 1.6 : -1.6),
-            0.14,
-            (n.z + mid.z) / 2 + (i === 0 ? -1.3 : 1.3),
-          ),
-          mid,
-        ]),
-    );
-  }, []);
-  const refs = useRef<(THREE.Mesh | null)[]>([]);
-
-  useFrame((_, dt) => {
-    tex.offset.x -= dt * 0.35;
-    const t = performance.now() / 1000;
-    for (let i = 0; i < refs.current.length; i++) {
-      const m = refs.current[i];
-      if (!m) continue;
-      (m.material as THREE.MeshBasicMaterial).opacity =
-        0.14 + 0.05 * Math.sin(t * 2.4 + i * Math.PI);
-    }
-  });
-
-  return (
-    <group>
-      {curves.map((curve, i) => (
-        <mesh
-          key={i}
-          ref={(el) => {
-            refs.current[i] = el;
-          }}
-          raycast={() => null}
-        >
-          <tubeGeometry args={[curve, 90, 0.06, 6, false]} />
-          <meshBasicMaterial
-            map={tex}
-            color={NEXUS[i]?.color ?? "#ff7a3c"}
-            transparent
-            opacity={0.14}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-            toneMapped={false}
-          />
-        </mesh>
       ))}
     </group>
   );
@@ -1034,131 +919,18 @@ function EnergyLines() {
    Bölgesel ayrım artık yalnızca lane yollarının kendi renklerinden ve üs
    kristallerinden okunuyor; zemine düzlemsel renk katmanı binmiyor. */
 
-/* ------------------------------------------------------------------ */
-/* Kristal/su bölgesi + yansımalar                                     */
-/* ------------------------------------------------------------------ */
-
-const GROVE = [
-  { x: 23.5, z: 8.5, s: 1.5 },
-  { x: 26.8, z: 6.4, s: 1.1 },
-  { x: 28.8, z: 10.2, s: 0.9 },
-  { x: 21.4, z: 4.4, s: 1.3 },
-  { x: 29.2, z: 14.6, s: 1.0 },
-  { x: 20.4, z: 11.8, s: 0.8 },
-];
-
-/**
- * Berrak mavi-mor kristal vadisİ: ayna gibi bir su/kristal havuzu ve
- * etrafında yükselen kristaller. Havuz metalness 0.9 + çok düşük roughness
- * ile sahnenin çevre haritasını gerçekten yansıtır.
- */
-function CrystalGrove() {
-  const shards = useRef<(THREE.Mesh | null)[]>([]);
-
-  useFrame(() => {
-    const t = performance.now() / 1000;
-    for (let i = 0; i < GROVE.length; i++) {
-      const m = shards.current[i];
-      if (!m) continue;
-      const g = GROVE[i];
-      m.position.y = g.s * 0.5 + Math.sin(t * 1.4 + i * 1.7) * 0.08;
-      m.rotation.y += 0.004;
-      const mat = m.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = 0.9 + 0.4 * Math.sin(t * 2 + i);
-    }
-  });
-
-  return (
-    <group>
-      {/* Su/kristal havuzu — yansıtıcı yüzey */}
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[25, 0.06, 9]}
-        raycast={() => null}
-      >
-        <circleGeometry args={[6.6, 56]} />
-        <meshStandardMaterial
-          color="#2a1f5e"
-          emissive="#3b2a8c"
-          emissiveIntensity={0.14}
-          roughness={0.14}
-          metalness={0.7}
-          envMapIntensity={0.8}
-          transparent
-          opacity={0.55}
-          depthWrite={false}
-        />
-      </mesh>
-      {GROVE.map((c, i) => (
-        <mesh
-          key={i}
-          ref={(el) => {
-            shards.current[i] = el;
-          }}
-          position={[c.x, c.s * 0.5, c.z]}
-          rotation={[0.1, i * 0.7, 0.12]}
-          scale={c.s}
-          castShadow
-          raycast={() => null}
-        >
-          <octahedronGeometry args={[0.42, 0]} />
-          <meshStandardMaterial
-            color="#c8b6ff"
-            emissive="#8b5cff"
-            emissiveIntensity={1.05}
-            roughness={0.07}
-            metalness={0.35}
-            envMapIntensity={1.7}
-            transparent
-            opacity={0.9}
-          />
-        </mesh>
-      ))}
-    </group>
-  );
-}
+/* Kristal vadi TAMAMEN KALDIRILDI: yarı saydam mor su diski ve üzerinde
+   süzülen kaplamasız mor oktahedronlar ("baklava" parçaları) ormanın üzerinde
+   havada duran bozuk/debug parçalar gibi okunuyordu. Zemin artık haritanın
+   kendi dokusu; bölgesel vurgu yalnızca üs kristalleri ve lavdan gelir. */
 
 /* ------------------------------------------------------------------ */
 /* Taş yapılar: duvarlar, kayalar, dikilitaşlar, kemerler              */
 /* ------------------------------------------------------------------ */
 
-/** Duvar blokaları: arenanın çevresini saran kırık taş sur. */
-const WALL_BLOCKS = (() => {
-  const rnd = makeRng(20240);
-  const out: {
-    x: number;
-    z: number;
-    w: number;
-    h: number;
-    d: number;
-    r: number;
-  }[] = [];
-  for (let x = -1.6; x < ARENA_W + 1.6; x += 2.2) {
-    for (const z of [-1.5, ARENA_D + 1.5]) {
-      out.push({
-        x: x + (rnd() - 0.5) * 0.6,
-        z,
-        w: 1.6 + rnd() * 0.7,
-        h: 0.6 + rnd() * 1.5,
-        d: 1.2 + rnd() * 0.5,
-        r: (rnd() - 0.5) * 0.14,
-      });
-    }
-  }
-  for (let z = -1.6; z < ARENA_D + 1.6; z += 2.5) {
-    for (const x of [-1.5, ARENA_W + 1.5]) {
-      out.push({
-        x,
-        z: z + (rnd() - 0.5) * 0.6,
-        w: 1.2 + rnd() * 0.5,
-        h: 0.5 + rnd() * 1.2,
-        d: 1.6 + rnd() * 0.7,
-        r: (rnd() - 0.5) * 0.14,
-      });
-    }
-  }
-  return out;
-})();
+/* Çevre suru (WALL_BLOCKS) KALDIRILDI: arena sınırının dışında kalan kırık
+   taş küpler haritanın kenarında/üstünde havada duran kaplamasız kutular gibi
+   görünüyordu. Çevre artık haritanın kendi kayaları ve dikilitaşlarıdır. */
 
 /** Haritanın köşelerindeki kaya kütleleri (oyun alanını boş bırakır). */
 const BOULDERS = (() => {
@@ -1185,9 +957,9 @@ const BOULDERS = (() => {
 const OBELISKS: { x: number; z: number; glow: string }[] = [
   { x: 5.2, z: 8.8, glow: "#ff8a3c" },
   { x: 9.6, z: 12.4, glow: "#ff6a1f" },
-  { x: 20.6, z: 14.6, glow: "#8b5cff" },
+  { x: 20.6, z: 14.6, glow: "#5ce1ff" },
   { x: 26.2, z: 12.4, glow: "#6fd8ff" },
-  { x: 14.8, z: 6.4, glow: "#7c5cff" },
+  { x: 14.8, z: 6.4, glow: "#ff8a3c" },
   { x: 30.6, z: 7.4, glow: "#5ce1ff" },
 ];
 
@@ -1227,20 +999,6 @@ function StoneStructures() {
 
   return (
     <group>
-      {/* çevre suru */}
-      {WALL_BLOCKS.map((b, i) => (
-        <mesh
-          key={`wall${i}`}
-          material={stone}
-          position={[b.x, b.h / 2, b.z]}
-          rotation={[0, b.r, 0]}
-          castShadow
-          receiveShadow
-          raycast={() => null}
-        >
-          <boxGeometry args={[b.w, b.h, b.d]} />
-        </mesh>
-      ))}
       {/* kaya kütleleri */}
       {BOULDERS.map((b, i) => (
         <mesh
@@ -1259,7 +1017,12 @@ function StoneStructures() {
       {/* dikilitaşlar + tepelerindeki rün taşı */}
       {OBELISKS.map((o, i) => (
         <group key={`ob${i}`} position={[o.x, 0, o.z]}>
-          <mesh material={obeliskMat} position={[0, 0.85, 0]} castShadow raycast={() => null}>
+          <mesh
+            material={obeliskMat}
+            position={[0, 0.85, 0]}
+            castShadow
+            raycast={() => null}
+          >
             <cylinderGeometry args={[0.18, 0.34, 1.7, 6]} />
           </mesh>
           <mesh
@@ -1286,14 +1049,33 @@ function StoneStructures() {
       ))}
       {/* koridoru taçlandıran taş kemerler */}
       {[8.5, 25.5].map((x, i) => (
-        <group key={`arch${i}`} position={[x, 0, 15.6]} rotation={[0, i === 0 ? 0.5 : -0.5, 0]}>
-          <mesh material={obeliskMat} position={[-1.9, 1.1, 0]} castShadow raycast={() => null}>
+        <group
+          key={`arch${i}`}
+          position={[x, 0, 15.6]}
+          rotation={[0, i === 0 ? 0.5 : -0.5, 0]}
+        >
+          <mesh
+            material={obeliskMat}
+            position={[-1.9, 1.1, 0]}
+            castShadow
+            raycast={() => null}
+          >
             <boxGeometry args={[0.45, 2.2, 0.45]} />
           </mesh>
-          <mesh material={obeliskMat} position={[1.9, 1.1, 0]} castShadow raycast={() => null}>
+          <mesh
+            material={obeliskMat}
+            position={[1.9, 1.1, 0]}
+            castShadow
+            raycast={() => null}
+          >
             <boxGeometry args={[0.45, 2.2, 0.45]} />
           </mesh>
-          <mesh material={obeliskMat} position={[0, 2.1, 0]} castShadow raycast={() => null}>
+          <mesh
+            material={obeliskMat}
+            position={[0, 2.1, 0]}
+            castShadow
+            raycast={() => null}
+          >
             <torusGeometry args={[1.95, 0.26, 8, 18, Math.PI]} />
           </mesh>
         </group>
@@ -1432,11 +1214,7 @@ function normalizeGroundMaterial(source: THREE.Material): THREE.Material {
   const std = material as THREE.MeshStandardMaterial;
   std.userData = { ...std.userData, [GROUND_MARK]: true };
   if (std.emissive) {
-    const maxChannel = Math.max(
-      std.emissive.r,
-      std.emissive.g,
-      std.emissive.b,
-    );
+    const maxChannel = Math.max(std.emissive.r, std.emissive.g, std.emissive.b);
     if (std.emissiveIntensity <= 0.06 && maxChannel <= 0.25) {
       // Zemine sonradan binen çok sönük bölge ışıması (eski palet geçişinin
       // kalıntısı) tamamen silinir: zemin kendinden parlamaz.
@@ -1509,8 +1287,6 @@ export function WarAtmosphere() {
       <ReflectiveFloor />
       {/* Ortam detayı: netleşmiş lane yolları, enerji hatları, taş yapılar */}
       <LaneRoads />
-      <EnergyLines />
-      <CrystalGrove />
       <StoneStructures />
       <LavaRivers />
       <LavaPools />

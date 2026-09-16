@@ -96,7 +96,14 @@ function makePulseTexture(): THREE.Texture {
   c.height = size;
   const g = c.getContext("2d")!;
   const r = size / 2 - 4;
-  const halo = g.createRadialGradient(size / 2, size / 2, r * 0.82, size / 2, size / 2, r);
+  const halo = g.createRadialGradient(
+    size / 2,
+    size / 2,
+    r * 0.82,
+    size / 2,
+    size / 2,
+    r,
+  );
   halo.addColorStop(0, "rgba(255,255,255,0)");
   halo.addColorStop(0.72, "rgba(255,255,255,0.55)");
   halo.addColorStop(1, "rgba(255,255,255,0)");
@@ -247,8 +254,10 @@ export function SkillshotIndicator({
     if (ringMat.current) {
       ringMat.current.color.set(color);
       // Düz vuruşta çember daha soluk kalsın (sürekli ateş hâlinde ekranı
-      // boğmasın), yetenek nişanında biraz daha belirgin olsun.
-      const base = ability ? 0.5 : 0.32;
+      // boğmasın), yetenek nişanında biraz daha belirgin olsun. Gün ışığı
+      // seviyesi yükseldiği için taban opaklıklar bir tık arttı: çember
+      // karanlıkta/gölgede kaybolmuyor, canlı mavi kalıyor.
+      const base = ability ? 0.62 : 0.45;
       ringMat.current.opacity = base + 0.1 * Math.sin(t * 2.6);
     }
     // ── dışa doğru atan nabız halkası (menzil sınırı) ──
@@ -283,7 +292,7 @@ export function SkillshotIndicator({
     if (shaftMap) shaftMap.offset.x -= dt * 1.15;
     if (shaftMat.current) {
       shaftMat.current.color.set(color);
-      shaftMat.current.opacity = 0.42 + 0.16 * Math.sin(t * 3.4);
+      shaftMat.current.opacity = 0.5 + 0.18 * Math.sin(t * 3.4);
     }
     if (headMat.current) {
       headMat.current.color.set(color);
@@ -307,7 +316,12 @@ export function SkillshotIndicator({
   return (
     <group ref={root} visible={false}>
       {/* Maksimum menzil çemberi */}
-      <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]} raycast={() => null}>
+      <mesh
+        ref={ring}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.06, 0]}
+        raycast={() => null}
+      >
         <planeGeometry args={[R * 2, R * 2]} />
         <meshBasicMaterial
           ref={ringMat}
@@ -321,7 +335,12 @@ export function SkillshotIndicator({
         />
       </mesh>
       {/* Dışa doğru genişleyen nabız halkası */}
-      <mesh ref={pulse} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.07, 0]} raycast={() => null}>
+      <mesh
+        ref={pulse}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.07, 0]}
+        raycast={() => null}
+      >
         <planeGeometry args={[R * 2, R * 2]} />
         <meshBasicMaterial
           ref={pulseMat}
@@ -363,7 +382,12 @@ export function SkillshotIndicator({
         />
       </mesh>
       {/* Menzil içinde kilitlenen hedefin işareti */}
-      <mesh ref={lock} visible={false} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+      <mesh
+        ref={lock}
+        visible={false}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={() => null}
+      >
         <planeGeometry args={[2, 2]} />
         <meshBasicMaterial
           map={pulseTex}
