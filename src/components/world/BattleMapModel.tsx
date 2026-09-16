@@ -34,11 +34,18 @@ const FALLBACK_POS = [
 ] as [number, number, number];
 
 /* ------------------------------------------------------------------ */
-/* Geometry-derived collision — an occupancy grid rasterized from the  */
-/* ACTUAL rock / wall / tower triangles of the uploaded map. There are */
-/* NO hand-placed obstacle lists and NO coordinate-based invisible     */
-/* walls: a fighter only collides where real geometry exists, so open  */
-/* roads and lanes stay completely free.                              */
+/* YÜRÜYÜŞ ALANI: GÖRÜNMEZ DÜZ TABAN COLLIDER'I                        */
+/*                                                                    */
+/* Eskiden yürünebilir alan haritanın KENDİ üçgenlerinden rasterize    */
+/* ediliyordu; arazi girintileri, kenar çıkıntıları ve iki üçgenin     */
+/* birleştiği mikro dikişler karakteri düz yolda kilitliyordu. Artık    */
+/* yürüyüş alanı arenanın tamamını kaplayan tek bir DÜZ dikdörtgen     */
+/* tabandır (görünmez cam zemin): harita görselleri bunun ALTINDA      */
+/* kalır, fizik ise bu düzlem üzerinden kayar.                         */
+/*                                                                    */
+/* Engeller hâlâ gerçek GLB geometrisinden türetilir, ama yalnızca     */
+/* KALIN kütleler (kaya, duvar, kule, üs) engel sayılır; ince süs       */
+/* parçaları ve tek hücrelik kırıntılar süzülür.                        */
 /* ------------------------------------------------------------------ */
 
 // A small cell keeps the walkable road edges accurate without inflating
@@ -67,7 +74,8 @@ export interface RockGrid {
   cols: number;
   rows: number;
   blocked: Uint8Array;
-  /** Occupied cells of the real top-facing terrain mesh. */
+  /** Görünmez düz taban alanı: gerçek zeminden rasterize edilip genişletilen
+   *  (dilate) yürünebilir hücreler — fizik bu düz alanı kullanır. */
   walkable: Uint8Array;
   walkableCount: number;
 }
@@ -75,34 +83,31 @@ export interface RockGrid {
 // Populated once when the map finishes fitting; read per-frame by the sim.
 const rockCollision: { grid: RockGrid | null } = { grid: null };
 
-/** True when the circle (cx, cy, r) — in game-space px — overlaps any rock,
- *  wall or tower geometry rasterized from the map's real meshes. */
+/**
+ * GÖRÜNMEZ DÜZ TABAN COLLIDER'I (game-space px).
+ *
+ * `true` döner: gövde (cx, cy, r) ya düz yürüyüş alanının dışına taşıyorsa, ya
+ * da gerçek bir KALIN engelin (kaya / duvar / kule / üs) üzerine biniyorsa.
+ * Arazi yüksekliği, eğimi ve üçgen dikişleri hesaba katılmaz — fizik düz bir
+ * cam zemin üzerinden kayar.
+ */
 export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
   const g = rockCollision.grid;
   if (!g) return false;
   const { cell, cols, rows, blocked } = g;
 
-  // The GLB terrain is not a rectangular island: the lower/right part of
-  // the screenshot is empty space outside its actual mesh. Treat leaving the
-  // rasterized terrain footprint exactly like hitting a rigid collider. The
-  // circumference samples keep the whole fighter body on the map, not just
-  // its center point.
-  if (g.walkableCount > 0) {
-    // The center cell is the authoritative map-boundary test. Requiring all
-    // circumference samples to be walkable made narrow but visibly open
-    // lanes fail: the fighter radius touched a decorative/base mesh that is
-    // not a rigid obstacle. Actual rocks, walls and towers are checked below
-    // with the circle-vs-cell test, so the body still cannot enter a real
-    // collider while open roads remain traversable.
-    // Terrain is triangulated in many small pieces. At a seam between two
-    // triangles the exact center cell can be empty for one raster cell even
-    // though the visible lane is continuous. Accept a tiny neighbourhood for
-    // the boundary test; rigid obstacle cells below still remain authoritative
-    // and keep rocks/walls from becoming passable.
-    // Keep the entire collision circle on the authored navigation surface.
-    // This is deliberately separate from `blocked`: roads remain open, while
-    // a fighter-sized footprint cannot be placed half on a wall/platform.
-    if (!hasWalkableFootprint(g, cx, cy, r)) return true;
+  // GÖRÜNMEZ DÜZ TABAN COLLIDER'I (flat plane collider) — 1. KATMAN:
+  // Yürünen alan artık arazinin engebeli üçgenleri değil, haritanın yürünen
+  // kısmını kaplayan TEK bir düz alandır. Alan maskesi girintileri ve mikro
+  // dikişleri yok etmek için genişletilir (dilateWalkableField), yani zemindeki
+  // 1-2 hücrelik çukur/çatlak karakteri asla durduramaz.
+  if (g.walkableCount > 0 && !fieldFootprintClear(g, cx, cy, r)) return true;
+
+  // 2. KATMAN: arenanın dışına taşan gövdeyi kesen düz dikdörtgen sınır.
+  const fieldW = cols * cell;
+  const fieldH = rows * cell;
+  if (cx - r < 0 || cx + r > fieldW || cy - r < 0 || cy + r > fieldH) {
+    return true;
   }
 
   const minCol = Math.max(0, Math.floor((cx - r) / cell));
@@ -125,7 +130,8 @@ export function hitsRockCollision(cx: number, cy: number, r: number): boolean {
   return false;
 }
 
-function isWalkableCell(g: RockGrid, px: number, py: number): boolean {
+/** Düz taban alanının (genişletilmiş yürünebilir maske) tek hücre sorgusu. */
+function isFieldWalkable(g: RockGrid, px: number, py: number): boolean {
   const col = Math.floor(px / g.cell);
   const row = Math.floor(py / g.cell);
   return (
@@ -137,58 +143,124 @@ function isWalkableCell(g: RockGrid, px: number, py: number): boolean {
   );
 }
 
-function hasWalkableNeighbour(
+/**
+ * GÖRÜNMEZ DÜZ TABAN COLLIDER'I (Invisible Flat Plane Collider).
+ *
+ * Karakterin fizik hesabı bu düzlemin üzerinden kayar: yükseklik, eğim ve
+ * üçgen dikişi hesaba KATILMAZ — yalnızca "bu nokta düz alanın içinde mi?"
+ * sorulur. Merkez her zaman alanın içinde olmalı; gövdenin çevresindeki
+ * örneklerde birkaç ıska tolere edilir, çünkü haritanın gerçek silueti
+ * (ada/duvar kenarı) tam bir dikdörtgen değildir. Geniş boşlukta ıska sayısı
+ * hızla artacağı için karakter yine de haritanın dışına çıkamaz.
+ */
+function fieldFootprintClear(
   g: RockGrid,
   px: number,
   py: number,
   radius: number,
-): boolean {
-  const minCol = Math.max(0, Math.floor((px - radius) / g.cell));
-  const maxCol = Math.min(g.cols - 1, Math.floor((px + radius) / g.cell));
-  const minRow = Math.max(0, Math.floor((py - radius) / g.cell));
-  const maxRow = Math.min(g.rows - 1, Math.floor((py + radius) / g.cell));
-  const radiusSq = radius * radius;
-  for (let row = minRow; row <= maxRow; row++) {
-    for (let col = minCol; col <= maxCol; col++) {
-      if (!g.walkable[row * g.cols + col]) continue;
-      const cellX = (col + 0.5) * g.cell;
-      const cellY = (row + 0.5) * g.cell;
-      const dx = cellX - px;
-      const dy = cellY - py;
-      if (dx * dx + dy * dy <= radiusSq) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Navigation clearance test for a fighter-sized circle.
- *
- * Kapsül yaklaşımı: tabanı yuvarlatılmış karakter, engelin/arazi sınırının
- * ÜZERİNDEN kayabilir; bu yüzden temel olarak merkez hücresi ve tek bir halka
- * örneklenir. Eski sürüm yarıçapın tamamında iki halkayı şart koşuyordu ve
- * zemin binlerce üçgenden rasterize edildiği için dikiş noktalarındaki tek
- * hücrelik boşluk bile hareketi tamamen reddediyordu — düz yolda takılmanın
- * asıl kaynağı buydu. Ayrıca birkaç örnek kaybı tolere edilir; gerçek ada ve
- * duvar sınırları (geniş boşluklar) hâlâ geçilemez.
- */
-function hasWalkableFootprint(g: RockGrid, px: number, py: number, radius: number) {
-  if (!isWalkableCell(g, px, py)) return false;
-  const ring = Math.max(0, radius - g.cell) * 0.72;
-  if (ring <= g.cell) return true;
-  const samples = Math.max(8, Math.ceil((Math.PI * 2 * ring) / (g.cell * 1.5)));
+) {
+  if (!isFieldWalkable(g, px, py)) return false;
+  // Örnek halkası gövdenin yarısında tutulur: eski kod tam yarıçapta örnek
+  // aldığı için yoldaki tek hücrelik girinti bile hareketi reddediyordu.
+  const ring = Math.max(g.cell, radius * 0.45);
+  const samples = 8;
   let misses = 0;
   for (let i = 0; i < samples; i++) {
     const angle = (i / samples) * Math.PI * 2;
     if (
-      !isWalkableCell(g, px + Math.cos(angle) * ring, py + Math.sin(angle) * ring)
+      !isFieldWalkable(
+        g,
+        px + Math.cos(angle) * ring,
+        py + Math.sin(angle) * ring,
+      )
     ) {
       misses += 1;
-      // Tek/çift hücrelik dikiş artıkları hareketi kilitlemesin.
       if (misses > 2) return false;
     }
   }
   return true;
+}
+
+/**
+ * DÜZ TABANIN GENİŞLETİLMESİ (dilate).
+ *
+ * Yürünebilir maske haritanın gerçek üçgenlerinden gelir; iki üçgenin
+ * birleştiği kenarlarda, taş kabartmalarda ve zemin girintilerinde tek/çift
+ * hücrelik "boşluklar" kalır. Karakter düz yolda tam da bunlara takılıyordu.
+ * Maske birkaç kez genişletilir: bu ölçekteki tüm çukurlar ve çatlaklar
+ * kapanır; haritanın gerçek silueti (ada kenarı) yalnızca birkaç piksel dışa
+ * taşar — yani yürünen alan fiilen düz bir cam zemin olur.
+ */
+function dilateWalkableField(g: RockGrid, passes = 4) {
+  const { cols, rows } = g;
+  let src = g.walkable;
+  for (let p = 0; p < passes; p++) {
+    const next = src.slice();
+    for (let row = 0; row < rows; row++) {
+      const rowOff = row * cols;
+      for (let col = 0; col < cols; col++) {
+        const index = rowOff + col;
+        if (src[index]) continue;
+        let filled = false;
+        for (let dr = -1; dr <= 1 && !filled; dr++) {
+          const r = row + dr;
+          if (r < 0 || r >= rows) continue;
+          const off = r * cols;
+          for (let dc = -1; dc <= 1; dc++) {
+            const c = col + dc;
+            if (c < 0 || c >= cols) continue;
+            if (src[off + c]) {
+              filled = true;
+              break;
+            }
+          }
+        }
+        if (filled) next[index] = 1;
+      }
+    }
+    src = next;
+  }
+  g.walkable.set(src);
+  let count = 0;
+  for (let i = 0; i < src.length; i++) if (src[i]) count += 1;
+  g.walkableCount = count;
+}
+
+/**
+ * KATI ÇEKİRDEK SÜZGECİ (solid-core filter).
+ *
+ * Engel maskesi gerçek geometriden rasterize edilir; bu yüzden taş süslerin
+ * ince kenarları, kaldırım çıkıntıları ve tek hücrelik kırıntılar da "engel"
+ * olarak işaretlenebiliyordu — karakter düz yolda tam da bunlara takılıyordu.
+ * Bu süzgeç yalnızca komşularının neredeyse tamamı da engelli olan hücreleri
+ * bırakır: kalın kaya/duvar/kule kütleler ayakta kalır, ince süs parçaları ve
+ * dikiş artıkları engel olmaktan çıkar.
+ */
+function keepOnlySolidObstacles(g: RockGrid) {
+  const { cols, rows, blocked } = g;
+  const solid = new Uint8Array(blocked.length);
+  for (let row = 0; row < rows; row++) {
+    const rowOff = row * cols;
+    for (let col = 0; col < cols; col++) {
+      const index = rowOff + col;
+      if (!blocked[index]) continue;
+      let neighbours = 0;
+      for (let dr = -1; dr <= 1; dr++) {
+        const r = row + dr;
+        if (r < 0 || r >= rows) continue;
+        const off = r * cols;
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const c = col + dc;
+          if (c < 0 || c >= cols) continue;
+          if (blocked[off + c]) neighbours++;
+        }
+      }
+      // 8 komşusundan en az 5'i engelliyse hücre kütlenin İÇİNDEDİR.
+      if (neighbours >= 5) solid[index] = 1;
+    }
+  }
+  blocked.set(solid);
 }
 
 /**
@@ -252,12 +324,25 @@ export function findNearestWalkablePosition(
   const maxX = ARENA_W * PX;
   const maxY = ARENA_D * PX;
   const maxRadius = Math.max(maxX, maxY);
-  for (let distance = GRID_CELL * 2; distance <= maxRadius; distance += GRID_CELL * 2) {
-    const samples = Math.max(16, Math.ceil((Math.PI * 2 * distance) / (GRID_CELL * 2)));
+  for (
+    let distance = GRID_CELL * 2;
+    distance <= maxRadius;
+    distance += GRID_CELL * 2
+  ) {
+    const samples = Math.max(
+      16,
+      Math.ceil((Math.PI * 2 * distance) / (GRID_CELL * 2)),
+    );
     for (let i = 0; i < samples; i++) {
       const angle = (i / samples) * Math.PI * 2;
-      const candidateX = Math.max(r, Math.min(maxX - r, x + Math.cos(angle) * distance));
-      const candidateY = Math.max(r, Math.min(maxY - r, y + Math.sin(angle) * distance));
+      const candidateX = Math.max(
+        r,
+        Math.min(maxX - r, x + Math.cos(angle) * distance),
+      );
+      const candidateY = Math.max(
+        r,
+        Math.min(maxY - r, y + Math.sin(angle) * distance),
+      );
       if (!hitsRockCollision(candidateX, candidateY, r)) {
         return [candidateX, candidateY];
       }
@@ -307,11 +392,17 @@ export function findWalkablePath(
     const visited = new Set<number>([key(start.c, start.r)]);
     while (queue.length) {
       const [c, r] = queue.shift()!;
-      for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      for (const [dc, dr] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
         const nc = c + dc;
         const nr = r + dr;
         const nk = key(nc, nr);
-        if (visited.has(nk) || nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        if (visited.has(nk) || nc < 0 || nc >= cols || nr < 0 || nr >= rows)
+          continue;
         visited.add(nk);
         if (isFree(nc, nr)) return { c: nc, r: nr };
         queue.push([nc, nr]);
@@ -323,11 +414,16 @@ export function findWalkablePath(
   const start = nearestFree(sx, sy);
   const goal = nearestFree(gx, gy);
   if (!start || !goal) return [];
-  if (start.c === goal.c && start.r === goal.r) return [toWorld(start.c, start.r)];
+  if (start.c === goal.c && start.r === goal.r)
+    return [toWorld(start.c, start.r)];
 
-  const open: { c: number; r: number; g: number; f: number; parent: number | null }[] = [
-    { ...start, g: 0, f: 0, parent: null },
-  ];
+  const open: {
+    c: number;
+    r: number;
+    g: number;
+    f: number;
+    parent: number | null;
+  }[] = [{ ...start, g: 0, f: 0, parent: null }];
   const records = new Map<number, (typeof open)[number]>();
   const closed = new Set<number>();
   const startKey = key(start.c, start.r);
@@ -337,7 +433,8 @@ export function findWalkablePath(
 
   while (open.length) {
     let best = 0;
-    for (let i = 1; i < open.length; i++) if (open[i].f < open[best].f) best = i;
+    for (let i = 1; i < open.length; i++)
+      if (open[i].f < open[best].f) best = i;
     const current = open.splice(best, 1)[0];
     const currentKey = key(current.c, current.r);
     if (closed.has(currentKey)) continue;
@@ -352,7 +449,12 @@ export function findWalkablePath(
       return smoothWalkableRoute(route, radius);
     }
     closed.add(currentKey);
-    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
       const nc = current.c + dc;
       const nr = current.r + dr;
       if (!isFree(nc, nr)) continue;
@@ -375,7 +477,10 @@ export function findWalkablePath(
   return [];
 }
 
-function smoothWalkableRoute(route: [number, number][], radius: number): [number, number][] {
+function smoothWalkableRoute(
+  route: [number, number][],
+  radius: number,
+): [number, number][] {
   if (route.length <= 2) return route;
   const result: [number, number][] = [route[0]];
   let anchor = 0;
@@ -389,12 +494,23 @@ function smoothWalkableRoute(route: [number, number][], radius: number): [number
   return result;
 }
 
-function canWalkSegment(a: [number, number], b: [number, number], radius: number) {
+function canWalkSegment(
+  a: [number, number],
+  b: [number, number],
+  radius: number,
+) {
   const distance = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const steps = Math.max(1, Math.ceil(distance / Math.max(4, GRID_CELL * 2)));
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
-    if (hitsRockCollision(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, radius)) return false;
+    if (
+      hitsRockCollision(
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        radius,
+      )
+    )
+      return false;
   }
   return true;
 }
@@ -402,7 +518,8 @@ function canWalkSegment(a: [number, number], b: [number, number], radius: number
 function markCell(g: RockGrid, px: number, py: number) {
   const c = Math.floor(px / g.cell);
   const r = Math.floor(py / g.cell);
-  if (c >= 0 && c < g.cols && r >= 0 && r < g.rows) g.blocked[r * g.cols + c] = 1;
+  if (c >= 0 && c < g.cols && r >= 0 && r < g.rows)
+    g.blocked[r * g.cols + c] = 1;
 }
 
 function markWalkableCell(g: RockGrid, px: number, py: number) {
@@ -440,8 +557,8 @@ function rasterizeWalkableTriangle(
   );
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
-      const x = (col + 0.5) * g.cell / PX;
-      const z = (row + 0.5) * g.cell / PX;
+      const x = ((col + 0.5) * g.cell) / PX;
+      const z = ((row + 0.5) * g.cell) / PX;
       if (pointInTriangle2D(x, z, a, b, c)) {
         markWalkableCell(g, x * PX, z * PX);
       }
@@ -449,7 +566,13 @@ function rasterizeWalkableTriangle(
   }
 }
 
-function sampleEdge(g: RockGrid, x0: number, y0: number, x1: number, y1: number) {
+function sampleEdge(
+  g: RockGrid,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+) {
   const len = Math.hypot(x1 - x0, y1 - y0);
   const steps = Math.max(1, Math.ceil(len / g.cell));
   for (let i = 0; i <= steps; i++) {
@@ -525,7 +648,8 @@ function rasterizeWalkSlice(
 ) {
   const points: THREE.Vector3[] = [];
   const addPoint = (x: number, z: number) => {
-    if (points.some((point) => Math.hypot(point.x - x, point.z - z) < 0.001)) return;
+    if (points.some((point) => Math.hypot(point.x - x, point.z - z) < 0.001))
+      return;
     points.push(new THREE.Vector3(x, 0, z));
   };
   const addEdgeSlice = (from: THREE.Vector3, to: THREE.Vector3) => {
@@ -538,10 +662,7 @@ function rasterizeWalkSlice(
       (from.y > planeY && to.y < planeY)
     ) {
       const t = (planeY - from.y) / (to.y - from.y);
-      addPoint(
-        from.x + (to.x - from.x) * t,
-        from.z + (to.z - from.z) * t,
-      );
+      addPoint(from.x + (to.x - from.x) * t, from.z + (to.z - from.z) * t);
     }
   };
 
@@ -679,8 +800,8 @@ function rasterizeProjectedTriangle(
   );
   for (let row = minRow; row <= maxRow; row++) {
     for (let col = minCol; col <= maxCol; col++) {
-      const x = (col + 0.5) * g.cell / PX;
-      const z = (row + 0.5) * g.cell / PX;
+      const x = ((col + 0.5) * g.cell) / PX;
+      const z = ((row + 0.5) * g.cell) / PX;
       if (pointInTriangle2D(x, z, a, b, c)) g.blocked[row * g.cols + col] = 1;
     }
   }
@@ -730,12 +851,14 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // because its decorative skirt is green: the raised island body still
     // needs its real GLB footprint. Only explicit environmental containers
     // (terrain, water, bridge, etc.) override an obstacle token.
-    const hasObstacleToken = /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower|base(?:blue|red)part)/i.test(
-      semanticName,
-    );
-    const hasEnvironmentalContainer = /(?:background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase|perimeter|wallg|sidewalla)/i.test(
-      names.slice(0, -1).join("/"),
-    );
+    const hasObstacleToken =
+      /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower|base(?:blue|red)part)/i.test(
+        semanticName,
+      );
+    const hasEnvironmentalContainer =
+      /(?:background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase|perimeter|wallg|sidewalla)/i.test(
+        names.slice(0, -1).join("/"),
+      );
     return hasObstacleToken && !hasEnvironmentalContainer;
   };
   // A fighter collides with the part of a prop that actually reaches the
@@ -781,7 +904,9 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // now that the outer boundary follows the actual map footprint.
     }
     const isWater = /(?:water|river|stream|lake|pond)/i.test(semanticName);
-    const pos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+    const pos = (
+      mesh.geometry as THREE.BufferGeometry | undefined
+    )?.getAttribute("position");
 
     // Keep the playable footprint from the actual top-facing map triangles.
     // The screenshot shows the lower/right blue area is outside the island,
@@ -790,7 +915,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     // only by real GLB geometry at the fitted walk plane.
     const isBaseSurface =
       /(?:base(?:blue|red)(?:part|ground|background))/i.test(semanticName);
-      const isNavigationFloor =
+    const isNavigationFloor =
       /(?:terraincenter|terrainpart|base(?:blue|red)(?:ground|background))/i.test(
         semanticName,
       );
@@ -886,10 +1011,10 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         faceNormal.crossVectors(edgeA, edgeB).normalize();
         const triangleMinY = Math.min(va.y, vb.y, vc.y);
         const triangleMaxY = Math.max(va.y, vb.y, vc.y);
-        const surfaceArea = Math.abs(
-          (vb.x - va.x) * (vc.z - va.z) -
-            (vb.z - va.z) * (vc.x - va.x),
-        ) * 0.5;
+        const surfaceArea =
+          Math.abs(
+            (vb.x - va.x) * (vc.z - va.z) - (vb.z - va.z) * (vc.x - va.x),
+          ) * 0.5;
         if (
           faceNormal.y > 0.78 &&
           triangleMinY > RAISED_ISLAND_MIN_Y &&
@@ -939,15 +1064,20 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     tmpBox.setFromObject(mesh);
     const top = tmpBox.max.y;
     if (!isWallMesh && !isBaseWallMesh && top < MIN_TOP) return;
-    if (!isWallMesh && !isBaseWallMesh && top - tmpBox.min.y < MIN_OBSTACLE_H) return;
-    const obstaclePos = (mesh.geometry as THREE.BufferGeometry | undefined)?.getAttribute("position");
+    if (!isWallMesh && !isBaseWallMesh && top - tmpBox.min.y < MIN_OBSTACLE_H)
+      return;
+    const obstaclePos = (
+      mesh.geometry as THREE.BufferGeometry | undefined
+    )?.getAttribute("position");
     if (!obstaclePos) return;
     mesh.updateWorldMatrix(true, false);
     m.copy(mesh.matrixWorld);
     const meshBoundary = new Uint8Array(grid.blocked.length);
     const collisionBounds = new THREE.Box3();
     let hasCollisionFace = false;
-    const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(semanticName);
+    const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(
+      semanticName,
+    );
     const raisedFaceMinTop = isBroadBlock ? 0.35 : 0.22;
     const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
     const triCount = indexAttr ? indexAttr.count / 3 : obstaclePos.count / 3;
@@ -955,9 +1085,21 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
       const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
       const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
-      va.set(obstaclePos.getX(i0), obstaclePos.getY(i0), obstaclePos.getZ(i0)).applyMatrix4(m);
-      vb.set(obstaclePos.getX(i1), obstaclePos.getY(i1), obstaclePos.getZ(i1)).applyMatrix4(m);
-      vc.set(obstaclePos.getX(i2), obstaclePos.getY(i2), obstaclePos.getZ(i2)).applyMatrix4(m);
+      va.set(
+        obstaclePos.getX(i0),
+        obstaclePos.getY(i0),
+        obstaclePos.getZ(i0),
+      ).applyMatrix4(m);
+      vb.set(
+        obstaclePos.getX(i1),
+        obstaclePos.getY(i1),
+        obstaclePos.getZ(i1),
+      ).applyMatrix4(m);
+      vc.set(
+        obstaclePos.getX(i2),
+        obstaclePos.getY(i2),
+        obstaclePos.getZ(i2),
+      ).applyMatrix4(m);
       // The map is exported with large underground and elevated triangles.
       // Projecting those triangles from above turns an innocent road into a
       // solid square. Ground-touching sides are clipped to their exact base
@@ -1090,9 +1232,15 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // coordinates are used.
   for (const bridgeBox of bridgeBoxes) {
     const minCol = Math.max(0, Math.floor((bridgeBox.min.x * PX) / grid.cell));
-    const maxCol = Math.min(grid.cols - 1, Math.ceil((bridgeBox.max.x * PX) / grid.cell));
+    const maxCol = Math.min(
+      grid.cols - 1,
+      Math.ceil((bridgeBox.max.x * PX) / grid.cell),
+    );
     const minRow = Math.max(0, Math.floor((bridgeBox.min.z * PX) / grid.cell));
-    const maxRow = Math.min(grid.rows - 1, Math.ceil((bridgeBox.max.z * PX) / grid.cell));
+    const maxRow = Math.min(
+      grid.rows - 1,
+      Math.ceil((bridgeBox.max.z * PX) / grid.cell),
+    );
     for (let row = minRow; row <= maxRow; row++) {
       for (let col = minCol; col <= maxCol; col++) {
         grid.blocked[row * grid.cols + col] = 0;
@@ -1110,6 +1258,12 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   carveBaseExits(grid);
   // Son adım: rasterizasyondan kalan dikiş/çatlak hücrelerini kapat.
   closeWalkableSeams(grid);
+  // Düz taban alanını genişlet: zemindeki girintiler/çatlaklar yürüyüş
+  // alanından tamamen silinir (görünmez cam zemin).
+  dilateWalkableField(grid);
+  // Ve yalnızca KALIN engelleri bırak: ince arazi çıkıntıları ile tek
+  // hücrelik kırıntılar, düz görünen yolda karakteri durdurmasın.
+  keepOnlySolidObstacles(grid);
   return grid;
 }
 
@@ -1159,7 +1313,13 @@ function carveBaseCorridor(
   const isWalkablePx = (px: number, py: number) => {
     const c = Math.floor(px / cell);
     const r = Math.floor(py / cell);
-    return c >= 0 && c < cols && r >= 0 && r < rows && grid.walkable[r * cols + c] === 1;
+    return (
+      c >= 0 &&
+      c < cols &&
+      r >= 0 &&
+      r < rows &&
+      grid.walkable[r * cols + c] === 1
+    );
   };
 
   const len = Math.hypot(x1 - x0, y1 - y0);
@@ -1172,7 +1332,8 @@ function carveBaseCorridor(
   // Must start on the base floor and end on the lane, and the blocked band in
   // the middle (the thin wall) must stay small — a raised platform or thick
   // prop would leave a large blocked run and this corridor is skipped.
-  const startOk = samples.length > 4 ? samples[Math.floor(samples.length * 0.12)] : true;
+  const startOk =
+    samples.length > 4 ? samples[Math.floor(samples.length * 0.12)] : true;
   const endOk = samples.length > 4 ? samples[samples.length - 1] : false;
   const blockedRun = samples.filter((w) => !w).length;
   if (!startOk || !endOk || blockedRun > steps * 0.38) return;
@@ -1180,9 +1341,15 @@ function carveBaseCorridor(
   // Clear blocked cells within halfWidth of the whole corridor and mark them
   // walkable.
   const minC = Math.max(0, Math.floor((Math.min(x0, x1) - halfWidth) / cell));
-  const maxC = Math.min(cols - 1, Math.ceil((Math.max(x0, x1) + halfWidth) / cell));
+  const maxC = Math.min(
+    cols - 1,
+    Math.ceil((Math.max(x0, x1) + halfWidth) / cell),
+  );
   const minR = Math.max(0, Math.floor((Math.min(y0, y1) - halfWidth) / cell));
-  const maxR = Math.min(rows - 1, Math.ceil((Math.max(y0, y1) + halfWidth) / cell));
+  const maxR = Math.min(
+    rows - 1,
+    Math.ceil((Math.max(y0, y1) + halfWidth) / cell),
+  );
   for (let r = minR; r <= maxR; r++) {
     for (let c = minC; c <= maxC; c++) {
       const px = (c + 0.5) * cell;
@@ -1293,10 +1460,7 @@ function MapModelInner() {
         // A uniform fit must use the smaller ratio. Using the larger ratio
         // enlarged one axis beyond the simulation rectangle, which made the
         // rendered lanes and the collision grid disagree.
-        scale = Math.min(
-          (ARENA_W - 0.3) / size.x,
-          (ARENA_D - 0.3) / size.z,
-        );
+        scale = Math.min((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
         const center = terrainBox.getCenter(new THREE.Vector3());
         posX = ARENA_CX - center.x * scale;
         posY = -terrainBox.max.y * scale;
@@ -1338,8 +1502,20 @@ function MapModelInner() {
           used by movement or collision. */}
       {/* Faction rim lights sit over the two bases as fitted at -90°:
           red base (8, 2), blue base (26, 20). */}
-      <pointLight position={[8, 5, 2]} color="#ff426f" distance={18} decay={2} intensity={2.4} />
-      <pointLight position={[26, 5, 20]} color="#38d9ff" distance={18} decay={2} intensity={2.2} />
+      <pointLight
+        position={[8, 5, 2]}
+        color="#ff426f"
+        distance={18}
+        decay={2}
+        intensity={2.4}
+      />
+      <pointLight
+        position={[26, 5, 20]}
+        color="#38d9ff"
+        distance={18}
+        decay={2}
+        intensity={2.2}
+      />
       <primitive object={clone} />
     </group>
   );

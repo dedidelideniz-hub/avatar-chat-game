@@ -61,10 +61,7 @@ import {
 // Eski üst şerit (HudFighter/HudClock) hâlâ render edilir: MOBA arayüzü
 // yüklenemezse savaş HUD'sız kalmaz. CSS, MOBA arayüzü varken bu şeridi
 // gizler (bkz. index.css → .battle-hud-top + .moba-chrome kuralı).
-import {
-  HudClock,
-  HudFighter,
-} from "@/components/world/BattleTopHud";
+import { HudClock, HudFighter } from "@/components/world/BattleTopHud";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import { cn } from "@/lib/utils";
@@ -106,7 +103,10 @@ const BOT_LEVEL_MAX = 10;
 const botLevelT = (level: number) =>
   (clampLevel(level) - BOT_LEVEL_MIN) / (BOT_LEVEL_MAX - BOT_LEVEL_MIN);
 const clampLevel = (level: number) =>
-  Math.min(BOT_LEVEL_MAX, Math.max(BOT_LEVEL_MIN, Math.round(level || BOT_LEVEL_MIN)));
+  Math.min(
+    BOT_LEVEL_MAX,
+    Math.max(BOT_LEVEL_MIN, Math.round(level || BOT_LEVEL_MIN)),
+  );
 /** Aim jitter in radians — shrinks from ±0.14 (level 1) to ±0.03 (level 10). */
 const botAimError = (level: number) => 0.14 - 0.11 * botLevelT(level);
 /** Seconds between bot shots — 0.4s (level 1) down to 0.2s (level 10).
@@ -209,8 +209,7 @@ export function BattleJoystick({
   // taşırır ve girdi ölçeğini bozardı.
   const setKnob = (dx: number, dy: number) => {
     if (knobRef.current)
-      knobRef.current.style.transform =
-        `translate(${dx}px, ${dy}px)`;
+      knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
   };
 
   const move = (px: number, py: number) => {
@@ -410,7 +409,10 @@ export function BattleLoading({
       >
         <span className="battle-load-spin">⚔️</span>
         SAVAŞ ALANI
-        <span className="battle-load-spin" style={{ animationDirection: "reverse" }}>
+        <span
+          className="battle-load-spin"
+          style={{ animationDirection: "reverse" }}
+        >
           ⚔️
         </span>
       </h2>
@@ -527,7 +529,9 @@ export default function BattleScene({
     (kind) => {
       const f = player.current;
       if (kind === "ult")
-        return isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0;
+        return (
+          isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0
+        );
       return f.superCharge >= 1;
     },
   );
@@ -540,10 +544,28 @@ export default function BattleScene({
   onExitRef.current = onExit;
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 400, 100, 1, 1),
+    newFighter(
+      playerName,
+      playerConfig,
+      playerEquipped,
+      playerAbility,
+      400,
+      100,
+      1,
+      1,
+    ),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1300, 1000, -1, opponentLevel),
+    newFighter(
+      opponentName,
+      opponentConfig,
+      opponentEquipped,
+      opponentAbility,
+      1300,
+      1000,
+      -1,
+      opponentLevel,
+    ),
   );
   bot.current.atkCd = 0.4;
   // The GLB collision mask is asynchronous. Resolve both initial refs once
@@ -715,10 +737,10 @@ export default function BattleScene({
   const clamp = (v: number, a: number, b: number) =>
     Math.min(Math.max(v, a), b);
 
-  // Collision is generated from the real rock / wall / tower geometry of the
-  // uploaded 5v5 map (rasterized in BattleMapModel) — there are no hand-placed
-  // obstacle lists and no coordinate-based invisible walls, so empty roads and
-  // lanes stay completely free.
+  // Yürüyüş alanı GÖRÜNMEZ DÜZ TABAN COLLIDER'ıdır (BattleMapModel): fizik,
+  // haritanın engebeli üçgenleri yerine düz bir zemin üzerinden kayar, sadece
+  // KALIN gerçek engeller (kaya/duvar/kule/üs) hareketi keser. Böylece düz
+  // yolda arazi girintilerine ve mikro dikişlere takılma olmaz.
   const hitsObstacle = (cx: number, cy: number, r: number) =>
     hitsRockCollision(cx, cy, r);
 
@@ -776,7 +798,12 @@ export default function BattleScene({
     tx: number,
     ty: number,
     dmg: number,
-    opts: { r?: number; pierce?: boolean; speed?: number; explodeR?: number } = {},
+    opts: {
+      r?: number;
+      pierce?: boolean;
+      speed?: number;
+      explodeR?: number;
+    } = {},
   ) => {
     const dx = tx - owner.x;
     const dy = ty - owner.y;
@@ -801,7 +828,11 @@ export default function BattleScene({
     });
   };
 
-  const damageEnemy = (attacker: BattleFighter, target: BattleFighter, dmg: number) => {
+  const damageEnemy = (
+    attacker: BattleFighter,
+    target: BattleFighter,
+    dmg: number,
+  ) => {
     if (target.hp <= 0 || resultRef.current) return;
     target.hp = Math.max(0, target.hp - dmg);
     target.lastHitAt = performance.now();
@@ -870,7 +901,15 @@ export default function BattleScene({
     const len = Math.min(560, MAX_RANGE_PX);
     const ex = f.x + Math.cos(ang) * len;
     const ey = f.y + Math.sin(ang) * len;
-    addFx({ kind: "beam", x1: f.x, y1: f.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
+    addFx({
+      kind: "beam",
+      x1: f.x,
+      y1: f.y,
+      x2: ex,
+      y2: ey,
+      ttl: 0.32,
+      maxTtl: 0.32,
+    });
     // Hasar yalnızca ışının menzili ve açısı içindeki hedefe gider.
     if (aimedHit(f, aim, enemy, { rangePx: len })) {
       damageEnemy(f, enemy, 300);
@@ -930,11 +969,18 @@ export default function BattleScene({
       default: {
         // temel — delici güçlü atış: nişan yönünde, menzil sonuna kadar.
         const end = rangePoint(f, aim);
-        spawnProj(f, f === player.current ? "player" : "bot", end.x, end.y, 240, {
-          r: 20,
-          pierce: true,
-          speed: 400,
-        });
+        spawnProj(
+          f,
+          f === player.current ? "player" : "bot",
+          end.x,
+          end.y,
+          240,
+          {
+            r: 20,
+            pierce: true,
+            speed: 400,
+          },
+        );
       }
     }
   };
@@ -976,7 +1022,8 @@ export default function BattleScene({
       !isSamuraiFighter(p) ||
       p.samuraiCharge < 1 ||
       p.samuraiUltT > 0
-    ) return;
+    )
+      return;
     p.samuraiCharge = 0;
     p.samuraiUltT = 0.82;
     p.samuraiUltHit = false;
@@ -1022,7 +1069,12 @@ export default function BattleScene({
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
   }, []);
 
-  const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
+  const moveFighter = (
+    f: BattleFighter,
+    dx: number,
+    dy: number,
+    dt: number,
+  ) => {
     // Sürtünmesiz kayma: hedef nokta reddedilirse karakter engelin önünde
     // kilitlenmez; hareket engelin teğetine izdüşürülür (wall slide), küçük
     // arazi dikişleri step offset ile tırmanılır. Alt adımlar sayesinde hızlı
@@ -1103,12 +1155,17 @@ export default function BattleScene({
         aimRef.current.active = true;
         actionsRef.current.attack();
       }
-      if (e.code === "KeyE" || e.code === "ShiftLeft" || e.code === "ShiftRight")
+      if (
+        e.code === "KeyE" ||
+        e.code === "ShiftLeft" ||
+        e.code === "ShiftRight"
+      )
         actionsRef.current.super();
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.code);
-      if (e.code === "Space" || e.code === "Enter") aimRef.current.active = false;
+      if (e.code === "Space" || e.code === "Enter")
+        aimRef.current.active = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -1365,7 +1422,8 @@ export default function BattleScene({
         // Higher-level bots weave: add a slow perpendicular sway so they are
         // harder to hit while still closing or holding range.
         if (levelT > 0 && botCanSee) {
-          const sway = Math.sin(performance.now() / 900 + b.phase) * levelT * 0.55;
+          const sway =
+            Math.sin(performance.now() / 900 + b.phase) * levelT * 0.55;
           mx += (dy / dist) * sway;
           my += (-dx / dist) * sway;
         }
@@ -1418,8 +1476,16 @@ export default function BattleScene({
           // teleport onto or through an obstacle.
           if (!escaped) {
             const ang = base + (Math.PI / 2) * unblockDir;
-            const sx = clamp(b.x + Math.cos(ang) * expected * 2, 40, ARENA_W - 40);
-            const sy = clamp(b.y + Math.sin(ang) * expected * 2, 40, ARENA_H - 40);
+            const sx = clamp(
+              b.x + Math.cos(ang) * expected * 2,
+              40,
+              ARENA_W - 40,
+            );
+            const sy = clamp(
+              b.y + Math.sin(ang) * expected * 2,
+              40,
+              ARENA_H - 40,
+            );
             if (!hitsObstacle(sx, sy, FIGHTER_R)) {
               b.x = sx;
               b.y = sy;
@@ -1470,13 +1536,19 @@ export default function BattleScene({
       );
       if (isSamuraiFighter(b)) {
         b.samuraiCharge = Math.min(1, b.samuraiCharge + dt * 0.16);
-        if (b.samuraiCharge >= 1 && b.samuraiUltT <= 0 && botCanSee && !bStunned) {
+        if (
+          b.samuraiCharge >= 1 &&
+          b.samuraiUltT <= 0 &&
+          botCanSee &&
+          !bStunned
+        ) {
           b.samuraiCharge = 0;
           b.samuraiUltT = 0.82;
           b.samuraiUltHit = false;
           const ang = Math.atan2(p.y - b.y, p.x - b.x);
           b.facing = Math.cos(ang) >= 0 ? 1 : -1;
-          b.vy = Math.abs(Math.sin(ang)) > 0.5 ? (Math.sin(ang) > 0 ? 1 : -1) : 0;
+          b.vy =
+            Math.abs(Math.sin(ang)) > 0.5 ? (Math.sin(ang) > 0 ? 1 : -1) : 0;
         }
       }
       if (b.samuraiUltT > 0) {
@@ -1514,7 +1586,11 @@ export default function BattleScene({
       }
       // The ult fires the moment the bar is full — unless the target hides
       // in a bush (self-heal is fine anywhere). Using it reveals the bot.
-      if (b.superCharge >= 1 && (b.ability.id === "sifa" || botCanSee) && !bStunned) {
+      if (
+        b.superCharge >= 1 &&
+        (b.ability.id === "sifa" || botCanSee) &&
+        !bStunned
+      ) {
         useSuper(b, p);
         b.revealUntil = performance.now() + BUSH_REVEAL_MS;
       }
@@ -1651,8 +1727,7 @@ export default function BattleScene({
    *  yerine yüzdeyle ortalanır. */
   const setAimKnob = (dx: number, dy: number) => {
     if (attackKnobRef.current) {
-      attackKnobRef.current.style.transform =
-        `translate(${dx}px, ${dy}px)`;
+      attackKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
     }
   };
 
@@ -1771,7 +1846,11 @@ export default function BattleScene({
                     : "border-white/30 bg-white/10 text-white/70"
                 }`}
               >
-                <span className="battle-hud-icon text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
+                <span className="battle-hud-icon text-xl">
+                  {player.current.samuraiCharge >= 1
+                    ? "⚔️"
+                    : Math.round(player.current.samuraiCharge * 100) + "%"}
+                </span>
               </button>
             )}
             <button
@@ -1807,8 +1886,7 @@ export default function BattleScene({
                 e.currentTarget.setPointerCapture?.(e.pointerId);
                 aimRef.current = { active: true, dx: 0, dy: 0 };
                 setAttackHeld(true);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               onPointerMove={(e) => {
                 if (!aimRef.current.active) return;
@@ -1830,28 +1908,24 @@ export default function BattleScene({
                 if (Math.abs(aimRef.current.dx) > 0.2) {
                   player.current.facing = aimRef.current.dx >= 0 ? 1 : -1;
                 }
-                if (attackKnobRef.current)
-                  setAimKnob(dx, dy);
+                if (attackKnobRef.current) setAimKnob(dx, dy);
               }}
               onPointerUp={() => {
                 // release — fire the aimed (or auto-aimed) shot
                 tryAttack(aimRef.current.dx, aimRef.current.dy);
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               onPointerCancel={() => {
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               onLostPointerCapture={() => {
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               aria-label="Saldır — basılı tut ve sürükle: nişan al"
               className={`battle-hud-attack pointer-events-auto relative flex size-20 touch-none items-center justify-center overflow-visible rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${

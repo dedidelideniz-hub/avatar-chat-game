@@ -57,10 +57,7 @@ import {
   registerMobaHud,
   type MobaHudLive,
 } from "@/components/world/moba/MobaHud";
-import {
-  HudClock,
-  HudFighter,
-} from "@/components/world/BattleTopHud";
+import { HudClock, HudFighter } from "@/components/world/BattleTopHud";
 import {
   DUEL_LEAVE_EVENT,
   useAndroidBattleOrientation,
@@ -281,10 +278,26 @@ export default function PvpBattleScene({
   const keysRef = useRef(new Set<string>());
 
   const player = useRef<BattleFighter>(
-    newFighter(playerName, playerConfig, playerEquipped, playerAbility, 400, 100, 1),
+    newFighter(
+      playerName,
+      playerConfig,
+      playerEquipped,
+      playerAbility,
+      400,
+      100,
+      1,
+    ),
   );
   const bot = useRef<BattleFighter>(
-    newFighter(opponentName, opponentConfig, opponentEquipped, opponentAbility, 1300, 1000, -1),
+    newFighter(
+      opponentName,
+      opponentConfig,
+      opponentEquipped,
+      opponentAbility,
+      1300,
+      1000,
+      -1,
+    ),
   );
   // Resolve the local spawn after the asynchronous GLB mask is available.
   const spawnResolvedRef = useRef(false);
@@ -346,10 +359,14 @@ export default function PvpBattleScene({
   const phaseRef = useRef<"loading" | "waiting" | "fight">("loading");
 
   const webglOk = useMemo(() => supportsWebGL(), []);
-  const [result, setResult] = useState<"win" | "lose" | "draw" | "forfeit" | null>(null);
+  const [result, setResult] = useState<
+    "win" | "lose" | "draw" | "forfeit" | null
+  >(null);
   const [attackHeld, setAttackHeld] = useState(false);
   const [vsShow, setVsShow] = useState(true);
-  const [phase, setPhase] = useState<"loading" | "waiting" | "fight">("loading");
+  const [phase, setPhase] = useState<"loading" | "waiting" | "fight">(
+    "loading",
+  );
   phaseRef.current = phase;
   const startedRef = useRef(false);
   // Android APK: savaş alanı bağlıyken ekran yataya kilitlenir, çıkışta
@@ -368,7 +385,9 @@ export default function PvpBattleScene({
     (kind) => {
       const f = player.current;
       if (kind === "ult")
-        return isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0;
+        return (
+          isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0
+        );
       return f.superCharge >= 1;
     },
   );
@@ -478,11 +497,23 @@ export default function PvpBattleScene({
     addFx({ kind: "text", x, y, ttl: 0.9, maxTtl: 0.9, text, color });
   };
 
-  const burstFx = (x: number, y: number, grow: number, color: string, ttl: number) => {
+  const burstFx = (
+    x: number,
+    y: number,
+    grow: number,
+    color: string,
+    ttl: number,
+  ) => {
     addFx({ kind: "burst", x, y, ttl, maxTtl: ttl, grow, color });
   };
 
-  const circleFx = (x: number, y: number, grow: number, color: string, ttl: number) => {
+  const circleFx = (
+    x: number,
+    y: number,
+    grow: number,
+    color: string,
+    ttl: number,
+  ) => {
     addFx({ kind: "ring", x, y, ttl, maxTtl: ttl, grow, color });
   };
 
@@ -549,7 +580,15 @@ export default function PvpBattleScene({
       case "beam": {
         const x2 = ev.x1 + Math.cos(ev.angle) * ev.len;
         const y2 = ev.y1 + Math.sin(ev.angle) * ev.len;
-        addFx({ kind: "beam", x1: ev.x1, y1: ev.y1, x2, y2, ttl: 0.32, maxTtl: 0.32 });
+        addFx({
+          kind: "beam",
+          x1: ev.x1,
+          y1: ev.y1,
+          x2,
+          y2,
+          ttl: 0.32,
+          maxTtl: 0.32,
+        });
         if (ev.hit) damageMe(ev.dmg);
         break;
       }
@@ -570,7 +609,15 @@ export default function PvpBattleScene({
         b.vy = ev.vy;
         break;
       case "samuraiCrack":
-        addFx({ kind: "samuraiCrack", x1: ev.x1, y1: ev.y1, x2: ev.x2, y2: ev.y2, ttl: 1.25, maxTtl: 1.25 });
+        addFx({
+          kind: "samuraiCrack",
+          x1: ev.x1,
+          y1: ev.y1,
+          x2: ev.x2,
+          y2: ev.y2,
+          ttl: 1.25,
+          maxTtl: 1.25,
+        });
         if (ev.hit) damageMe(ev.dmg);
         break;
     }
@@ -676,7 +723,12 @@ export default function PvpBattleScene({
     tx: number,
     ty: number,
     dmg: number,
-    opts: { r?: number; pierce?: boolean; speed?: number; explodeR?: number } = {},
+    opts: {
+      r?: number;
+      pierce?: boolean;
+      speed?: number;
+      explodeR?: number;
+    } = {},
   ) => {
     const p = player.current;
     const dx = tx - p.x;
@@ -719,7 +771,10 @@ export default function PvpBattleScene({
     if (hit) {
       floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
       hitRemote(pr.dmg);
-      player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
+      player.current.superCharge = Math.min(
+        1,
+        player.current.superCharge + 0.26,
+      );
     }
   };
 
@@ -732,9 +787,25 @@ export default function PvpBattleScene({
     const len = Math.min(560, MAX_RANGE_PX);
     const ex = p.x + Math.cos(ang) * len;
     const ey = p.y + Math.sin(ang) * len;
-    addFx({ kind: "beam", x1: p.x, y1: p.y, x2: ex, y2: ey, ttl: 0.32, maxTtl: 0.32 });
+    addFx({
+      kind: "beam",
+      x1: p.x,
+      y1: p.y,
+      x2: ex,
+      y2: ey,
+      ttl: 0.32,
+      maxTtl: 0.32,
+    });
     const hit = aimedHit(p, aim, b, { rangePx: len });
-    pushEvent({ type: "beam", x1: p.x, y1: p.y, angle: ang, len, dmg: 300, hit });
+    pushEvent({
+      type: "beam",
+      x1: p.x,
+      y1: p.y,
+      angle: ang,
+      len,
+      dmg: 300,
+      hit,
+    });
     if (hit) {
       floatText(b.x, b.y - 130, "-300", "#ff6b6b");
       hitRemote(300);
@@ -755,7 +826,8 @@ export default function PvpBattleScene({
   const useSamuraiSuper = () => {
     const p = player.current;
     const b = bot.current;
-    if (!isSamuraiFighter(p) || p.samuraiCharge < 1 || p.samuraiUltT > 0) return;
+    if (!isSamuraiFighter(p) || p.samuraiCharge < 1 || p.samuraiUltT > 0)
+      return;
     // Skillshot: nişan > menzil içi rakip > bakış yönü.
     const ultAim = resolveAim(
       p,
@@ -811,7 +883,13 @@ export default function PvpBattleScene({
 
   const tryAttack = useCallback((aimX?: number, aimY?: number) => {
     const p = player.current;
-    if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.atkCd > 0)
+    if (
+      !startedRef.current ||
+      resultRef.current ||
+      p.hp <= 0 ||
+      p.dashT > 0 ||
+      p.atkCd > 0
+    )
       return;
     p.atkCd = ATK_CD;
     // Skillshot hedefi: nişan varsa tam o yön; yoksa yalnızca MENZİL İÇİNDEKİ
@@ -833,7 +911,13 @@ export default function PvpBattleScene({
 
   const trySuper = useCallback(() => {
     const p = player.current;
-    if (!startedRef.current || resultRef.current || p.hp <= 0 || p.dashT > 0 || p.superCharge < 1)
+    if (
+      !startedRef.current ||
+      resultRef.current ||
+      p.hp <= 0 ||
+      p.dashT > 0 ||
+      p.superCharge < 1
+    )
       return;
     // Skillshot: buton basılı tutulup nişan alındıysa o yön; yoksa yalnızca
     // menzil içindeki rakibe kilit; o da yoksa bakış yönü.
@@ -850,15 +934,22 @@ export default function PvpBattleScene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const clamp = (v: number, a: number, b: number) => Math.min(Math.max(v, a), b);
+  const clamp = (v: number, a: number, b: number) =>
+    Math.min(Math.max(v, a), b);
 
-  // Collision is generated from the real rock / wall / tower geometry of the
-  // uploaded 5v5 map (rasterized in BattleMapModel) — no hand-placed obstacle
-  // lists or coordinate-based invisible walls, so open lanes stay free.
+  // Yürüyüş alanı GÖRÜNMEZ DÜZ TABAN COLLIDER'ıdır (BattleMapModel): fizik,
+  // haritanın engebeli üçgenleri yerine düz bir zemin üzerinden kayar; sadece
+  // KALIN gerçek engeller (kaya/duvar/kule/üs) hareketi keser. Düz yolda arazi
+  // girintilerine ve mikro dikişlere takılma olmaz.
   const hitsObstacle = (cx: number, cy: number, r: number) =>
     hitsRockCollision(cx, cy, r);
 
-  const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) => {
+  const moveFighter = (
+    f: BattleFighter,
+    dx: number,
+    dy: number,
+    dt: number,
+  ) => {
     // Sürtünmesiz kayma (wall slide) + step offset + alt adım: karakter arazi
     // dikişlerine, kaya ve duvar kenarlarına takılmadan süzülür.
     const toX = clamp(f.x + dx, 40, ARENA_W - 40);
@@ -925,12 +1016,17 @@ export default function PvpBattleScene({
         aimRef.current.active = true;
         actionsRef.current.attack();
       }
-      if (e.code === "KeyE" || e.code === "ShiftLeft" || e.code === "ShiftRight")
+      if (
+        e.code === "KeyE" ||
+        e.code === "ShiftLeft" ||
+        e.code === "ShiftRight"
+      )
         actionsRef.current.super();
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.code);
-      if (e.code === "Space" || e.code === "Enter") aimRef.current.active = false;
+      if (e.code === "Space" || e.code === "Enter")
+        aimRef.current.active = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -967,10 +1063,31 @@ export default function PvpBattleScene({
             const y2 = p.y + dirY * MAX_RANGE_PX;
             // Hasar yalnızca hat menzil içinde ve yönündeyse işler.
             const hit = aimedHit(p, dir, b, { rangePx: MAX_RANGE_PX });
-            addFx({ kind: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, ttl: 1.25, maxTtl: 1.25 });
-            pushEvent({ type: "samuraiCrack", x1: impactX, y1: impactY, x2, y2, dmg: SAMURAI_ULTIMATE_DAMAGE, hit });
+            addFx({
+              kind: "samuraiCrack",
+              x1: impactX,
+              y1: impactY,
+              x2,
+              y2,
+              ttl: 1.25,
+              maxTtl: 1.25,
+            });
+            pushEvent({
+              type: "samuraiCrack",
+              x1: impactX,
+              y1: impactY,
+              x2,
+              y2,
+              dmg: SAMURAI_ULTIMATE_DAMAGE,
+              hit,
+            });
             if (hit) {
-              floatText(b.x, b.y - 130, `-${SAMURAI_ULTIMATE_DAMAGE}`, "#fbbf24");
+              floatText(
+                b.x,
+                b.y - 130,
+                `-${SAMURAI_ULTIMATE_DAMAGE}`,
+                "#fbbf24",
+              );
               hitRemote(SAMURAI_ULTIMATE_DAMAGE);
             }
           }
@@ -1109,7 +1226,10 @@ export default function PvpBattleScene({
           burstFx(b.x, b.y - 40, 90, "#e0f2fe", 0.4);
           hitRemote(200);
           playSound("hit", { volume: 0.9, rate: 1.1 });
-          player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
+          player.current.superCharge = Math.min(
+            1,
+            player.current.superCharge + 0.26,
+          );
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
@@ -1152,8 +1272,14 @@ export default function PvpBattleScene({
             floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
             hitRemote(pr.dmg);
             pushColdFlameImpact(addFx, pr.x, pr.y - 40, 62);
-            playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
-            player.current.superCharge = Math.min(1, player.current.superCharge + 0.26);
+            playSound("hit", {
+              volume: 0.85,
+              rate: 0.95 + Math.random() * 0.25,
+            });
+            player.current.superCharge = Math.min(
+              1,
+              player.current.superCharge + 0.26,
+            );
           }
           if (!pr.pierce) {
             swapRemove(ownProjs.current, i);
@@ -1380,15 +1506,17 @@ export default function PvpBattleScene({
    *  kaydırılır (yatay modda HUD küçüldüğü için yüzdeyle ortalanır). */
   const setAimKnob = (dx: number, dy: number) => {
     if (attackKnobRef.current) {
-      attackKnobRef.current.style.transform =
-        `translate(${dx}px, ${dy}px)`;
+      attackKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
     }
   };
 
   const abilityEmoji = abilityOf(playerAbility).emoji;
   const oppAbilityEmoji = abilityOf(opponentAbility).emoji;
 
-  const RESULT_UI: Record<string, { emoji: string; title: string; msg: string }> = {
+  const RESULT_UI: Record<
+    string,
+    { emoji: string; title: string; msg: string }
+  > = {
     win: {
       emoji: "🏆",
       title: "Zafer!",
@@ -1544,7 +1672,11 @@ export default function PvpBattleScene({
                     : "border-white/30 bg-white/10 text-white/70"
                 }`}
               >
-                <span className="battle-hud-icon text-xl">{player.current.samuraiCharge >= 1 ? "⚔️" : Math.round(player.current.samuraiCharge * 100) + "%"}</span>
+                <span className="battle-hud-icon text-xl">
+                  {player.current.samuraiCharge >= 1
+                    ? "⚔️"
+                    : Math.round(player.current.samuraiCharge * 100) + "%"}
+                </span>
               </button>
             )}
             <button
@@ -1573,8 +1705,7 @@ export default function PvpBattleScene({
                 e.currentTarget.setPointerCapture?.(e.pointerId);
                 aimRef.current = { active: true, dx: 0, dy: 0 };
                 setAttackHeld(true);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               onPointerMove={(e) => {
                 if (!aimRef.current.active) return;
@@ -1594,27 +1725,23 @@ export default function PvpBattleScene({
                 if (Math.abs(aimRef.current.dx) > 0.2) {
                   player.current.facing = aimRef.current.dx >= 0 ? 1 : -1;
                 }
-                if (attackKnobRef.current)
-                  setAimKnob(dx, dy);
+                if (attackKnobRef.current) setAimKnob(dx, dy);
               }}
               onPointerUp={() => {
                 tryAttack(aimRef.current.dx, aimRef.current.dy);
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               onPointerCancel={() => {
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               onLostPointerCapture={() => {
                 aimRef.current = { active: false, dx: 0, dy: 0 };
                 setAttackHeld(false);
-                if (attackKnobRef.current)
-                  setAimKnob(0, 0);
+                if (attackKnobRef.current) setAimKnob(0, 0);
               }}
               aria-label="Saldır — basılı tut ve sürükle: nişan al"
               className={`battle-hud-attack pointer-events-auto relative flex size-20 touch-none items-center justify-center overflow-visible rounded-full border-4 border-white/70 text-3xl text-white shadow-xl transition-all duration-150 ${

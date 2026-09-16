@@ -99,131 +99,10 @@ function makePillarTexture(color: string) {
   return tex;
 }
 
-/** Lav akışı dokusu — yatay damarlar; `offset.x` kaydırılarak akıtılır. */
-function makeFlowTexture() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 64;
-  const g = canvas.getContext("2d");
-  const rnd = makeRng(90210);
-  if (g) {
-    g.fillStyle = "#200400";
-    g.fillRect(0, 0, 256, 64);
-    for (let i = 0; i < 46; i++) {
-      const y = rnd() * 64;
-      const w = 20 + rnd() * 90;
-      const x = rnd() * 256;
-      const grad = g.createLinearGradient(x, 0, x + w, 0);
-      grad.addColorStop(0, "rgba(0,0,0,0)");
-      grad.addColorStop(0.5, rnd() < 0.25 ? "#fff3c4" : "#ff8a2b");
-      grad.addColorStop(1, "rgba(0,0,0,0)");
-      g.fillStyle = grad;
-      g.fillRect(x, y, w, 1 + rnd() * 3.4);
-    }
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  return tex;
-}
-
-/* ------------------------------------------------------------------ */
-/* Lav nehirleri — zeminde akan kor damarları.                        */
-/* ------------------------------------------------------------------ */
-
-/** (x, z) düğümleri. Ana hat iki üssü birleştiren koridordur. */
-const LAVA_RIVERS: [number, number][][] = [
-  [
-    [1.5, 2.4],
-    [7, 6.4],
-    [13, 9.6],
-    [19, 13.4],
-    [24.4, 16.6],
-    [28.5, 19.6],
-  ],
-  [
-    [-2, 12.5],
-    [4, 14.6],
-    [10.5, 16.4],
-    [17, 17.6],
-    [23.5, 18.2],
-    [29, 18.4],
-  ],
-  [
-    [2, 19.5],
-    [6.5, 17.4],
-    [11, 13.6],
-    [15.5, 9.4],
-    [19, 6.2],
-    [23, 4.2],
-  ],
-];
-
-const RIVER_TUBE_SEGMENTS = 120;
-const RIVER_RADIAL = 8;
-
-function LavaRivers() {
-  const flow = useMemo(() => makeFlowTexture(), []);
-  const wideFlow = useMemo(() => {
-    const tex = flow.clone();
-    tex.needsUpdate = true;
-    return tex;
-  }, [flow]);
-
-  const curves = useMemo(
-    () =>
-      LAVA_RIVERS.map(
-        (nodes) =>
-          new THREE.CatmullRomCurve3(
-            nodes.map(([x, z]) => new THREE.Vector3(x, 0.06, z)),
-          ),
-      ),
-    [],
-  );
-
-  useFrame((_, dt) => {
-    flow.offset.x -= dt * 0.16;
-    wideFlow.offset.x -= dt * 0.1;
-  });
-
-  return (
-    <group>
-      {curves.map((curve, i) => (
-        <group key={i}>
-          {/* geniş, yumuşak kor halesi — bloom hissi */}
-          <mesh raycast={() => null}>
-            <tubeGeometry
-              args={[curve, RIVER_TUBE_SEGMENTS, 0.85, RIVER_RADIAL, false]}
-            />
-            <meshBasicMaterial
-              map={wideFlow}
-              color="#ff5f14"
-              transparent
-              opacity={0.2}
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-          {/* parlak lav çekirdeği */}
-          <mesh raycast={() => null}>
-            <tubeGeometry
-              args={[curve, RIVER_TUBE_SEGMENTS, 0.36, RIVER_RADIAL, false]}
-            />
-            <meshBasicMaterial
-              map={flow}
-              color="#ffb347"
-              transparent
-              opacity={0.88}
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-              toneMapped={false}
-            />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
+/* Lav nehirleri (yolu ve haritayı boydan boya kesen additive kor tüpleri)
+   TAMAMEN KALDIRILDI: ekranda kırmızı/turuncu lazer şeritleri gibi okunuyor
+   ve zemin dokusunu kapatıyorlardı. Lav artık yalnızca göl havuzları ve
+   üs kristalleriyle temsil edilir. */
 
 /** Lav gölleri: zemin oyuklarında nabız gibi parlayan kor havuzları. */
 const LAVA_POOLS = [
@@ -887,7 +766,7 @@ function LaneRoads() {
       LANES.map(
         (lane) =>
           new THREE.CatmullRomCurve3(
-            lane.nodes.map(([x, z]) => new THREE.Vector3(x, 0.11, z)),
+            lane.nodes.map(([x, z]) => new THREE.Vector3(x, 0.02, z)),
           ),
       ),
     [],
@@ -896,15 +775,15 @@ function LaneRoads() {
     <group>
       {curves.map((curve, i) => (
         <group key={i}>
-          {/* Yol gövdesi: düz, ışık alan taş/toprak şerit. Yansıma ve
-              kendinden parlama yok — zeminin kendi dokusu okunur kalır. */}
-          <mesh scale={[1, 0.05, 1]} receiveShadow raycast={() => null}>
-            <tubeGeometry args={[curve, 150, 0.95, 10, false]} />
+          {/* Yol gövdesi: zemine GÖMÜLÜ, pürüzsüz taş/toprak şerit. Kabartma,
+              yansıma ve kendinden parlama yok — zeminin kendi dokusu okunur. */}
+          <mesh scale={[1, 0.035, 1]} receiveShadow raycast={() => null}>
+            <tubeGeometry args={[curve, 150, 0.98, 12, false]} />
             <meshStandardMaterial
               color={LANES[i].road}
-              roughness={0.92}
-              metalness={0.04}
-              envMapIntensity={0.1}
+              roughness={1}
+              metalness={0}
+              envMapIntensity={0}
             />
           </mesh>
         </group>
@@ -1047,39 +926,8 @@ function StoneStructures() {
               kendi emissive'i + bloom ile zaten çevresine ışık saçıyor. */}
         </group>
       ))}
-      {/* koridoru taçlandıran taş kemerler */}
-      {[8.5, 25.5].map((x, i) => (
-        <group
-          key={`arch${i}`}
-          position={[x, 0, 15.6]}
-          rotation={[0, i === 0 ? 0.5 : -0.5, 0]}
-        >
-          <mesh
-            material={obeliskMat}
-            position={[-1.9, 1.1, 0]}
-            castShadow
-            raycast={() => null}
-          >
-            <boxGeometry args={[0.45, 2.2, 0.45]} />
-          </mesh>
-          <mesh
-            material={obeliskMat}
-            position={[1.9, 1.1, 0]}
-            castShadow
-            raycast={() => null}
-          >
-            <boxGeometry args={[0.45, 2.2, 0.45]} />
-          </mesh>
-          <mesh
-            material={obeliskMat}
-            position={[0, 2.1, 0]}
-            castShadow
-            raycast={() => null}
-          >
-            <torusGeometry args={[1.95, 0.26, 8, 18, Math.PI]} />
-          </mesh>
-        </group>
-      ))}
+      {/* Koridorun üstündeki kare taş/kemer kutuları KALDIRILDI: yolun
+          tam üzerinde duruyor ve kaplamasız kutu gibi okunuyorlardı. */}
     </group>
   );
 }
@@ -1088,31 +936,10 @@ function StoneStructures() {
 /* Yansımalar ve karakter gölgeleri                                    */
 /* ------------------------------------------------------------------ */
 
-/**
- * İnce yansıtıcı katman: taş zeminin üzerinde çok düşük opaklıkta metalik
- * bir düzlem durur ve çevre haritasını yansıtır — "ıslak taş" hissi. Zemin
- * detayını gizlememesi için opaklığı düşüktür.
- */
-function ReflectiveFloor() {
-  return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[ARENA_W / 2, 0.03, ARENA_D / 2]}
-      raycast={() => null}
-    >
-      <planeGeometry args={[ARENA_W, ARENA_D]} />
-      <meshStandardMaterial
-        color="#0b1020"
-        metalness={0.6}
-        roughness={0.42}
-        envMapIntensity={0.4}
-        transparent
-        opacity={0.05}
-        depthWrite={false}
-      />
-    </mesh>
-  );
-}
+/* Yansıtıcı zemin katmanı (ReflectiveFloor) KALDIRILDI: yolun üzerinde
+   duran, çevre haritasını yansıtan yarı saydam düzlem ve benzeri kaplama
+   panelleri zemini kirletiyordu. Yol artık haritanın kendi pürüzsüz
+   taş/toprak dokusundan ibarettir. */
 
 /**
  * Karakter gölgeleri: Arena3D'nin ışıkları gölge düşürmez (castShadow yok),
@@ -1283,12 +1110,9 @@ export function WarAtmosphere() {
       <VolcanicKeyLight />
       <MagmaLights />
       <GroundHaze />
-      {/* Zemin katmanı: yalnızca çok soluk (ıslak taş) yansıma */}
-      <ReflectiveFloor />
-      {/* Ortam detayı: netleşmiş lane yolları, enerji hatları, taş yapılar */}
+      {/* Ortam detayı: pürüzsüz lane yolları ve taş yapılar */}
       <LaneRoads />
       <StoneStructures />
-      <LavaRivers />
       <LavaPools />
       {NEXUS.map((n) => (
         <NexusCrystal
