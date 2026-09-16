@@ -1372,12 +1372,12 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 0 10px rgb(255 190 90 / 0.55));
+  filter: drop-shadow(0 0 6px rgb(255 190 90 / 0.32));
   animation: moba-logo-glow 3.4s ease-in-out infinite;
 }
 @keyframes moba-logo-glow {
-  0%, 100% { filter: drop-shadow(0 0 8px rgb(255 190 90 / 0.4)); }
-  50% { filter: drop-shadow(0 0 16px rgb(255 214 120 / 0.8)); }
+  0%, 100% { filter: drop-shadow(0 0 5px rgb(255 190 90 / 0.24)); }
+  50% { filter: drop-shadow(0 0 9px rgb(255 214 120 / 0.46)); }
 }
 .moba-logo-wing {
   font-size: clamp(8px, 1.4vh, 12px);

@@ -69,8 +69,8 @@ const LOOK_L = 1.6;
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,
 // isli mor-kızıl bir ufuk — arenanın lav atmosferiyle bütünleşir.
-const SKY = new THREE.Color("#2a1420"); // portrait sky (volcanic dusk)
-const FOG = new THREE.Color("#170b12"); // landscape horizon = fog color
+const SKY = new THREE.Color("#231a26"); // portrait sky (volcanic dusk)
+const FOG = new THREE.Color("#120e14"); // landscape horizon = fog color
 const FOG_DENSITY = 0.016; // FogExp2 density at full landscape
 
 /**
@@ -111,17 +111,20 @@ export function useArenaCamera(
       const light = obj as THREE.Light;
       if (!light.isLight || light.userData?.mobaLight) return;
       if ((light as THREE.AmbientLight).isAmbientLight) {
-        light.intensity = 0.2;
+        light.intensity = 0.15;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
-        hemi.color.set("#3f5aa8");
-        hemi.groundColor.set("#ff7a2e");
-        hemi.intensity = 0.46;
+        hemi.color.set("#41528f");
+        hemi.groundColor.set("#c4611f");
+        // Dolgu ışığı kısıldı: tüm haritayı turuncuya boyayan asıl katman
+        // burasıydı, siyahlar artık gerçekten siyah kalıyor.
+        hemi.intensity = 0.3;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
-        // Arena3D'nin nötr ana ışığı lav tarafından vuran doygun sıcak
-        // anahtara dönüşür (atmosferin kendi ışıkları yukarıda atlanır).
-        light.color.set("#ffab5e");
-        light.intensity = 1.45;
+        // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
+        // dönüşür (atmosferin kendi ışıkları yukarıda atlanır). Doygunluğu
+        // düşürülüp şiddeti azaltıldı — zemin kahverengiye yıkanmıyor.
+        light.color.set("#ffd0a4");
+        light.intensity = 0.92;
       }
     });
   }, [scene]);

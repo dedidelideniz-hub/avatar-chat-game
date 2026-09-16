@@ -36,12 +36,14 @@
     inset 0 1px 0 rgb(255 255 255 / 0.2);
 }
 
-/* Dolgu çubukları da hafifçe dışa taşarak parlar (referanstaki UI ışıması). */
+/* Dolgu çubukları da hafifçe dışa taşarak parlar (referanstaki UI ışıması) —
+   ölçülü tutulur: sahne artık bloom'a boğulmadığı için bar ışıması da
+   yumuşak kalmalı. */
 .moba-vitals-hp.moba-vitals-hp {
-  box-shadow: 0 0 10px rgb(103 232 249 / 0.55);
+  box-shadow: 0 0 5px rgb(103 232 249 / 0.3);
 }
 .moba-vitals-xp.moba-vitals-xp {
-  box-shadow: 0 0 8px rgb(168 85 247 / 0.5);
+  box-shadow: 0 0 4px rgb(168 85 247 / 0.26);
 }
 
 /* ── Rakip kartı: altın kaplama çerçeve + koyu cam gövde ── */
@@ -68,7 +70,7 @@
     inset 0 0 0 2px rgb(255 199 92 / 0.62),
     inset 0 0 0 6px rgb(10 17 32 / 0.72),
     inset 0 1px 0 rgb(255 248 225 / 0.2),
-    0 0 28px rgb(255 190 80 / 0.3),
+    0 0 12px rgb(255 190 80 / 0.18),
     0 18px 40px rgb(0 0 0 / 0.6);
 }
 
@@ -77,14 +79,14 @@
   box-shadow:
     inset 0 0 0 1px rgb(255 214 120 / 0.62),
     inset 0 1px 0 rgb(255 255 255 / 0.16),
-    0 0 0 1px rgb(255 214 120 / 0.22),
-    0 0 18px rgb(255 190 90 / 0.22),
+    0 0 0 1px rgb(255 214 120 / 0.18),
+    0 0 10px rgb(255 190 90 / 0.14),
     0 8px 22px rgb(0 0 0 / 0.5);
 }
 
 /* Yetenek barı: koyu cam + hafif kor ışıması. */
 .moba-abilitybar.moba-abilitybar {
-  filter: drop-shadow(0 0 14px rgb(255 185 90 / 0.22));
+  filter: drop-shadow(0 0 8px rgb(255 185 90 / 0.14));
 }
 
 /* ── Kart içi can barı ve istatistik şeridi ── */
@@ -104,6 +106,13 @@
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 0.18),
     inset 0 1px 0 rgb(255 255 255 / 0.12);
+}
+
+/* ── Seviye rozeti (altın daire) ──
+   index.css'in sonundaki bu kural düzenleme aracının penceresinin dışında
+   kaldığı için parlaması buradan azaltılır. */
+.moba-level-badge.moba-level-badge {
+  box-shadow: 0 0 6px rgb(255 199 92 / 0.26);
 }
 
 /* Cam efekti desteklenmiyorsa (eski Android WebView) paneller daha opak olur:

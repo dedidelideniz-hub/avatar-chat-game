@@ -188,7 +188,7 @@ function LavaRivers() {
               map={wideFlow}
               color="#ff5f14"
               transparent
-              opacity={0.26}
+              opacity={0.12}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
             />
@@ -202,7 +202,7 @@ function LavaRivers() {
               map={flow}
               color="#ffb347"
               transparent
-              opacity={0.95}
+              opacity={0.7}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               toneMapped={false}
@@ -235,7 +235,7 @@ function MagmaLights() {
     for (let i = 0; i < LAVA_POOLS.length; i++) {
       const light = refs.current[i];
       if (!light) continue;
-      light.intensity = 1.7 + 0.7 * Math.sin(t * 1.7 + i * 2.1);
+      light.intensity = 0.55 + 0.22 * Math.sin(t * 1.7 + i * 2.1);
     }
   });
 
@@ -249,8 +249,8 @@ function MagmaLights() {
           }}
           position={[p.x, 0.62, p.z]}
           color="#ff6a1f"
-          intensity={1.8}
-          distance={9.5}
+          intensity={0.6}
+          distance={7}
           decay={2}
         />
       ))}
@@ -268,7 +268,7 @@ function LavaPools() {
       const m = refs.current[i];
       if (!m) continue;
       const mat = m.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.38 + 0.14 * Math.sin(t * 1.5 + i * 1.7);
+      mat.opacity = 0.2 + 0.07 * Math.sin(t * 1.5 + i * 1.7);
       m.scale.setScalar(1 + 0.05 * Math.sin(t * 1.1 + i));
     }
   });
@@ -289,7 +289,7 @@ function LavaPools() {
               map={tex}
               color="#ff8c2e"
               transparent
-              opacity={0.42}
+              opacity={0.22}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               toneMapped={false}
@@ -301,7 +301,7 @@ function LavaPools() {
             <meshBasicMaterial
               color="#ffb066"
               transparent
-              opacity={0.5}
+              opacity={0.26}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               side={THREE.DoubleSide}
@@ -360,19 +360,19 @@ function NexusCrystal({
     if (runes.current) runes.current.rotation.y -= dt * 0.12;
     const pulse = 0.78 + 0.22 * Math.sin(t * 1.8);
     if (crystalMat.current) {
-      crystalMat.current.emissiveIntensity = 1.7 + 1.5 * pulse;
+      crystalMat.current.emissiveIntensity = 0.85 + 0.5 * pulse;
     }
     if (beam.current) {
       const mat = beam.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.2 + 0.12 * pulse;
-      beam.current.scale.set(1 + 0.06 * pulse, 1, 1 + 0.06 * pulse);
+      mat.opacity = 0.09 + 0.05 * pulse;
+      beam.current.scale.set(1 + 0.03 * pulse, 1, 1 + 0.03 * pulse);
     }
     if (haloRef.current) {
       (haloRef.current.material as THREE.SpriteMaterial).opacity =
-        0.34 + 0.16 * pulse;
-      haloRef.current.scale.setScalar(6.4 + 0.5 * pulse);
+        0.14 + 0.06 * pulse;
+      haloRef.current.scale.setScalar(4.2 + 0.3 * pulse);
     }
-    if (light.current) light.current.intensity = 2.6 + 1.4 * pulse;
+    if (light.current) light.current.intensity = 0.9 + 0.45 * pulse;
   });
 
   return (
@@ -432,7 +432,7 @@ function NexusCrystal({
           map={beamTex}
           color={color}
           transparent
-          opacity={0.24}
+          opacity={0.1}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           side={THREE.DoubleSide}
@@ -446,7 +446,7 @@ function NexusCrystal({
           map={glowTex}
           color={color}
           transparent
-          opacity={0.4}
+          opacity={0.16}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
           toneMapped={false}
@@ -461,7 +461,7 @@ function NexusCrystal({
             ref={crystalMat}
             color={core}
             emissive={color}
-            emissiveIntensity={2.2}
+            emissiveIntensity={1.1}
             roughness={0.12}
             metalness={0.15}
             transparent
@@ -474,7 +474,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={2.4}
+            emissiveIntensity={1.2}
             roughness={0.1}
             transparent
             opacity={0.94}
@@ -490,7 +490,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={1.8}
+            emissiveIntensity={0.9}
             roughness={0.14}
             transparent
             opacity={0.9}
@@ -518,7 +518,7 @@ function NexusCrystal({
               <meshStandardMaterial
                 color={core}
                 emissive={accent}
-                emissiveIntensity={1.6}
+                emissiveIntensity={0.8}
                 roughness={0.2}
                 transparent
                 opacity={0.85}
@@ -534,9 +534,9 @@ function NexusCrystal({
         ref={light}
         position={[0, 2.6, 0]}
         color={color}
-        distance={20}
+        distance={13}
         decay={2}
-        intensity={3.1}
+        intensity={1.2}
       />
     </group>
   );
@@ -559,9 +559,10 @@ function VolcanicKeyLight() {
     const t = performance.now() / 1000;
     // Arena3D'nin ana ışığı ArenaCamera paletinde sıcak tona çevrildiği
     // için bu iki ışık ince bir renk dolgusudur (parlaklığı şişirmez).
-    if (warm.current) warm.current.intensity = 1.0 + 0.14 * Math.sin(t * 0.9);
+    // Şiddetler ölçülü: sahneyi turuncuya yıkayan asıl katman bunlardı.
+    if (warm.current) warm.current.intensity = 0.48 + 0.07 * Math.sin(t * 0.9);
     if (cool.current)
-      cool.current.intensity = 0.58 + 0.1 * Math.sin(t * 1.3 + 2);
+      cool.current.intensity = 0.3 + 0.05 * Math.sin(t * 1.3 + 2);
   });
   return (
     <>
@@ -572,14 +573,14 @@ function VolcanicKeyLight() {
         userData={{ mobaLight: true }}
         position={[20, 12, -10]}
         color="#ff9c3f"
-        intensity={1.0}
+        intensity={0.48}
       />
       <directionalLight
         ref={cool}
         userData={{ mobaLight: true }}
         position={[-14, 9, 18]}
         color="#49daff"
-        intensity={0.58}
+        intensity={0.3}
       />
     </>
   );
@@ -597,10 +598,10 @@ function VolcanicKeyLight() {
  */
 function ArenaEnvironment() {
   return (
-    <Environment resolution={96} frames={1} environmentIntensity={0.45}>
+    <Environment resolution={96} frames={1} environmentIntensity={0.24}>
       <Lightformer
         form="rect"
-        intensity={2.4}
+        intensity={1.3}
         color="#ff8a2b"
         scale={[12, 5, 1]}
         position={[7, 3, -7]}
@@ -608,7 +609,7 @@ function ArenaEnvironment() {
       />
       <Lightformer
         form="rect"
-        intensity={1.9}
+        intensity={1.0}
         color="#3fd8ff"
         scale={[10, 4, 1]}
         position={[-7, 2.5, 7]}
@@ -616,7 +617,7 @@ function ArenaEnvironment() {
       />
       <Lightformer
         form="circle"
-        intensity={0.8}
+        intensity={0.4}
         color="#ffe3bd"
         scale={5}
         position={[0, 7, 0]}
@@ -668,7 +669,7 @@ function WarEmbers() {
       }
       s.position.set(p.x, p.y, p.z);
       const flicker = 0.5 + 0.5 * Math.sin(now * 3.4 + p.phase * 4);
-      (s.material as THREE.SpriteMaterial).opacity = flicker * 0.85;
+      (s.material as THREE.SpriteMaterial).opacity = flicker * 0.45;
       s.scale.set(p.size, p.size, 1);
     }
   });
@@ -682,12 +683,11 @@ function WarEmbers() {
             refs.current[i] = el;
           }}
           raycast={() => null}
-        >
-          <spriteMaterial
-            map={ember.cold ? coldTex : warmTex}
-            color={ember.cold ? "#9fe8ff" : "#ffb050"}
-            transparent
-            opacity={0.75}
+        >            <spriteMaterial
+              map={ember.cold ? coldTex : warmTex}
+              color={ember.cold ? "#9fe8ff" : "#ffb050"}
+              transparent
+              opacity={0.45}
             depthWrite={false}
             blending={THREE.AdditiveBlending}
           />
@@ -745,7 +745,7 @@ function BattleSky() {
               <meshBasicMaterial
                 color="#ff9a4d"
                 transparent
-                opacity={0.055}
+                opacity={0.03}
                 blending={THREE.AdditiveBlending}
                 side={THREE.DoubleSide}
                 depthWrite={false}
@@ -753,12 +753,12 @@ function BattleSky() {
             </mesh>
           ))}
         </group>
-        <sprite scale={[9, 9, 1]} raycast={() => null}>
+        <sprite scale={[7, 7, 1]} raycast={() => null}>
           <spriteMaterial
             map={sunTex}
             color="#ff8a44"
             transparent
-            opacity={0.7}
+            opacity={0.3}
             depthWrite={false}
             blending={THREE.AdditiveBlending}
           />
@@ -768,10 +768,10 @@ function BattleSky() {
       <points ref={ashRef} geometry={ash} raycast={() => null}>
         <pointsMaterial
           color="#ffbb8a"
-          size={0.16}
+          size={0.14}
           sizeAttenuation
           transparent
-          opacity={0.5}
+          opacity={0.3}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />
@@ -788,7 +788,7 @@ function GroundHaze() {
     if (!ref.current) return;
     const t = performance.now() / 1000;
     (ref.current.material as THREE.MeshBasicMaterial).opacity =
-      0.075 + 0.03 * Math.sin(t * 0.8);
+      0.03 + 0.012 * Math.sin(t * 0.8);
   });
   return (
     <mesh
@@ -802,7 +802,7 @@ function GroundHaze() {
         map={tex}
         color="#ff6a1f"
         transparent
-        opacity={0.09}
+        opacity={0.035}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
       />
@@ -826,7 +826,10 @@ export function MapPalette() {
   const { scene } = useGLTF(MAP_URL);
 
   useEffect(() => {
-    const tint = new THREE.Color(0.5, 0.55, 0.8);
+    // Nötr-soğuk bazalt çarpanı: eskiden aşırı mor/mavi olduğu için üstüne
+    // binen sıcak ışıklarla birlikte zemin "kahverengi çamur" okunuyordu.
+    // Şimdi hafif soğuk gri — doku detayı korunur, ton nötr taş olur.
+    const tint = new THREE.Color(0.66, 0.66, 0.7);
     scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
@@ -842,8 +845,10 @@ export function MapPalette() {
         if (typeof material.roughness === "number") {
           material.roughness = Math.min(1, material.roughness * 1.06);
         }
-        material.emissive = new THREE.Color(0x14_05_03);
-        material.emissiveIntensity = 0.22;
+        // Haritanın kendi kızıl ışıması neredeyse sıfırlandı: tüm zeminin
+        // sıcak parlaması ve "her yer turuncu" hissi buradan geliyordu.
+        material.emissive = new THREE.Color(0x0a_06_04);
+        material.emissiveIntensity = 0.06;
         // Yeni çevre haritası zemini yıkamasın: bazalt zemin neredeyse hiç
         // yansıtmaz, kontrast lav ile zemini arasında kalır.
         if (typeof material.envMapIntensity === "number") {
