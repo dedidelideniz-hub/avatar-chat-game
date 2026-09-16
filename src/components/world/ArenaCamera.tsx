@@ -67,9 +67,11 @@ const LOOK_P = 1.1;
 const LOOK_L = 1.6;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
-const SKY = new THREE.Color("#aacde4"); // portrait sky (unchanged)
-const FOG = new THREE.Color("#0a0a12"); // landscape horizon = fog color
-const FOG_DENSITY = 0.015; // FogExp2 density at full landscape
+// Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,
+// isli mor-kızıl bir ufuk — arenanın lav atmosferiyle bütünleşir.
+const SKY = new THREE.Color("#2a1420"); // portrait sky (volcanic dusk)
+const FOG = new THREE.Color("#170b12"); // landscape horizon = fog color
+const FOG_DENSITY = 0.016; // FogExp2 density at full landscape
 
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
@@ -92,6 +94,31 @@ export function useArenaCamera(
   // Reusable fog/background state (no per-frame allocation).
   const fog = useRef<THREE.FogExp2 | null>(null);
   const bg = useRef<THREE.Color | null>(null);
+
+  // --- palet: Arena3D'nin nötr dolgu ışıkları (gündüz beyazı ortam +
+  // gökyüzü/zemin hemisferi) volkanik MOBA paletine çekilir. Fog ve arka
+  // planı da bu modül yönettiği için arenanın tüm ışık/atmosfer dili tek
+  // yerden ayarlanır. WarAtmosphere'in kendi ışıkları `userData.mobaLight`
+  // ile işaretlidir ve bu geçişte dokunulmaz. ---
+  useEffect(() => {
+    scene.traverse((obj) => {
+      const light = obj as THREE.Light;
+      if (!light.isLight || light.userData?.mobaLight) return;
+      if ((light as THREE.AmbientLight).isAmbientLight) {
+        light.intensity = 0.34;
+      } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
+        const hemi = light as THREE.HemisphereLight;
+        hemi.color.set("#54689a");
+        hemi.groundColor.set("#ff8a44");
+        hemi.intensity = 0.62;
+      } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
+        // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
+        // dönüşür (atmosferin kendi ışıkları yukarıda atlanır).
+        light.color.set("#ffd0a4");
+        light.intensity = 1.15;
+      }
+    });
+  }, [scene]);
 
   // Orientation changes and window resizes are handled by the renderer's own
   // resize observer, but we also re-assert the projection (and atmosphere)

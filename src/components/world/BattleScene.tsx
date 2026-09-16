@@ -47,6 +47,17 @@ import {
   useAndroidBattleOrientation,
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
+// MOBA savaş arayüzü: üst şerit, minimap, sağ ray, yetenek barı ve rakip
+// kartı. HUD, kare döngüsünü yormamak için ref'lerden beslenir; bu yüzden
+// sahne yalnızca bir store kaydeder, bileşen joystick katmanında render edilir.
+import {
+  MobaArenaChrome,
+  registerMobaHud,
+  type MobaHudLive,
+} from "@/components/world/moba/MobaHud";
+// Eski üst şerit (HudFighter/HudClock) hâlâ render edilir: MOBA arayüzü
+// yüklenemezse savaş HUD'sız kalmaz. CSS, MOBA arayüzü varken bu şeridi
+// gizler (bkz. index.css → .battle-hud-top + .moba-chrome kuralı).
 import {
   HudClock,
   HudFighter,
@@ -74,6 +85,7 @@ import {
 
 const ARENA_W = 1700;
 const ARENA_H = 1100;
+// HUD: MOBA kabuğu (üst şerit, minimap, yetenek barı) `moba/MobaHud.tsx`.
 const HP = 1000;
 const BASE_DMG = 120;
 const PROJ_SPEED = 445; // mermi uçuş hızı (%28 yavaşlatıldı: 620 → 445)
@@ -267,6 +279,10 @@ export function BattleJoystick({
 
   return (
     <>
+      {/* MOBA savaş arayüzü: üst şerit, minimap, sağ ray, yetenek barı ve
+          rakip kartı arena üzerine buradan bindirilir. Sahne store kaydını
+          yapar; kayıt yoksa hiçbir şey render edilmez (eski HUD yedek kalır). */}
+      <MobaArenaChrome storeKey={stickRef} />
       <div
         ref={baseRef}
         className="battle-joystick battle-hud-stick pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
@@ -468,6 +484,7 @@ export default function BattleScene({
   opponentEquipped,
   opponentAbility,
   opponentLevel,
+  gold,
   onExit,
 }: {
   playerName: string;
@@ -479,6 +496,8 @@ export default function BattleScene({
   opponentEquipped: string[];
   opponentAbility: string;
   opponentLevel: number;
+  /** Oyuncunun Vaelos Parası — üst şeritteki altın sayacı (yoksa gizlenir). */
+  gold?: number;
   onExit: (victory: boolean) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
@@ -533,6 +552,8 @@ export default function BattleScene({
   const [result, setResult] = useState<"win" | "lose" | null>(null);
   const [attackHeld, setAttackHeld] = useState(false);
   const [vsShow, setVsShow] = useState(true);
+  // Üst şeritteki skor: iki tarafın toplam isabet sayısı (MOBA skor tablosu).
+  const scoreRef = useRef({ p: 0, o: 0 });
   // Gaming-style loading sequence runs before the fight unlocks.
   const [phase, setPhase] = useState<"loading" | "fight">("loading");
   const startedRef = useRef(false);
@@ -577,10 +598,65 @@ export default function BattleScene({
     click: (_x: number, _y: number) => {},
   });
 
+  // ── MOBA HUD köprüsü ──────────────────────────────────────────────
+  // Arayüz React state'iyle beslenmez: simülasyon ref'leri stabil kalır,
+  // her çizimde tazelenen `mobaLiveRef` ise HUD'un okuyacağı anlık değerleri
+  // taşır. HUD tek bir rAF döngüsünde bu değerleri DOM'a yazar, yani savaş
+  // alanı ekstra React çizimi yapmaz (bkz. moba/MobaHud.tsx).
+  const mobaLiveRef = useRef<MobaHudLive>({
+    phase: "loading",
+    clock: 0,
+    vsShow: false,
+    ph: HP,
+    ohp: HP,
+    pc: 0,
+    oc: 0,
+    sc: 0,
+    atkReady: true,
+    samurai: false,
+    hidden: false,
+  });
+  mobaLiveRef.current = {
+    phase,
+    clock,
+    vsShow,
+    ph: hud.ph,
+    ohp: hud.ohp,
+    pc: hud.pc,
+    oc: hud.oc,
+    sc: hud.sc,
+    atkReady: hud.atkReady,
+    samurai: isSamuraiFighter(player.current),
+    hidden: hud.hidden,
+  };
+  useEffect(
+    () =>
+      registerMobaHud(joystickRef, {
+        player,
+        bot,
+        live: mobaLiveRef,
+        score: scoreRef,
+        meta: {
+          playerName,
+          opponentName,
+          playerEmoji: abilityOf(playerAbility).emoji,
+          opponentEmoji: abilityOf(opponentAbility).emoji,
+          playerLevel: player.current.level,
+          opponentLevel,
+          maxHp: HP,
+          atkCd: ATK_CD,
+          gold,
+          exit: () => onExitRef.current(false),
+        },
+      }),
+    [],
+  );
+
   // Animated VS banner plays once the loading sequence finishes.
   useEffect(() => {
     if (phase !== "fight") return;
-    const t = window.setTimeout(() => setVsShow(false), 1800);
+    // Rakip kartı maç başında bir süre ekranda kalır (elle de açılabilir).
+    const t = window.setTimeout(() => setVsShow(false), 3200);
     return () => window.clearTimeout(t);
   }, [phase]);
 
@@ -726,6 +802,9 @@ export default function BattleScene({
     if (target.hp <= 0 || resultRef.current) return;
     target.hp = Math.max(0, target.hp - dmg);
     target.lastHitAt = performance.now();
+    // Üst şeritteki skor tablosu: isabetler taraflara yazılır.
+    if (attacker === player.current) scoreRef.current.p += 1;
+    else if (attacker === bot.current) scoreRef.current.o += 1;
     // Vuruş tepkisi: vurulan karakter sarsılır ve vuran taraftan uzağa
     // savrulur (ulti/beam/dash sert, normal mermi hafif).
     applyHitReaction(target, attacker.x, attacker.y, dmg);

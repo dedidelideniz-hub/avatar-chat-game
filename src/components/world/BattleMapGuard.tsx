@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { GlbModelBoundary } from "@/engine/GlbAvatar3D";
 import { BattleMapModel as BattlefieldMap } from "./BattleMapModel";
+import { MapPalette } from "./WarAtmosphere";
 
 /**
  * The battlefield with a crash guard. Previously a map that failed to parse
@@ -14,6 +15,9 @@ export function BattleMapModel() {
     <GlbModelBoundary fallback={null}>
       <Suspense fallback={null}>
         <BattlefieldMap />
+        {/* Volkanik palet: haritanın kendi dokularını bazalt tonuna çeker.
+            Aynı Suspense içindedir, yani GLB hazır olduğunda çalışır. */}
+        <MapPalette />
       </Suspense>
     </GlbModelBoundary>
   );

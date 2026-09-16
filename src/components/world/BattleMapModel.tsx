@@ -4,7 +4,9 @@ import { useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 
-const MAP_URL = "/models/5v5_game_map.glb";
+// Harita URL'sinin tek kaynağı WarAtmosphere'dir (volkanik palet geçişi de
+// aynı GLB'yi drei önbelleğinden okur).
+import { MAP_URL } from "./WarAtmosphere";
 // The map is a ~square MOBA battlefield with the two bases on OPPOSITE
 // corners. -135° put the red→blue lane vertically along the world Z axis
 // (the classic portrait-fight arrangement) but left the square island

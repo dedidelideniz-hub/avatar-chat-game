@@ -1241,6 +1241,567 @@ main > svg,
   contain: layout style;
 }
 
+/* ------------------------------------------------------------------ */
+/* MOBA SAVAŞ ALANI HUD'U (Arena) — Wild Rift / LoL Mobile dili.       */
+/* Üst şerit (arma + skor + altın), yuvarlak minimap, sağ ikon rayı,   */
+/* alt yetenek barı, rakip kartı ve uçan tepkiler. Ölçüler clamp() ile */
+/* her ekranda aynı görsel ağırlığı korur (bkz. moba/MobaHud.tsx).     */
+/* ------------------------------------------------------------------ */
+
+/* Arena içi bindirme (MOBA kabuğu) yüklendiğinde eski HUD geri çekilir:
+   aynı bilgiyi iki kez göstermemek için üst şerit, VS pankartı ve gizlenme
+   rozeti gizlenir. Kabuk render edilemezse bu kurallar eşleşmez ve eski HUD
+   aynen çalışır — yani arayüz hiçbir durumda kaybolmaz. */
+div:has(> .battle-hud-top):has(> main .moba-chrome) > .battle-hud-top {
+  display: none;
+}
+div:has(> main .moba-chrome) main .vs-banner {
+  display: none;
+}
+div:has(> main .moba-chrome) main .battle-hidden-badge {
+  display: none;
+}
+
+/* Üst şeritteki yüzde okumaları (MOBA skor satırı). */
+.moba-hpnum {
+  font-size: clamp(9px, 1.4vh, 12px);
+  color: rgb(226 232 240 / 0.8);
+}
+
+/* Yatay kısa ekran: yetenek barı yalnızca yuvaları gösterir (can/XP bloğu
+   joystick ve yetenek kümesiyle çakışmasın). */
+@media (orientation: landscape) and (max-height: 560px) {
+  .moba-vitals {
+    display: none;
+  }
+  .moba-abilitybar {
+    max-width: 42vw;
+  }
+}
+
+/* ── Üst şerit: bazalt panel + alt kenarda altın çizgi ── */
+.moba-top {
+  background: linear-gradient(180deg, #141b2c 0%, #0d1322 100%);
+  box-shadow:
+    inset 0 -1px 0 rgb(255 199 92 / 0.35),
+    0 6px 18px rgb(0 0 0 / 0.45);
+}
+
+/* Eşya karoları — referanstaki renkli karo sırası (altıgen kesim). */
+.moba-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(20px, 3.2vh, 30px);
+  height: clamp(20px, 3.2vh, 30px);
+  font-size: clamp(10px, 1.7vh, 15px);
+  clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+  box-shadow: inset 0 0 0 1px rgb(255 220 150 / 0.55);
+}
+
+/* ── Oyuncu / rakip plakası ── */
+.moba-plate-level {
+  width: clamp(20px, 3.2vh, 28px);
+  height: clamp(20px, 3.2vh, 28px);
+  font-size: clamp(9px, 1.5vh, 12px);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.16), rgb(0 0 0 / 0.35));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+}
+.moba-plate-bar {
+  display: block;
+  width: clamp(48px, 14vw, 120px);
+  height: clamp(5px, 1.1vh, 8px);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(2 6 23 / 0.62);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+.moba-plate-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.18s ease-out;
+}
+
+/* ── Orta: skor kutuları + VAELOS arması + saat ── */
+.moba-center {
+  text-shadow: 0 2px 6px rgb(0 0 0 / 0.6);
+}
+.moba-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: clamp(18px, 3vh, 28px);
+  padding: 0 clamp(3px, 0.7vh, 6px);
+  font-size: clamp(11px, 1.9vh, 16px);
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22);
+}
+.moba-score--ally {
+  color: #d9fbff;
+  background: linear-gradient(180deg, rgb(14 165 233 / 0.5), rgb(6 62 92 / 0.6));
+}
+.moba-score--enemy {
+  color: #ffe0e6;
+  background: linear-gradient(180deg, rgb(244 63 94 / 0.5), rgb(94 20 38 / 0.6));
+}
+.moba-logo {
+  display: flex;
+  align-items: center;
+  gap: clamp(3px, 0.8vh, 7px);
+}
+.moba-logo-text {
+  font-size: clamp(15px, 2.9vh, 26px);
+  font-weight: 900;
+  letter-spacing: clamp(2px, 0.6vh, 5px);
+  background: linear-gradient(180deg, #fff8e3 0%, #ffd76e 45%, #ff9d2e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 10px rgb(255 190 90 / 0.55));
+  animation: moba-logo-glow 3.4s ease-in-out infinite;
+}
+@keyframes moba-logo-glow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgb(255 190 90 / 0.4)); }
+  50% { filter: drop-shadow(0 0 16px rgb(255 214 120 / 0.8)); }
+}
+.moba-logo-wing {
+  font-size: clamp(8px, 1.4vh, 12px);
+  color: rgb(255 214 120 / 0.75);
+}
+.moba-clock {
+  font-size: clamp(9px, 1.5vh, 12px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  color: rgb(226 232 240 / 0.8);
+}
+
+/* ── Altın sayacı ── */
+.moba-gold {
+  display: inline-flex;
+  padding: 2px clamp(5px, 1vh, 9px);
+  border-radius: 999px;
+  background: rgb(6 12 24 / 0.6);
+  box-shadow: inset 0 0 0 1px rgb(255 214 120 / 0.4);
+  font-size: clamp(10px, 1.6vh, 13px);
+  color: #ffe6a8;
+}
+
+/* ── İkon butonları (üst şerit) ve sağ ray ── */
+.moba-icon-btn,
+.moba-rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.72);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2);
+  color: rgb(226 232 240 / 0.92);
+  transition: transform 0.12s ease-out, background 0.12s ease-out;
+}
+.moba-icon-btn {
+  width: clamp(22px, 3.4vh, 30px);
+  height: clamp(22px, 3.4vh, 30px);
+  font-size: clamp(10px, 1.6vh, 14px);
+}
+.moba-icon-btn:active,
+.moba-rail-btn:active {
+  transform: scale(0.92);
+}
+.moba-icon-btn--on {
+  background: rgb(250 204 21 / 0.3);
+  box-shadow: inset 0 0 0 1px rgb(253 224 71 / 0.75);
+}
+.moba-icon-btn--danger {
+  color: rgb(254 202 202 / 0.95);
+}
+.moba-rail-btn {
+  width: clamp(26px, 4.2vh, 38px);
+  height: clamp(26px, 4.2vh, 38px);
+  font-size: clamp(12px, 2vh, 18px);
+  opacity: 0.62;
+  backdrop-filter: blur(4px);
+}
+.moba-rail-btn:hover {
+  opacity: 1;
+}
+.moba-rail-btn--on {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px rgb(253 224 71 / 0.8);
+}
+
+/* ── Minimap ── */
+.moba-map {
+  width: clamp(74px, 20vh, 132px);
+  /* Üst şeridin hemen altına iner (referansta olduğu gibi şeridin altında
+     durur, arkasında kalmaz). */
+  margin-top: clamp(34px, 6.5vh, 54px);
+  padding: 3px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1a2338 0%, #0b1120 100%);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 214 120 / 0.5),
+    0 8px 20px rgb(0 0 0 / 0.5);
+  opacity: 0.82;
+}
+.moba-map-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 11px;
+}
+.moba-map-label {
+  display: block;
+  margin-top: 1px;
+  text-align: center;
+  font-size: clamp(7px, 1.1vh, 9px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: rgb(255 214 120 / 0.75);
+}
+
+/* ── Alt yetenek barı ── */
+.moba-abilitybar {
+  padding: 4px clamp(6px, 1.4vh, 12px);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(12 18 32 / 0.7), rgb(6 10 20 / 0.8));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  backdrop-filter: blur(3px);
+  opacity: 0.72;
+}
+.moba-level-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(22px, 3.6vh, 30px);
+  height: clamp(22px, 3.6vh, 30px);
+  border-radius: 999px;
+  font-size: clamp(10px, 1.7vh, 14px);
+  font-weight: 900;
+  color: #1b1305;
+  background: linear-gradient(180deg, #ffe9a8, #f0b429);
+  box-shadow: 0 0 12px rgb(255 199 92 / 0.5);
+}
+.moba-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(30px, 5vh, 44px);
+  height: clamp(30px, 5vh, 44px);
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 25%, #2b3b5c, #0b1120);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+.moba-slot-ring {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+}
+.moba-slot-icon {
+  font-size: clamp(14px, 2.4vh, 22px);
+  filter: saturate(0.7) brightness(0.8);
+}
+.moba-slot--ready .moba-slot-icon {
+  filter: none;
+}
+.moba-slot--glow {
+  box-shadow:
+    inset 0 0 0 1px rgb(253 224 71 / 0.85),
+    0 0 16px rgb(250 204 21 / 0.55);
+}
+.moba-vitals {
+  min-width: clamp(60px, 16vw, 120px);
+}
+.moba-vitals-num {
+  font-size: clamp(8px, 1.3vh, 11px);
+  color: rgb(226 232 240 / 0.85);
+}
+.moba-vitals-bar {
+  position: relative;
+  display: block;
+  height: clamp(6px, 1.1vh, 9px);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(2 6 23 / 0.7);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+.moba-vitals-hp,
+.moba-vitals-xp {
+  position: absolute;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease-out;
+}
+.moba-vitals-hp {
+  top: 0;
+  background: linear-gradient(90deg, #22c55e, #67e8f9);
+}
+.moba-vitals-xp {
+  bottom: 0;
+  height: 40%;
+  background: linear-gradient(90deg, #a855f7, #f0abfc);
+}
+
+/* ── Uçan tepkiler + beceri duyurusu ── */
+@keyframes moba-float-up {
+  0% { opacity: 0; transform: translateY(10px) scale(0.7) rotate(0deg); }
+  25% { opacity: 1; transform: translateY(-12px) scale(1.1) rotate(var(--moba-rot, 0deg)); }
+  100% { opacity: 0; transform: translateY(var(--moba-dy, -60px)) scale(0.92) rotate(var(--moba-rot, 0deg)); }
+}
+.moba-floater {
+  position: absolute;
+  bottom: 30%;
+  font-size: clamp(18px, 3.4vh, 30px);
+  filter: drop-shadow(0 3px 8px rgb(0 0 0 / 0.55));
+  animation: moba-float-up 1.25s ease-out forwards;
+}
+.moba-floater--0 { --moba-dy: -46px; --moba-rot: -12deg; }
+.moba-floater--1 { --moba-dy: -74px; --moba-rot: 9deg; }
+.moba-floater--2 { --moba-dy: -38px; --moba-rot: -6deg; }
+.moba-floater--3 { --moba-dy: -80px; --moba-rot: 14deg; }
+.moba-floater--4 { --moba-dy: -62px; --moba-rot: 4deg; }
+
+@keyframes moba-banner-in {
+  0% { opacity: 0; transform: scale(0.8) translateY(8px); letter-spacing: 2px; }
+  20% { opacity: 1; transform: scale(1.06); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.02) translateY(-8px); }
+}
+.moba-banner {
+  padding: 4px clamp(10px, 2.4vh, 20px);
+  border-radius: 999px;
+  font-size: clamp(12px, 2.2vh, 20px);
+  font-weight: 900;
+  letter-spacing: clamp(1px, 0.4vh, 3px);
+  color: #fff6de;
+  background: linear-gradient(180deg, rgb(120 53 15 / 0.9), rgb(30 12 4 / 0.9));
+  box-shadow:
+    inset 0 0 0 1px rgb(255 214 120 / 0.7),
+    0 0 26px rgb(255 150 60 / 0.55);
+  animation: moba-banner-in 1.4s ease-out forwards;
+}
+
+/* ── Rakip kartı (altın çerçeve + ışık süpürmesi) ── */
+.moba-card-wrap {
+  background: radial-gradient(
+    ellipse at center,
+    rgb(8 12 24 / 0.55) 0%,
+    rgb(4 6 14 / 0.8) 70%
+  );
+  backdrop-filter: blur(2px);
+  animation: moba-card-pop 0.32s ease-out both;
+}
+@keyframes moba-card-pop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.moba-card {
+  position: relative;
+  overflow: hidden;
+  width: min(92vw, 340px);
+  padding: clamp(10px, 2vh, 16px);
+  border-radius: 18px;
+  color: #f8fafc;
+  background: linear-gradient(160deg, #16233c 0%, #0a1120 60%, #0d1626 100%);
+  box-shadow:
+    inset 0 0 0 2px rgb(255 199 92 / 0.55),
+    inset 0 0 0 6px rgb(10 17 32 / 0.9),
+    0 18px 40px rgb(0 0 0 / 0.6);
+  animation: moba-card-rise 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes moba-card-rise {
+  from { transform: translateY(18px) scale(0.94); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+/* Kartın üzerinden soldan sağa geçen altın enerji şeridi. */
+.moba-card-sweep {
+  position: absolute;
+  top: -30%;
+  left: -60%;
+  width: 45%;
+  height: 160%;
+  background: linear-gradient(
+    100deg,
+    rgb(255 255 255 / 0) 0%,
+    rgb(255 226 150 / 0.55) 45%,
+    rgb(140 240 255 / 0.45) 60%,
+    rgb(255 255 255 / 0) 100%
+  );
+  filter: blur(6px);
+  animation: moba-card-sweep 3.6s ease-in-out infinite;
+}
+@keyframes moba-card-sweep {
+  0% { left: -60%; }
+  55%, 100% { left: 120%; }
+}
+.moba-card-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.moba-card-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: clamp(9px, 1.4vh, 11px);
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: #d9fbff;
+  background: rgb(12 74 110 / 0.6);
+  box-shadow: inset 0 0 0 1px rgb(125 211 252 / 0.5);
+}
+.moba-card-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+}
+.moba-card-body {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.8vh, 14px);
+  margin-top: clamp(8px, 1.6vh, 14px);
+}
+.moba-card-avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(52px, 9vh, 76px);
+  height: clamp(52px, 9vh, 76px);
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 25%, #4c1d95, #1e1b4b);
+  box-shadow: inset 0 0 0 2px rgb(255 199 92 / 0.7);
+}
+.moba-card-avatar-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  border: 2px dashed rgb(125 211 252 / 0.7);
+  animation: entry-rune-spin 14s linear infinite;
+}
+.moba-card-avatar-face {
+  font-size: clamp(22px, 4.4vh, 34px);
+}
+.moba-card-level {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(18px, 3vh, 24px);
+  height: clamp(18px, 3vh, 24px);
+  border-radius: 999px;
+  font-size: clamp(9px, 1.5vh, 12px);
+  font-weight: 900;
+  color: #1b1305;
+  background: linear-gradient(180deg, #ffe9a8, #f0b429);
+}
+.moba-card-name {
+  font-size: clamp(14px, 2.6vh, 20px);
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}
+.moba-card-vip {
+  margin-left: 6px;
+  font-size: clamp(9px, 1.4vh, 11px);
+  color: #ffe6a8;
+}
+.moba-card-sub {
+  font-size: clamp(9px, 1.5vh, 12px);
+  color: rgb(203 213 225 / 0.75);
+}
+.moba-card-hp {
+  margin-top: 6px;
+  height: clamp(5px, 1vh, 8px);
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(2 6 23 / 0.75);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+}
+.moba-card-hp > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f43f5e, #fbbf24);
+  transition: width 0.2s ease-out;
+}
+.moba-card-stats {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgb(4 8 18 / 0.6);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  font-size: clamp(8px, 1.35vh, 11px);
+  letter-spacing: 1px;
+  color: rgb(203 213 225 / 0.8);
+}
+.moba-card-stats b {
+  color: #ffd76e;
+}
+.moba-card-actions {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  margin-top: clamp(9px, 1.8vh, 14px);
+}
+.moba-card-btn {
+  flex: 1;
+  padding: clamp(6px, 1.3vh, 10px) 8px;
+  border-radius: 10px;
+  font-size: clamp(10px, 1.7vh, 13px);
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #e2e8f0;
+  background: rgb(15 23 42 / 0.85);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22);
+  transition: transform 0.12s ease-out, filter 0.12s ease-out;
+}
+.moba-card-btn:active {
+  transform: scale(0.97);
+}
+.moba-card-btn--primary {
+  color: #1b1305;
+  background: linear-gradient(180deg, #ffe38f 0%, #f0a91f 100%);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 244 200 / 0.8),
+    0 0 22px rgb(255 190 80 / 0.5);
+}
+
+/* Yatay kısa ekran (telefon): HUD öğeleri küçülür, görüş açılır. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .moba-map {
+    width: clamp(64px, 19vh, 108px);
+    opacity: 0.72;
+  }
+  .moba-logo-text {
+    font-size: clamp(13px, 3.2vh, 20px);
+  }
+  .moba-items {
+    display: none;
+  }
+  .moba-abilitybar {
+    bottom: 6px;
+    opacity: 0.62;
+  }
+}
+
 /* Disable animations for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

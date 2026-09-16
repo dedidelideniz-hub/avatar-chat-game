@@ -49,6 +49,12 @@ import {
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
+// MOBA savaş arayüzü köprüsü (üst şerit, minimap, yetenek barı, rakip
+// kartı). HUD bu sahnede de ref'lerden beslenir; render joystick katmanında.
+import {
+  registerMobaHud,
+  type MobaHudLive,
+} from "@/components/world/moba/MobaHud";
 import {
   HudClock,
   HudFighter,
@@ -408,6 +414,58 @@ export default function PvpBattleScene({
     click: (_x: number, _y: number) => {},
   });
 
+  // ── MOBA HUD köprüsü ──────────────────────────────────────────────
+  // Üst şeritteki skor: iki oyuncunun birbirine isabet sayısı.
+  const scoreRef = useRef({ p: 0, o: 0 });
+  // HUD'un her karede okuduğu anlık değerler (React state'e yazılmaz).
+  const mobaLiveRef = useRef<MobaHudLive>({
+    phase: "loading",
+    clock: 0,
+    vsShow: false,
+    ph: HP,
+    ohp: HP,
+    pc: 0,
+    oc: 0,
+    sc: 0,
+    atkReady: true,
+    samurai: false,
+    hidden: false,
+  });
+  mobaLiveRef.current = {
+    phase,
+    clock,
+    vsShow,
+    ph: hud.ph,
+    ohp: hud.ohp,
+    pc: hud.pc,
+    oc: hud.oc,
+    sc: hud.sc,
+    atkReady: hud.atkReady,
+    samurai: isSamuraiFighter(player.current),
+    hidden: hud.hidden,
+  };
+  useEffect(
+    () =>
+      registerMobaHud(joystickRef, {
+        player,
+        bot,
+        live: mobaLiveRef,
+        score: scoreRef,
+        meta: {
+          playerName,
+          opponentName,
+          playerEmoji: abilityOf(playerAbility).emoji,
+          opponentEmoji: abilityOf(opponentAbility).emoji,
+          playerLevel: player.current.level,
+          opponentLevel: player.current.level,
+          maxHp: HP,
+          atkCd: ATK_CD,
+          exit: () => onExitRef.current(false, "leave"),
+        },
+      }),
+    [],
+  );
+
   /* ------------------------- local FX helpers ------------------------- */
 
   const addFx = (fx: BattleFx) => {
@@ -447,6 +505,8 @@ export default function PvpBattleScene({
     if (resultRef.current || p.hp <= 0) return;
     p.hp = Math.max(0, p.hp - dmg);
     p.lastHitAt = performance.now();
+    // Skor tablosu: alınan isabet rakibe yazılır.
+    scoreRef.current.o += 1;
     // Vuruş tepkisi: ben sarsılır ve rakibin tersine savrulurum (savrulma
     // hızı yerel simülasyonda çarpışma kontrollü uygulanır).
     applyHitReaction(p, bot.current.x, bot.current.y, dmg);
@@ -471,6 +531,8 @@ export default function PvpBattleScene({
     const p = player.current;
     b.lastHitAt = performance.now();
     applyHitReaction(b, p.x, p.y, dmg);
+    // Skor tablosu: isabetim oyuncu tarafına yazılır.
+    scoreRef.current.p += 1;
   };
 
   /** Apply a one-shot combat event sent by the other phone. */
