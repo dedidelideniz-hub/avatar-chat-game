@@ -1,13 +1,21 @@
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import { motion, AnimatePresence } from "framer-motion";
 import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { Check, Coins, Crown as CrownIcon, Shirt, X } from "lucide-react";
+import {
+  Check,
+  Coins,
+  Crown as CrownIcon,
+  Lock,
+  Shirt,
+  X,
+} from "lucide-react";
+import { VIP_CHARACTER_COLORS, characterColorLabel } from "@/lib/avatar";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -657,7 +665,50 @@ export function BagSheet({
   onBrowseStalls: () => void;
 }) {
   const setEquipped = useMutation(api.profiles.setEquipped);
+  // VIP renkleri kendi verisini okur: Convex sorgusu reaktif olduğu için
+  // VIP satın alındığı an çanta kendini günceller (ekstra istek yok).
+  const saveProfile = useMutation(api.profiles.saveProfile);
+  const profile = useQuery(api.profiles.getMyProfile);
+  const isVip = profile?.vip ?? false;
+  const colorHex = profile?.avatar.shirt ?? "";
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  /** VIP değilken gösterilen yönlendirme (VIP caddedeki köşeden alınır). */
+  const showVipInfo = () => {
+    playSound("error");
+    toast.info(
+      "👑 VIP üyeliği caddedeki Kraliyet VIP Köşesi'nden alabilirsin — VIP alınca 2 premium renk çantana düşer.",
+    );
+  };
+
+  /**
+   * VIP premium rengi giy: renk, karakterin üst rengi (avatar.shirt) olarak
+   * kaydedilir. Parlama + yarı saydamlık efekti rengin kendisinden
+   * türetildiği için oyun içinde anında görünür (applyCharacterTint).
+   */
+  const handleVipColor = async (hex: string) => {
+    if (!profile) return;
+    if (!isVip) {
+      showVipInfo();
+      return;
+    }
+    try {
+      await saveProfile({
+        username: profile.username,
+        avatar: { ...profile.avatar, shirt: hex },
+      });
+      playSound("buy");
+      toast.success(
+        `👑 ${characterColorLabel(hex)} giyildi — karakterin parlıyor!`,
+      );
+    } catch (error) {
+      console.error("VIP renk hatası:", error);
+      playSound("error");
+      toast.error(
+        error instanceof Error ? error.message : "Renk giyilemedi.",
+      );
+    }
+  };
   const [flashId, setFlashId] = useState<string | null>(null);
   const owned = items
     .map((id) => getProduct(id))
@@ -749,6 +800,87 @@ export function BagSheet({
             >
               <X className="size-4" />
             </Button>
+          </div>
+        </motion.div>
+
+        {/* ── VIP premium renkleri ────────────────────────────────
+            VIP alındığında oyuncunun çantasına düşen 2 özel renk. Düz
+            boyama değil: gövde yarı saydam olur ve rengi parlar. VIP
+            değilken burada kilitli dururlar (nereye gidileceği yazıyor). */}
+        <motion.div
+          variants={bagItemVariants}
+          initial="hidden"
+          animate="visible"
+          className="relative mt-4 overflow-hidden rounded-3xl border border-amber-300/45 bg-gradient-to-br from-amber-500/15 via-amber-300/5 to-transparent p-3.5"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">
+              <CrownIcon className="size-3.5" /> VIP Renkleri
+            </p>
+            {isVip ? (
+              <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[9px] font-black tracking-wide text-amber-700 dark:text-amber-200">
+                ÇANTANDA
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={showVipInfo}
+                className="rounded-full bg-gradient-to-r from-amber-300 to-yellow-500 px-2.5 py-1 text-[9px] font-black tracking-wide text-[#2a1d05]"
+              >
+                VIP OL
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[10px] font-semibold leading-4 text-muted-foreground">
+            VIP üyelere özel premium renk: karakterin gövdesi yarı saydam
+            olur ve rengi nabız gibi parlar.
+          </p>
+
+          <div className="mt-2.5 grid grid-cols-2 gap-2">
+            {VIP_CHARACTER_COLORS.map((c) => {
+              const worn = c.hex === colorHex;
+              const locked = !isVip;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  aria-pressed={worn}
+                  onClick={() => handleVipColor(c.hex)}
+                  className={`group flex flex-col gap-2 rounded-2xl border p-2.5 text-left transition-transform active:scale-[0.97] ${
+                    worn
+                      ? "border-amber-300 bg-amber-400/15"
+                      : "border-border/70 bg-background"
+                  } ${locked ? "opacity-70" : ""}`}
+                >
+                  <span
+                    className="block h-9 w-full rounded-xl"
+                    style={{
+                      background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${c.hex} 58%)`,
+                      boxShadow: `0 0 18px ${c.hex}`,
+                      opacity: 0.85,
+                    }}
+                  />
+                  <span className="flex w-full items-center justify-between gap-1">
+                    <span className="text-[11px] font-extrabold leading-tight">
+                      {c.label}
+                    </span>
+                    {worn ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-extrabold text-primary-foreground">
+                        <Check className="size-2.5" /> Giyili
+                      </span>
+                    ) : locked ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-700 dark:text-amber-200">
+                        <Lock className="size-2.5" /> VIP
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold text-primary">
+                        <Shirt className="size-2.5" /> Giy
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </motion.div>
 
@@ -902,7 +1034,7 @@ export function VipSheet({
       await buyVip();
       playSound("vip");
       toast.success(
-        "👑 VIP üyelik aktif! Tüm balon renkleri artık senin — sohbetten seç.",
+        "👑 VIP üyelik aktif! 2 VIP karakter rengi çantana eklendi — balon renkleri de açıldı.",
       );
     } catch (error) {
       console.error("VIP satın alma hatası:", error);
@@ -928,7 +1060,8 @@ export function VipSheet({
               👑 Kraliyet VIP Köşesi
             </h2>
             <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
-              Cadderin en ayrıcalıklı üyeliği — tüm balon renkleri kapıda.
+              Cadderin en ayrıcalıklı üyeliği — tüm balon renkleri ve 2
+              premium karakter rengi kapıda.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -985,6 +1118,11 @@ export function VipSheet({
                 },
                 {
                   emoji: "👑",
+                  title: "2 VIP karakter rengi",
+                  desc: "Çantana düşer: parlayan, yarı saydam premium renkler.",
+                },
+                {
+                  emoji: "🏅",
                   title: "Altın VIP rozeti",
                   desc: "Karakterinin üstünde ve isminin yanında parlar.",
                 },

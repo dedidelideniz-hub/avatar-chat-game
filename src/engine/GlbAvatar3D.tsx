@@ -22,7 +22,7 @@ import {
   advanceWarriorPuffs,
 } from "./RoyalWarriorEffects";
 import { VendorBadge, VendorSparkle } from "./VendorSparkle";
-import { VENDOR_COLOR } from "@/lib/avatar";
+import { VENDOR_COLOR, isVipCharacterColor } from "@/lib/avatar";
 
 // Re-export for backward compatibility
 export type { EquipSlot, EquipmentDef } from "./EquipmentRegistry";
@@ -130,10 +130,26 @@ export const TINT_STRENGTH = 0.7;
  */
 const TINT_SKIP_LUMA = 0.14;
 
-const TINT_BASES = new WeakMap<
-  THREE.Material,
-  { color: THREE.Color; emissive: THREE.Color | null }
->();
+interface TintBase {
+  color: THREE.Color;
+  emissive: THREE.Color | null;
+  /** Premium (VIP) efektten önceki temel görünüm — renk değişince geri döner. */
+  transparent: boolean;
+  opacity: number;
+  depthWrite: boolean;
+  emissiveIntensity: number | null;
+}
+
+const TINT_BASES = new WeakMap<THREE.Material, TintBase>();
+
+/**
+ * VIP premium renklerde gövdenin yarı saydamlığı. ``1``'in altında olduğu
+ * için karakter ışığı geçiren, hayaletimsi bir görünüm kazanır.
+ */
+export const VIP_TINT_OPACITY = 0.78;
+/** Premium renklerde ışıma (parlama) şiddetinin nabız merkezi/genliği. */
+export const VIP_GLOW_CENTER = 0.75;
+export const VIP_GLOW_AMPLITUDE = 0.45;
 
 /** Bir karakter kökünü verilen renge boyar (renk yoksa asıl renge döner). */
 export function applyCharacterTint(
@@ -145,6 +161,10 @@ export function applyCharacterTint(
   // (renksiz karakterler ekstra klon üretmez).
   if (!tint) return;
   const target = new THREE.Color(tint);
+  // VIP üyeliğe özel premium renk: düz boyama yetmez — gövde yarı saydam
+  // olur ve rengi ışır (ışıma şiddeti her karede nabız gibi salınır,
+  // bkz. GlbAvatarCore → useFrame).
+  const vip = isVipCharacterColor(tint);
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) return;
@@ -166,6 +186,13 @@ export function applyCharacterTint(
         entry = {
           color: baseColor,
           emissive: material.emissive ? material.emissive.clone() : null,
+          transparent: material.transparent,
+          opacity: material.opacity,
+          depthWrite: material.depthWrite,
+          emissiveIntensity:
+            typeof material.emissiveIntensity === "number"
+              ? material.emissiveIntensity
+              : null,
         };
         // KRİTİK: yalnızca KLON kaydedilir. Paylaşılan kaynak materyal
         // işaretlenirse ikinci karakter klon üretmez ve paylaşılan dokuyu
@@ -173,11 +200,29 @@ export function applyCharacterTint(
         // o renk görünür). Her karakter kendi klonunu üretmeli.
         TINT_BASES.set(material, entry);
       }
+      // Önce temel görünüme dön: premium efekt bir sonraki renge sızmasın.
       material.color.copy(entry.color);
       if (entry.emissive) material.emissive.copy(entry.emissive);
+      material.transparent = entry.transparent;
+      material.opacity = entry.opacity;
+      material.depthWrite = entry.depthWrite;
+      if (entry.emissiveIntensity !== null) {
+        material.emissiveIntensity = entry.emissiveIntensity;
+      }
       if (target) {
         material.color.lerp(target, strength);
         material.emissive?.lerp(target, strength * 0.5);
+      }
+      if (vip) {
+        // Yarı saydamlık: zemin/arkadaki nesneler karakterin içinden
+        // hafifçe görünür — "premium" hissi veren ışıklı gövde.
+        material.transparent = true;
+        material.opacity = VIP_TINT_OPACITY;
+        material.depthWrite = false;
+        if (material.emissive) {
+          material.emissive.copy(target);
+          material.emissiveIntensity = VIP_GLOW_CENTER;
+        }
       }
       material.needsUpdate = true;
       return material;
@@ -673,6 +718,13 @@ function GlbAvatarCore({
   /** Karakter başına rastgele faz: satıcılar senkron hareket etmesin. */
   const headScanPhase = useRef(Math.random() * Math.PI * 2);
 
+  // ── VIP premium renk: yarı saydam gövde + ışıma nabzı ─────────
+  // Renk seçilmemişse (undefined) hiçbir maliyet yok; yalnızca VIP
+  // renklerinde materyaller toplanıp ışıma şiddeti salınır.
+  const premiumTint = useMemo(() => isVipCharacterColor(tint), [tint]);
+  const glowMats = useRef<THREE.MeshStandardMaterial[]>([]);
+  const glowKeyRef = useRef<string | null>(null);
+
   useFrame((_, dt) => {
     const inner = innerRef.current;
     if (!inner) return;
@@ -840,6 +892,23 @@ function GlbAvatarCore({
           Math.sin(ht * 1.75 + 0.9) * 0.07; // küçük doğal titreşim
         const next = headRestY.current + scan;
         headBone.rotation.y += (next - headBone.rotation.y) * Math.min(1, 7 * dt);
+      }
+    }
+
+    // VIP premium renk: gövdenin ışıması nabız gibi salınır (parlar).
+    // Liste yalnızca gerektiğinde — yani karakter VIP rengindeyse ve renk
+    // değiştiyse — yeniden toplanır, böylece eski (öksüz) materyaller
+    // üzerinde çalışılmaz.
+    if (premiumTint) {
+      if (glowKeyRef.current !== tint) {
+        glowKeyRef.current = tint ?? null;
+        glowMats.current = collectShimmerMaterials(group);
+      }
+      const glow = glowMats.current;
+      for (let i = 0; i < glow.length; i++) {
+        glow[i].emissiveIntensity =
+          VIP_GLOW_CENTER +
+          VIP_GLOW_AMPLITUDE * Math.sin(state.clock.elapsedTime * 2.1 + i * 0.6);
       }
     }
 

@@ -95,13 +95,28 @@ export const SHOE_COLORS = [
   "#ffffff",
 ] as const;
 
+export interface CharacterColor {
+  id: string;
+  label: string;
+  hex: string;
+  /**
+   * VIP üyeliğe özel PREMİUM renk. Bu renkler seçilince karakter düz
+   * boyanmaz: gövde yarı saydam olur ve rengi nabız gibi parlar
+   * (bkz. src/engine/GlbAvatar3D.tsx → applyCharacterTint).
+   */
+  vip?: boolean;
+}
+
 /**
  * MOBA oyun girişindeki "karakter rengi" paleti. Oyuncu girişte yalnızca
  * rengini seçer; renk karakterin üst (kıyafet) rengi olarak kaydedilir, bu
- * yüzden değerler SHIRT_COLORS ile birebir aynı hex'lerden seçildi —
+ * yüzden normal renkler SHIRT_COLORS ile birebir aynı hex'lerden seçildi —
  * stüdyodaki renk de aynı kalır.
+ *
+ * Son 2 renk VIP üyeliğe özel premium renklerdir: VIP alındığında
+ * oyuncunun çantasına (🎒 Çantam) düşer ve oradan giyilir.
  */
-export const CHARACTER_COLORS = [
+export const CHARACTER_COLORS: readonly CharacterColor[] = [
   { id: "crimson", label: "Kızıl", hex: "#ef4444" },
   { id: "ember", label: "Alev", hex: "#f97316" },
   { id: "gold", label: "Altın", hex: "#eab308" },
@@ -114,7 +129,26 @@ export const CHARACTER_COLORS = [
   { id: "slate", label: "Çelik", hex: "#64748b" },
   { id: "obsidian", label: "Obsidyen", hex: "#1c1917" },
   { id: "ivory", label: "Fildişi", hex: "#ffffff" },
-] as const;
+  // ── VIP premium renkleri (parlar + yarı saydam) ──
+  { id: "vip-kraliyet", label: "Kraliyet Işığı", hex: "#ffd76e", vip: true },
+  { id: "vip-kutup", label: "Kutup Işığı", hex: "#7cf5ff", vip: true },
+];
+
+/** VIP üyeliğe özel premium karakter renkleri (çantada görünür). */
+export const VIP_CHARACTER_COLORS: readonly CharacterColor[] =
+  CHARACTER_COLORS.filter((c) => c.vip === true);
+
+/** Hex ile palet tanımı (yoksa undefined). */
+export function characterColorDef(hex: string): CharacterColor | undefined {
+  return CHARACTER_COLORS.find((c) => c.hex === hex);
+}
+
+/** Bu hex VIP'e özel premium renk mi? (3D parlama + yarı saydamlık kararı.) */
+export function isVipCharacterColor(hex: string | null | undefined): boolean {
+  return (
+    typeof hex === "string" && VIP_CHARACTER_COLORS.some((c) => c.hex === hex)
+  );
+}
 
 /**
  * Satıcı NPC'lerin SABİT rengi. Gezinen botlar ve oyuncular kendi

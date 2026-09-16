@@ -13,6 +13,7 @@ import {
   Crown,
   Flame,
   Gamepad2,
+  Lock,
   LogOut,
   Palette,
   Trophy,
@@ -28,7 +29,7 @@ const TIPS = [
   "Neredeyse ölürken geri çekil — canın savaş dışında yenilenir.",
   "Menzil göstergesi kırmızıya dönerse hedefin dışındasın demektir.",
   "Günün hediye kutusunu caddeden topla, Vaelos Parası kazan.",
-  "VIP üyelik tüm konuşma balonu renklerini açar.",
+  "VIP üyelik tüm konuşma balonu renklerini ve 2 premium karakter rengini açar.",
   "Zafer kazandıkça lig atlarsın: Bronz'dan Efsane'ye kadar yüksel.",
 ];
 
@@ -117,6 +118,7 @@ export default function Entry() {
   }, [phase, pct, hasProfile]);
 
   const rank = rankFromLevel(profile?.level ?? 1);
+  const isVip = profile?.vip ?? false;
   const membership = membershipInfo(
     profile?.vip ?? false,
     profile?.vipUntil ?? undefined,
@@ -388,21 +390,59 @@ export default function Entry() {
             <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-6">
               {CHARACTER_COLORS.map((c) => {
                 const selected = c.hex === color;
+                const premium = c.vip === true;
+                const locked = premium && !isVip;
                 return (
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setColor(c.hex)}
+                    onClick={() => {
+                      if (locked) {
+                        // VIP'ye özel premium renk: kilitliyken seçilemez,
+                        // nereden alınacağı söylenir.
+                        toast.info(
+                          `👑 ${c.label} VIP üyeliğe özel — VIP alınca çantana eklenir.`,
+                        );
+                        return;
+                      }
+                      setColor(c.hex);
+                    }}
                     aria-label={c.label}
                     aria-pressed={selected}
-                    title={c.label}
-                    className={`group relative aspect-square w-full rounded-2xl border transition-transform active:scale-95 ${
+                    title={
+                      locked ? `${c.label} — VIP üyeliğe özel` : c.label
+                    }
+                    className={`group relative aspect-square w-full overflow-hidden rounded-2xl border transition-transform active:scale-95 ${
                       selected
                         ? "border-white/80 ring-2 ring-amber-300 ring-offset-2 ring-offset-[#0a0f1c]"
-                        : "border-white/15 hover:border-white/40"
-                    }`}
-                    style={{ backgroundColor: c.hex }}
+                        : locked
+                          ? "border-amber-300/40"
+                          : "border-white/15 hover:border-white/40"
+                    } ${locked ? "opacity-60" : ""}`}
+                    style={
+                      premium
+                        ? {
+                            // Premium renkler düz değil: parlayan ve yarı
+                            // saydam görünen bir küre (oyun içindeki
+                            // parlama + şeffaflık efektinin palet hali).
+                            background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${c.hex} 58%)`,
+                            boxShadow: `0 0 16px ${c.hex}, inset 0 0 12px rgba(255,255,255,0.35)`,
+                            borderColor: c.hex,
+                            opacity: locked ? 0.6 : 0.9,
+                          }
+                        : { backgroundColor: c.hex }
+                    }
                   >
+                    {premium && (
+                      <span className="absolute right-1 top-1 flex items-center gap-0.5 rounded-full bg-black/55 px-1 py-0.5 text-[7px] font-black tracking-wider text-amber-200 backdrop-blur">
+                        {locked ? (
+                          <Lock className="size-2" />
+                        ) : (
+                          <Crown className="size-2" />
+                        )}
+                        VIP
+                      </span>
+                    )}
                     {selected && (
                       <span className="entry-color-pop absolute inset-0 rounded-2xl shadow-[0_0_22px_rgba(255,255,255,0.35)]" />
                     )}
@@ -410,6 +450,11 @@ export default function Entry() {
                 );
               })}
             </div>
+
+            <p className="mt-2 text-[10px] font-bold leading-4 text-amber-200/70">
+              👑 VIP renkleri parlar ve yarı saydam boyanır — VIP alınca
+              çantana düşer.
+            </p>
 
             <p className="mt-3 flex items-center justify-between text-[11px] font-bold text-white/50">
               <span>Seçilen renk</span>
