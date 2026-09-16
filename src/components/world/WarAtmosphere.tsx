@@ -4,9 +4,10 @@
 // üzerinde akan LAV nehirleri, her üssün tepesinde yükselen KRİSTAL çekirdek
 // (nexus) ve ondan yükselen ışık sütunu, süzülen kor parçacıkları ve volkanik
 // gökyüzü. Üstüne zengin ortam katmanı biner:
-//   • Bölgesel palet — haritanın kendi dokuları kırmızı üs yarısında koyu
-//     turuncu-kırmızı, mavi üs yarısında berrak mavi-mora çekilir (MapPalette).
-//   • Lane yolları + kenar ışıkları, üslerden merkeze enerji hatları.
+//   • Zemin — haritanın KENDİ dokuları (çimen/taş/toprak) korunur; yalnızca
+//     sonradan binen yansıma ve kendinden parlama temizlenir (MapPalette).
+//   • Lane yolları (taş/toprak şerit) + çok ince kenar ışıkları, üslerden
+//     merkeze akan ince enerji hatları.
 //   • Taş sur/kaya/dikilitaş/kemer gibi çevre objeleri, mavi-mor kristal vadisİ
 //     ve yansıtıcı su havuzu, hafif yansıtıcı zemin katmanı.
 //   • Gölge düşüren tek yönlü ışık (ArenaShadowLight) — karakterler zemine
@@ -862,8 +863,8 @@ const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
       [24, 17.2],
       [29.5, 20.2],
     ],
-    road: "#a97a4e",
-    glow: "#ffb469",
+    road: "#8a7a63",
+    glow: "#ffc08a",
   },
   {
     nodes: [
@@ -874,8 +875,8 @@ const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
       [23, 17.2],
       [29.5, 17.4],
     ],
-    road: "#6d6ba8",
-    glow: "#b49aff",
+    road: "#6f6a74",
+    glow: "#cfc0ff",
   },
   {
     nodes: [
@@ -886,13 +887,14 @@ const LANES: { nodes: [number, number][]; road: string; glow: string }[] = [
       [20.5, 6.4],
       [25.5, 4.6],
     ],
-    road: "#5c7fa8",
-    glow: "#6fd8ff",
+    road: "#6b7482",
+    glow: "#9fe4ff",
   },
 ];
 
 function LaneRoads() {
-  // Tek akış dokusu: her lane kendi rengini materyal `color`'ından alır.
+  // Akış dokusu yalnızca ince enerji çizgisinde kullanılır: yol gövdesi düz
+  // taş/toprak rengindedir, zemine doku/projeksiyon binmez.
   const tex = useMemo(() => makeFlowTexture(), []);
   const curves = useMemo(
     () =>
@@ -921,28 +923,25 @@ function LaneRoads() {
     <group>
       {curves.map((curve, i) => (
         <group key={i}>
-          {/* Yol gövdesi: yansıtıcı, hafif parlak taş şerit (ışığı yansıtır). */}
-          <mesh scale={[1, 0.055, 1]} receiveShadow raycast={() => null}>
-            <tubeGeometry args={[curve, 150, 1.55, 10, false]} />
+          {/* Yol gövdesi: düz, ışık alan taş/toprak şerit. Yansıma ve
+              kendinden parlama yok — zeminin kendi dokusu okunur kalır. */}
+          <mesh scale={[1, 0.05, 1]} receiveShadow raycast={() => null}>
+            <tubeGeometry args={[curve, 150, 0.95, 10, false]} />
             <meshStandardMaterial
-              map={tex}
               color={LANES[i].road}
-              roughness={0.28}
-              metalness={0.55}
-              envMapIntensity={1.3}
-              transparent
-              opacity={0.92}
-              depthWrite={false}
+              roughness={0.92}
+              metalness={0.04}
+              envMapIntensity={0.1}
             />
           </mesh>
-          {/* Yolun enerji çekirdeği: bloom besleyen ince ışık hattı. */}
+          {/* Yolun enerji çekirdeği: çok ince ve soluk akan çizgi. */}
           <mesh raycast={() => null}>
-            <tubeGeometry args={[curve, 150, 0.16, 8, false]} />
+            <tubeGeometry args={[curve, 150, 0.05, 6, false]} />
             <meshBasicMaterial
               map={tex}
               color={LANES[i].glow}
               transparent
-              opacity={0.42}
+              opacity={0.14}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
               toneMapped={false}
@@ -950,14 +949,14 @@ function LaneRoads() {
           </mesh>
         </group>
       ))}
-      {/* Kenar çizgileri: koridorun sınırı uzaktan da okunur. */}
+      {/* Kenar çizgileri: koridor kenarında kalan ÇOK ince, soluk sınır. */}
       {edges.map((curve, i) => (
         <mesh key={`edge${i}`} raycast={() => null}>
-          <tubeGeometry args={[curve, 150, 0.075, 6, false]} />
+          <tubeGeometry args={[curve, 150, 0.03, 5, false]} />
           <meshBasicMaterial
             color={LANES[Math.floor(i / 2)].glow}
             transparent
-            opacity={0.5}
+            opacity={0.12}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             toneMapped={false}
@@ -969,7 +968,7 @@ function LaneRoads() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Enerji hatları + bölge auraları (renk doygunluğu)                   */
+/* Enerji hatları — ince koridor ışıkları                              */
 /* ------------------------------------------------------------------ */
 
 /** Üslerden arenanın merkezine akan enerji hatları (kor ↔ kristal). */
@@ -999,7 +998,7 @@ function EnergyLines() {
       const m = refs.current[i];
       if (!m) continue;
       (m.material as THREE.MeshBasicMaterial).opacity =
-        0.55 + 0.25 * Math.sin(t * 2.4 + i * Math.PI);
+        0.14 + 0.05 * Math.sin(t * 2.4 + i * Math.PI);
     }
   });
 
@@ -1013,12 +1012,12 @@ function EnergyLines() {
           }}
           raycast={() => null}
         >
-          <tubeGeometry args={[curve, 90, 0.2, 8, false]} />
+          <tubeGeometry args={[curve, 90, 0.06, 6, false]} />
           <meshBasicMaterial
             map={tex}
             color={NEXUS[i]?.color ?? "#ff7a3c"}
             transparent
-            opacity={0.6}
+            opacity={0.14}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             toneMapped={false}
@@ -1029,71 +1028,14 @@ function EnergyLines() {
   );
 }
 
-/**
- * Bölge auraları: kırmızı yarı KOYU TURUNCU-KIRMIZI, mavi yarı BERRAK
- * MAVİ-MOR. Zemin tek tip kalmıyor; iki yarının rengi ayrı okunuyor.
- */
-function ZoneAuras() {
-  const warmTex = useMemo(() => makeGlowTexture("rgba(255,72,20,1)"), []);
-  const coldTex = useMemo(() => makeGlowTexture("rgba(146,118,255,1)"), []);
-  const warmRef = useRef<THREE.Mesh>(null);
-  const coldRef = useRef<THREE.Mesh>(null);
-
-  useFrame(() => {
-    const t = performance.now() / 1000;
-    // Bölge auraları artık zemin detayını yıkamıyor: iki dev additive düzlem
-    // tüm arenayı kapladığında kare turuncu-mor bir sise dönüşüyordu. Şimdi
-    // her aura kendi yarısına oturur ve şiddeti yarıya indirildi.
-    if (warmRef.current) {
-      (warmRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.028 + 0.01 * Math.sin(t * 0.9);
-    }
-    if (coldRef.current) {
-      (coldRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.032 + 0.01 * Math.sin(t * 1.1 + 1.5);
-    }
-  });
-
-  return (
-    <group>
-      <mesh
-        ref={warmRef}
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[9, 0.045, 7]}
-        raycast={() => null}
-      >
-        <planeGeometry args={[19, 15]} />
-        <meshBasicMaterial
-          map={warmTex}
-          color="#ff3d12"
-          transparent
-          opacity={0.028}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh
-        ref={coldRef}
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[25.5, 0.045, 14]}
-        raycast={() => null}
-      >
-        <planeGeometry args={[17, 15]} />
-        <meshBasicMaterial
-          map={coldTex}
-          color="#7c5cff"
-          transparent
-          opacity={0.032}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  );
-}
+/* Zeminin üstüne binen bölge auraları TAMAMEN KALDIRILDI: iki dev additive
+   düzlem tüm arenayı kaplayıp zeminin kendi dokusunu (çimen/taş/toprak) neon
+   bir peçeyle yıkıyordu — ekranı saran mor/mavi şeritlerin asıl kaynağı buydu.
+   Bölgesel ayrım artık yalnızca lane yollarının kendi renklerinden ve üs
+   kristallerinden okunuyor; zemine düzlemsel renk katmanı binmiyor. */
 
 /* ------------------------------------------------------------------ */
-/* Kristal/su bölgesi (mavi-mor yarı) + yansımalar                     */
+/* Kristal/su bölgesi + yansımalar                                     */
 /* ------------------------------------------------------------------ */
 
 const GROVE = [
@@ -1138,10 +1080,10 @@ function CrystalGrove() {
         <meshStandardMaterial
           color="#2a1f5e"
           emissive="#3b2a8c"
-          emissiveIntensity={0.22}
-          roughness={0.06}
-          metalness={0.92}
-          envMapIntensity={1.8}
+          emissiveIntensity={0.14}
+          roughness={0.14}
+          metalness={0.7}
+          envMapIntensity={0.8}
           transparent
           opacity={0.55}
           depthWrite={false}
@@ -1379,11 +1321,11 @@ function ReflectiveFloor() {
       <planeGeometry args={[ARENA_W, ARENA_D]} />
       <meshStandardMaterial
         color="#0b1020"
-        metalness={0.9}
-        roughness={0.2}
-        envMapIntensity={1.5}
+        metalness={0.6}
+        roughness={0.42}
+        envMapIntensity={0.4}
         transparent
-        opacity={0.16}
+        opacity={0.05}
         depthWrite={false}
       />
     </mesh>
@@ -1448,84 +1390,101 @@ function ArenaShadowCaster() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Savaş alanı paleti — haritanın kendi dokuları bazalt tonuna çekilir. */
+/* Savaş alanı zemini — haritanın KENDİ dokuları korunur, zemine neon ton
+   çarpanı ve kendinden parlama uygulanmaz. */
 /* ------------------------------------------------------------------ */
+
+/** Harita materyallerinin "doğal zemin" olarak işaretlendiği userData anahtarı. */
+const GROUND_MARK = "vaelosGround";
+
+/**
+ * Harita materyalini ZEMİN gibi davranmaya zorlar; dokusuna (diffuse/map)
+ * dokunmaz. Amaç, kaplamaların "patlamış" görünmesini bitirmek:
+ *
+ *   • Işık almayan/eski tip bir materyal (MeshBasicMaterial vb.) yüzünden zemin
+ *     boyanmış gibi düz duruyorsa MeshStandardMaterial'a yükseltilir; diffuse
+ *     haritası ve rengi aynen taşınır.
+ *   • Zemine sonradan binen çok sönük bölge ışıması tamamen geri alınır;
+ *     haritanın kendi ışıması varsa yalnızca 1'in üstü kısılır. Yani "haritanın
+ *     kendisi parlıyor" durumu biter — yalnızca yetenekler ve kristaller parlar.
+ *   • Zemin ayna gibi davranmaz: roughness yükseltilir, metalness ve çevre
+ *     yansıması düşürülür. Böylece taş/toprak/çimen dokusu okunur kalır ve
+ *     çevre haritasının mor/mavi ışıkları zemine neon şerit olarak yansımaz.
+ */
+function normalizeGroundMaterial(source: THREE.Material): THREE.Material {
+  if (source.userData?.[GROUND_MARK]) return source;
+  const standard = source as THREE.MeshStandardMaterial;
+  let material: THREE.Material = source;
+  if (typeof standard.roughness !== "number") {
+    // Işık almayan yüzey: dokusu korunarak standart materyale yükseltilir.
+    const legacy = source as THREE.MeshBasicMaterial;
+    material = new THREE.MeshStandardMaterial({
+      name: legacy.name,
+      map: legacy.map ?? null,
+      color: legacy.color ? legacy.color.clone() : new THREE.Color(0xffffff),
+      vertexColors: legacy.vertexColors,
+      side: legacy.side,
+      transparent: legacy.transparent,
+      opacity: legacy.opacity,
+      alphaTest: legacy.alphaTest,
+    });
+  }
+  const std = material as THREE.MeshStandardMaterial;
+  std.userData = { ...std.userData, [GROUND_MARK]: true };
+  if (std.emissive) {
+    const maxChannel = Math.max(
+      std.emissive.r,
+      std.emissive.g,
+      std.emissive.b,
+    );
+    if (std.emissiveIntensity <= 0.06 && maxChannel <= 0.25) {
+      // Zemine sonradan binen çok sönük bölge ışıması (eski palet geçişinin
+      // kalıntısı) tamamen silinir: zemin kendinden parlamaz.
+      std.emissive.setRGB(0, 0, 0);
+      std.emissiveIntensity = 0;
+    } else if (std.emissiveIntensity > 1) {
+      // Haritanın kendi (dokulu) ışıması kısılır ama silinmez.
+      std.emissiveIntensity = 1;
+    }
+  }
+  if (typeof std.roughness === "number") {
+    std.roughness = Math.max(0.6, std.roughness);
+  }
+  if (typeof std.metalness === "number") {
+    std.metalness = Math.min(0.25, std.metalness);
+  }
+  std.envMapIntensity = 0.15;
+  return material;
+}
 
 /**
  * Haritanın yüklediği GLB'yi (drei önbelleğinden, kopya indirmeden) alır ve
- * yalnızca o modelin materyallerini volkanik palete çeker: doku korunur,
- * renk doygunluğu yükseltilir ve bölgeye göre renklendirilir — kırmızı üs
- * yarısı koyu turuncu-kırmızı, mavi üs yarısı berrak mavi-mor. Böylece
- * cangıl yeşili yerine iki bölgeli bir MOBA arazisi okunur. Karakterler,
- * kostümler ve çalılar etkilenmez, çünkü geçiş yalnızca bu modelin kendi
- * sahne grafiğinde çalışır.
+ * yalnızca o modelin materyallerini doğal zemin diline çeker. Haritanın KENDİ
+ * dokuları (çimen, taş, toprak) aynen korunur: burada artık ne renk çarpanı ne
+ * bölgesel mor/mavi ton uygulanır — ikisi de zemini neon bir ızgaraya
+ * çeviriyordu. Karakterler, kostümler ve çalılar etkilenmez, çünkü geçiş
+ * yalnızca bu modelin kendi sahne grafiğinde çalışır.
  */
 export function MapPalette() {
   const { scene } = useGLTF(MAP_URL);
 
   useEffect(() => {
-    // BÖLGESEL PALET: her mesh'in dünya konumuna göre iki ton arasında
-    // yumuşak geçiş yapılır.
-    //   • kırmızı üs yarısı (x≈4)  → koyu turuncu-kırmızı
-    //   • mavi üs yarısı   (x≈30)  → berrak mavi-mor
-    // Tek tip gri çarpan artık yok: arazi iki yarıda farklı renkte okunur ve
-    // renk doygunluğu yükseldi (nötr çarpan 0.76 civarı, bölge tonu üstüne).
-    const warm = new THREE.Color(0.94, 0.82, 0.74);
-    const cool = new THREE.Color(0.76, 0.82, 0.98);
-    const neutral = new THREE.Color(0.72, 0.71, 0.73);
-    const warmEmissive = new THREE.Color(0x33_09_03);
-    const coolEmissive = new THREE.Color(0x08_0c_33);
-    const world = new THREE.Vector3();
-    const zone = new THREE.Color();
-
-    scene.updateMatrixWorld(true);
-    // Bölge ekseni: harita sahneye ROT_Y = -90° ile oturtulduğu için arenanın
-    // X ekseni model uzayında -Z'ye karşılık gelir (R_y(-90°)·(x,z) = (-z, x)).
-    // Bu yüzden bölge ayrımı modelin Z ekseni üzerinden yapılır; kırmızı üs
-    // büyük Z tarafında, mavi üs küçük Z tarafındadır. Ölçek ofsetini bilmek
-    // gerekmesin diye aralık modelin kendi sınır kutusundan türetilir.
-    const bounds = new THREE.Box3().setFromObject(scene);
-    const zMin = bounds.min.z;
-    const zSpan = Math.max(1, bounds.max.z - zMin);
+    // Aynı materyal birden fazla mesh'te paylaşılabildiği için dönüşüm
+    // önbelleğe alınır; her mesh için yeni materyal üretilmez.
+    const converted = new WeakMap<THREE.Material, THREE.Material>();
     scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
-      mesh.getWorldPosition(world);
-      // 0 → kırmızı yarı (lav), 1 → mavi yarı (kristal/su). Ramp hafif
-      // sıkıştırılır (0.08…0.9 aralığı): kenarlardaki fazladan geometri
-      // yüzünden sınır kutusu büyürse bile iki bölge tam doygunluğa ulaşır.
-      const t = THREE.MathUtils.clamp(
-        (bounds.max.z - world.z) / zSpan / 0.82 - 0.1,
-        0,
-        1,
-      );
-      zone.copy(warm).lerp(cool, t).multiply(neutral);
       const list = Array.isArray(mesh.material)
         ? mesh.material
         : [mesh.material];
-      for (const entry of list) {
-        const material = entry as THREE.MeshStandardMaterial;
-        // Aynı materyal birden fazla mesh'te paylaşılabildiği için işaretlenir.
-        if (material.userData?.volcanicPalette) continue;
-        material.userData = { ...material.userData, volcanicPalette: true };
-        material.color?.multiply(zone);
-        // Yansıma: zemin hafif metalik ve daha pürüzsüz — ışığı yansıtır.
-        if (typeof material.roughness === "number") {
-          material.roughness = Math.max(0.34, material.roughness * 0.9);
-        }
-        if (typeof material.metalness === "number") {
-          material.metalness = Math.min(0.9, material.metalness + 0.1);
-        }
-        // Bölgenin rengi çok hafif bir ışıma olarak da zeminin kendisinden
-        // gelir (kırmızı yanda kor, mavi yanda kristal ışıması).
-        material.emissive = warmEmissive.clone().lerp(coolEmissive, t);
-        material.emissiveIntensity = 0.05;
-        // Çevre haritası yansımaları bu kez İSTENİYOR (yansıtıcı zemin),
-        // ama 1.0'ın altında kalır ki doku detayı yıkanmasın.
-        if (typeof material.envMapIntensity === "number") {
-          material.envMapIntensity = 0.45;
-        }
-      }
+      list.forEach((entry, index) => {
+        const cached = converted.get(entry);
+        const out = cached ?? normalizeGroundMaterial(entry);
+        if (!cached) converted.set(entry, out);
+        list[index] = out;
+      });
+      mesh.material = Array.isArray(mesh.material) ? list : list[0];
     });
   }, [scene]);
 
@@ -1546,8 +1505,7 @@ export function WarAtmosphere() {
       <VolcanicKeyLight />
       <MagmaLights />
       <GroundHaze />
-      {/* Renk doygunluğu: iki yarının bölge auraları + yansıtıcı zemin */}
-      <ZoneAuras />
+      {/* Zemin katmanı: yalnızca çok soluk (ıslak taş) yansıma */}
       <ReflectiveFloor />
       {/* Ortam detayı: netleşmiş lane yolları, enerji hatları, taş yapılar */}
       <LaneRoads />

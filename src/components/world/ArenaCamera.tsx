@@ -65,6 +65,10 @@ const CLAMP_L = 2.2;
 // Lookahead (units the camera leads the fighter) — smaller lens, smaller lead.
 const LOOK_P = 1.1;
 const LOOK_L = 1.6;
+// Bakış yüksekliği (göğüs hizası). Kamera odağı artık karakterin ayak/bele
+// hizasına değil göğsüne kilitlenir: takip mesafesi ve yükseklik aynen kalır,
+// yalnızca bakış bir tık yukarı kayar (zemin yerine karakter + ufuk okunur).
+const LOOK_Y = 1.05;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,
@@ -113,21 +117,21 @@ export function useArenaCamera(
       if ((light as THREE.AmbientLight).isAmbientLight) {
         // Dolgu biraz yukarı: sahne turuncuya yıkanmadan gölgelerin içindeki
         // detay (taş dokusu, lane çizgileri) okunabilsin.
-        light.intensity = 0.15;
+        light.intensity = 0.22;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
         hemi.color.set("#41528f");
         // Zemin rengi "magma yansıması" olarak kalır ama artık kor değil,
         // sönmüş kor: tüm araziyi kahverengiye boyayan asıl katman buydu.
         hemi.groundColor.set("#7f3712");
-        hemi.intensity = 0.2;
+        hemi.intensity = 0.32;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
         // Arena3D'nin nötr ana ışığı lav tarafından vuran sıcak anahtara
         // dönüşür (atmosferin kendi ışıkları yukarıda atlanır). Şiddeti
         // düşürülüp tonu nötre yaklaştırıldı: zemin kavrulmuyor, kontrast
         // atmosferin kendi turuncu/cyan ışıklarından geliyor.
-        light.color.set("#ffdcbc");
-        light.intensity = 0.6;
+        light.color.set("#ffe3c8");
+        light.intensity = 0.95;
       }
     });
   }, [scene]);
@@ -250,6 +254,6 @@ export function useArenaCamera(
       smoothed.current.y + Math.sin(el) * dist,
       smoothed.current.z + Math.cos(el) * dist,
     );
-    camera.lookAt(smoothed.current);
+    camera.lookAt(smoothed.current.x, LOOK_Y, smoothed.current.z);
   });
 }

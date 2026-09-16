@@ -15,8 +15,9 @@ export function BattleMapModel() {
     <GlbModelBoundary fallback={null}>
       <Suspense fallback={null}>
         <BattlefieldMap />
-        {/* Volkanik palet: haritanın kendi dokularını bazalt tonuna çeker.
-            Aynı Suspense içindedir, yani GLB hazır olduğunda çalışır. */}
+        {/* Zemin geçişi: haritanın KENDİ dokuları (çimen/taş/toprak) korunur;
+            yalnızca zemine sonradan binen yansıma ve kendinden parlama
+            temizlenir. Aynı Suspense içindedir, GLB hazır olunca çalışır. */}
         <MapPalette />
       </Suspense>
     </GlbModelBoundary>

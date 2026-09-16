@@ -41,7 +41,7 @@ let workingComposers = 0;
 const POINT_LIGHT_CAP = 0.5;
 /** Genel pozlama: arena ACES ile tone map edildiği için tek çarpanla bütün
  *  sahne kısılabilir. 1'in altındaki değer görüntüyü koyulaştırır. */
-const EXPOSURE = 0.8;
+const EXPOSURE = 0.9;
 
 /** Sahne bir kez mount edilir; yine de dokunmatik cihaz kontrolü için. */
 function isCoarsePointer() {
@@ -53,9 +53,9 @@ function isCoarsePointer() {
 }
 
 export function ArenaPostFx({
-  strength = 0.3,
-  radius = 0.3,
-  threshold = 0.82,
+  strength = 0.22,
+  radius = 0.28,
+  threshold = 0.9,
 }: {
   strength?: number;
   radius?: number;
