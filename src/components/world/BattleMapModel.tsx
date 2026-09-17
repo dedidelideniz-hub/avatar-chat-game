@@ -69,6 +69,29 @@ const RAISED_SURFACE_MIN_AREA = 0.0002;
 const GRID_COLS = Math.ceil((ARENA_W * PX) / GRID_CELL);
 const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
 
+/* GEÇİT GENİŞLETME (pathway widening) ------------------------------------
+ * Rasterize edilen kaya/duvar/kule kütleleri koridorun içine doğru birkaç
+ * piksel taşıyor; iki engelin arasındaki geçit (koridor arası bağlantı, nehir
+ * kenarı yürüyüşü, orman/jungle yolu) neredeyse gövde genişliğinde kalıyor ve
+ * dövüşçüler dar sıkışıklarda birbirine takılıyordu. İki sayaç bu geçitleri
+ * İKİ TARAFTAN da açar:
+ *
+ *   · OBSTACLE_ERODE_PASSES — engel kütlesinin yalnızca KENAR hücreleri
+ *     silinir; kütle dışa değil İÇE doğru çekilir. 3 tur × 2 px = her kenardan
+ *     6 px geri çekilme (geçit başına +12 px; tipik bir dar geçitte gövde
+ *     açıklığı ~%35-40 büyür). Erozyon kasten sığ tutulur: gerçek duvar/kule
+ *     kütlelerinin çekirdeği engel kalır, yalnızca ince kırıntılar temizlenir.
+ *   · WALKABLE_DILATE_PASSES — düz taban alanı eskiden 4 tur (8 px)
+ *     genişletiliyordu; 7 tur (14 px) ile eritilen kenarların yerine açılan
+ *     zemin de yürünebilir alana katılır, karakter yeni açılan şeride pürüzsüz
+ *     geçer.
+ *
+ * Kalın kütlelerin ÇEKİRDEĞİ (duvar, kule, üs, büyük kaya) engel kalır ve
+ * haritanın dışına çıkılamaz; yalnızca dar geçitler ferahlar.
+ */
+const WALKABLE_DILATE_PASSES = 7;
+const OBSTACLE_ERODE_PASSES = 3;
+
 export interface RockGrid {
   cell: number;
   cols: number;
@@ -191,7 +214,7 @@ function fieldFootprintClear(
  * kapanır; haritanın gerçek silueti (ada kenarı) yalnızca birkaç piksel dışa
  * taşar — yani yürünen alan fiilen düz bir cam zemin olur.
  */
-function dilateWalkableField(g: RockGrid, passes = 4) {
+function dilateWalkableField(g: RockGrid, passes = WALKABLE_DILATE_PASSES) {
   const { cols, rows } = g;
   let src = g.walkable;
   for (let p = 0; p < passes; p++) {
@@ -236,6 +259,55 @@ function dilateWalkableField(g: RockGrid, passes = 4) {
  * bırakır: kalın kaya/duvar/kule kütleler ayakta kalır, ince süs parçaları ve
  * dikiş artıkları engel olmaktan çıkar.
  */
+/**
+ * GEÇİT GENİŞLETME (obstacle erode) — dar sıkışıklıkları açar.
+ *
+ * Engel maskesi gerçek GLB geometrisinden rasterize edildiği için kaya, duvar
+ * ve kule kenarları koridorun içine taşar. Bu geçiş engelin YALNIZCA kenar
+ * hücrelerini kaldırır: komşularından en az biri boş olan engel hücresi
+ * silinir. Böylece kütle dışa değil içe doğru çekilir ve iki engelin arasındaki
+ * geçit her iki taraftan da genişler.
+ *
+ * Erozyon simetrik ve sınırlıdır: kalın kütlelerin çekirdeği engel kalır (duvar
+ * boyunca kayma, kule/üs çevresi ve harita dışı sınır korunur); yalnızca birkaç
+ * hücre kalınlığındaki kırıntılar tamamen temizlenir.
+ */
+function erodeObstacles(g: RockGrid, passes = OBSTACLE_ERODE_PASSES) {
+  const { cols, rows } = g;
+  let src = g.blocked;
+  for (let p = 0; p < passes; p++) {
+    const next = src.slice();
+    for (let row = 0; row < rows; row++) {
+      const rowOff = row * cols;
+      for (let col = 0; col < cols; col++) {
+        const index = rowOff + col;
+        if (!src[index]) continue;
+        let edge = false;
+        // Izgaranın dışı "boş" sayılır: harita kenarındaki engel de eritilir.
+        for (let dr = -1; dr <= 1 && !edge; dr++) {
+          const r = row + dr;
+          if (r < 0 || r >= rows) {
+            edge = true;
+            break;
+          }
+          const off = r * cols;
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const c = col + dc;
+            if (c < 0 || c >= cols || !src[off + c]) {
+              edge = true;
+              break;
+            }
+          }
+        }
+        if (edge) next[index] = 0;
+      }
+    }
+    src = next;
+  }
+  g.blocked.set(src);
+}
+
 function keepOnlySolidObstacles(g: RockGrid) {
   const { cols, rows, blocked } = g;
   const solid = new Uint8Array(blocked.length);
@@ -1259,11 +1331,18 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
   // Son adım: rasterizasyondan kalan dikiş/çatlak hücrelerini kapat.
   closeWalkableSeams(grid);
   // Düz taban alanını genişlet: zemindeki girintiler/çatlaklar yürüyüş
-  // alanından tamamen silinir (görünmez cam zemin).
-  dilateWalkableField(grid);
+  // alanından tamamen silinir (görünmez cam zemin). Genişletme miktarı
+  // WALKABLE_DILATE_PASSES ile ayarlanır (geçit genişletme başlığına bak).
+  dilateWalkableField(grid, WALKABLE_DILATE_PASSES);
   // Ve yalnızca KALIN engelleri bırak: ince arazi çıkıntıları ile tek
   // hücrelik kırıntılar, düz görünen yolda karakteri durdurmasın.
   keepOnlySolidObstacles(grid);
+  // GEÇİT GENİŞLETME: engel kütleleri içe doğru çekilir → koridor arası
+  // geçişler, nehir kenarı yürüyüşleri ve orman (jungle) yolları iki taraftan
+  // da ferahlar. Karakter yeni açılan şeride pürüzsüz geçsin diye düz taban
+  // alanı son bir tur daha genişletilir.
+  erodeObstacles(grid);
+  dilateWalkableField(grid, 1);
   return grid;
 }
 

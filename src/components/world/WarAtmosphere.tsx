@@ -738,7 +738,52 @@ function GroundHaze() {
    taş küpler haritanın kenarında/üstünde havada duran kaplamasız kutular gibi
    görünüyordu. Çevre artık haritanın kendi kayaları ve dikilitaşlarıdır. */
 
-/** Haritanın köşelerindeki kaya kütleleri (oyun alanını boş bırakır). */
+/* ------------------------------------------------------------------ */
+/* DEKORASYON DÜZENLEMESİ: objeler yolların ortasında durmaz          */
+/*                                                                    */
+/* Kaya kütleleri ve dikilitaşlar eskiden ana hattın (kırmızı üs →     */
+/* mavi üs) tam üzerine düşebiliyordu; geçitler daralıyor ve oyuncu    */
+/* görsel olarak yolu kapanmış sanıyordu. Aşağıdaki yardımcı her       */
+/* dekoratif objeyi hattan LATERAL olarak dışa iter: obje yoldan       */
+/* çıkar, koridorun kenarına yerleşir. Kollar/kaya sayısı da azaltıldı. */
+
+/** Ana hat: iki üssü birleştiren koridor (bkz. NEXUS). */
+const LANE_A = NEXUS[0];
+const LANE_B = NEXUS[1];
+/** Dekoratif objenin ana hattan en az uzaklığı (3D birim). */
+const LANE_CLEAR = 2.7;
+
+function pushOffLane(
+  x: number,
+  z: number,
+  clear = LANE_CLEAR,
+): [number, number] {
+  const dx = LANE_B.x - LANE_A.x;
+  const dz = LANE_B.z - LANE_A.z;
+  const len = Math.hypot(dx, dz) || 1;
+  const len2 = dx * dx + dz * dz || 1;
+  const t = Math.max(
+    0,
+    Math.min(1, ((x - LANE_A.x) * dx + (z - LANE_A.z) * dz) / len2),
+  );
+  const ox = x - (LANE_A.x + t * dx);
+  const oz = z - (LANE_A.z + t * dz);
+  const dist = Math.hypot(ox, oz);
+  if (dist >= clear) return [x, z];
+  if (dist < 0.001) {
+    // Tam hat üzerinde: hat normali boyunca arenanın dışına doğru it.
+    const nx = -dz / len;
+    const nz = dx / len;
+    const midX = (LANE_A.x + LANE_B.x) / 2;
+    const midZ = (LANE_A.z + LANE_B.z) / 2;
+    const sign = (x - midX) * nx + (z - midZ) * nz >= 0 ? 1 : -1;
+    return [x + nx * clear * sign, z + nz * clear * sign];
+  }
+  const push = (clear - dist) / dist;
+  return [x + ox * push, z + oz * push];
+}
+
+/** Yol kenarına serpiştirilen küçük kaya kütleleri (3 → 2, dağılım daraltıldı). */
 const BOULDERS = (() => {
   const rnd = makeRng(5150);
   const spots: [number, number][] = [
@@ -750,16 +795,21 @@ const BOULDERS = (() => {
     [11, 20.6],
   ];
   return spots.flatMap(([bx, bz]) =>
-    Array.from({ length: 3 }, () => ({
-      x: bx + (rnd() - 0.5) * 2.6,
-      z: bz + (rnd() - 0.5) * 2.6,
-      s: 0.5 + rnd() * 0.9,
-      r: rnd() * Math.PI,
-    })),
+    Array.from({ length: 2 }, () => {
+      const x = bx + (rnd() - 0.5) * 1.7;
+      const z = bz + (rnd() - 0.5) * 1.7;
+      const [px, pz] = pushOffLane(x, z);
+      return {
+        x: px,
+        z: pz,
+        s: 0.5 + rnd() * 0.9,
+        r: rnd() * Math.PI,
+      };
+    }),
   );
 })();
 
-/** Koridor boyunca duran, tepesinde rün taşıyan dikilitaşlar. */
+/** Koridor boyunca duran, tepesinde rün taşıyan dikilitaşlar (yol kenarına). */
 const OBELISKS: { x: number; z: number; glow: string }[] = [
   { x: 5.2, z: 8.8, glow: "#ff8a3c" },
   { x: 9.6, z: 12.4, glow: "#ff6a1f" },
@@ -767,7 +817,10 @@ const OBELISKS: { x: number; z: number; glow: string }[] = [
   { x: 26.2, z: 12.4, glow: "#6fd8ff" },
   { x: 14.8, z: 6.4, glow: "#ff8a3c" },
   { x: 30.6, z: 7.4, glow: "#5ce1ff" },
-];
+].map((o) => {
+  const [x, z] = pushOffLane(o.x, o.z);
+  return { ...o, x, z };
+});
 
 function StoneStructures() {
   const stone = useMemo(
