@@ -1,13 +1,17 @@
 // 🎯 Skillshot göstergesi — zeminde menzil çemberi + yön oku.
 //
 // LoL / Wild Rift tarzı nişan okunurluğu: butonu basılı tutunca karakterin
-// etrafında maksimum menzili gösteren, kenarları kesikli ve hafifçe dönen bir
-// çember; nişan yönüne doğru uzanan, üzerinde akan oklu bir şerit. Çemberin
-// dışına doğru nabız gibi atan ikinci bir halka "menzil sınırı" hissini verir.
+// etrafında maksimum menzili gösteren, dönen ve hafifçe parlayan bir çember;
+// nişan yönüne doğru uzanan, üzerinde akan oklu bir şerit.
 //
-// Tamamen prosedürel (canvas) dokular kullanılır — dış varlık yok. Bütün
-// durum `aimState` üzerinden okunduğu için nişan alırken React yeniden
-// çizimi olmaz.
+// Çember ARTIK custom shader'dır (bkz. ./arena/SkillIndicator.tsx): kesikli
+// dönen bant, ince çekirdek halka, yumuşak ışıma ve dışa atan nabız halkası
+// tek bir fragment shader'da analitik üretilir — canvas dokusu yok, piksel
+// kaybı yok, bloom eşiğini doğrudan geçen gerçek bir ışıma var.
+//
+// Bütün durum `aimState` üzerinden okunduğu için nişan alırken React yeniden
+// çizimi olmaz; konum ve uniform'lar TEK `useFrame` (paylaşılan delta) içinde
+// tazelenir.
 import { useFrame } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
 import { useMemo, useRef } from "react";
@@ -16,12 +20,8 @@ import * as THREE from "three";
 // oluşmasın diye `import type`).
 import type { BattleFighter } from "./Arena3D";
 import { S } from "./arena/shared";
-import {
-  MAX_RANGE_UNITS,
-  SKILLSHOT_WIDTH,
-  aimState,
-  resolveAim,
-} from "./arena/skillshot";
+import { SkillIndicator, type SkillIndicatorHandle } from "./arena/SkillIndicator";
+import { MAX_RANGE_UNITS, SKILLSHOT_WIDTH, aimState, resolveAim } from "./arena/skillshot";
 
 /** Nişan türüne göre renk: düz vuruş soğuk mavi, yetenekler sıcak. */
 const AIM_COLORS = {
@@ -32,63 +32,7 @@ const AIM_COLORS = {
 /** Kilitlenen hedefin rengi. */
 const LOCK_COLOR = "#fde68a";
 
-const RING_TEX_SIZE = 512;
-
-/** Menzil çemberinin dokusu: kesikli bant + çok ince çekirdek + zayıf dolgu. */
-function makeRangeTexture(): THREE.Texture {
-  const size = RING_TEX_SIZE;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const g = c.getContext("2d")!;
-  const cx = size / 2;
-  const cy = size / 2;
-  const outer = size / 2 - 4;
-
-  // Dışa doğru solan İNCE hale: çemberin kenarı düz bir çizgi gibi durmasın,
-  // ama zeminin üstünü kaplamasın.
-  const halo = g.createRadialGradient(cx, cy, outer * 0.93, cx, cy, outer);
-  halo.addColorStop(0, "rgba(255,255,255,0)");
-  halo.addColorStop(0.75, "rgba(255,255,255,0.16)");
-  halo.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = halo;
-  g.beginPath();
-  g.arc(cx, cy, outer, 0, Math.PI * 2);
-  g.fill();
-
-  // Kesikli bant: her 6. parça daha kalın ve parlak (yön okuma kolaylığı).
-  const DASHES = 72;
-  g.lineCap = "round";
-  for (let i = 0; i < DASHES; i++) {
-    const a0 = (i / DASHES) * Math.PI * 2;
-    const a1 = a0 + ((Math.PI * 2) / DASHES) * 0.6;
-    const strong = i % 6 === 0;
-    g.strokeStyle = strong
-      ? "rgba(255,255,255,0.95)"
-      : "rgba(255,255,255,0.42)";
-    g.lineWidth = strong ? size * 0.018 : size * 0.009;
-    g.beginPath();
-    g.arc(cx, cy, outer * 0.975, a0, a1);
-    g.stroke();
-  }
-
-  // Çok ince sürekli çekirdek halka (çemberi net okutur).
-  g.strokeStyle = "rgba(255,255,255,0.32)";
-  g.lineWidth = size * 0.004;
-  g.beginPath();
-  g.arc(cx, cy, outer * 0.975, 0, Math.PI * 2);
-  g.stroke();
-
-  // İç dolgu YOK: çember yalnızca sınırı gösterir, zemini kaplamaz. Böylece
-  // menzil alanı "ekranı kaplayan bir daire" gibi görünmez.
-
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.needsUpdate = true;
-  return t;
-}
-
-/** Nabız halkası: tek, ince ve parlak bir çember (dışa doğru genişler). */
+/** Nabız halkası: tek, ince ve parlak bir çember (kilit işareti). */
 function makePulseTexture(): THREE.Texture {
   const size = 256;
   const c = document.createElement("canvas");
@@ -194,18 +138,15 @@ export function SkillshotIndicator({
   other: MutableRefObject<BattleFighter>;
 }) {
   const root = useRef<THREE.Group>(null);
-  const ring = useRef<THREE.Mesh>(null);
-  const pulse = useRef<THREE.Mesh>(null);
+  // Shader çemberi: uniform'lar sahne döngüsünden doğrudan yazılır.
+  const indicator = useRef<SkillIndicatorHandle | null>(null);
   const shaft = useRef<THREE.Mesh>(null);
   const head = useRef<THREE.Mesh>(null);
   const lock = useRef<THREE.Mesh>(null);
-  const ringMat = useRef<THREE.MeshBasicMaterial>(null);
-  const pulseMat = useRef<THREE.MeshBasicMaterial>(null);
   const shaftMat = useRef<THREE.MeshBasicMaterial>(null);
   const headMat = useRef<THREE.MeshBasicMaterial>(null);
 
   // Prosedürel dokular bir kez üretilir (canvas → CanvasTexture).
-  const rangeTex = useMemo(() => makeRangeTexture(), []);
   const pulseTex = useMemo(() => makePulseTexture(), []);
   const shaftTex = useMemo(() => makeArrowShaftTexture(), []);
   const headTex = useMemo(() => makeArrowHeadTexture(), []);
@@ -224,12 +165,9 @@ export function SkillshotIndicator({
     const active = showRing || basicAiming;
     if (g.visible !== active) g.visible = active;
     if (!active) return;
-    if (ring.current && ring.current.visible !== showRing) {
-      ring.current.visible = showRing;
-    }
-    if (pulse.current && pulse.current.visible !== ability) {
-      pulse.current.visible = ability;
-    }
+
+    const ring = indicator.current;
+    if (ring && ring.mesh.visible !== showRing) ring.mesh.visible = showRing;
 
     const f = fighter.current;
     const o = other.current;
@@ -249,25 +187,21 @@ export function SkillshotIndicator({
 
     const t = state.clock.elapsedTime;
 
-    // ── menzil çemberi: hafif dönüş + nefes alan parlaklık ──
-    if (ring.current) ring.current.rotation.z = -t * 0.26;
-    if (ringMat.current) {
-      ringMat.current.color.set(color);
+    // ── menzil çemberi (custom shader): dönüş + nefes alan parlaklık ──
+    if (ring) {
+      const u = ring.uniforms;
+      u.uTime.value = t;
+      u.uColor.value.set(color);
       // Düz vuruşta çember daha soluk kalsın (sürekli ateş hâlinde ekranı
-      // boğmasın), yetenek nişanında biraz daha belirgin olsun. Gün ışığı
-      // seviyesi yükseldiği için taban opaklıklar bir tık arttı: çember
-      // karanlıkta/gölgede kaybolmuyor, canlı mavi kalıyor.
+      // boğmasın), yetenek nişanında biraz daha belirgin olsun.
       const base = ability ? 0.62 : 0.45;
-      ringMat.current.opacity = base + 0.1 * Math.sin(t * 2.6);
-    }
-    // ── dışa doğru atan nabız halkası (menzil sınırı) ──
-    if (pulse.current) {
-      const k = (t * 0.55) % 1; // 0 → 1 döngü
-      pulse.current.scale.setScalar(0.98 + k * 0.06);
-      if (pulseMat.current) {
-        pulseMat.current.color.set(color);
-        pulseMat.current.opacity = (1 - k) * 0.5;
-      }
+      u.uOpacity.value = base + 0.1 * Math.sin(t * 2.6);
+      // Dışa yayılan ışıma: yetenekte daha geniş (bloom daha çok beslenir).
+      u.uGlow.value = ability ? 0.34 : 0.16;
+      // ── dışa doğru atan nabız halkası (menzil sınırı) ──
+      // Düz vuruşta nabız kapalıdır (1 → söndü): sürekli ateş hâlinde ekranı
+      // boğmasın. Yetenek nişanında 0→1 arası döner.
+      u.uPulse.value = ability ? (t * 0.55) % 1 : 1;
     }
 
     // ── yön oku: karakterden menzil sonuna kadar ──
@@ -286,8 +220,7 @@ export function SkillshotIndicator({
       head.current.rotation.set(-Math.PI / 2, 0, ang);
       head.current.position.set(px + aim.x * len, 0.06, pz + aim.y * len);
     }
-    // Chevron'lar hedefe doğru akar; şerit karaktere yakınken sönük,
-    // menzil sonunda parlar (nerede biteceği okunur).
+    // Chevron'lar hedefe doğru akar.
     const shaftMap = shaftMat.current?.map;
     if (shaftMap) shaftMap.offset.x -= dt * 1.15;
     if (shaftMat.current) {
@@ -315,44 +248,8 @@ export function SkillshotIndicator({
 
   return (
     <group ref={root} visible={false}>
-      {/* Maksimum menzil çemberi */}
-      <mesh
-        ref={ring}
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.06, 0]}
-        raycast={() => null}
-      >
-        <planeGeometry args={[R * 2, R * 2]} />
-        <meshBasicMaterial
-          ref={ringMat}
-          map={rangeTex}
-          color={AIM_COLORS.basic}
-          transparent
-          opacity={0.78}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
-      {/* Dışa doğru genişleyen nabız halkası */}
-      <mesh
-        ref={pulse}
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.07, 0]}
-        raycast={() => null}
-      >
-        <planeGeometry args={[R * 2, R * 2]} />
-        <meshBasicMaterial
-          ref={pulseMat}
-          map={pulseTex}
-          color={AIM_COLORS.basic}
-          transparent
-          opacity={0.55}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
+      {/* Maksimum menzil çemberi + nabız halkası (custom shader) */}
+      <SkillIndicator handle={indicator} radius={R} />
       {/* Yön şeridi (okun gövdesi) */}
       <mesh ref={shaft} raycast={() => null}>
         <planeGeometry args={[1, 1]} />

@@ -13,8 +13,6 @@ import {
   applyHitReaction,
   isHiddenFrom,
   isSamuraiFighter,
-  pushColdFlameFx,
-  pushColdFlameImpact,
   SAMURAI_ULTIMATE_DAMAGE,
   startAttackAnim,
   stepAttackAnim,
@@ -33,20 +31,36 @@ import {
   aimState,
   aimedHit,
   facingDir,
-  rangePoint,
-  resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
+import { hitsRockCollision } from "@/components/world/BattleMapModel";
+// 🏃 MovementComponent — zemin kontrolü, kapsül çarpışması ve pürüzsüz kayma
+// (wall sliding). Hareket matematiği artık bu sahnede değil modülde yaşar.
 import {
-  findNearestWalkablePosition,
-  hitsRockCollision,
-} from "@/components/world/BattleMapModel";
-// Kapsül tabanlı, sürtünmesiz kayma hareketi (karo dikişlerine takılmayı ve
-// duvara uzaktan yapışmayı çözer — bkz. arena/slide.ts).
-import { slideStep } from "@/components/world/arena/slide";
+  ARENA_H,
+  ARENA_W,
+  DASH_HIT_R,
+  moveOnGround,
+  resolveSpawn,
+  stepDash,
+  type GroundConfig,
+} from "@/components/world/arena/MovementComponent";
+// ⚔️ SkillComponent — bekleme süreleri, MAX_RANGE nişan çözümü ve yetenek
+// atış tablosu (cooldown + menzil + atış tek modülde).
+import {
+  castSuper,
+  castUltimate,
+  emitUltCrack,
+  planAim,
+  planBasicAttack,
+  tickCooldown,
+  tickSamuraiPassive,
+  type SkillHost,
+} from "@/components/world/arena/SkillComponent";
+// ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
+import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
 import {
   DUEL_LEAVE_EVENT,
-  LandscapeGate,
   useAndroidBattleOrientation,
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
@@ -54,17 +68,20 @@ import {
 // kartı. HUD, kare döngüsünü yormamak için ref'lerden beslenir; bu yüzden
 // sahne yalnızca bir store kaydeder, bileşen joystick katmanında render edilir.
 import {
-  MobaArenaChrome,
   registerMobaHud,
   type MobaHudLive,
 } from "@/components/world/moba/MobaHud";
+// 🕹️ Kol ve yükleme ekranı sahnelerden ayrıldı (modüler bileşen mimarisi);
+// PvP sahnesi bu isimleri eskisi gibi BattleScene üzerinden içe aktarır.
+import { BattleJoystick } from "@/components/world/battle/BattleJoystick";
+import { LOAD_FX, LOAD_STEPS } from "@/components/world/battle/loadingSteps";
+export { BattleJoystick };
 // Eski üst şerit (HudFighter/HudClock) hâlâ render edilir: MOBA arayüzü
 // yüklenemezse savaş HUD'sız kalmaz. CSS, MOBA arayüzü varken bu şeridi
 // gizler (bkz. index.css → .battle-hud-top + .moba-chrome kuralı).
 import { HudClock, HudFighter } from "@/components/world/BattleTopHud";
 import type { AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
-import { cn } from "@/lib/utils";
 import {
   playSound,
   startBattleAmbience,
@@ -74,7 +91,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Trophy, X } from "lucide-react";
 import {
   Component,
-  type MutableRefObject,
   type ReactNode,
   useCallback,
   useEffect,
@@ -83,8 +99,6 @@ import {
   useState,
 } from "react";
 
-const ARENA_W = 1700;
-const ARENA_H = 1100;
 // HUD: MOBA kabuğu (üst şerit, minimap, yetenek barı) `moba/MobaHud.tsx`.
 const HP = 1000;
 const BASE_DMG = 120;
@@ -117,28 +131,6 @@ const botFireInterval = (level: number) => 0.4 - 0.2 * botLevelT(level);
 const botSpeedMul = (level: number) => 0.9 + 0.25 * botLevelT(level);
 /** Chance per shot the bot strafes after firing — dodgier at higher levels. */
 const botStrafeChance = (level: number) => 0.15 + 0.45 * botLevelT(level);
-
-/** Status lines that cycle under the loading bar while the arena loads. */
-const LOAD_STEPS = [
-  "Arena hazırlanıyor…",
-  "Rakip bulunuyor…",
-  "Silahlar kalibre ediliyor…",
-  "Enerji yükleniyor…",
-];
-
-/** GIF-style emoji FX that float up through the loading screen. */
-const LOAD_FX = [
-  { e: "⚔️", left: "6%", delay: 0, dur: 4.2, size: "text-2xl" },
-  { e: "⚡", left: "16%", delay: 0.9, dur: 3.4, size: "text-xl" },
-  { e: "🗡️", left: "28%", delay: 1.6, dur: 4.8, size: "text-2xl" },
-  { e: "✨", left: "41%", delay: 0.4, dur: 3.8, size: "text-lg" },
-  { e: "💥", left: "55%", delay: 1.1, dur: 4.4, size: "text-2xl" },
-  { e: "⚡", left: "66%", delay: 2.0, dur: 3.2, size: "text-xl" },
-  { e: "🛡️", left: "78%", delay: 0.7, dur: 5.0, size: "text-2xl" },
-  { e: "✨", left: "88%", delay: 1.4, dur: 3.6, size: "text-lg" },
-  { e: "🔥", left: "95%", delay: 2.4, dur: 4.6, size: "text-xl" },
-  { e: "⭐", left: "10%", delay: 2.8, dur: 4.0, size: "text-lg" },
-];
 
 function newFighter(
   name: string,
@@ -182,157 +174,6 @@ function newFighter(
     vy: 0,
     revealUntil: -9999,
   };
-}
-
-/** Virtual joystick — drag anywhere on it to move (works with mouse + touch). */
-export function BattleJoystick({
-  stickRef,
-  disabled = false,
-}: {
-  stickRef: MutableRefObject<{ x: number; y: number }>;
-  /** Ek olarak kilitlenmek istendiğinde (örn. sonuç ekranı açıkken). */
-  disabled?: boolean;
-}) {
-  // Savaş alanı yatay (landscape) düzende oynanır. Telefon dikeyken kol
-  // girdisi yok sayılır ve "yan çevir" yönergesi ekranı kaplar; yönerge
-  // burada render edilir çünkü bu katman iki arenada da (bot + PvP) her
-  // zaman takılıdır.
-  const gate = useLandscapeGate();
-  const locked = disabled || gate.required;
-  const baseRef = useRef<HTMLDivElement>(null);
-  const knobRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-  const activePointerRef = useRef<number | null>(null);
-
-  // Kolun yarıçapı ölçülür (sabit piksel değil): yatay modda HUD ekran
-  // boyutuna göre küçüldüğü için sabit 40px yarıçap topuzu tabanın dışına
-  // taşırır ve girdi ölçeğini bozardı.
-  const setKnob = (dx: number, dy: number) => {
-    if (knobRef.current)
-      knobRef.current.style.transform = `translate(${dx}px, ${dy}px)`;
-  };
-
-  const move = (px: number, py: number) => {
-    const base = baseRef.current;
-    if (!base || locked) return;
-    const rect = base.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const R = Math.max(24, rect.width * 0.36);
-    let dx = px - cx;
-    let dy = py - cy;
-    const d = Math.hypot(dx, dy);
-    if (d > R) {
-      dx = (dx / d) * R;
-      dy = (dy / d) * R;
-    }
-    stickRef.current = { x: dx / R, y: dy / R };
-    setKnob(dx, dy);
-  };
-
-  // Dokunma durumu bir CSS sınıfıyla bildirilir: Android WebView'de bir <div>
-  // üzerinde :active güvenilir tetiklenmediği için kolun %85 opaklığa
-  // çıkması bu sınıfa bağlıdır (React state yok, yeniden çizim yok).
-  const setActive = (on: boolean) => {
-    baseRef.current?.classList.toggle("is-active", on);
-  };
-
-  const reset = () => {
-    draggingRef.current = false;
-    activePointerRef.current = null;
-    stickRef.current = { x: 0, y: 0 };
-    setActive(false);
-    setKnob(0, 0);
-  };
-
-  // A phone can cancel a pointer stream when focus changes, the browser
-  // starts a gesture, or a second finger touches the control. Always release
-  // the live vector in those cases so movement never gets stuck or silently
-  // waits for a new pointer event.
-  useEffect(() => {
-    const resetOnWindowExit = () => reset();
-    const resetOnVisibilityChange = () => {
-      if (document.hidden) reset();
-    };
-    window.addEventListener("blur", resetOnWindowExit);
-    window.addEventListener("pagehide", resetOnWindowExit);
-    document.addEventListener("visibilitychange", resetOnVisibilityChange);
-    return () => {
-      window.removeEventListener("blur", resetOnWindowExit);
-      window.removeEventListener("pagehide", resetOnWindowExit);
-      document.removeEventListener("visibilitychange", resetOnVisibilityChange);
-      reset();
-    };
-  }, []);
-
-  // Yönerge ekranı açılınca kol sıfırlanır — yoksa telefon yan çevrildiğinde
-  // karakter "basılı kalmış" yöne yürümeye devam ederdi.
-  useEffect(() => {
-    if (locked) reset();
-  }, [locked]);
-
-  const finishPointer = (element: HTMLDivElement, pointerId: number) => {
-    if (activePointerRef.current !== pointerId) return;
-    reset();
-    if (element.hasPointerCapture(pointerId)) {
-      element.releasePointerCapture(pointerId);
-    }
-  };
-
-  return (
-    <>
-      {/* MOBA savaş arayüzü: üst şerit, minimap, sağ ray, yetenek barı ve
-          rakip kartı arena üzerine buradan bindirilir. Sahne store kaydını
-          yapar; kayıt yoksa hiçbir şey render edilmez (eski HUD yedek kalır). */}
-      <MobaArenaChrome storeKey={stickRef} />
-      <div
-        ref={baseRef}
-        className="battle-joystick battle-hud-stick pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
-        onPointerDown={(e) => {
-          // Ignore extra fingers instead of letting them replace the active
-          // pointer and leave the joystick in an inconsistent state.
-          if (activePointerRef.current !== null) return;
-          e.preventDefault();
-          e.stopPropagation();
-          activePointerRef.current = e.pointerId;
-          draggingRef.current = true;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          setActive(true);
-          move(e.clientX, e.clientY);
-        }}
-        onPointerMove={(e) => {
-          if (draggingRef.current && activePointerRef.current === e.pointerId) {
-            e.preventDefault();
-            move(e.clientX, e.clientY);
-          }
-        }}
-        onPointerUp={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          finishPointer(e.currentTarget, e.pointerId);
-        }}
-        onPointerCancel={(e) => finishPointer(e.currentTarget, e.pointerId)}
-        onLostPointerCapture={(e) => {
-          if (activePointerRef.current === e.pointerId) reset();
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-        aria-label="Hareket joystick"
-      >
-        <div
-          ref={knobRef}
-          className="battle-hud-stick-knob pointer-events-none absolute inset-0 m-auto size-12 rounded-full border-2 border-white/70 bg-white/50 shadow-lg"
-        />
-      </div>
-
-      {/* Telefon yatay değilse savaş başlamaz: tüm ekranı kaplayan yönerge
-          ekranı (z-[100]) kontrol katmanıyla birlikte gelir. */}
-      <LandscapeGate
-        visible={gate.required}
-        touch={gate.touch}
-        canLock={gate.canLock}
-      />
-    </>
-  );
 }
 
 /** If the 3D scene crashes for any reason, fall back to the 2D arena so
@@ -748,49 +589,17 @@ export default function BattleScene({
     f.superCharge = Math.min(1, f.superCharge + amt);
   };
 
+  // ✨ VFX katmanı: bütün tek seferlik efektler bu veri yolundan geçer.
+  // (Effekt ölçüleri/renkleri ve bloom senkronu arena/VFXComponent'te.)
   const addFx = (fx: BattleFx) => {
     fxs.current.push(fx);
   };
-
-  const floatText = (x: number, y: number, text: string, color: string) => {
-    addFx({ kind: "text", x, y, ttl: 0.9, maxTtl: 0.9, text, color });
-  };
-
-  const circleFx = (
-    x: number,
-    y: number,
-    grow: number,
-    color: string,
-    ttl: number,
-  ) => {
-    addFx({ kind: "ring", x, y, ttl, maxTtl: ttl, grow, color });
-  };
-
-  const burstFx = (
-    x: number,
-    y: number,
-    grow: number,
-    color: string,
-    ttl: number,
-  ) => {
-    addFx({ kind: "burst", x, y, ttl, maxTtl: ttl, grow, color });
-  };
-
+  const vfx = useMemo(() => createVfxBus(addFx), []);
+  const floatText = vfx.text;
+  const circleFx = vfx.ring;
+  const burstFx = vfx.burst;
   /** Spawn a cloud of soft smoke puffs that rise and spread. */
-  const smokeFx = (x: number, y: number, count: number, grow = 100) => {
-    for (let i = 0; i < count; i++) {
-      const life = 0.7 + Math.random() * 0.5;
-      addFx({
-        kind: "smoke",
-        x: x + (Math.random() - 0.5) * 80,
-        y: y + (Math.random() - 0.5) * 80,
-        ttl: life,
-        maxTtl: life,
-        grow: grow + Math.random() * 60,
-        color: i % 2 === 0 ? "#c9c9c9" : "#b3b3b3",
-      });
-    }
-  };
+  const smokeFx = vfx.smoke;
 
   const spawnProj = (
     owner: BattleFighter,
@@ -860,6 +669,8 @@ export default function BattleScene({
     } else {
       playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
     }
+    // Vuruş ışığı: bloom parçacıklarla aynı karede yükselir.
+    vfx.flash(0.3);
     // GIF-style feedback: arena shake on every hit.
     const arenaEl = arenaRef.current;
     if (arenaEl) {
@@ -878,8 +689,9 @@ export default function BattleScene({
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
     // Ateş Topu: fiziksel turuncu ateş yerine antik büyüyle harmanlanmış
-    // ruhani / soğuk alev patlaması. Hasar yarıçapı (r) aynı kalır.
-    pushColdFlameFx(addFx, pr.x, pr.y, r);
+    // ruhani / soğuk alev patlaması. Hasar yarıçapı (r) aynı kalır; bloom
+    // VFX katmanında aynı karede tetiklenir.
+    vfx.coldFlame(pr.x, pr.y, r);
     const target = pr.owner === "player" ? bot.current : player.current;
     const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
     if (dist < r) {
@@ -891,156 +703,68 @@ export default function BattleScene({
     }
   };
 
-  const beamAttack = (
+  /* --------------------------- hareket katmanı --------------------------- */
+  // Yürünebilirlik GÖRÜNMEZ DÜZ TABAN COLLIDER'ıdır (BattleMapModel); hareket
+  // matematiği MovementComponent'te: kapsül tabanı, duvar boyunca kayma, step
+  // offset ve alt adım.
+  const ground: GroundConfig = {
+    radius: FIGHTER_R,
+    blocked: hitsObstacle,
+    bounds: { w: ARENA_W, h: ARENA_H, pad: 40 },
+  };
+  const moveFighter = (
     f: BattleFighter,
-    enemy: BattleFighter,
-    aim: { x: number; y: number },
-  ) => {
-    // Işın artık düşmanı hedeflemez: nişan yönüne gider ve MAX_RANGE ile sınırlı.
-    const ang = Math.atan2(aim.y, aim.x);
-    const len = Math.min(560, MAX_RANGE_PX);
-    const ex = f.x + Math.cos(ang) * len;
-    const ey = f.y + Math.sin(ang) * len;
-    addFx({
-      kind: "beam",
-      x1: f.x,
-      y1: f.y,
-      x2: ex,
-      y2: ey,
-      ttl: 0.32,
-      maxTtl: 0.32,
-    });
-    // Hasar yalnızca ışının menzili ve açısı içindeki hedefe gider.
-    if (aimedHit(f, aim, enemy, { rangePx: len })) {
-      damageEnemy(f, enemy, 300);
-    }
-  };
+    dx: number,
+    dy: number,
+    dt: number,
+  ) => moveOnGround(f, dx, dy, dt, ground);
 
-  const startDash = (f: BattleFighter, aim: { x: number; y: number }) => {
-    // Dash de nişan yönüne gider (eskiden düşmanın olduğu yöne, nerede olursa).
-    f.dashVX = aim.x;
-    f.dashVY = aim.y;
-    f.dashT = 0.32;
-    f.dashHit = false;
-    circleFx(f.x, f.y - 40, 60, "#a5f3fc", 0.35);
-    circleFx(f.x, f.y - 60, 40, "#e0f2fe", 0.3);
-  };
-
-  const fireballAttack = (f: BattleFighter, aim: { x: number; y: number }) => {
-    // Hedef: nişan yönünde MAX_RANGE sonundaki nokta (düşmanın konumu değil).
-    const end = rangePoint(f, aim);
-    spawnProj(f, f === player.current ? "player" : "bot", end.x, end.y, 320, {
-      r: 17,
-      speed: 290,
-      explodeR: 130,
-    });
-  };
-
-  /** `aim` verilmezse (ör. bot) nişan, menzil kuralıyla burada çözülür. */
-  const useSuper = (
-    f: BattleFighter,
-    enemy: BattleFighter,
-    aimIn?: { x: number; y: number },
-  ) => {
-    const aim =
-      aimIn ?? resolveAim(f, enemy, 0, 0, { canLock: !isHiddenFrom(enemy, f) });
-    f.superCharge = 0;
-    playSound("super", { volume: 0.9 });
-    smokeFx(f.x, f.y - 20, 4, 80);
-    switch (f.ability.id) {
-      case "isik":
-        beamAttack(f, enemy, aim);
-        break;
-      case "simsek":
-        playSound("dash");
-        startDash(f, aim);
-        break;
-      case "sifa": {
-        const heal = Math.round(f.maxHp * 0.45);
-        f.hp = Math.min(f.maxHp, f.hp + heal);
-        floatText(f.x, f.y - 135, `+${heal}`, "#4ade80");
-        circleFx(f.x, f.y - 40, 70, "#86efac", 0.5);
-        circleFx(f.x, f.y - 40, 45, "#bbf7d0", 0.4);
-        break;
-      }
-      case "ates":
-        fireballAttack(f, aim);
-        break;
-      default: {
-        // temel — delici güçlü atış: nişan yönünde, menzil sonuna kadar.
-        const end = rangePoint(f, aim);
-        spawnProj(
-          f,
-          f === player.current ? "player" : "bot",
-          end.x,
-          end.y,
-          240,
-          {
-            r: 20,
-            pierce: true,
-            speed: 400,
-          },
-        );
-      }
-    }
+  /* ---------------------------- yetenek katmanı -------------------------- */
+  // SkillHost: yetenek KURALLARI SkillComponent'te kalır; hasar/olay uygulaması
+  // (bot arenası doğrudan, PvP ağ üzerinden) burada bağlanır.
+  const skillHost: SkillHost = {
+    vfx,
+    sound: playSound,
+    spawn: (caster, target, dmg, opts) =>
+      spawnProj(
+        caster,
+        caster === player.current ? "player" : "bot",
+        target.x,
+        target.y,
+        dmg,
+        opts,
+      ),
+    // Işın her durumda çizilir; bot arenasında hasar yalnızca isabette işler.
+    onBeam: (caster, enemy, _aim, _len, hit) => {
+      if (hit) damageEnemy(caster, enemy, 300);
+    },
+    canLock: (enemy, caster) => !isHiddenFrom(enemy, caster),
   };
 
   const tryAttack = useCallback((aimX?: number, aimY?: number) => {
     const p = player.current;
-    const b = bot.current;
-    if (
-      !startedRef.current ||
-      resultRef.current ||
-      p.hp <= 0 ||
-      p.dashT > 0 ||
-      p.atkCd > 0
-    )
-      return;
-    p.atkCd = ATK_CD;
-    // Skillshot hedefi: nişan varsa tam o yön; nişan yoksa yalnızca MENZİL
-    // İÇİNDEKİ düşmana otomatik kilit; o da yoksa karakterin baktığı yön.
-    // (Eskiden düşman haritanın neresinde olursa olsun kilitleniyordu.)
-    const aim = resolveAim(p, b, aimX, aimY, { canLock: !isHiddenFrom(b, p) });
-    const end = rangePoint(p, aim);
-    const tx = end.x;
-    const ty = end.y;
-    p.facing = tx >= p.x ? 1 : -1;
-    // Düz vuruş animasyonu: kısa köklenme (windup) + kesilebilir bitiş.
-    startAttackAnim(p);
-    spawnProj(p, "player", tx, ty, BASE_DMG);
-    // Firing (even from a bush) reveals the shooter for a moment.
-    p.revealUntil = performance.now() + BUSH_REVEAL_MS;
+    const plan = planBasicAttack(
+      p,
+      bot.current,
+      skillHost,
+      startedRef.current && !resultRef.current,
+      aimX,
+      aimY,
+    );
+    if (!plan) return;
+    spawnProj(p, "player", plan.end.x, plan.end.y, BASE_DMG);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const trySamuraiSuper = useCallback(() => {
-    const p = player.current;
-    const b = bot.current;
-    if (
-      !startedRef.current ||
-      resultRef.current ||
-      p.hp <= 0 ||
-      !isSamuraiFighter(p) ||
-      p.samuraiCharge < 1 ||
-      p.samuraiUltT > 0
-    )
-      return;
-    p.samuraiCharge = 0;
-    p.samuraiUltT = 0.82;
-    p.samuraiUltHit = false;
-    // Gövde nişan yönüne döner (yatay: facing, dikey: vy) → kılıç ve yarık
-    // aynı yöne gider. Yön sırası: nişan > menzil içi düşman > bakış yönü.
-    const ultAim = resolveAim(
-      p,
-      b,
-      aimState.ability ? aimState.dx : 0,
-      aimState.ability ? aimState.dy : 0,
-      { canLock: !isHiddenFrom(b, p) },
+    // Samuray 2. ultisi: menzil kuralı + gövde yönü SkillComponent'te.
+    castUltimate(
+      player.current,
+      bot.current,
+      skillHost,
+      startedRef.current && !resultRef.current,
     );
-    p.facing = ultAim.x >= 0 ? 1 : -1;
-    p.vy = Math.abs(ultAim.y) > 0.5 ? (ultAim.y > 0 ? 1 : -1) : 0;
-    playSound("super", { volume: 1, rate: 0.72 });
-    circleFx(p.x, p.y, 90, "#fbbf24", 0.55);
-    smokeFx(p.x, p.y, 5, 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const trySuper = useCallback(() => {
@@ -1057,54 +781,11 @@ export default function BattleScene({
     // Skillshot: buton basılı tutulup nişan alındıysa o yön; yoksa yalnızca
     // menzil içindeki düşmana kilit; o da yoksa bakış yönü. Çalıdaki düşmana
     // otomatik kilit yok (şifa zaten kendine kullanılır).
-    const aim = resolveAim(
-      p,
-      b,
-      aimState.ability ? aimState.dx : 0,
-      aimState.ability ? aimState.dy : 0,
-      { canLock: !isHiddenFrom(b, p) },
-    );
-    useSuper(p, b, aim);
+    castSuper(p, b, skillHost, planAim(p, b, skillHost));
     // Using an ability inside a bush reveals the caster for a moment.
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const moveFighter = (
-    f: BattleFighter,
-    dx: number,
-    dy: number,
-    dt: number,
-  ) => {
-    // Sürtünmesiz kayma: hedef nokta reddedilirse karakter engelin önünde
-    // kilitlenmez; hareket engelin teğetine izdüşürülür (wall slide), küçük
-    // arazi dikişleri step offset ile tırmanılır. Alt adımlar sayesinde hızlı
-    // dash sırasında mermi/kaya tünellemesi de olmaz.
-    const toX = clamp(f.x + dx, 40, ARENA_W - 40);
-    const toY = clamp(f.y + dy, 40, ARENA_H - 40);
-    const next = slideStep(
-      f.x,
-      f.y,
-      toX - f.x,
-      toY - f.y,
-      hitsObstacle,
-      FIGHTER_R,
-    );
-    f.x = next.x;
-    f.y = next.y;
-    if (Math.abs(dx) > 0.01) f.facing = dx > 0 ? 1 : -1;
-    // Use the actual displacement, not the requested displacement. This
-    // keeps the bot from animating/walking in place when a real collider
-    // blocks its path.
-    f.moving = next.moved;
-    // Track vertical direction for body facing (up/down pose)
-    if (f.moving) {
-      if (Math.abs(dy) > Math.abs(dx)) f.vy = dy > 0 ? 1 : -1;
-      else f.vy = 0; // horizontal movement
-    } else {
-      f.vy = 0;
-    }
-    if (f.moving) f.phase += dt * 10;
-  };
 
   const endBattle = (win: "win" | "lose") => {
     if (resultRef.current) return;
@@ -1190,23 +871,16 @@ export default function BattleScene({
       if (!startedRef.current || resultRef.current) return;
 
       if (!spawnResolvedRef.current) {
-        const playerSpawn = findNearestWalkablePosition(p.x, p.y, FIGHTER_R);
-        const botSpawn = findNearestWalkablePosition(b.x, b.y, FIGHTER_R);
-        if (playerSpawn) {
-          [p.x, p.y] = playerSpawn;
-          p.moving = false;
-        }
-        if (botSpawn) {
-          [b.x, b.y] = botSpawn;
-          b.moving = false;
-        }
-        // A null result means the GLB grid is not ready yet. Try again on the
-        // next frame instead of permanently accepting an invalid spawn.
-        if (playerSpawn && botSpawn) spawnResolvedRef.current = true;
+        // false → GLB çarpışma ızgarası henüz hazır değil; gelecek karede
+        // yeniden denenir (geçersiz bir doğuş noktası kabul edilmez).
+        const playerOk = resolveSpawn(p, FIGHTER_R);
+        const botOk = resolveSpawn(b, FIGHTER_R);
+        if (playerOk && botOk) spawnResolvedRef.current = true;
       }
 
-      p.atkCd = Math.max(0, p.atkCd - dt);
-      b.atkCd = Math.max(0, b.atkCd - dt);
+      // Bekleme süreleri (cooldown) SkillComponent'te yönetilir.
+      tickCooldown(p, dt);
+      tickCooldown(b, dt);
       // Botun vuruş pozu zamanla söner (botlar köklenmez).
       tickAttackAnim(b, dt);
 
@@ -1255,9 +929,7 @@ export default function BattleScene({
       }
       // Samuray 2. ultisi hasar vurmanın yanında zamanla da dolar (PvP
       // arenasındaki ile aynı) — yoksa ult hiç erişilemiyor görünüyordu.
-      if (isSamuraiFighter(p)) {
-        p.samuraiCharge = Math.min(1, p.samuraiCharge + dt * 0.16);
-      }
+      tickSamuraiPassive(p, dt);
       // ── Düz vuruş animasyonu + cancel penceresi (kiting / hit-and-run) ──
       // Windup boyunca karakter köklenir; pencere açıldıktan sonra joystick'e
       // dokunmak bitiş animasyonunu keser ve karakter hemen yürümeye başlar.
@@ -1287,27 +959,13 @@ export default function BattleScene({
           // ve karakterin BAKTIĞI yöne doğru en fazla MAX_RANGE ilerler.
           // (Eskiden düşmanın konumuna, yani haritanın öbür ucuna uzuyordu.)
           const dir = facingDir(p);
-          const dirX = dir.x;
-          const dirY = dir.y;
-          const impactX = p.x + dirX * 50;
-          const impactY = p.y + dirY * 50;
-          const reach = MAX_RANGE_PX;
-          addFx({
-            kind: "samuraiCrack",
-            x1: impactX,
-            y1: impactY,
-            x2: p.x + dirX * reach,
-            y2: p.y + dirY * reach,
-            ttl: 1.25,
-            maxTtl: 1.25,
+          const crack = emitUltCrack(p, dir.x, dir.y, skillHost, {
+            smokeCount: 4,
+            smokeGrow: 80,
+            trail: true,
           });
-          burstFx(impactX, impactY, 90, "#fbbf24", 0.4);
-          smokeFx(impactX, impactY, 4, 80);
-          for (let s = 1; s <= 3; s++) {
-            smokeFx(impactX + dirX * 55 * s, impactY + dirY * 55 * s, 2, 70);
-          }
           // Hasar yalnızca hat menzil içinde ve yönündeyse verilir.
-          if (aimedHit(p, dir, b, { rangePx: reach })) {
+          if (aimedHit(p, dir, b, { rangePx: crack.reach })) {
             damageEnemy(p, b, SAMURAI_ULTIMATE_DAMAGE);
           }
           playSound("hit", { volume: 1, rate: 0.7 });
@@ -1317,9 +975,8 @@ export default function BattleScene({
       } else if (pStunned) {
         // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
       } else if (p.dashT > 0) {
-        p.dashT -= dt;
-        moveFighter(p, p.dashVX * 820 * dt, p.dashVY * 820 * dt, dt);
-        if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < 90) {
+        stepDash(p, dt, ground);
+        if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < DASH_HIT_R) {
           p.dashHit = true;
           damageEnemy(p, b, 200);
         }
@@ -1371,9 +1028,8 @@ export default function BattleScene({
       if (bStunned) {
         // sarsılıyor — AI bu karede çalışmaz
       } else if (b.dashT > 0) {
-        b.dashT -= dt;
-        moveFighter(b, b.dashVX * 820 * dt, b.dashVY * 820 * dt, dt);
-        if (!b.dashHit && Math.hypot(p.x - b.x, p.y - b.y) < 90) {
+        stepDash(b, dt, ground);
+        if (!b.dashHit && Math.hypot(p.x - b.x, p.y - b.y) < DASH_HIT_R) {
           b.dashHit = true;
           damageEnemy(b, p, 200);
         }
@@ -1559,25 +1215,15 @@ export default function BattleScene({
           const katanaAng = Math.atan2(p.y - b.y, p.x - b.x);
           const dirX = Math.cos(katanaAng);
           const dirY = Math.sin(katanaAng);
-          const impactX = b.x + dirX * 50;
-          const impactY = b.y + dirY * 50;
           // Botun yarığı da oyuncunun ulti'siyle aynı MAX_RANGE ile sınırlı:
           // rakip nerede olursa olsun yarık ona kadar uzamaz (eskiden dist+50).
-          const reach = MAX_RANGE_PX;
-          addFx({
-            kind: "samuraiCrack",
-            x1: impactX,
-            y1: impactY,
-            x2: b.x + dirX * reach,
-            y2: b.y + dirY * reach,
-            ttl: 1.25,
-            maxTtl: 1.25,
+          const crack = emitUltCrack(b, dirX, dirY, skillHost, {
+            smokeCount: 3,
+            smokeGrow: 70,
           });
-          burstFx(impactX, impactY, 90, "#fbbf24", 0.4);
-          smokeFx(impactX, impactY, 3, 70);
           // Hasar yalnızca yarığın menzili ve yönü içindeyse işler
           // (oyuncu ulti'siyle aynı MAX_RANGE kuralı — eskiden menzilsizdi).
-          if (aimedHit(b, { x: dirX, y: dirY }, p, { rangePx: reach })) {
+          if (aimedHit(b, { x: dirX, y: dirY }, p, { rangePx: crack.reach })) {
             damageEnemy(b, p, SAMURAI_ULTIMATE_DAMAGE);
           }
           // Kılıç yere çarpar: vursun vurmasın darbe sesi (oyuncu ile aynı).
@@ -1591,7 +1237,8 @@ export default function BattleScene({
         (b.ability.id === "sifa" || botCanSee) &&
         !bStunned
       ) {
-        useSuper(b, p);
+        // Bot yeteneği: nişan girdisi yok → menzil kuralı SkillComponent'te.
+        castSuper(b, p, skillHost);
         b.revealUntil = performance.now() + BUSH_REVEAL_MS;
       }
 
@@ -1607,7 +1254,7 @@ export default function BattleScene({
           // sweep going, so they reposition instead of relying on shots
           // passing through cover.
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
-          pushColdFlameImpact(addFx, nx, ny, 46);
+          vfx.coldFlameImpact(nx, ny, 46);
           projs.current.splice(i, 1);
           continue;
         }
@@ -1625,7 +1272,7 @@ export default function BattleScene({
               pr.dmg,
             );
             // Soğuk alev oku düşmana değdi: temas noktasında buzlu patlama.
-            pushColdFlameImpact(addFx, pr.x, pr.y, 62);
+            vfx.coldFlameImpact(pr.x, pr.y, 62);
           }
           if (!pr.pierce) {
             projs.current.splice(i, 1);
@@ -1640,11 +1287,8 @@ export default function BattleScene({
         }
       }
 
-      // --- one-shot effects ---
-      for (let i = fxs.current.length - 1; i >= 0; i--) {
-        fxs.current[i].ttl -= dt;
-        if (fxs.current[i].ttl <= 0) fxs.current.splice(i, 1);
-      }
+      // --- tek seferlik efektler: tek geçişte ömür azaltma + temizlik ---
+      tickFx(fxs.current, dt);
 
       // --- super ready jingle (fires once when the bar fills) ---
       if (p.superCharge >= 1 && !superReadyPlayed) {

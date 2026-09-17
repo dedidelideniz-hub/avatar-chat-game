@@ -27,6 +27,10 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+// VFX katmanı ağır bir efekt (patlama, ışın, ulti) ürettiğinde bloom şiddetini
+// kısa süreliğine yükseltir; böylece ışık patlaması parçacıklarla AYNI karede
+// tetiklenir (bkz. arena/VFXComponent.ts).
+import { resetBloomPulse, stepBloomPulse } from "./arena/VFXComponent";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -68,6 +72,8 @@ export function ArenaPostFx({
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
   const composerRef = useRef<EffectComposer | null>(null);
+  /** Bloom geçişi: VFX nabzı her karede şiddetini modüle eder. */
+  const bloomRef = useRef<UnrealBloomPass | null>(null);
   /** Işık bütçesi için önbelleğe alınmış nokta ışıkları (her kare traverse yok). */
   const lightsRef = useRef<THREE.PointLight[]>([]);
   const frameRef = useRef(0);
@@ -106,6 +112,8 @@ export function ArenaPostFx({
   }, [gl]);
 
   useEffect(() => {
+    // Önceki maçtan kalan ışık nabzı yeni arenaya taşınmasın.
+    resetBloomPulse();
     const el = gl.domElement;
     const width = el.clientWidth || 1;
     const height = el.clientHeight || 1;
@@ -123,14 +131,14 @@ export function ArenaPostFx({
       composer = new EffectComposer(gl);
       composer.setPixelRatio(pixelRatio);
       composer.addPass(new RenderPass(scene, camera));
-      composer.addPass(
-        new UnrealBloomPass(
-          new THREE.Vector2(width, height),
-          strength,
-          radius,
-          threshold,
-        ),
+      const bloom = new UnrealBloomPass(
+        new THREE.Vector2(width, height),
+        strength,
+        radius,
+        threshold,
       );
+      bloomRef.current = bloom;
+      composer.addPass(bloom);
       composer.addPass(new OutputPass());
       composer.setSize(width, height);
       workingComposers += 1;
@@ -147,6 +155,7 @@ export function ArenaPostFx({
     return () => {
       composerRef.current = null;
       composer?.dispose();
+      bloomRef.current = null;
       if (composer) workingComposers = Math.max(0, workingComposers - 1);
     };
     // `size` bilerek dışarıda: yeniden boyutlandırma aşağıdaki ayrı effect'te.
@@ -167,7 +176,15 @@ export function ArenaPostFx({
     );
   }, [gl, size]);
 
-  useFrame(() => {
+  useFrame((_state, dt) => {
+    // --- VFX ↔ bloom senkronu -------------------------------------------
+    // Efekt katmanı bir ışık patlaması tetiklediyse (patlama/ışın/ulti) bloom
+    // şiddeti kısa süreliğine yükselir ve yumuşakça söner. Böylece parlama
+    // parçacıkların doğduğu karenin aynısında görünür, sonradan gelmez.
+    const pulse = stepBloomPulse(dt);
+    const bloom = bloomRef.current;
+    if (bloom) bloom.strength = strength + pulse;
+
     // --- Işık bütçesi ---------------------------------------------------
     // Sahne yüklendikçe (harita GLB'si sonradan gelir) ışık listesi tazelenir;
     // aradaki karelerde önbellek kullanılır, yani kare başına traverse yok.
