@@ -80,6 +80,22 @@ const FOG = new THREE.Color("#262648"); // ufuk = yumuşak çevre sisi
 const FOG_DENSITY_P = 0.008; // FogExp2 yoğunluğu — dikey mod
 const FOG_DENSITY_L = 0.02; // FogExp2 yoğunluğu — yatay mod
 
+// --- YÖNLÜ IŞIK DENGESİ ---
+// Ana ışığın eski yönü (12, 16, 8) ışığı arenanın ön-sol köşesinden
+// getiriyordu: sahnenin sağ tarafı, üs çevresi ve kulelerin arka yüzleri
+// gölgede siyaha yakın kalıyordu. Yeni yön ışığı arenanın köşegeni üzerinden
+// yüksekten indirir (≈56°), böylece iki üs ve koridor aynı dolgu düzeyini
+// alır. ArenaShadowLight aynı yatay yönü (+14, −10) kullandığı için karakter
+// gölgeleri ışıkla tutarlı kalır.
+const KEY_LIGHT_DIR: [number, number, number] = [14, 26, -10];
+// Karşı dolgu: gölgede kalan yüzleri (kule/kaya gövdesi, karakter arkası)
+// tamamen siyaha düşürmemek için karşı köşeden zayıf, soğuk bir ışık gelir.
+// `mobaLight` işareti, aşağıdaki ana ışık geçişinin bu dolguyu kendi sıcak
+// rengi + yüksek şiddetiyle ezmesini engeller.
+const FILL_LIGHT_DIR: [number, number, number] = [-14, 9, 20];
+const FILL_LIGHT_COLOR = "#cfd8ff";
+const FILL_LIGHT_INTENSITY = 0.42;
+
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
  * fighter rig — i.e. mounted after `<FollowCamera>` inside the Canvas — so its
@@ -134,8 +150,28 @@ export function useArenaCamera(
         // üstlenir ki her yüz aynı düzeyde aydınlanmasın ve form/gölge okunsun.
         light.color.set("#ffe8cf");
         light.intensity = 1.15;
+        // IŞIK AÇISI DENGESİ: yönlü ışığın yönü konumundan gelir; eski düşük
+        // yan açı sahnenin bir tarafını gölgede bırakıyordu. Yeni yön ışığı
+        // arenanın köşegeni üzerinden yükseğe taşır ve ışığı iki üsse de
+        // dengeli yayar (hedef arenanın merkezidir).
+        light.position.set(...KEY_LIGHT_DIR);
       }
     });
+
+    // Karşı dolgu ışığı: sahne grafiğinde bir kez oluşturulur (React ağacı
+    // dışında), unmount'ta temizlenir. Yönlü ışık olduğu için gölge düşürmez,
+    // yalnızca gölgede kalan yüzleri kaldırır.
+    const fill = new THREE.DirectionalLight(
+      FILL_LIGHT_COLOR,
+      FILL_LIGHT_INTENSITY,
+    );
+    fill.userData.mobaLight = true;
+    fill.position.set(...FILL_LIGHT_DIR);
+    scene.add(fill);
+    return () => {
+      scene.remove(fill);
+      fill.dispose();
+    };
   }, [scene]);
 
   // Orientation changes and window resizes are handled by the renderer's own

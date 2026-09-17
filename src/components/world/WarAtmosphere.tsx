@@ -25,6 +25,7 @@ import { Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ArenaPostFx } from "./ArenaPostFx";
+import { repairUntexturedStructureMaterials } from "./mapStoneRepair";
 
 /** Savaş alanı GLB'sinin tek kaynağı (BattleMapModel de buradan okur). */
 export const MAP_URL = "/models/5v5_game_map.glb";
@@ -258,7 +259,11 @@ function NexusCrystal({
     // emissive yükseltildi — neredeyse "unlit" davranır, karanlıkta da gündüzde
     // de doygun renkte okunur ve bloom eşiğini geçip etrafına ışık saçar.
     if (crystalMat.current) {
-      crystalMat.current.emissiveIntensity = 1.15 + 0.35 * pulse;
+      // Üs kristali: emissive biraz kısıldı (0.78 + 0.22·pulse). Önceki
+      // 1.15–1.5 aralığı bloom ile birlikte kristalin çevresindeki taş
+      // detayları ve üs platformunu bembeyaz patlatıyordu; artık kristal
+      // parlak kalır ama taş doku okunur.
+      crystalMat.current.emissiveIntensity = 0.78 + 0.22 * pulse;
     }
     if (beam.current) {
       const mat = beam.current.material as THREE.MeshBasicMaterial;
@@ -270,7 +275,9 @@ function NexusCrystal({
         0.09 + 0.03 * pulse;
       haloRef.current.scale.setScalar(2.6 + 0.2 * pulse);
     }
-    if (light.current) light.current.intensity = 0.5 + 0.18 * pulse;
+    // Üs çevresindeki nokta ışık da bir tık kısıldı: kristal + ışık + bloom
+    // birlikte üssün taş platformunu beyaza doyuruyordu.
+    if (light.current) light.current.intensity = 0.34 + 0.12 * pulse;
   });
 
   return (
@@ -359,7 +366,7 @@ function NexusCrystal({
             ref={crystalMat}
             color={core}
             emissive={color}
-            emissiveIntensity={1.15}
+            emissiveIntensity={0.78}
             roughness={0.12}
             metalness={0.15}
             transparent
@@ -372,7 +379,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={1.25}
+            emissiveIntensity={0.86}
             roughness={0.1}
             transparent
             opacity={0.94}
@@ -388,7 +395,7 @@ function NexusCrystal({
           <meshStandardMaterial
             color={core}
             emissive={color}
-            emissiveIntensity={1.0}
+            emissiveIntensity={0.7}
             roughness={0.14}
             transparent
             opacity={0.9}
@@ -416,7 +423,7 @@ function NexusCrystal({
               <meshStandardMaterial
                 color={core}
                 emissive={accent}
-                emissiveIntensity={0.95}
+                emissiveIntensity={0.68}
                 roughness={0.2}
                 transparent
                 opacity={0.85}
@@ -1054,6 +1061,15 @@ export function MapPalette() {
   const { scene } = useGLTF(MAP_URL);
 
   useEffect(() => {
+    // KAPLAMASIZ YAPI ONARIMI (önce çalışır): dokusu olmayan / dokusu
+    // okunamayan kule ve dikilitaş mesh'leri sahneye siyah-koyu mor bir kütle
+    // olarak düşer; bunlara prosedürel taş kaplaması atanır. Materyaller
+    // render edilen klonla PAYLAŞILDIĞI için değişiklik yerinde yapılır ve
+    // zemin geçişinden ÖNCE uygulanır (zemin geçişi eski tip materyalleri
+    // yeni örneklerle değiştirdiği için sıra önemlidir).
+    // Görsel-only — collider maskesi ve fizik etkilenmez.
+    repairUntexturedStructureMaterials(scene);
+
     // Aynı materyal birden fazla mesh'te paylaşılabildiği için dönüşüm
     // önbelleğe alınır; her mesh için yeni materyal üretilmez.
     const converted = new WeakMap<THREE.Material, THREE.Material>();

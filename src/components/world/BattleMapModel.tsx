@@ -51,7 +51,7 @@ const FALLBACK_POS = [
 // A small cell keeps the walkable road edges accurate without inflating
 // obstacle footprints into the lane. The old 8 px cells made narrow road
 // clearances collide several pixels before the fighter reached the prop.
-const GRID_CELL = 2; // game-space px per cell; keeps collider edges tight to GLB geometry
+const GRID_CELL = 2; // game-space px/cell — collider kenarı GLB geometrisine yakın kalır
 // The fitted GLB is placed with its terrain top at y=0. Props are usually
 // seated on that surface (their lowest vertices are often exactly y=0).
 const WALK_PLANE_Y = 0;
