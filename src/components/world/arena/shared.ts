@@ -16,8 +16,31 @@ export const ARENA_W = 34; // 1700 px / S
 export const ARENA_D = 22; // 1100 px / S
 export const CX = ARENA_W / 2;
 export const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
-/** Readability scale for fixed-size world HUD/effects on the larger map. */
-export const HUD = 2;
+/**
+ * EKRAN-ÖLÇEKLİ dünya HUD'u (can barı, isim etiketi, uçan hasar yazısı,
+ * kimlik halkası, efekt havuzu boyları).
+ *
+ * Bu değer kameranın yakınlığına bağlıdır: kamera yakınlaştıkça dünya
+ * birimi başına ekranda kaplanan alan büyür, yani bu öğeler KÜÇÜLMELİ ki
+ * ekrandaki boyları sabit kalsın.
+ *
+ *   2 (eski, uzak kamera) → 1.1: takip mesafesi 17.6 → 8.8 birime indi
+ *   (görünen yükseklik ~15 → ~7.5 birim). Ölçek 2/1.85 ≈ 0.55 ile çarpıldı;
+ *   ekranda ise ~%10 daha büyük görünüyorlar (yakın planda biraz daha okunur).
+ *
+ * KARAKTERE göre ölçeklenen efektler (mermi, alev küresi) bunu KULLANMAZ —
+ * onlar kameradan bağımsızdır: bkz. `CHAR_HUD`.
+ */
+export const HUD = 1.1;
+
+/**
+ * KARAKTERE göre ölçeklenen efektlerin tabanı (mermi gövdesi, büyü halkaları,
+ * alev dilleri, namlu şimşeği).
+ *
+ * Bunlar karakterin boyuna göre değerlendirilir (mermi karakterden küçük
+ * kalsın), kamera yakınlığından bağımsızdır; bu yüzden ekran ölçeği `HUD`
+ * değişse bile mutlak boylarını korur → 2.0. */
+export const CHAR_HUD = 2;
 
 /** Baş-üstü HUD (can barı + isim etiketi) oranı.
  *  RIG_ROOT_SCALE ile AYNI adımı izler: gövde %15 küçülüp sonra %20 büyüdüğü

@@ -1008,6 +1008,12 @@ function ArenaShadowCaster() {
     target.updateMatrixWorld();
     light.target = target;
   }, []);
+  // Gölge çerçevesi sıkılaştırıldı: kamera yakınlaştığı için (bkz.
+  // ArenaCamera → DIST_P/DIST_L) karakter ekranda ~2 kat büyük ve eski
+  // 48 birimlik gevşek çerçeve + 1024² harita gölge kenarlarını blok blok
+  // gösteriyordu. Çerçeve arenayı (34×22) kaplayacak kadar daraltıldı
+  // (±16), harita iki katına çıkarıldı → texel yoğunluğu ~4 kat: karakter
+  // gölgesi artık keskin, gölge düşüren nesneler yine kadrajda kalır.
   return (
     <directionalLight
       ref={ref}
@@ -1016,11 +1022,11 @@ function ArenaShadowCaster() {
       color="#ffe6c8"
       intensity={0.46}
       castShadow
-      shadow-mapSize={[1024, 1024]}
-      shadow-camera-left={-24}
-      shadow-camera-right={24}
-      shadow-camera-top={24}
-      shadow-camera-bottom={-24}
+      shadow-mapSize={[2048, 2048]}
+      shadow-camera-left={-16}
+      shadow-camera-right={16}
+      shadow-camera-top={16}
+      shadow-camera-bottom={-16}
       shadow-camera-near={1}
       shadow-camera-far={64}
       shadow-bias={-0.0009}

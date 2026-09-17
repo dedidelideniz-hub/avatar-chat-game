@@ -50,27 +50,36 @@ const WIDE_FROM = 0.9;
 const WIDE_TO = 1.8;
 
 // Portrait → landscape çerçeveleme. İkisi de aynı izometrik MOBA dilini
-// konuşur: uzun lens (46° / 44°), 46–49° pitch ve yükseltilmiş konum.
+// konuşur: 46° / 44° lens, 46–49° pitch ve oyuncunun hemen üstünde duran
+// YAKIN takip kamerası.
 //
-// FOV genişletildi (40→46 / 36→44) çünkü dövüşçüler %20 büyütüldü: geniş
-// açı, büyüyen karakterin ekranda (ve haritaya göre) alanı daraltmasını
-// engeller. Görünür karakter boyu ≈ (1.20 büyüme) × (tan20°/tan23° ≈ 0.86
-// küçülme) ≈ +%3 — yani karakter yerdeki objelere göre belirgin büyür ama
-// ekrandaki kapladığı alan neredeyse aynı kalır ve izometrik MOBA açısı korunur.
+// KAMERA YAKINLAŞTIRILDI (takip mesafesi 17.6 → 7.8 birim): karakter ekranda
+// "karınca" gibi kalıyordu — 0.72 birimlik dövüşçü, ~15 birimlik görünen
+// yükseklikte ekranın yalnızca ~%3'ünü kaplıyordu. Yeni çerçevede görünen
+// yükseklik ≈ 6.6 birim:
+//   · dövüşçü ekran yüksekliğinin ~%7'si (eskinin 2.2 KATI — artık net),
+//   · 4 birimlik maksimum menzil çemberi ekrana sığıyor (%61),
+//   · dövüşün çevresi (lane + yan arazi) kadrajda kalıyor.
+// Dünya HUD'u aynı oranda küçültüldü (bkz. arena/shared → HUD), yani can
+// barları / hasar yazısı / kimlik halkası ekranda ESKİSİ GİBİ görünür.
 const FOV_P = 46; // izometrik MOBA lensi (istenen 45–50° aralığı)
 const FOV_L = 44; // yatayda aynı aile: basık görüntü oluşmaz
-const DIST_P = 17.6; // uzun lensin dengesi — görünen alan korunur, kamera YÜKSEĞE çıkar
-const DIST_L = 12.8;
+const DIST_P = 7.8; // görünen yükseklik ≈ 2·7.8·tan23° ≈ 6.6 birim
+const DIST_L = 8.3; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·8.3·tan22° ≈ 6.7)
 const EL_P = 0.855; // ~49° izometrik MOBA açısı (istenen 45–50°)
 const EL_L = 0.81; // ~46° — yatayda da aynı izometrik pitch (top-down değil)
-const CLAMP_P = 3;
+// Harita kenar payı: kamera hedefi bu kadar içeride kalsın. Yakın kamerada
+// görünür yarı-yükseklik ≈ 3.3 birim olduğu için pay da yükseltildi —
+// böylece harita kenarında ekranın boşluğa taşması engellenir.
+const CLAMP_P = 3.0;
 // The -90° map runs its lane from the red base (~z 2) to the blue base
 // (~z 20) diagonally, so landscape must let the camera follow the player the
 // whole way; only a thin margin keeps it from leaving the island outright.
 const CLAMP_L = 2.2;
-// Lookahead (units the camera leads the fighter) — smaller lens, smaller lead.
-const LOOK_P = 1.1;
-const LOOK_L = 1.6;
+// Lookahead (units the camera leads the fighter) — yakın kamerada liderlik de
+// küçültülür, yoksa hızlı koşarken karakter kadrajın dışına itilir.
+const LOOK_P = 0.55;
+const LOOK_L = 0.8;
 // Bakış yüksekliği (göğüs/omuz hizası). Kamera odağı karakterin ayak/bele
 // hizasına değil üst gövdesine kilitlenir. Odak, karakter ölçeğiyle AYNI adımı
 // izler: dünya boyu 0.60 → 0.72 olduğu için hedef de 0.60 → 0.72 çıktı, yani

@@ -22,8 +22,8 @@ import { useRef } from "react";
 import * as THREE from "three";
 import {
   BOLT_VFX,
+  CHAR_HUD,
   COLD_FLAME,
-  HUD,
   isFireballProj,
   MUZZLE,
   PROJ_POOL,
@@ -110,7 +110,7 @@ export function ProjectilePool({
             mf.visible = true;
             // Namlu şimşeği merminin EL yüksekliğinde parlar (elden atış).
             mf.position.set(ox, MUZZLE.up, oz);
-            const sc = (0.05 + 0.1 * (1 - k)) * HUD;
+            const sc = (0.05 + 0.1 * (1 - k)) * CHAR_HUD;
             mf.scale.setScalar(sc);
             const mat = mf.material as THREE.MeshBasicMaterial;
             mat.color.set(pal.halo);
@@ -119,7 +119,7 @@ export function ProjectilePool({
           if (mr) {
             mr.visible = true;
             mr.position.set(ox, MUZZLE.up - 0.1, oz);
-            mr.scale.setScalar((0.055 + 0.16 * (1 - k)) * HUD);
+            mr.scale.setScalar((0.055 + 0.16 * (1 - k)) * CHAR_HUD);
             const mat = mr.material as THREE.MeshBasicMaterial;
             mat.color.set(pal.ring);
             mat.opacity = k * 0.7;
@@ -205,10 +205,10 @@ export function ProjectilePool({
             if (!tg) continue;
             const ph = time * 11 + k * 2.1 + i;
             const a = (k / BOLT_TONGUES) * Math.PI * 2 + time * 2.2;
-            const rad = (0.036 + 0.008 * Math.sin(ph * 0.8)) * HUD;
+            const rad = (0.036 + 0.008 * Math.sin(ph * 0.8)) * CHAR_HUD;
             tg.position.set(
               Math.cos(a) * rad,
-              0.02 * HUD * Math.sin(ph * 0.9),
+              0.02 * CHAR_HUD * Math.sin(ph * 0.9),
               Math.sin(a) * rad,
             );
             tg.rotation.z = -Math.cos(a) * 0.85;
@@ -233,21 +233,24 @@ export function ProjectilePool({
           const stretch = Math.min(1.55, 0.85 + sp / 1000);
           const sy = stretch * (0.92 + 0.22 * Math.sin(time * 16 + i));
           tail.scale.set(0.9 + 0.15 * Math.sin(time * 21 + i * 3), sy, 0.9);
-          const off = (BOLT_VFX.tailLen * HUD * sy) / 2 + 0.05 * HUD;
+          const off = (BOLT_VFX.tailLen * CHAR_HUD * sy) / 2 + 0.05 * CHAR_HUD;
           tail.position.set(-dirVec.x * off, 0, -dirVec.z * off);
           const mat = tail.material as THREE.MeshBasicMaterial;
           mat.color.set(pal.tail);
           mat.opacity = 0.55 + 0.25 * Math.sin(time * 18 + i * 2);
         }
         // Kuyruklu yıldız izi: biri kalın-parlak (yakın), diğeri ince-solgun (uzak).
-        const trailLen = Math.min(BOLT_VFX.streak * HUD, sp * 0.02 * HUD);
+        const trailLen = Math.min(
+          BOLT_VFX.streak * CHAR_HUD,
+          sp * 0.02 * CHAR_HUD,
+        );
         if (near) {
           near.position.set(
-            -dx * (0.22 * HUD + trailLen * 0.5),
+            -dx * (0.22 * CHAR_HUD + trailLen * 0.5),
             0,
-            -dz * (0.22 * HUD + trailLen * 0.5),
+            -dz * (0.22 * CHAR_HUD + trailLen * 0.5),
           );
-          near.scale.set(trailLen, 0.025 * HUD, 0.025 * HUD);
+          near.scale.set(trailLen, 0.025 * CHAR_HUD, 0.025 * CHAR_HUD);
           near.rotation.y = Math.atan2(-dz, dx);
           const mat = near.material as THREE.MeshBasicMaterial;
           mat.color.set(pal.trail);
@@ -256,11 +259,11 @@ export function ProjectilePool({
         if (far) {
           const farLen = trailLen * 1.55;
           far.position.set(
-            -dx * (0.22 * HUD + trailLen + farLen * 0.5),
+            -dx * (0.22 * CHAR_HUD + trailLen + farLen * 0.5),
             0,
-            -dz * (0.22 * HUD + trailLen + farLen * 0.5),
+            -dz * (0.22 * CHAR_HUD + trailLen + farLen * 0.5),
           );
-          far.scale.set(farLen, 0.014 * HUD, 0.014 * HUD);
+          far.scale.set(farLen, 0.014 * CHAR_HUD, 0.014 * CHAR_HUD);
           far.rotation.y = Math.atan2(-dz, dx);
           const mat = far.material as THREE.MeshBasicMaterial;
           mat.color.set(pal.wisp);
@@ -347,7 +350,8 @@ export function ProjectilePool({
               0.78 + 0.55 * Math.sin(ph),
               0.9 + 0.2 * Math.cos(ph),
             );
-            t.position.y = 0.05 * HUD + 0.03 * HUD * Math.sin(ph * 0.9);
+            t.position.y =
+              0.05 * CHAR_HUD + 0.03 * CHAR_HUD * Math.sin(ph * 0.9);
             t.rotation.z = 0.3 * Math.sin(ph * 0.6 + k);
             t.rotation.x = 0.2 * Math.cos(ph * 0.5 + k);
             (t.material as THREE.MeshBasicMaterial).color.set(
@@ -362,13 +366,13 @@ export function ProjectilePool({
             if (!em) continue;
             const kk = (time * 0.5 + k * 0.33 + i * 0.2) % 1;
             const ang = k * 2.1 + time * 1.6;
-            const rad = 0.08 * HUD + kk * 0.24 * HUD;
+            const rad = 0.08 * CHAR_HUD + kk * 0.24 * CHAR_HUD;
             em.position.set(
               Math.cos(ang) * rad,
-              kk * 0.68 * HUD,
+              kk * 0.68 * CHAR_HUD,
               Math.sin(ang) * rad,
             );
-            em.scale.setScalar(0.035 * HUD * (1 - kk * 0.45));
+            em.scale.setScalar(0.035 * CHAR_HUD * (1 - kk * 0.45));
             const mat = em.material as THREE.MeshBasicMaterial;
             mat.color.set(k % 2 === 0 ? COLD_FLAME.core : COLD_FLAME.wispA);
             mat.opacity = (1 - kk) * 0.9;
@@ -377,11 +381,11 @@ export function ProjectilePool({
         if (trailEl) {
           trailEl.visible = true;
           const sp = Math.hypot(p.vx, p.vy) || 1;
-          const len = Math.min(1.05 * HUD, sp * 0.06 * HUD);
+          const len = Math.min(1.05 * CHAR_HUD, sp * 0.06 * CHAR_HUD);
           const dx = p.vx / sp;
           const dz = p.vy / sp;
           trailEl.position.set(-dx * len * 0.55, 0, -dz * len * 0.55);
-          trailEl.scale.set(len, 0.07 * HUD, 0.07 * HUD);
+          trailEl.scale.set(len, 0.07 * CHAR_HUD, 0.07 * CHAR_HUD);
           // Ry(θ) +X → (cosθ, 0, −sinθ); yön (dx,0,dz) için θ = atan2(−dz,dx).
           trailEl.rotation.y = Math.atan2(-dz, dx);
           (trailEl.material as THREE.MeshBasicMaterial).color.set(
@@ -422,7 +426,7 @@ export function ProjectilePool({
             position={[0, 0.05 - MUZZLE.up, 0]}
             raycast={() => null}
           >
-            <circleGeometry args={[BOLT_VFX.ground * HUD, 24]} />
+            <circleGeometry args={[BOLT_VFX.ground * CHAR_HUD, 24]} />
             <meshBasicMaterial
               color={COLD_FLAME.bolt.player.ground}
               transparent
@@ -472,7 +476,11 @@ export function ProjectilePool({
             raycast={() => null}
           >
             <coneGeometry
-              args={[BOLT_VFX.tailR * HUD, BOLT_VFX.tailLen * HUD, 12]}
+              args={[
+                BOLT_VFX.tailR * CHAR_HUD,
+                BOLT_VFX.tailLen * CHAR_HUD,
+                12,
+              ]}
             />
             <meshBasicMaterial
               color={COLD_FLAME.bolt.player.tail}
@@ -495,7 +503,9 @@ export function ProjectilePool({
               }}
               raycast={() => null}
             >
-              <torusGeometry args={[0.088 * HUD, 0.006 * HUD, 6, 30]} />
+              <torusGeometry
+                args={[0.088 * CHAR_HUD, 0.006 * CHAR_HUD, 6, 30]}
+              />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.ring}
                 transparent
@@ -510,7 +520,9 @@ export function ProjectilePool({
               }}
               raycast={() => null}
             >
-              <torusGeometry args={[0.062 * HUD, 0.005 * HUD, 6, 26]} />
+              <torusGeometry
+                args={[0.062 * CHAR_HUD, 0.005 * CHAR_HUD, 6, 26]}
+              />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.wisp}
                 transparent
@@ -526,7 +538,7 @@ export function ProjectilePool({
               }}
               raycast={() => null}
             >
-              <sphereGeometry args={[BOLT_VFX.halo * HUD, 12, 12]} />
+              <sphereGeometry args={[BOLT_VFX.halo * CHAR_HUD, 12, 12]} />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.halo}
                 transparent
@@ -542,7 +554,7 @@ export function ProjectilePool({
               }}
               raycast={() => null}
             >
-              <sphereGeometry args={[BOLT_VFX.glow * HUD, 14, 14]} />
+              <sphereGeometry args={[BOLT_VFX.glow * CHAR_HUD, 14, 14]} />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.glow}
                 transparent
@@ -558,7 +570,7 @@ export function ProjectilePool({
               }}
               raycast={() => null}
             >
-              <sphereGeometry args={[BOLT_VFX.core * HUD, 16, 16]} />
+              <sphereGeometry args={[BOLT_VFX.core * CHAR_HUD, 16, 16]} />
               <meshStandardMaterial
                 color={COLD_FLAME.bolt.player.core}
                 emissive={COLD_FLAME.bolt.player.emissive}
@@ -577,7 +589,7 @@ export function ProjectilePool({
                   boltTongues.current[i][k] = el;
                 }}
               >
-                <coneGeometry args={[0.028 * HUD, 0.11 * HUD, 8]} />
+                <coneGeometry args={[0.028 * CHAR_HUD, 0.11 * CHAR_HUD, 8]} />
                 <meshBasicMaterial
                   color={
                     k % 2 === 0
@@ -669,7 +681,7 @@ export function ProjectilePool({
                 flameCores.current[i] = el;
               }}
             >
-              <sphereGeometry args={[0.13 * HUD, 16, 16]} />
+              <sphereGeometry args={[0.13 * CHAR_HUD, 16, 16]} />
               <meshStandardMaterial
                 color={COLD_FLAME.core}
                 emissive="#a78bfa"
@@ -682,7 +694,7 @@ export function ProjectilePool({
                 flameShellA.current[i] = el;
               }}
             >
-              <sphereGeometry args={[0.22 * HUD, 14, 14]} />
+              <sphereGeometry args={[0.22 * CHAR_HUD, 14, 14]} />
               <meshBasicMaterial
                 color={COLD_FLAME.wispA}
                 transparent
@@ -696,7 +708,7 @@ export function ProjectilePool({
                 flameShellB.current[i] = el;
               }}
             >
-              <sphereGeometry args={[0.34 * HUD, 12, 12]} />
+              <sphereGeometry args={[0.34 * CHAR_HUD, 12, 12]} />
               <meshBasicMaterial
                 color={COLD_FLAME.wispB}
                 transparent
@@ -710,7 +722,9 @@ export function ProjectilePool({
                 flameRingA.current[i] = el;
               }}
             >
-              <torusGeometry args={[0.27 * HUD, 0.012 * HUD, 6, 32]} />
+              <torusGeometry
+                args={[0.27 * CHAR_HUD, 0.012 * CHAR_HUD, 6, 32]}
+              />
               <meshBasicMaterial
                 color={COLD_FLAME.ring}
                 transparent
@@ -724,7 +738,7 @@ export function ProjectilePool({
                 flameRingB.current[i] = el;
               }}
             >
-              <torusGeometry args={[0.21 * HUD, 0.01 * HUD, 6, 28]} />
+              <torusGeometry args={[0.21 * CHAR_HUD, 0.01 * CHAR_HUD, 6, 28]} />
               <meshBasicMaterial
                 color={COLD_FLAME.wispB}
                 transparent
@@ -739,9 +753,9 @@ export function ProjectilePool({
                 <mesh
                   key={`t-${k}`}
                   position={[
-                    Math.cos(a) * 0.09 * HUD,
-                    0.05 * HUD,
-                    Math.sin(a) * 0.09 * HUD,
+                    Math.cos(a) * 0.09 * CHAR_HUD,
+                    0.05 * CHAR_HUD,
+                    Math.sin(a) * 0.09 * CHAR_HUD,
                   ]}
                   rotation={[0, 0, Math.cos(a) * 0.3]}
                   ref={(el) => {
@@ -749,7 +763,7 @@ export function ProjectilePool({
                     flameTongues.current[i][k] = el;
                   }}
                 >
-                  <coneGeometry args={[0.075 * HUD, 0.34 * HUD, 8]} />
+                  <coneGeometry args={[0.075 * CHAR_HUD, 0.34 * CHAR_HUD, 8]} />
                   <meshBasicMaterial
                     color={k % 2 === 0 ? COLD_FLAME.wispA : COLD_FLAME.wispB}
                     transparent
@@ -768,7 +782,7 @@ export function ProjectilePool({
                   flameEmbers.current[i][k] = el;
                 }}
               >
-                <octahedronGeometry args={[0.035 * HUD, 0]} />
+                <octahedronGeometry args={[0.035 * CHAR_HUD, 0]} />
                 <meshBasicMaterial
                   color={COLD_FLAME.core}
                   transparent
