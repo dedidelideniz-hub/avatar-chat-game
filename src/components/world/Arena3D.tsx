@@ -79,6 +79,7 @@ import {
   CRACK_POOL,
   CX,
   CZ,
+  HEAD_UI_SCALE,
   HIT_SPARKS,
   HUD,
   RING_POOL,
@@ -986,10 +987,13 @@ function FighterRig({
         bw.scale.setScalar(1);
       }
     }
-    // HP bar pops briefly white when the fighter is hit
+    // HP bar pops briefly white when the fighter is hit. Grup ölçeği ayrıca
+    // HEAD_UI_SCALE taşır: can barı + isim etiketi karakterle birlikte
+    // %15 küçülür (hem ölçek hem yükseklik aynı gruptan geldiği için bar hep
+    // başın üstünde kalır).
     const justHit = performance.now() - f.lastHitAt < 260;
     if (barGroup.current) {
-      barGroup.current.scale.setScalar(justHit ? 1.14 : 1);
+      barGroup.current.scale.setScalar((justHit ? 1.14 : 1) * HEAD_UI_SCALE);
     }
     // smooth animated health bar + white ghost that trails behind
     const max = f.maxHp;
@@ -1219,6 +1223,18 @@ function FighterRig({
 /* and the light-beam attack.                                          */
 /* ------------------------------------------------------------------ */
 
+/** Hasar sayısının doğduğu yükseklik ve yukarı süzülme mesafesi (dünya birimi).
+ *  Karakter %15 küçültüldüğü için taban ve süzülme de aynı oranda indi, yani
+ *  sayı hâlâ can barının hemen üstünde doğuyor. */
+const TEXT_BASE_Y = 0.95;
+const TEXT_RISE_Y = 1.05;
+
+/**
+ * Uçan hasar/iade sayısını çizer — stüdyo tipografisi:
+ * ekstra kalın (900) gövde, siyah kalın dış kontur ve ince parlak iç çeper.
+ * Kontur iki geçişte basılır: geniş yumuşak çeper + keskin siyah kenar; böylece
+ * sayı çim, lav ya da taş ne olursa olsun her zeminde okunur.
+ */
 function drawTextSprite(sprite: THREE.Sprite, text: string, color: string) {
   const mat = sprite.material as THREE.SpriteMaterial;
   const tex = mat.map as THREE.CanvasTexture;
@@ -1228,15 +1244,24 @@ function drawTextSprite(sprite: THREE.Sprite, text: string, color: string) {
   const g = canvas.getContext("2d");
   if (!g) return;
   g.clearRect(0, 0, 256, 96);
-  g.font = "900 56px 'Baloo 2', 'Segoe UI', sans-serif";
+  g.font =
+    "900 58px 'Baloo 2', 'Segoe UI', system-ui, -apple-system, sans-serif";
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.lineWidth = 12;
-  g.lineJoin = "round";
-  g.strokeStyle = "#ffffff";
+  g.lineJoin = "round"; // köşeler tırtıklı olmasın (menzil diskiyle aynı dil)
+  g.lineCap = "round";
+  g.lineWidth = 17;
+  g.strokeStyle = "rgba(6,9,20,0.75)";
+  g.strokeText(text, 128, 48);
+  g.lineWidth = 10;
+  g.strokeStyle = "#05070f";
   g.strokeText(text, 128, 48);
   g.fillStyle = color;
   g.fillText(text, 128, 48);
+  // İnce beyaz iç çeper: gövdeye hacim ve parlama katar (bloom'u da besler).
+  g.lineWidth = 2.6;
+  g.strokeStyle = "rgba(255,255,255,0.5)";
+  g.strokeText(text, 128, 48);
   tex.needsUpdate = true;
 }
 
@@ -1317,14 +1342,24 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
             s.userData.key = key;
           }
           s.visible = true;
-          // Damage Text Pop: ilk çıktığı an büyür, sonra süzülüp söner.
-          const pop = t > 0.72 ? (t - 0.72) / 0.28 : 0;
-          const sc = 1 + 0.7 * pop;
-          // Hasar sayısı can barının hemen üstünden başlar ve yukarı süzülür;
-          // karakter ölçeği küçüldüğü için taban yüksekliği de indi.
-          s.position.set(fx.x / S, 1.12 + (1 - t) * 1.15, fx.y / S);
+          // Scale Pop + Fade-out: "yaş" 0→1 ilerler.
+          //   1) 0-14%: hızlı büyüme (pop) — vuruşun şiddeti sayıdan okunur
+          //   2) 14-38%: büyüklük oturur (overshoot geri çekilir)
+          //   3) 38-100%: hafifçe büyüyerek yukarı süzülürken söner
+          const age = 1 - t;
+          let sc: number;
+          if (age < 0.14)
+            sc = 0.6 + (age / 0.14) * 0.62; // 0.60 → 1.22
+          else if (age < 0.38)
+            sc = 1.22 - ((age - 0.14) / 0.24) * 0.2; // → 1.02
+          else sc = 1.02 + (age - 0.38) * 0.1;
+          // Süzülme ease-out: sayı ani zıplamaz, yükselirken yavaşlar.
+          const rise = 1 - (1 - age) * (1 - age);
+          s.position.set(fx.x / S, TEXT_BASE_Y + rise * TEXT_RISE_Y, fx.y / S);
           s.scale.set(1.3 * HUD * sc, 0.49 * HUD * sc, 1);
-          (s.material as THREE.SpriteMaterial).opacity = Math.min(1, t * 1.7);
+          // Önce çok hızlı belirir, son ömürde yumuşakça söner.
+          (s.material as THREE.SpriteMaterial).opacity =
+            Math.min(1, age * 12) * Math.min(1, t * 1.8);
         }
         ti++;
       } else if (fx.kind === "ring") {

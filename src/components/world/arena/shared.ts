@@ -19,6 +19,12 @@ export const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
 /** Readability scale for fixed-size world HUD/effects on the larger map. */
 export const HUD = 2;
 
+/** Karakterle birlikte küçülen baş-üstü HUD (can barı + isim etiketi) oranı.
+ *  RIG_ROOT_SCALE ile aynı adımı izler: gövde %15 küçülünce bar ve isim de
+ *  %15 küçülür, böylece barın karaktere göre duruşu değişmez. Ölçek gruba
+ *  verildiği için barın yüksekliği de aynı oranda iner. */
+export const HEAD_UI_SCALE = 0.85;
+
 export interface BattleProj {
   owner: "player" | "bot";
   x: number;
@@ -155,7 +161,15 @@ export function pushColdFlameImpact(
   y: number,
   size = 56,
 ): void {
-  add({ kind: "ring", x, y, ttl: 0.34, maxTtl: 0.34, grow: size, color: COLD_FLAME.ring });
+  add({
+    kind: "ring",
+    x,
+    y,
+    ttl: 0.34,
+    maxTtl: 0.34,
+    grow: size,
+    color: COLD_FLAME.ring,
+  });
   const n = size > 60 ? 6 : 4;
   for (let i = 0; i < n; i++) {
     const life = 0.22 + Math.random() * 0.24;
@@ -166,7 +180,12 @@ export function pushColdFlameImpact(
       ttl: life,
       maxTtl: life,
       grow: size * (0.45 + Math.random() * 0.4),
-      color: i % 3 === 0 ? COLD_FLAME.core : i % 3 === 1 ? COLD_FLAME.wispB : COLD_FLAME.wispA,
+      color:
+        i % 3 === 0
+          ? COLD_FLAME.core
+          : i % 3 === 1
+            ? COLD_FLAME.wispB
+            : COLD_FLAME.wispA,
     });
   }
 }
@@ -198,7 +217,15 @@ export function pushColdFlameFx(
 ): void {
   const r = damageR * FIREBALL_VFX_SCALE;
   // Zeminde yayılan ince büyü halkası (soğuk şok dalgası).
-  add({ kind: "ring", x, y, ttl: 0.5, maxTtl: 0.5, grow: r * 1.15, color: COLD_FLAME.ring });
+  add({
+    kind: "ring",
+    x,
+    y,
+    ttl: 0.5,
+    maxTtl: 0.5,
+    grow: r * 1.15,
+    color: COLD_FLAME.ring,
+  });
   // Buzlu çekirdek: kısa ömürlü, parlak ve hızla yükselen ruhani alev kütlesi.
   for (let i = 0; i < 6; i++) {
     const life = 0.3 + Math.random() * 0.18;
