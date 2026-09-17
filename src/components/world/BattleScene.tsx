@@ -59,6 +59,8 @@ import {
 } from "@/components/world/arena/SkillComponent";
 // ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
+// 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
+import { MUZZLE, S } from "@/components/world/arena/shared";
 import {
   DUEL_LEAVE_EVENT,
   useAndroidBattleOrientation,
@@ -619,10 +621,23 @@ export default function BattleScene({
     const d = Math.hypot(dx, dy) || 1;
     const speed = opts.speed ?? PROJ_SPEED;
     playSound("shoot", { volume: 0.6 });
-    // Spawn just outside the fighter's radius so a shot fired while pressed
-    // against a crate/fence is born in free space instead of dying on frame 1.
-    const muzzleX = owner.x + (dx / d) * (FIGHTER_R + 6);
-    const muzzleY = owner.y + (dy / d) * (FIGHTER_R + 6);
+    // ELDEN ATIŞ (muzzle offset): mermi gövdenin merkezinden değil, nişan
+    // yönünde öne ve kullanılan el tarafına kaymış bir noktadan çıkar; namlu
+    // şimşeği de merminin doğduğu noktada parlar (ProjectilePool).
+    // Öne kayma gövde yarıçapının DIŞINA taşır: kasa/duvara yaslanmışken
+    // atılan mermi 1. karede ölmesin diye eski güvenlik payı korunur.
+    // Yanal kayma gövde içinde kalır (0.16 birim < FIGHTER_R), yani yeni bir
+    // engele doğurma riski yoktur.
+    const sideX = -dy / d;
+    const sideY = dx / d;
+    const muzzleX =
+      owner.x +
+      (dx / d) * (FIGHTER_R + 6 + MUZZLE.fwd * S) +
+      sideX * MUZZLE.side * S;
+    const muzzleY =
+      owner.y +
+      (dy / d) * (FIGHTER_R + 6 + MUZZLE.fwd * S) +
+      sideY * MUZZLE.side * S;
     projs.current.push({
       owner: ownerKey,
       x: muzzleX,

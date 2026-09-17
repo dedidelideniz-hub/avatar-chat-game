@@ -22,9 +22,10 @@
 // haritanın fit dönüşümünden etkilenmez ve doğrudan arena uzayında durur.
 import { useFrame } from "@react-three/fiber";
 import { Environment, Lightformer, useGLTF } from "@react-three/drei";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ArenaPostFx } from "./ArenaPostFx";
+import { DECOR_SCALE, scaleMapDecor } from "./mapDecorScale";
 import {
   makeStoneTexture,
   repairUntexturedStructureMaterials,
@@ -1103,7 +1104,12 @@ function normalizeGroundMaterial(source: THREE.Material): THREE.Material {
 export function MapPalette() {
   const { scene } = useGLTF(MAP_URL);
 
-  useEffect(() => {
+  // LAYOUT effect (useEffect değil): dekor ölçeklemesi engel ızgarası
+  // (`buildCollisionGrid`) kurulmadan ÖNCE çalışmak ZORUNDA, yoksa küçülen
+  // kayanın etrafında eski (büyük) engel hücreleri "görünmez duvar" olarak
+  // kalır. BattleMapGuard bu bileşeni haritadan ÖNCE render eder ve layout
+  // effect'ler ağaç sırasına göre çalıştığı için sıra garantidir.
+  useLayoutEffect(() => {
     // KAPLAMASIZ YAPI ONARIMI (önce çalışır): dokusu olmayan / dokusu
     // okunamayan kule ve dikilitaş mesh'leri sahneye siyah-koyu mor bir kütle
     // olarak düşer; bunlara prosedürel taş kaplaması atanır. Materyaller
@@ -1112,6 +1118,16 @@ export function MapPalette() {
     // yeni örneklerle değiştirdiği için sıra önemlidir).
     // Görsel-only — collider maskesi ve fizik etkilenmez.
     repairUntexturedStructureMaterials(scene);
+
+    // DEKOR ÖLÇEKLEMESİ: ağaç / çalı / orman çimi / kaya / yer propları %48
+    // küçültülür. Geometri kaynak sahne ile çizilen klon arasında
+    // PAYLAŞILDIĞI için ekrandaki harita da aynı anda küçülür; engel ızgarası
+    // bu çağrıdan sonra kurulduğu için görsel ile fizik tutarlı kalır.
+    const decor = scaleMapDecor(scene);
+    console.log(
+      `[mapDecorScale] ${decor.groups} grup / ${decor.meshes} mesh ` +
+        `× ${DECOR_SCALE} küçültüldü`,
+    );
 
     // Aynı materyal birden fazla mesh'te paylaşılabildiği için dönüşüm
     // önbelleğe alınır; her mesh için yeni materyal üretilmez.

@@ -25,6 +25,7 @@ import {
   COLD_FLAME,
   HUD,
   isFireballProj,
+  MUZZLE,
   PROJ_POOL,
   S,
   type BattleProj,
@@ -91,7 +92,9 @@ export function ProjectilePool({
       const p = list[i];
       const flame = isFireballProj(p); // süper: Ateş Topu
       const normal = !!p && !flame;
-      const pal = p ? COLD_FLAME.bolt[p.owner === "player" ? "player" : "enemy"] : null;
+      const pal = p
+        ? COLD_FLAME.bolt[p.owner === "player" ? "player" : "enemy"]
+        : null;
 
       // ── namlu şimşeği: mermi yeni çıktıysa ateşlendiği noktada bir an ──
       if (i < MUZZLE_POOL) {
@@ -105,7 +108,8 @@ export function ProjectilePool({
           const oz = (p.y - (p.vy / sp) * p.travelled) / S;
           if (mf) {
             mf.visible = true;
-            mf.position.set(ox, 0.85, oz);
+            // Namlu şimşeği merminin EL yüksekliğinde parlar (elden atış).
+            mf.position.set(ox, MUZZLE.up, oz);
             const sc = (0.05 + 0.1 * (1 - k)) * HUD;
             mf.scale.setScalar(sc);
             const mat = mf.material as THREE.MeshBasicMaterial;
@@ -114,7 +118,7 @@ export function ProjectilePool({
           }
           if (mr) {
             mr.visible = true;
-            mr.position.set(ox, 0.75, oz);
+            mr.position.set(ox, MUZZLE.up - 0.1, oz);
             mr.scale.setScalar((0.055 + 0.16 * (1 - k)) * HUD);
             const mat = mr.material as THREE.MeshBasicMaterial;
             mat.color.set(pal.ring);
@@ -152,7 +156,7 @@ export function ProjectilePool({
         );
         root.visible = boltFade > 0.04;
         root.scale.setScalar(boltFade);
-        root.position.set(p.x / S, 0.85, p.y / S);
+        root.position.set(p.x / S, MUZZLE.up, p.y / S);
 
         // Dönen alev kümesi: nabız gibi atan çekirdek + iki ışıma + halkalar +
         // yalayan alev dilleri.
@@ -202,11 +206,19 @@ export function ProjectilePool({
             const ph = time * 11 + k * 2.1 + i;
             const a = (k / BOLT_TONGUES) * Math.PI * 2 + time * 2.2;
             const rad = (0.036 + 0.008 * Math.sin(ph * 0.8)) * HUD;
-            tg.position.set(Math.cos(a) * rad, 0.02 * HUD * Math.sin(ph * 0.9), Math.sin(a) * rad);
+            tg.position.set(
+              Math.cos(a) * rad,
+              0.02 * HUD * Math.sin(ph * 0.9),
+              Math.sin(a) * rad,
+            );
             tg.rotation.z = -Math.cos(a) * 0.85;
             tg.rotation.x = Math.sin(a) * 0.85;
             const len = 1 + 0.45 * Math.sin(ph);
-            tg.scale.set(0.85 + 0.18 * Math.cos(ph * 1.3), len, 0.85 + 0.18 * Math.sin(ph));
+            tg.scale.set(
+              0.85 + 0.18 * Math.cos(ph * 1.3),
+              len,
+              0.85 + 0.18 * Math.sin(ph),
+            );
             const mat = tg.material as THREE.MeshBasicMaterial;
             mat.color.set(k % 2 === 0 ? pal.tail : pal.wisp);
             mat.opacity = 0.5 + 0.3 * Math.sin(ph * 1.1 + k);
@@ -230,7 +242,11 @@ export function ProjectilePool({
         // Kuyruklu yıldız izi: biri kalın-parlak (yakın), diğeri ince-solgun (uzak).
         const trailLen = Math.min(BOLT_VFX.streak * HUD, sp * 0.02 * HUD);
         if (near) {
-          near.position.set(-dx * (0.22 * HUD + trailLen * 0.5), 0, -dz * (0.22 * HUD + trailLen * 0.5));
+          near.position.set(
+            -dx * (0.22 * HUD + trailLen * 0.5),
+            0,
+            -dz * (0.22 * HUD + trailLen * 0.5),
+          );
           near.scale.set(trailLen, 0.025 * HUD, 0.025 * HUD);
           near.rotation.y = Math.atan2(-dz, dx);
           const mat = near.material as THREE.MeshBasicMaterial;
@@ -285,7 +301,7 @@ export function ProjectilePool({
           );
           fRoot.visible = flameFade > 0.04;
           fRoot.scale.setScalar(flameFade);
-          fRoot.position.set(p.x / S, 0.85, p.y / S);
+          fRoot.position.set(p.x / S, MUZZLE.up, p.y / S);
         }
         if (spin) spin.rotation.y = time * 1.5 + i * 1.3;
 
@@ -316,7 +332,9 @@ export function ProjectilePool({
         if (ringB) {
           ringB.rotation.x = time * -1.9;
           ringB.rotation.y = Math.PI / 3 + 0.5 * Math.cos(time * 1.1 + i);
-          (ringB.material as THREE.MeshBasicMaterial).color.set(COLD_FLAME.wispB);
+          (ringB.material as THREE.MeshBasicMaterial).color.set(
+            COLD_FLAME.wispB,
+          );
         }
         const tongues = flameTongues.current[si];
         if (tongues) {
@@ -332,7 +350,9 @@ export function ProjectilePool({
             t.position.y = 0.05 * HUD + 0.03 * HUD * Math.sin(ph * 0.9);
             t.rotation.z = 0.3 * Math.sin(ph * 0.6 + k);
             t.rotation.x = 0.2 * Math.cos(ph * 0.5 + k);
-            (t.material as THREE.MeshBasicMaterial).color.set(tongueColors[k % 2]);
+            (t.material as THREE.MeshBasicMaterial).color.set(
+              tongueColors[k % 2],
+            );
           }
         }
         const embers = flameEmbers.current[si];
@@ -343,7 +363,11 @@ export function ProjectilePool({
             const kk = (time * 0.5 + k * 0.33 + i * 0.2) % 1;
             const ang = k * 2.1 + time * 1.6;
             const rad = 0.08 * HUD + kk * 0.24 * HUD;
-            em.position.set(Math.cos(ang) * rad, kk * 0.68 * HUD, Math.sin(ang) * rad);
+            em.position.set(
+              Math.cos(ang) * rad,
+              kk * 0.68 * HUD,
+              Math.sin(ang) * rad,
+            );
             em.scale.setScalar(0.035 * HUD * (1 - kk * 0.45));
             const mat = em.material as THREE.MeshBasicMaterial;
             mat.color.set(k % 2 === 0 ? COLD_FLAME.core : COLD_FLAME.wispA);
@@ -388,13 +412,14 @@ export function ProjectilePool({
             boltRoots.current[i] = el;
           }}
         >
-          {/* zemindeki soğuk ışık lekesi (mermi 0.85 birim yukarıda) */}
+          {/* zemindeki soğuk ışık lekesi — mermi el hizasında uçtuğu için
+              gölge lekesi de o yükseklikten zemine indirilir */}
           <mesh
             ref={(el) => {
               boltGrounds.current[i] = el;
             }}
             rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, -0.8, 0]}
+            position={[0, 0.05 - MUZZLE.up, 0]}
             raycast={() => null}
           >
             <circleGeometry args={[BOLT_VFX.ground * HUD, 24]} />
@@ -446,7 +471,9 @@ export function ProjectilePool({
             }}
             raycast={() => null}
           >
-            <coneGeometry args={[BOLT_VFX.tailR * HUD, BOLT_VFX.tailLen * HUD, 12]} />
+            <coneGeometry
+              args={[BOLT_VFX.tailR * HUD, BOLT_VFX.tailLen * HUD, 12]}
+            />
             <meshBasicMaterial
               color={COLD_FLAME.bolt.player.tail}
               transparent
@@ -462,7 +489,12 @@ export function ProjectilePool({
             }}
           >
             {/* dönen büyü halkaları */}
-            <mesh ref={(el) => { boltRingA.current[i] = el; }} raycast={() => null}>
+            <mesh
+              ref={(el) => {
+                boltRingA.current[i] = el;
+              }}
+              raycast={() => null}
+            >
               <torusGeometry args={[0.088 * HUD, 0.006 * HUD, 6, 30]} />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.ring}
@@ -472,7 +504,12 @@ export function ProjectilePool({
                 depthWrite={false}
               />
             </mesh>
-            <mesh ref={(el) => { boltRingB.current[i] = el; }} raycast={() => null}>
+            <mesh
+              ref={(el) => {
+                boltRingB.current[i] = el;
+              }}
+              raycast={() => null}
+            >
               <torusGeometry args={[0.062 * HUD, 0.005 * HUD, 6, 26]} />
               <meshBasicMaterial
                 color={COLD_FLAME.bolt.player.wisp}
@@ -542,7 +579,11 @@ export function ProjectilePool({
               >
                 <coneGeometry args={[0.028 * HUD, 0.11 * HUD, 8]} />
                 <meshBasicMaterial
-                  color={k % 2 === 0 ? COLD_FLAME.bolt.player.tail : COLD_FLAME.bolt.player.wisp}
+                  color={
+                    k % 2 === 0
+                      ? COLD_FLAME.bolt.player.tail
+                      : COLD_FLAME.bolt.player.wisp
+                  }
                   transparent
                   opacity={0.6}
                   blending={THREE.AdditiveBlending}

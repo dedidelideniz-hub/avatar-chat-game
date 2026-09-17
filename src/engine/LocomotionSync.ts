@@ -19,13 +19,14 @@ import * as THREE from "three";
 
 /** Rig kökünün dünya ölçeği (FighterRig'in `<group ref={root} scale=...>`).
  *
- *  0.575 → 0.47 → 0.40: MOBA oranı. Dövüşçüler haritaya göre kademeli olarak
- *  küçültüldü (son adım %15), böylece karakterler koridor genişliğinde "rahat
- *  hareket ediyor" gibi okunur ve kamera açısı düşürüldüğünde bile boylar
- *  haritaya göre ölçülü kalır. Adım senkronu (walkTimeScale) bu sabiti okuduğu
- *  için ayak–zemin eşleşmesi yeni boyla otomatik olarak yeniden hesaplanır.
- *  Baş-üstü can barı da aynı adımı `HEAD_UI_SCALE` ile izler. */
-export const RIG_ROOT_SCALE = 0.4;
+ *  0.575 → 0.47 → 0.40 → 0.48: MOBA oranı. Dekoratif çevre objeleri %48
+ *  küçültüldüğü için (bkz. `mapDecorScale`) dövüşçüler son adımda %20
+ *  BÜYÜTÜLDÜ: karakter yerdeki taşların/çalıların yanında belirgin şekilde
+ *  büyük ve detayları (zırh, kılıç, renk) net seçilir. Adım senkronu
+ *  (`walkTimeScale`) bu sabiti okuduğu için ayak–zemin eşleşmesi yeni boyla
+ *  otomatik olarak yeniden hesaplanır — ayak kayması geri gelmez. Baş-üstü
+ *  can barı da aynı adımı `HEAD_UI_SCALE` ile izler. */
+export const RIG_ROOT_SCALE = 0.48;
 
 /** Ayak kemiği bulunamazsa kullanılan adım/gövde oranı (character.glb: 0.42). */
 const DEFAULT_STRIDE_RATIO = 0.45;

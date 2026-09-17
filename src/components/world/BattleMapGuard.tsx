@@ -14,11 +14,16 @@ export function BattleMapModel() {
   return (
     <GlbModelBoundary fallback={null}>
       <Suspense fallback={null}>
-        <BattlefieldMap />
-        {/* Zemin geçişi: haritanın KENDİ dokuları (çimen/taş/toprak) korunur;
+        {/* SIRA ÖNEMLİ: MapPalette haritadan ÖNCE render edilir. İçindeki
+            layout effect'ler ağaç sırasına göre çalıştığı için dekor
+            ölçeklemesi + zemin geçişi, BattleMapModel'in engel ızgarasını
+            (buildCollisionGrid) kurmasından ÖNCE tamamlanır — küçülen
+            kayanın engeli de küçülür, görünmez duvar oluşmaz.
+            Zemin geçişi: haritanın KENDİ dokuları (çimen/taş/toprak) korunur;
             yalnızca zemine sonradan binen yansıma ve kendinden parlama
             temizlenir. Aynı Suspense içindedir, GLB hazır olunca çalışır. */}
         <MapPalette />
+        <BattlefieldMap />
       </Suspense>
     </GlbModelBoundary>
   );

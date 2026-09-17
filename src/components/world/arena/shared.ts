@@ -19,11 +19,30 @@ export const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
 /** Readability scale for fixed-size world HUD/effects on the larger map. */
 export const HUD = 2;
 
-/** Karakterle birlikte küçülen baş-üstü HUD (can barı + isim etiketi) oranı.
- *  RIG_ROOT_SCALE ile aynı adımı izler: gövde %15 küçülünce bar ve isim de
- *  %15 küçülür, böylece barın karaktere göre duruşu değişmez. Ölçek gruba
- *  verildiği için barın yüksekliği de aynı oranda iner. */
-export const HEAD_UI_SCALE = 0.85;
+/** Baş-üstü HUD (can barı + isim etiketi) oranı.
+ *  RIG_ROOT_SCALE ile AYNI adımı izler: gövde %15 küçülüp sonra %20 büyüdüğü
+ *  için bar da aynı yolu izledi (0.85 × 1.2 ≈ 1.0). Ölçek gruba verildiği
+ *  için hem barın boyu hem de yüksekliği karakterle birlikte değişir; bar
+ *  büyüyen karakterin kafasına gömülmez, hep hemen üstünde kalır. */
+export const HEAD_UI_SCALE = 1;
+
+/**
+ * BÜYÜ/MERMİ ÇIKIŞ NOKTASI — "eldan ateş etme" ofseti (dünya birimi).
+ *
+ * Atış karakterin MERKEZİNDEN değil, elinden çıksın diye kullanılır:
+ *   · `fwd`  — nişan yönünde öne kayma (gövde yarıçapının dışına taşar),
+ *   · `side` — kullanılan el tarafına yanal kayma,
+ *   · `up`   — yerden yükseklik; hem namlu şimşeği hem merminin uçuş
+ *              yüksekliğidir. Karakter boyu 0.72 birim, el ≈ 0.46 birim:
+ *              0.52 "elden çıkıyor" hissini verirken mermiyi zemin
+ *              engebelerinin de üzerinde tutar.
+ * Değerler `S` ile çarpılarak oyun px'ine çevrilir (sim px uzayında çalışır).
+ */
+export const MUZZLE = {
+  fwd: 0.34,
+  side: 0.16,
+  up: 0.52,
+} as const;
 
 export interface BattleProj {
   owner: "player" | "bot";

@@ -54,6 +54,8 @@ import {
 } from "@/components/world/arena/SkillComponent";
 // ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
+// 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
+import { MUZZLE, S } from "@/components/world/arena/shared";
 // 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik kilit.
 import {
   FIREBALL_RANGE_PX,
@@ -714,8 +716,13 @@ export default function PvpBattleScene({
     const proj = projPool.acquire();
     proj.id = `pr${projSeq.current++}`;
     proj.owner = "player";
-    proj.x = p.x;
-    proj.y = p.y;
+    // ELDEN ATIŞ: mermi karakterin merkezinden değil, nişan yönünde öne ve
+    // el tarafına kaymış noktadan çıkar. Ofset bilerek küçük tutulur
+    // (gövde yarıçapının içinde); duvara yaslanmışken atış yine güvenli.
+    const sideX = -dy / d;
+    const sideY = dx / d;
+    proj.x = p.x + (dx / d) * MUZZLE.fwd * S + sideX * MUZZLE.side * S;
+    proj.y = p.y + (dy / d) * MUZZLE.fwd * S + sideY * MUZZLE.side * S;
     proj.vx = (dx / d) * speed;
     proj.vy = (dy / d) * speed;
     proj.dmg = dmg;

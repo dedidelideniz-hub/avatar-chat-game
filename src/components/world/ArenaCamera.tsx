@@ -50,12 +50,15 @@ const WIDE_FROM = 0.9;
 const WIDE_TO = 1.8;
 
 // Portrait → landscape çerçeveleme. İkisi de aynı izometrik MOBA dilini
-// konuşur: uzun lens (40° / 36°), 46–49° pitch ve yükseltilmiş konum. Mesafe
-// lensle birlikte büyütüldüğü için görünen alan DEĞİŞMEZ — sadece perspektif
-// kısalması azalır ve harita basık bir piramit yerine düz bir savaş alanı gibi
-// okunur. Yatayda kamera bir tık yakınlaşır, oyuncu ve çevresi çerçevelenir.
-const FOV_P = 40; // tam izometrik MOBA lensi (istenen 35–40° aralığı)
-const FOV_L = 36; // yatayda bir tık daha uzun lens: basık görüntü kaybolur
+// konuşur: uzun lens (46° / 44°), 46–49° pitch ve yükseltilmiş konum.
+//
+// FOV genişletildi (40→46 / 36→44) çünkü dövüşçüler %20 büyütüldü: geniş
+// açı, büyüyen karakterin ekranda (ve haritaya göre) alanı daraltmasını
+// engeller. Görünür karakter boyu ≈ (1.20 büyüme) × (tan20°/tan23° ≈ 0.86
+// küçülme) ≈ +%3 — yani karakter yerdeki objelere göre belirgin büyür ama
+// ekrandaki kapladığı alan neredeyse aynı kalır ve izometrik MOBA açısı korunur.
+const FOV_P = 46; // izometrik MOBA lensi (istenen 45–50° aralığı)
+const FOV_L = 44; // yatayda aynı aile: basık görüntü oluşmaz
 const DIST_P = 17.6; // uzun lensin dengesi — görünen alan korunur, kamera YÜKSEĞE çıkar
 const DIST_L = 12.8;
 const EL_P = 0.855; // ~49° izometrik MOBA açısı (istenen 45–50°)
@@ -68,11 +71,11 @@ const CLAMP_L = 2.2;
 // Lookahead (units the camera leads the fighter) — smaller lens, smaller lead.
 const LOOK_P = 1.1;
 const LOOK_L = 1.6;
-// Bakış yüksekliği (göğüs hizası). Kamera odağı karakterin ayak/bele hizasına
-// değil göğsüne kilitlenir. Karakter ölçeği %18 küçültüldüğü için (dünya
-// boyu ≈ 0.70 birim) odak da aynı oranda indi; kamera merkezi karakterin
-// hemen üstünde kalır ve ufuk/arazi okunur.
-const LOOK_Y = 0.6;
+// Bakış yüksekliği (göğüs/omuz hizası). Kamera odağı karakterin ayak/bele
+// hizasına değil üst gövdesine kilitlenir. Odak, karakter ölçeğiyle AYNI adımı
+// izler: dünya boyu 0.60 → 0.72 olduğu için hedef de 0.60 → 0.72 çıktı, yani
+// kamera merkezi karakterin hemen üstünde kalmaya devam eder.
+const LOOK_Y = 0.72;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,
@@ -290,7 +293,7 @@ export function useArenaCamera(
     const centerNudge = (CZ - pz) * 0.22 * (1 - wide);
     target.current.set(
       THREE.MathUtils.clamp(px + lx, clamp, ARENA_W - clamp),
-      0.6,
+      LOOK_Y,
       THREE.MathUtils.clamp(pz + centerNudge + lz, clamp, ARENA_D - clamp),
     );
     smoothed.current.lerp(target.current, Math.min(1, dt * smoothK));
