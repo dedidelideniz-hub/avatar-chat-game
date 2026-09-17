@@ -18,9 +18,15 @@ import * as THREE from "three";
 /** Kule/dikilitaş gibi yapı mesh'leri (isim kökü). */
 const STRUCTURE_RE =
   /(?:tower|obelisk|pillar|column|monument|temple|shrine|statue|ruin|gate)/i;
-/** Çevre mesh'leri: dokusu olmasa bile kaplaması değiştirilmez. */
+/** Çevre mesh'leri: dokusu olmasa bile kaplaması değiştirilmez.
+ *
+ *  `decal(?!towerbase)` istisnası önemli: haritadaki "dekallar" genelde düz
+evre kaplamasıdır, ama `PGD_M_13DecalTowerBase_*` mesh'leri KULE kaidesinin
+yüzeyidir ve hiçbir diffuse dokusu olmadığı için ekranda düz BEYAZ, kaba bir
+kare olarak okunur. Bunlar taş kaplaması alır (kule gövdesi haritanın taş
+diliyle uyumlu olsun diye), diğer dekallar eskisi gibi atlanır. */
 const STRUCTURE_SKIP_RE =
-  /(?:terrain|ground|decal|river|water|stream|lake|pond|bridge|crossing|walkway|road|path|lane|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|sky|cloud|light|glow|fx|effect|vfx|particle)/i;
+  /(?:terrain|ground|decal(?!towerbase)|river|water|stream|lake|pond|bridge|crossing|walkway|road|path|lane|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|sky|cloud|light|glow|fx|effect|vfx|particle)/i;
 
 /** "Kaplamasız + koyu" mesh'lerin okunurluk eşiği (sRGB parlaklık). */
 const BLACK_SURFACE_LUM = 0.25;

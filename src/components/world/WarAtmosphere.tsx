@@ -1,9 +1,9 @@
 // WarAtmosphere — MOBA maç atmosferi (yalnızca görsel).
 //
 // Wild Rift / LoL Mobile referansındaki harita dilini kurar: bazalt zemin
-// üzerinde akan LAV nehirleri, her üssün tepesinde yükselen KRİSTAL çekirdek
-// (nexus) ve ondan yükselen ışık sütunu, süzülen kor parçacıkları ve volkanik
-// gökyüzü. Üstüne zengin ortam katmanı biner:
+// üzerinde akan LAV nehirleri, her üssün tepesinde TAŞ kaide (kule gövdesi),
+// onun üzerinde YUMUŞAK bir ışık kaynağı (parlama/lens flare) ve gökyüzüne
+// yükselen ışık hüzmesi, süzülen kor parçacıkları ve volkanik gökyüzü. Üstüne zengin ortam katmanı biner:
 //   • Zemin — haritanın KENDİ dokuları (çimen/taş/toprak) korunur; yalnızca
 //     sonradan binen yansıma ve kendinden parlama temizlenir (MapPalette).
 //   • Lane yolları (taş/toprak şerit) + çok ince kenar ışıkları, üslerden
@@ -25,7 +25,10 @@ import { Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ArenaPostFx } from "./ArenaPostFx";
-import { repairUntexturedStructureMaterials } from "./mapStoneRepair";
+import {
+  makeStoneTexture,
+  repairUntexturedStructureMaterials,
+} from "./mapStoneRepair";
 
 /** Savaş alanı GLB'sinin tek kaynağı (BattleMapModel de buradan okur). */
 export const MAP_URL = "/models/5v5_game_map.glb";
@@ -98,6 +101,40 @@ function makePillarTexture(color: string) {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
+}
+
+/**
+ * Lens-flare şeridi (anamorfik parlama): ortada ince, uçlara doğru sönümlenen
+ * yatay bir ışık bandı. Işık kaynağının tepesinde kaba bir kutu/kütle yerine
+ * yumuşak bir parlama bırakmak için kullanılır; sprite olarak çizildiği için
+ * her zaman kameraya bakar ve geometrisi yoktur.
+ */
+function makeStreakTexture() {
+  const w = 256;
+  const h = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext("2d");
+  if (g) {
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      const ny = (y - h / 2) / (h / 2);
+      const falloffY = Math.exp(-ny * ny * 26);
+      for (let x = 0; x < w; x++) {
+        const nx = (x - w / 2) / (w / 2);
+        const falloffX = Math.exp(-nx * nx * 3.2);
+        const a = Math.max(0, Math.min(1, falloffX * falloffY));
+        const i = (y * w + x) * 4;
+        img.data[i] = 255;
+        img.data[i + 1] = 255;
+        img.data[i + 2] = 255;
+        img.data[i + 3] = Math.round(a * 255);
+      }
+    }
+    g.putImageData(img, 0, 0);
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 /* Lav nehirleri (yolu ve haritayı boydan boya kesen additive kor tüpleri)
@@ -208,7 +245,14 @@ function LavaPools() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Kristal çekirdek (nexus) — referanstaki ana görsel öğe.             */
+/* Üs ışık kulesi (nexus) — referanstaki ana görsel öğe.               */
+/*                                                                     */
+/* Kule = TAŞ gövde (haritanın taş dokusu) + tepesinde YUMUŞAK IŞIK    */
+/* KAYNAĞI (çekirdek parlama + geniş hale + lens-flare şeridi) ve      */
+/* gökyüzüne uzanan hüzme. Katı, kaba beyaz kristal kütlesi kaldırıldı: */
+/* eskiden prizma/koniler `toneMapped=false` ile bembeyaz bir kutu gibi */
+/* patlıyordu. Yeni ışık kaynağı yalnızca additive sprite katmanlarıdır;*/
+/* geometrisi olmadığı için "kutu" izlenimi vermez.                    */
 /* ------------------------------------------------------------------ */
 
 function NexusCrystal({
@@ -224,60 +268,72 @@ function NexusCrystal({
   core: string;
   accent: string;
 }) {
-  const spin = useRef<THREE.Group>(null);
-  const shards = useRef<THREE.Group>(null);
-  const crystalMat = useRef<THREE.MeshStandardMaterial>(null);
   const beam = useRef<THREE.Mesh>(null);
   const rings = useRef<THREE.Group>(null);
   const runes = useRef<THREE.Group>(null);
   const light = useRef<THREE.PointLight>(null);
+  /** Yumuşak parlama katmanları: sıcak çekirdek + geniş hale + flare şeritleri. */
+  const coreRef = useRef<THREE.Sprite>(null);
+  const haloRef = useRef<THREE.Sprite>(null);
+  const streakRef = useRef<THREE.Sprite>(null);
+  const streakVRef = useRef<THREE.Sprite>(null);
 
   const beamTex = useMemo(
     () => makePillarTexture("rgba(255,255,255,0.85)"),
     [],
   );
   const glowTex = useMemo(() => makeGlowTexture("rgba(180,230,255,1)"), []);
-  const haloRef = useRef<THREE.Sprite>(null);
+  const streakTex = useMemo(() => makeStreakTexture(), []);
+  // Taş gövde (kule kaidesi): prosedürel taş dokusu `mapStoneRepair` ile AYNI
+  // üreticiden gelir, yani haritanın kendi taş yapılarıyla aynı dilde durur.
+  const crownMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        map: makeStoneTexture(),
+        roughness: 0.88,
+        metalness: 0.08,
+        envMapIntensity: 0.32,
+      }),
+    [],
+  );
 
   useFrame((_, dt) => {
     const t = performance.now() / 1000;
-    if (spin.current) {
-      spin.current.rotation.y += dt * 0.45;
-      spin.current.position.y = 0.95 + Math.sin(t * 1.2) * 0.07;
-    }
-    if (shards.current) {
-      shards.current.rotation.y -= dt * 0.9;
-      shards.current.rotation.z = Math.sin(t * 0.7) * 0.08;
-    }
     if (rings.current) rings.current.rotation.y += dt * 0.25;
     if (runes.current) runes.current.rotation.y -= dt * 0.12;
     const pulse = 0.78 + 0.22 * Math.sin(t * 1.8);
-    // Kristal, sütun, hale ve nokta ışık İLK sürümdeki değerlerin çok
-    // altında: dört katman birlikte bloom eşiğini aşıp üssü bembeyaz bir
-    // lekeye çeviriyordu. Artık hepsi "parlar ama taşmaz" seviyesinde.
-    // Kule (üs) kristali: parlak ortam ışığı altında bile sönük kalmasın diye
-    // emissive yükseltildi — neredeyse "unlit" davranır, karanlıkta da gündüzde
-    // de doygun renkte okunur ve bloom eşiğini geçip etrafına ışık saçar.
-    if (crystalMat.current) {
-      // Üs kristali: emissive biraz kısıldı (0.78 + 0.22·pulse). Önceki
-      // 1.15–1.5 aralığı bloom ile birlikte kristalin çevresindeki taş
-      // detayları ve üs platformunu bembeyaz patlatıyordu; artık kristal
-      // parlak kalır ama taş doku okunur.
-      crystalMat.current.emissiveIntensity = 0.78 + 0.22 * pulse;
-    }
-    if (beam.current) {
-      const mat = beam.current.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.06 + 0.02 * pulse;
-      beam.current.scale.set(1 + 0.03 * pulse, 1, 1 + 0.03 * pulse);
+    // Işık kaynağı artık KATI bir kristal kütlesi değil, yumuşak bir parlama
+    // yığınıdır: keskin "kaba beyaz kutu" izlenimi veren prizma ve koniler
+    // kaldırıldı. Kalan katmanlar sıcak çekirdek + geniş hale + ince lens
+    // flare şeritleri; hepsi additive sprite, yani geometrisi ve kenarı yok.
+    if (coreRef.current) {
+      (coreRef.current.material as THREE.SpriteMaterial).opacity =
+        0.4 + 0.12 * pulse;
+      coreRef.current.scale.setScalar(0.82 + 0.1 * pulse);
     }
     if (haloRef.current) {
       (haloRef.current.material as THREE.SpriteMaterial).opacity =
-        0.09 + 0.03 * pulse;
-      haloRef.current.scale.setScalar(2.6 + 0.2 * pulse);
+        0.11 + 0.04 * pulse;
+      haloRef.current.scale.setScalar(3.2 + 0.35 * pulse);
     }
-    // Üs çevresindeki nokta ışık da bir tık kısıldı: kristal + ışık + bloom
-    // birlikte üssün taş platformunu beyaza doyuruyordu.
-    if (light.current) light.current.intensity = 0.34 + 0.12 * pulse;
+    if (streakRef.current) {
+      (streakRef.current.material as THREE.SpriteMaterial).opacity =
+        0.22 + 0.08 * pulse;
+      streakRef.current.scale.set(5.2 + 0.5 * pulse, 0.44, 1);
+    }
+    if (streakVRef.current) {
+      (streakVRef.current.material as THREE.SpriteMaterial).opacity =
+        0.1 + 0.04 * pulse;
+      streakVRef.current.scale.set(0.4, 2.8 + 0.4 * pulse, 1);
+    }
+    if (beam.current) {
+      const mat = beam.current.material as THREE.MeshBasicMaterial;
+      // Hüzme KORUNUR: yalnızca kaidenin tepesinden başlar ve gövdeyi
+      // bembeyaz örtmesin diye bir tık daha saydamdır.
+      mat.opacity = 0.055 + 0.022 * pulse;
+      beam.current.scale.set(1 + 0.03 * pulse, 1, 1 + 0.03 * pulse);
+    }
+    if (light.current) light.current.intensity = 0.32 + 0.12 * pulse;
   });
 
   return (
@@ -330,9 +386,9 @@ function NexusCrystal({
         ))}
       </group>
 
-      {/* ışık sütunu (gökyüzüne uzanan huzme) */}
-      <mesh ref={beam} position={[0, 3.7, 0]} raycast={() => null}>
-        <cylinderGeometry args={[0.46, 0.74, 7.4, 16, 1, true]} />
+      {/* ışık sütunu (gökyüzüne uzanan huzme) — kaidenin tepesinden başlar */}
+      <mesh ref={beam} position={[0, 4.35, 0]} raycast={() => null}>
+        <cylinderGeometry args={[0.38, 0.64, 6.3, 16, 1, true]} />
         <meshBasicMaterial
           map={beamTex}
           color={color}
@@ -345,99 +401,86 @@ function NexusCrystal({
         />
       </mesh>
 
-      {/* yumuşak hale */}
-      <sprite ref={haloRef} position={[0, 1.5, 0]} raycast={() => null}>
+      {/* TAŞ GÖVDE (kule kaidesi): hüzmenin çıktığı gövde artık kaba beyaz bir
+          kristal kütlesi değil, haritanın taş dokusuyla kaplı bir kaide. */}
+      <mesh
+        position={[0, 0.26, 0]}
+        material={crownMat}
+        castShadow
+        receiveShadow
+        raycast={() => null}
+      >
+        <cylinderGeometry args={[0.66, 0.9, 0.52, 8, 1]} />
+      </mesh>
+      <mesh
+        position={[0, 0.72, 0]}
+        material={crownMat}
+        castShadow
+        receiveShadow
+        raycast={() => null}
+      >
+        <cylinderGeometry args={[0.5, 0.68, 0.42, 8, 1]} />
+      </mesh>
+      <mesh
+        position={[0, 1.04, 0]}
+        material={crownMat}
+        castShadow
+        receiveShadow
+        raycast={() => null}
+      >
+        <cylinderGeometry args={[0.56, 0.5, 0.24, 8, 1]} />
+      </mesh>
+
+      {/* IŞIK KAYNAĞI — yalnızca yumuşak parlama (lens flare), katı kütle yok */}
+      <sprite ref={haloRef} position={[0, 1.35, 0]} raycast={() => null}>
         <spriteMaterial
           map={glowTex}
           color={color}
           transparent
-          opacity={0.08}
+          opacity={0.12}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </sprite>
+      <sprite ref={streakVRef} position={[0, 1.35, 0]} raycast={() => null}>
+        <spriteMaterial
+          map={streakTex}
+          color={core}
+          transparent
+          opacity={0.1}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </sprite>
+      <sprite ref={streakRef} position={[0, 1.35, 0]} raycast={() => null}>
+        <spriteMaterial
+          map={streakTex}
+          color={accent}
+          transparent
+          opacity={0.28}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </sprite>
+      <sprite ref={coreRef} position={[0, 1.35, 0]} raycast={() => null}>
+        <spriteMaterial
+          map={glowTex}
+          color={core}
+          transparent
+          opacity={0.5}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
           toneMapped={false}
         />
       </sprite>
 
-      {/* kristal gövde: altıgen prizma + uçlar */}
-      <group ref={spin} position={[0, 0.95, 0]}>
-        <mesh castShadow raycast={() => null}>
-          <cylinderGeometry args={[0.46, 0.62, 1.5, 6, 1]} />
-          <meshStandardMaterial
-            ref={crystalMat}
-            color={core}
-            emissive={color}
-            emissiveIntensity={0.78}
-            roughness={0.12}
-            metalness={0.15}
-            transparent
-            opacity={0.92}
-            toneMapped={false}
-          />
-        </mesh>
-        <mesh position={[0, 1.15, 0]} raycast={() => null}>
-          <coneGeometry args={[0.46, 1.0, 6]} />
-          <meshStandardMaterial
-            color={core}
-            emissive={color}
-            emissiveIntensity={0.86}
-            roughness={0.1}
-            transparent
-            opacity={0.94}
-            toneMapped={false}
-          />
-        </mesh>
-        <mesh
-          position={[0, -1.0, 0]}
-          rotation={[Math.PI, 0, 0]}
-          raycast={() => null}
-        >
-          <coneGeometry args={[0.62, 0.7, 6]} />
-          <meshStandardMaterial
-            color={core}
-            emissive={color}
-            emissiveIntensity={0.7}
-            roughness={0.14}
-            transparent
-            opacity={0.9}
-            toneMapped={false}
-          />
-        </mesh>
-      </group>
-
-      {/* yörüngede dönen kristal parçaları */}
-      <group ref={shards} position={[0, 1.35, 0]}>
-        {[0, 1, 2].map((i) => {
-          const a = (i / 3) * Math.PI * 2;
-          return (
-            <mesh
-              key={i}
-              position={[
-                Math.cos(a) * 1.45,
-                Math.sin(a * 1.7) * 0.35,
-                Math.sin(a) * 1.45,
-              ]}
-              rotation={[0.4, a, 0.3]}
-              raycast={() => null}
-            >
-              <octahedronGeometry args={[0.22, 0]} />
-              <meshStandardMaterial
-                color={core}
-                emissive={accent}
-                emissiveIntensity={0.68}
-                roughness={0.2}
-                transparent
-                opacity={0.85}
-                toneMapped={false}
-              />
-            </mesh>
-          );
-        })}
-      </group>
-
-      {/* üs kristali: referanstaki gibi doygun turuncu/cyan bir ışık yayar */}
+      {/* üssün aydınlatması: ışık kaynağından yumuşak, renkli bir dolgu */}
       <pointLight
         ref={light}
-        position={[0, 2.6, 0]}
+        position={[0, 2.1, 0]}
         color={color}
         distance={8}
         decay={2}
