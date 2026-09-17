@@ -68,9 +68,11 @@ import {
   drawNameSprite,
   makeBarTex,
   makeBoltTexture,
+  makeGlowTexture,
   makeNameTex,
 } from "./arena/headUi";
 import { ProceduralBody } from "./arena/ProceduralBody";
+import { SlashTrail } from "./arena/SlashTrail";
 import {
   ARENA_D,
   ARENA_W,
@@ -283,6 +285,9 @@ export interface BattleFighter {
   /** Düz vuruş animasyonunun kalan süresi (windup + bitiş). 0 = animasyon
    *  bitmiş. Cancel penceresinde hareket girdisi bunu anında 0'lar. */
   atkAnimT: number;
+  /** Yetenek atışının görsel iz sayacı (1 → 0). SkillComponent yazar,
+   *  SlashTrail azaltır; oyun mantığına etkisi yoktur (saf görsel). */
+  castFxT?: number;
   superCharge: number;
   /** Samuray'a özel ikinci ulti şarjı. Diğer skinlerde 0 kalır. */
   samuraiCharge: number;
@@ -665,6 +670,11 @@ function FighterRig({
   const sparkRefs = useRef<(THREE.Mesh | null)[]>([]);
   const sparkSeen = useRef(-9999);
   const sparkStart = useRef(0);
+  // Vuruş anında vurulan karakterin göğsünde patlayan kısa beyaz çekirdek
+  // (Hit Particle System'in "parlama" katmanı; bloom'u da besler).
+  const sparkFlash = useRef<THREE.Sprite>(null);
+  const sparkFlashTex = useMemo(makeGlowTexture, []);
+  // Kıvılcım başına bir kez tohumlanan yön/hız/ölçü (yukarıdaki blokta yazılır).
   const sparkData = useRef(
     Array.from({ length: HIT_SPARKS }, () => ({
       a: 0,
@@ -910,14 +920,26 @@ function FighterRig({
         flashOn.current = false;
       }
     }
-    // ── Impact sparks: düşmanın merkezinden dışa saçılan kor ──
+    // ── HIT PARTICLE SYSTEM ───────────────────────────────────────────────
+    // Vuruş anında vurulan karakterin gövdesinde üç katman patlar:
+    //   1) yönlü kıvılcım yelpazesi (kıymıklar vuruşun geldiği yöne daha hızlı),
+    //   2) kısa beyaz çekirdek flaşı (bloom beslemesi),
+    //   3) yerçekimli dağılma + sönüm.
+    // Yön, vuran karakterin konumundan okunur; kıvılcımlar gövde-lokal uzayda
+    // üretildiği için karakter dönerken de doğru taraftan fışkırır.
     if (f.lastHitAt !== sparkSeen.current) {
       sparkSeen.current = f.lastHitAt;
       sparkStart.current = now;
+      // Vuruşun geldiği yön (vurandan bana) → gövde-lokal açıya çevrilir.
+      const o = other.current;
+      const hitLocal =
+        Math.atan2(f.y - o.y, f.x - o.x) + root.current.rotation.y;
       for (let i = 0; i < HIT_SPARKS; i++) {
         const d = sparkData.current[i];
         d.a = (i / HIT_SPARKS) * Math.PI * 2 + Math.random() * 1.1;
-        d.s = 1.0 + Math.random() * 1.7;
+        // Yönlü yelpaze: vuruş eksenine bakan kıvılcımlar daha hızlı/uzağa gider.
+        const bias = 0.6 + 0.65 * Math.max(0, Math.cos(d.a - hitLocal));
+        d.s = (1.0 + Math.random() * 1.7) * bias;
         d.u = 1.1 + Math.random() * 1.7;
         d.sz = 0.03 + Math.random() * 0.035;
         // Soğuk alev teması: vuruş kıvılcımları da buzlu beyaz / eflatun.
@@ -941,10 +963,28 @@ function FighterRig({
         Math.max(-0.2, d.u * se - 4.5 * se * se),
         Math.sin(d.a) * d.s * se,
       );
-      m.scale.setScalar(d.sz * (0.45 + k));
+      // Kıymık: uçuş yönünde uzayan ince kor (küre yerine parçacık silueti).
+      const g0 = d.sz * (0.45 + k);
+      m.rotation.y = Math.PI / 2 - d.a;
+      m.scale.set(g0 * 0.5, g0 * 0.5, g0 * 2.3);
       const mat = m.material as THREE.MeshBasicMaterial;
       mat.opacity = k;
       mat.color.set(d.c);
+    }
+    // Çekirdek flaşı: vuruş anında göğüste doğar, ~0.05 sn'de beyaza doyar ve
+    // kıvılcımlarla birlikte söner.
+    const fl = sparkFlash.current;
+    if (fl) {
+      if (!sparksAlive) {
+        fl.visible = false;
+      } else {
+        // pop: neredeyse anında doyar, sonra kıvılcımlarla birlikte söner.
+        const pop = Math.min(1, se / 0.05);
+        const fade = 1 - se / SPARK_LIFE;
+        fl.visible = true;
+        fl.scale.setScalar(0.55 + 0.75 * (1 - fade));
+        (fl.material as THREE.SpriteMaterial).opacity = pop * fade * 0.85;
+      }
     }
     // ── Sarsılma (hit-stun): vuruş anında gövde geriye yatar, titrer ve
     // bir an küçülüp doğrulur. Ulti/mermi, kim vurursa vursun burada
@@ -1066,8 +1106,9 @@ function FighterRig({
             toneMapped={false}
           />
         </mesh>
-        {/* Vuruş kıvılcımları: karakterin merkezinden dışa saçılan küçük kor
-          parçacıkları. Beyaz parlama artık model kaplamasına uygulanıyor. */}
+        {/* Hit Particle System — vuruş anında göğüsten dışa saçılan kor
+          kıymıkları + kısa beyaz çekirdek flaşı. Yönlü yelpaze ve yerçekimi
+          yukarıdaki tek kare döngüsünde hesaplanır. */}
         <group position={[0, 0.85, 0]}>
           {Array.from({ length: HIT_SPARKS }).map((_, i) => (
             <mesh
@@ -1076,18 +1117,41 @@ function FighterRig({
                 sparkRefs.current[i] = el;
               }}
               visible={false}
+              raycast={() => null}
             >
-              <sphereGeometry args={[1, 6, 6]} />
+              {/* elmas kıymık: uçuş yönünde uzatılınca ince bir kor çizgisi */}
+              <octahedronGeometry args={[1, 0]} />
               <meshBasicMaterial
                 color="#e0f2fe"
                 transparent
                 opacity={0}
                 depthWrite={false}
+                toneMapped={false}
                 blending={THREE.AdditiveBlending}
               />
             </mesh>
           ))}
+          {/* çekirdek flaşı: darbe anında bir an patlayan yumuşak parlama */}
+          <sprite
+            ref={sparkFlash}
+            visible={false}
+            scale={[0.55, 0.55, 1]}
+            renderOrder={4}
+          >
+            <spriteMaterial
+              map={sparkFlashTex}
+              color="#ffffff"
+              transparent
+              opacity={0}
+              depthWrite={false}
+              toneMapped={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </sprite>
         </group>
+        {/* Kılıç izi (ribbon trail): düz vuruş, yetenek atışı ve ulti
+            salınımında bıçağın arkasında parlayan akıcı yay. */}
+        <SlashTrail fighter={fighter} swingTime={ATK_ANIM} />
       </group>
       {/* Skillshot nişan göstergesi: zeminde menzil çemberi + yön oku.
           Yalnızca oyuncunun rig'inde çizilir (düşmanın menzili görünmez). */}

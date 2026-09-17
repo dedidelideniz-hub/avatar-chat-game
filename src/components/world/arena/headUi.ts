@@ -215,6 +215,40 @@ export function drawNameSprite(
   tex.needsUpdate = true;
 }
 
+/**
+ * Yumuşak beyaz parlama dokusu (radyal gradyan, kenarsız).
+ *
+ * İsabet anının "çekirdek flaşı" için kullanılır: vurulan karakterin göğsünde
+ * bir kare boyunca patlar, additive karışımla UnrealBloomPass eşiğini geçer.
+ * Dış varlık yok — canvas'ta bir kez üretilir, tüm dövüşçüler paylaşır.
+ */
+export function makeGlowTexture() {
+  const size = 128;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = size;
+  const g = c.getContext("2d");
+  const tex = new THREE.CanvasTexture(c);
+  if (!g) return tex;
+  const grad = g.createRadialGradient(
+    size / 2,
+    size / 2,
+    1,
+    size / 2,
+    size / 2,
+    size / 2,
+  );
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.22, "rgba(255,255,255,0.72)");
+  grad.addColorStop(0.55, "rgba(255,255,255,0.2)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /** Lightning-bolt sprite texture (white core + cyan glow) for the player's
  *  electric-strike effect around the identity ring. */
 export function makeBoltTexture() {

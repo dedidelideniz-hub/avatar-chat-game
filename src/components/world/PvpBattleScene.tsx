@@ -556,6 +556,9 @@ export default function PvpBattleScene({
       case "beam": {
         const x2 = ev.x1 + Math.cos(ev.angle) * ev.len;
         const y2 = ev.y1 + Math.sin(ev.angle) * ev.len;
+        // Rakip yetenek kullandı: onun rig'inde de kılıç izi tetiklensin
+        // (yerel oyuncuda SkillComponent yazar, burada ağ olayından yazılır).
+        b.castFxT = 1;
         addFx({
           kind: "beam",
           x1: ev.x1,
@@ -569,10 +572,12 @@ export default function PvpBattleScene({
         break;
       }
       case "dashHit":
+        b.castFxT = 1;
         damageMe(ev.dmg);
         break;
       case "explode": {
         // Ateş Topu: soğuk / ruhani alev patlaması (fiziksel ateş değil).
+        b.castFxT = 1;
         vfx.coldFlame(ev.x, ev.y, ev.r);
         if (ev.hit) damageMe(ev.dmg);
         break;

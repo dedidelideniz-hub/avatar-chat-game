@@ -125,6 +125,7 @@ export function createVfxBus(sink: (fx: BattleFx) => void): VfxBus {
       pushColdFlameImpact(sink, x, y, size);
       pulseBloom(0.25);
     },
+
     flash: pulseBloom,
   };
 }

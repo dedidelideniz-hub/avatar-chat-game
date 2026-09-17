@@ -266,6 +266,8 @@ export const BEAM_POOL = 2;
 export const SMOKE_POOL = 44;
 export const CRACK_POOL = 3;
 
-/* Brawl tarzı vuruş geri bildirimi */
-export const HIT_SPARKS = 10; // vuruş başına kıvılcım tanesi
+/* Brawl tarzı vuruş geri bildirimi — Hit Particle System.
+ * (Kıvılcımlar `FighterRig` içinde yaşar: vurulan karakterin kendi rig'inde
+ *  yönlü bir yelpaze hâlinde fışkırır, ayrı bir zemin-efekti havuzu gerekmez.) */
+export const HIT_SPARKS = 10; // vuruş başına kıvılcım kıymığı tanesi
 export const SPARK_LIFE = 0.42; // kıvılcım ömrü (saniye)

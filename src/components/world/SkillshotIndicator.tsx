@@ -20,8 +20,16 @@ import * as THREE from "three";
 // oluşmasın diye `import type`).
 import type { BattleFighter } from "./Arena3D";
 import { S } from "./arena/shared";
-import { SkillIndicator, type SkillIndicatorHandle } from "./arena/SkillIndicator";
-import { MAX_RANGE_UNITS, SKILLSHOT_WIDTH, aimState, resolveAim } from "./arena/skillshot";
+import {
+  SkillIndicator,
+  type SkillIndicatorHandle,
+} from "./arena/SkillIndicator";
+import {
+  MAX_RANGE_UNITS,
+  SKILLSHOT_WIDTH,
+  aimState,
+  resolveAim,
+} from "./arena/skillshot";
 
 /** Nişan türüne göre renk: düz vuruş soğuk mavi, yetenekler sıcak. */
 const AIM_COLORS = {
@@ -143,6 +151,9 @@ export function SkillshotIndicator({
   const shaft = useRef<THREE.Mesh>(null);
   const head = useRef<THREE.Mesh>(null);
   const lock = useRef<THREE.Mesh>(null);
+  // Menzil ucuna doğru AKAN ok işareti (Skill Indicator Arrow).
+  const tip = useRef<THREE.Mesh>(null);
+  const tipMat = useRef<THREE.MeshBasicMaterial>(null);
   const shaftMat = useRef<THREE.MeshBasicMaterial>(null);
   const headMat = useRef<THREE.MeshBasicMaterial>(null);
 
@@ -219,6 +230,24 @@ export function SkillshotIndicator({
     if (head.current) {
       head.current.rotation.set(-Math.PI / 2, 0, ang);
       head.current.position.set(px + aim.x * len, 0.06, pz + aim.y * len);
+      // Ok başı nefes alır: hedef yönü durağan değil, canlı okunur.
+      head.current.scale.setScalar(1 + 0.12 * Math.sin(t * 4.2));
+    }
+    // ── menzil ucundaki HAREKETLİ ok işareti ──
+    // Karakterden menzil sınırına doğru akar, sınırda büyüyüp söner; döner
+    // olması yönü tek bakışta okutur (LoL/Wild Rift yön oku davranışı).
+    if (tip.current && tipMat.current) {
+      const k = (t * 1.05) % 1;
+      const along = 0.55 + 0.45 * k;
+      tip.current.position.set(
+        px + aim.x * len * along,
+        0.07,
+        pz + aim.y * len * along,
+      );
+      tip.current.rotation.z = -t * 2.2;
+      tip.current.scale.setScalar(0.55 + 0.9 * k);
+      tipMat.current.color.set(color);
+      tipMat.current.opacity = (1 - k) * (1 - k) * 0.8;
     }
     // Chevron'lar hedefe doğru akar.
     const shaftMap = shaftMat.current?.map;
@@ -273,6 +302,25 @@ export function SkillshotIndicator({
           color={AIM_COLORS.basic}
           transparent
           opacity={0.95}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+      {/* Menzil ucuna akan hareketli ok işareti */}
+      <mesh
+        ref={tip}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.07, 0]}
+        raycast={() => null}
+      >
+        <planeGeometry args={[1.1, 1.1]} />
+        <meshBasicMaterial
+          ref={tipMat}
+          map={pulseTex}
+          color={AIM_COLORS.basic}
+          transparent
+          opacity={0}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}

@@ -86,8 +86,13 @@ export function tickCooldown(f: BattleFighter, dt: number): void {
 }
 
 /** Samuray 2. ultisi zamanla da dolar (pasif şarj). */
-export function tickSamuraiPassive(f: BattleFighter, dt: number, rate = 0.16): void {
-  if (isSamuraiFighter(f)) f.samuraiCharge = Math.min(1, f.samuraiCharge + dt * rate);
+export function tickSamuraiPassive(
+  f: BattleFighter,
+  dt: number,
+  rate = 0.16,
+): void {
+  if (isSamuraiFighter(f))
+    f.samuraiCharge = Math.min(1, f.samuraiCharge + dt * rate);
 }
 
 /* ---------------------------------- nişan --------------------------------- */
@@ -134,7 +139,8 @@ export function planBasicAttack(
   aimX?: number,
   aimY?: number,
 ): BasicAttackPlan | null {
-  if (!permitted || caster.hp <= 0 || caster.dashT > 0 || caster.atkCd > 0) return null;
+  if (!permitted || caster.hp <= 0 || caster.dashT > 0 || caster.atkCd > 0)
+    return null;
   caster.atkCd = ATK_CD;
   // Skillshot hedefi: nişan varsa tam o yön; yoksa yalnızca MENZİL İÇİNDEKİ
   // düşmana otomatik kilit; o da yoksa karakterin baktığı yön.
@@ -168,7 +174,13 @@ export function castBeam(
     caster.y + Math.sin(ang) * len,
   );
   // Işın her durumda iletilir; hasar yalnızca menzil/açı içindeki hedefe işler.
-  host.onBeam(caster, enemy, aim, len, aimedHit(caster, aim, enemy, { rangePx: len }));
+  host.onBeam(
+    caster,
+    enemy,
+    aim,
+    len,
+    aimedHit(caster, aim, enemy, { rangePx: len }),
+  );
 }
 
 /** Şimşek yeteneği: nişan yönüne dash (düşmanın konumuna değil). */
@@ -208,8 +220,12 @@ export function castSuper(
   // yoksa gövdenin baktığı yön. Oyuncu tarafında `planAim` (basılı tutulan
   // nişan vektörü) açıkça geçirilir.
   const dir =
-    aim ?? resolveAim(caster, enemy, 0, 0, { canLock: host.canLock(enemy, caster) });
+    aim ??
+    resolveAim(caster, enemy, 0, 0, { canLock: host.canLock(enemy, caster) });
   caster.superCharge = 0;
+  // Kılıç izi (SlashTrail) için görsel tetik: 1 → 0 sayacı rig'de iner.
+  // Oyun mantığına etkisi yoktur; yalnızca "yetenek kullanıldı" anını çizer.
+  caster.castFxT = 1;
   host.sound("super", { volume: 0.9 });
   host.vfx.smoke(caster.x, caster.y - 20, 4, 80);
   switch (caster.ability.id) {
@@ -266,6 +282,8 @@ export function castUltimate(
     return null;
   const aim = planAim(caster, enemy, host);
   caster.samuraiCharge = 0;
+  // İz, ulti salınımının kendi sayacıyla (samuraiUltT) çizilir; ek tetik yok.
+  caster.castFxT = 0;
   caster.samuraiUltT = 0.82;
   caster.samuraiUltHit = false;
   caster.facing = aim.x >= 0 ? 1 : -1;
@@ -328,7 +346,12 @@ export function emitUltCrack(
   host.vfx.burst(path.impactX, path.impactY, 90, "#fbbf24", 0.4);
   const smokeCount = opts.smokeCount ?? 4;
   if (smokeCount > 0) {
-    host.vfx.smoke(path.impactX, path.impactY, smokeCount, opts.smokeGrow ?? 80);
+    host.vfx.smoke(
+      path.impactX,
+      path.impactY,
+      smokeCount,
+      opts.smokeGrow ?? 80,
+    );
   }
   if (opts.trail) {
     for (let s = 1; s <= 3; s++) {
