@@ -5,9 +5,9 @@
 // döngüde ayak, gövde yüksekliğinin ~0.42'si kadar öne-arkaya savruluyor;
 // yani klip saniyede ~0.88 gövde boyu yer kat ediyor. Oyunda karakter ise
 // 90 px/sn = 1.8 dünya birimi/sn hızla gidiyor; gövde yüksekliği dünya
-// cinsinden 1.5 × 0.575 = 0.8625 birim olduğu için bu saniyede ~2.09 gövde
-// boyu eder. Klip bu yüzden ~2.4 kat hızlı çalmalıydı, çalmadığı için
-// ayaklar zeminde kayıyordu ("ice skating").
+// cinsinden 1.5 × 0.47 = 0.705 birim olduğu için bu saniyede ~2.55 gövde
+// boyu eder. Klip bu yüzden hızlandırılmalıydı, çalmadığı için ayaklar
+// zeminde kayıyordu ("ice skating").
 //
 // İKİNCİ SORUN: zırh/skin modellerindeki (Mixamo) klipler kalça (Hips)
 // konum eğrilerini de taşıyor. Bu "root motion" oyunun kendi konum
@@ -17,8 +17,14 @@
 // `walkTimeScale` her karede animasyon hızını gerçek hıza eşitler.
 import * as THREE from "three";
 
-/** Rig kökünün dünya ölçeği (FighterRig'in `<group ref={root} scale=...>`). */
-export const RIG_ROOT_SCALE = 0.575;
+/** Rig kökünün dünya ölçeği (FighterRig'in `<group ref={root} scale=...>`).
+ *
+ *  0.575 → 0.47: MOBA oranı. Dövüşçüler haritaya göre ~%18 küçültüldü, böylece
+ *  karakterler arenalarında/koridor genişliğinde "rahat hareket ediyor" gibi
+ *  okunur ve kamera açısı düşürüldüğünde bile boylar haritaya göre ölçülü
+ *  kalır. Adım senkronu (walkTimeScale) bu sabiti okuduğu için ayak–zemin
+ *  eşleşmesi yeni boyla otomatik olarak yeniden hesaplanır. */
+export const RIG_ROOT_SCALE = 0.47;
 
 /** Ayak kemiği bulunamazsa kullanılan adım/gövde oranı (character.glb: 0.42). */
 const DEFAULT_STRIDE_RATIO = 0.45;

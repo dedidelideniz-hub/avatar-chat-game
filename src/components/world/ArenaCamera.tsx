@@ -16,11 +16,11 @@
 //      world→screen x/y are scaled differently).
 //   2. Aspect ratio — `camera.aspect` is always set from the real drawing
 //      buffer, so geometry keeps its proportions on every device.
-//   3. Landscape lens — instead of backing away, the wide view uses a longer
-//      lens (42° FOV) at a close follow distance (8.7 units) from a 37° MOBA
-//      pitch (35–40° requested). The camera height is about half the old
-//      framing (~5.2 units), so only the player and the 10–15 m around them
-//      are visible — never the whole map.
+//   3. İzometrik lens — kamera artık tam MOBA açısında: 45–50° elevation,
+//      35–40° dikey FOV (portrait 40°, landscape 36°) ve yükseltilmiş bir
+//      konum (sin(el)·dist ≈ 13 / 9.3 birim). Uzun lens + yüksek kamera
+//      "basık piramit" görüntüsünü bitirir: arazi ve karakterler doğal
+//      oranlarında okunur, derinlik kısalması (foreshortening) azalır.
 //   4. Atmosphere — the void around the island is closed by a soft night-
 //      violet background (0x1a1a2e) plus an environment haze: a FogExp2
 //      (0x262648) that is gentle in portrait (FOG_DENSITY_P) and dense in
@@ -49,16 +49,17 @@ const CZ = ARENA_D / 2;
 const WIDE_FROM = 0.9;
 const WIDE_TO = 1.8;
 
-// Portrait framing (unchanged) → landscape framing.
-// Landscape is a closer, longer lens from an isometric 45° elevation: only
-// the player's surroundings and the lane are in view, so the open void
-// around the island never appears.
-const FOV_P = 56;
-const FOV_L = 50; // istenen lens (50°) — harita oransal kalır, alan biraz genişler
-const DIST_P = 12.8;
-const DIST_L = 9.2; // 50° lensin dengi: görünen alan korunur, kamera yakın kalır
-const EL_P = 1.0; // ~57° elevation (portrait, unchanged)
-const EL_L = 0.6458; // 37° MOBA pitch (35–40°) — behind-and-above, not top-down
+// Portrait → landscape çerçeveleme. İkisi de aynı izometrik MOBA dilini
+// konuşur: uzun lens (40° / 36°), 46–49° pitch ve yükseltilmiş konum. Mesafe
+// lensle birlikte büyütüldüğü için görünen alan DEĞİŞMEZ — sadece perspektif
+// kısalması azalır ve harita basık bir piramit yerine düz bir savaş alanı gibi
+// okunur. Yatayda kamera bir tık yakınlaşır, oyuncu ve çevresi çerçevelenir.
+const FOV_P = 40; // tam izometrik MOBA lensi (istenen 35–40° aralığı)
+const FOV_L = 36; // yatayda bir tık daha uzun lens: basık görüntü kaybolur
+const DIST_P = 17.6; // uzun lensin dengesi — görünen alan korunur, kamera YÜKSEĞE çıkar
+const DIST_L = 12.8;
+const EL_P = 0.855; // ~49° izometrik MOBA açısı (istenen 45–50°)
+const EL_L = 0.81; // ~46° — yatayda da aynı izometrik pitch (top-down değil)
 const CLAMP_P = 3;
 // The -90° map runs its lane from the red base (~z 2) to the blue base
 // (~z 20) diagonally, so landscape must let the camera follow the player the
@@ -67,10 +68,11 @@ const CLAMP_L = 2.2;
 // Lookahead (units the camera leads the fighter) — smaller lens, smaller lead.
 const LOOK_P = 1.1;
 const LOOK_L = 1.6;
-// Bakış yüksekliği (göğüs hizası). Kamera odağı artık karakterin ayak/bele
-// hizasına değil göğsüne kilitlenir: takip mesafesi ve yükseklik aynen kalır,
-// yalnızca bakış bir tık yukarı kayar (zemin yerine karakter + ufuk okunur).
-const LOOK_Y = 1.05;
+// Bakış yüksekliği (göğüs hizası). Kamera odağı karakterin ayak/bele hizasına
+// değil göğsüne kilitlenir. Karakter ölçeği %18 küçültüldüğü için (dünya
+// boyu ≈ 0.70 birim) odak da aynı oranda indi; kamera merkezi karakterin
+// hemen üstünde kalır ve ufuk/arazi okunur.
+const LOOK_Y = 0.6;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,

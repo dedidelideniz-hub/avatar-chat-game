@@ -11,7 +11,7 @@
 import type { AvatarConfig } from "@/lib/avatar";
 import type { AbilityDef } from "@/lib/shop";
 
-import { RoundedBox, useAnimations, useGLTF } from "@react-three/drei";
+import { useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   FALLBACK_MODEL_URL,
@@ -22,7 +22,10 @@ import {
   computeSkeletonHeight,
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
-import { isRoyalWarriorSkin, useRoyalWarriorEffects } from "@/engine/RoyalWarriorEffects";
+import {
+  isRoyalWarriorSkin,
+  useRoyalWarriorEffects,
+} from "@/engine/RoyalWarriorEffects";
 import {
   ROYAL_ULT_LOCK,
   applyRoyalSlamBody,
@@ -59,6 +62,15 @@ import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ProjectilePool } from "./arena/ProjectilePool";
+import { applyBushTransparency } from "./arena/bushFade";
+import {
+  drawBarSprite,
+  drawNameSprite,
+  makeBarTex,
+  makeBoltTexture,
+  makeNameTex,
+} from "./arena/headUi";
+import { ProceduralBody } from "./arena/ProceduralBody";
 import {
   ARENA_D,
   ARENA_W,
@@ -368,7 +380,10 @@ function GlbFighterBodyCore({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   // Skin system: resolve skin URL from equipped items if available
-  const skinUrl = useMemo(() => (equipped ? resolveSkinUrl(equipped) : null), [equipped]);
+  const skinUrl = useMemo(
+    () => (equipped ? resolveSkinUrl(equipped) : null),
+    [equipped],
+  );
   const { scene, animations } = useGLTF(skinUrl || url);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   // Root motion temizliği: zırh/skin klipleri kalça konum eğrilerini de
@@ -380,7 +395,10 @@ function GlbFighterBodyCore({
   );
   const { actions } = useAnimations(cleanAnimations, groupRef);
   const movingRef = useRef(fighter.current.moving);
-  const previousPosition = useRef({ x: fighter.current.x, y: fighter.current.y });
+  const previousPosition = useRef({
+    x: fighter.current.x,
+    y: fighter.current.y,
+  });
 
   // Kraliyet Savaşçısı: elindeki kılıçla iki elli yere vurma pozu.
   const royalSlammer = isSamuraiFighter(fighter.current);
@@ -440,10 +458,7 @@ function GlbFighterBodyCore({
       for (const entry of list) {
         const material = entry as THREE.MeshStandardMaterial;
         if (!material?.isMeshStandardMaterial) continue;
-        material.envMapIntensity = Math.max(
-          material.envMapIntensity || 1,
-          0.9,
-        );
+        material.envMapIntensity = Math.max(material.envMapIntensity || 1, 0.9);
         if (typeof material.metalness === "number") {
           material.metalness = Math.min(0.85, material.metalness + 0.12);
         }
@@ -566,8 +581,11 @@ function GlbFighterBodyCore({
     wasUlt.current = slamActive;
     if (next === currentClip.current) return;
     const from =
-      actions[currentClip.current === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
-    const to = actions[next === "idle" ? clips.idle ?? "" : clips.walk ?? ""];
+      actions[
+        currentClip.current === "idle" ? (clips.idle ?? "") : (clips.walk ?? "")
+      ];
+    const to =
+      actions[next === "idle" ? (clips.idle ?? "") : (clips.walk ?? "")];
     // Dururken hızlı, başlarken biraz daha yumuşak geçiş: karakter bıraktığın
     // anda adım atmayı bırakır (ayak zeminde sürüklenmez).
     const fade = next === "idle" ? 0.07 : 0.12;
@@ -596,219 +614,28 @@ function GlbFighterBody({
   return (
     <GlbModelRetry
       fallback={
-        <GlbFighterBodyCore fighter={fighter} url={FALLBACK_MODEL_URL} equipped={equipped} />
+        <GlbFighterBodyCore
+          fighter={fighter}
+          url={FALLBACK_MODEL_URL}
+          equipped={equipped}
+        />
       }
     >
-      <GlbFighterBodyCore fighter={fighter} url={characterModelUrl()} equipped={equipped} />
+      <GlbFighterBodyCore
+        fighter={fighter}
+        url={characterModelUrl()}
+        equipped={equipped}
+      />
     </GlbModelRetry>
   );
 }
 
-function makeBarTex() {
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 10;
-  const t = new THREE.CanvasTexture(c);
-  t.minFilter = THREE.LinearFilter;
-  return t;
-}
+/* Baş-üstü HUD çizimi (can barı + isim etiketi + bolt dokusu) `./arena/headUi`
+ * modülüne taşındı; BAR_W/BAR_H ve çizim fonksiyonları oradan içe aktarılır. */
 
-/** Rounded-rect path — works even on browsers without ctx.roundRect. */
-function roundedRectPath(
-  g: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  const rad = Math.max(0, Math.min(r, w / 2, h / 2));
-  g.moveTo(x + rad, y);
-  g.arcTo(x + w, y, x + w, y + h, rad);
-  g.arcTo(x + w, y + h, x, y + h, rad);
-  g.arcTo(x, y + h, x, y, rad);
-  g.arcTo(x, y, x + w, y, rad);
-  g.closePath();
-}
-
-/** Trace a rounded rect using ctx.roundRect when available, else manually. */
-function traceRoundRect(
-  g: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-) {
-  if (typeof g.roundRect === "function") {
-    g.roundRect(x, y, w, h, r);
-  } else {
-    roundedRectPath(g, x, y, w, h, r);
-  }
-}
-
-/** Draw one health-bar frame (thin, rounded, gradient + shine). */
-function drawBarSprite(tex: THREE.CanvasTexture, pct: number, color: string) {
-  const canvas = tex.image as HTMLCanvasElement;
-  const g = canvas.getContext("2d");
-  if (!g) return;
-  const p = Math.max(0, Math.min(1, pct));
-  const w = Math.max(4, 124 * p);
-  g.clearRect(0, 0, 128, 10);
-  // rounded dark background
-  g.beginPath();
-  traceRoundRect(g, 0, 0, 128, 10, 4);
-  g.fillStyle = "rgba(8,12,26,0.88)";
-  g.fill();
-  // gradient fill with a shine line on top
-  const grad = g.createLinearGradient(0, 0, 0, 10);
-  grad.addColorStop(0, "#ffffff");
-  grad.addColorStop(0.3, color);
-  grad.addColorStop(1, color);
-  g.save();
-  g.beginPath();
-  traceRoundRect(g, 2, 2, w, 6, 3);
-  g.clip();
-  g.fillStyle = grad;
-  g.fillRect(2, 2, 124, 6);
-  g.fillStyle = "rgba(255,255,255,0.5)";
-  g.fillRect(2, 2, w, 1.8);
-  g.restore();
-  // white border
-  g.strokeStyle = "rgba(255,255,255,0.92)";
-  g.lineWidth = 1.2;
-  g.beginPath();
-  traceRoundRect(g, 1, 1, 126, 8, 4);
-  g.stroke();
-  tex.needsUpdate = true;
-}
-
-/**
- * Apply bush visibility to every mesh in a fighter's current hierarchy.
- * GLTFLoader can return shared material instances, so clone each material
- * before changing opacity and force the shader to pick up the new flags.
- */
-export function applyBushTransparency(
-  characterGroup: THREE.Object3D,
-  isInBush: boolean,
-) {
-  characterGroup.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.material) return;
-    const current = mesh.material;
-    const materials = Array.isArray(current)
-      ? current.map((material) => {
-          if (material.userData._bushMaterialClone) return material;
-          const unique = material.clone();
-          unique.userData._bushMaterialClone = true;
-          return unique;
-        })
-      : [
-          current.userData._bushMaterialClone
-            ? current
-            : Object.assign(current.clone(), {
-                userData: {
-                  ...current.userData,
-                  _bushMaterialClone: true,
-                },
-              }),
-        ];
-    mesh.material = Array.isArray(current) ? materials : materials[0];
-    for (const material of materials) {
-      material.transparent = isInBush;
-      material.opacity = isInBush ? 0.4 : 1;
-      material.needsUpdate = true;
-    }
-  });
-}
-
-/** Name-tag texture — dark rounded chip with the fighter's ability emoji,
- *  name and (for bots) level. Lives above the HP bar as a world-space
- *  THREE.Sprite, which automatically billboards toward the camera. */
-function makeNameTex() {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 96;
-  const t = new THREE.CanvasTexture(c);
-  t.minFilter = THREE.LinearFilter;
-  return t;
-}
-
-/** Paint one name-tag frame. Drawn once per fight (name/level never change). */
-function drawNameSprite(
-  tex: THREE.CanvasTexture,
-  { name, emoji, level, isPlayer }: { name: string; emoji: string; level: number; isPlayer: boolean },
-) {
-  const canvas = tex.image as HTMLCanvasElement;
-  const g = canvas.getContext("2d");
-  if (!g) return;
-  g.clearRect(0, 0, 512, 96);
-  g.font = "800 44px 'Baloo 2', 'Segoe UI', sans-serif";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  const lvl = level > 1 ? `  ·  Lv${level}` : "";
-  let namePart = name;
-  const maxW = 434; // leave room for the chip padding inside the 512px canvas
-  const fits = (s: string) =>
-    g.measureText(`${emoji}  ${s}${lvl}`).width <= maxW;
-  while (namePart.length > 1 && !fits(namePart)) {
-    namePart = namePart.slice(0, -1);
-  }
-  if (namePart !== name) namePart = `${namePart}…`;
-  const label = `${emoji}  ${namePart}${lvl}`;
-  const w = Math.min(474, g.measureText(label).width + 44);
-  const x = (512 - w) / 2;
-  g.beginPath();
-  traceRoundRect(g, x, 18, w, 60, 30);
-  g.fillStyle = "rgba(8,12,26,0.85)";
-  g.fill();
-  g.lineWidth = 5;
-  g.strokeStyle = isPlayer ? "#38bdf8" : "#fb7185";
-  g.stroke();
-  g.fillStyle = "#ffffff";
-  g.fillText(label, 256, 50);
-  tex.needsUpdate = true;
-}
-
-/** Lightning-bolt sprite texture (white core + cyan glow) for the player's
- *  electric-strike effect around the identity ring. */
-function makeBoltTexture() {
-  const c = document.createElement("canvas");
-  c.width = 96;
-  c.height = 192;
-  const g = c.getContext("2d");
-  const t = new THREE.CanvasTexture(c);
-  if (!g) return t;
-  // deterministic jagged bolt — zigzag from top to bottom + one branch
-  const pts: [number, number][] = [];
-  let bx = 48;
-  for (let y = 10; y <= 186; y += 18) {
-    bx += (Math.random() - 0.5) * 46;
-    bx = Math.max(18, Math.min(78, bx));
-    pts.push([bx, y]);
-  }
-  const stroke = (width: number, color: string, blur: number) => {
-    g.beginPath();
-    g.moveTo(48, 2);
-    for (const [px, py] of pts) g.lineTo(px, py);
-    g.lineTo(48, 190);
-    g.lineWidth = width;
-    g.strokeStyle = color;
-    g.shadowColor = blur > 0 ? "#22d3ee" : "transparent";
-    g.shadowBlur = blur;
-    g.stroke();
-    // side branch for a more "lightning" silhouette
-    g.beginPath();
-    g.moveTo(pts[3][0], pts[3][1]);
-    g.lineTo(pts[3][0] + 20, pts[3][1] + 24);
-    g.lineTo(pts[3][0] + 13, pts[3][1] + 42);
-    g.lineWidth = width * 0.7;
-    g.stroke();
-  };
-  stroke(10, "rgba(34,211,238,0.55)", 14);
-  stroke(4, "#e0f2fe", 0);
-  return t;
-}
+/* Çalı görünürlüğü (bush stealth) `./arena/bushFade` modülüne taşındı;
+ * dışa aktarılan isim uyumluluğu için buradan yeniden dışa aktarılır. */
+export { applyBushTransparency };
 
 function FighterRig({
   fighter,
@@ -847,10 +674,8 @@ function FighterRig({
     })),
   );
   const hpFill = useRef<THREE.Sprite>(null);
-  const hpGhost = useRef<THREE.Sprite>(null);
   const barGroup = useRef<THREE.Group>(null);
   const hpFillTex = useMemo(makeBarTex, []);
-  const hpGhostTex = useMemo(makeBarTex, []);
   const nameTex = useMemo(makeNameTex, []);
   const nameTagDrawn = useRef(false);
   // animated display values — lerp toward the real hp every frame
@@ -930,7 +755,6 @@ function FighterRig({
       drawNameSprite(nameTex, {
         name: f.name,
         emoji: f.ability.emoji,
-        level: f.level,
         isPlayer,
       });
     }
@@ -959,7 +783,8 @@ function FighterRig({
             ? Math.PI / 2
             : -Math.PI / 2) + modelTurn;
     } else if (!f.moving) targetYaw = modelTurn;
-    else if ((f.vy ?? 0) !== 0) targetYaw = (f.vy < 0 ? Math.PI : 0) + modelTurn;
+    else if ((f.vy ?? 0) !== 0)
+      targetYaw = (f.vy < 0 ? Math.PI : 0) + modelTurn;
     else targetYaw = (f.facing >= 0 ? Math.PI / 2 : -Math.PI / 2) + modelTurn;
     let yawDiff = targetYaw - root.current.rotation.y;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
@@ -976,7 +801,9 @@ function FighterRig({
     if (isPlayer && ringSpin.current) {
       ringSpin.current.position.set(f.x / S, 0.035, f.y / S);
       ringSpin.current.rotation.y += dt * 1.7;
-      ringSpin.current.scale.setScalar(1 + 0.05 * Math.sin(performance.now() / 240));
+      ringSpin.current.scale.setScalar(
+        1 + 0.05 * Math.sin(performance.now() / 240),
+      );
       if (ringDisc.current) {
         (ringDisc.current.material as THREE.MeshBasicMaterial).opacity =
           0.15 + 0.07 * Math.sin(performance.now() / 320);
@@ -1050,14 +877,17 @@ function FighterRig({
     const amp = f.moving ? 1 : 0;
     const t = f.phase;
     if (armL.current) armL.current.rotation.x = Math.sin(t) * 0.75 * amp;
-    if (armR.current) armR.current.rotation.x = Math.sin(t + Math.PI) * 0.75 * amp;
-    if (legL.current) legL.current.rotation.x = Math.sin(t + Math.PI) * 0.6 * amp;
+    if (armR.current)
+      armR.current.rotation.x = Math.sin(t + Math.PI) * 0.75 * amp;
+    if (legL.current)
+      legL.current.rotation.x = Math.sin(t + Math.PI) * 0.6 * amp;
     if (legR.current) legR.current.rotation.x = Math.sin(t) * 0.6 * amp;
     if (bob.current) {
       // walk bob while moving, gentle breathing while idle
-      bob.current.position.y = amp > 0
-        ? Math.abs(Math.sin(t)) * 0.09
-        : Math.sin(performance.now() / 420) * 0.018;
+      bob.current.position.y =
+        amp > 0
+          ? Math.abs(Math.sin(t)) * 0.09
+          : Math.sin(performance.now() / 420) * 0.018;
     }
     // ── White flash: düşman hasar aldığı an model kaplaması 0.1s beyaza
     // döner, sonra orijinal kaplamasına geri döner (emissive overlay). ──
@@ -1169,7 +999,8 @@ function FighterRig({
     }
     dispHp.current += (f.hp - dispHp.current) * Math.min(1, dt * 6);
     if (ghostHp.current > dispHp.current + 0.5) {
-      ghostHp.current += (dispHp.current - ghostHp.current) * Math.min(1, dt * 1.8);
+      ghostHp.current +=
+        (dispHp.current - ghostHp.current) * Math.min(1, dt * 1.8);
     } else {
       ghostHp.current = dispHp.current;
     }
@@ -1178,294 +1009,199 @@ function FighterRig({
       lastBarKey.current = key;
       const pct = dispHp.current / max;
       const col = pct > 0.5 ? "#22c55e" : pct > 0.25 ? "#eab308" : "#ef4444";
-      drawBarSprite(hpFillTex, pct, justHit ? "#ffffff" : col);
-      drawBarSprite(hpGhostTex, ghostHp.current / max, "#f8fafc");
+      // Tek dokuda: koyu çerçeve + solda seviye rozeti + beyaz ghost iz +
+      // renkli can dolgusu. Ghost, hasar yeni alındığında dolgunun gerisinden
+      // gelir; iki ayrı sprite olmadığı için hizası asla kaymaz.
+      drawBarSprite(
+        hpFillTex,
+        pct,
+        ghostHp.current / max,
+        justHit ? "#ffffff" : col,
+        f.level,
+        isPlayer,
+      );
     }
   });
 
-  // Procedural low-poly body — shown while the GLB streams in and used as
-  // the permanent fallback if no character GLB can be fetched.
+  // Procedural low-poly body — `./arena/ProceduralBody` modülüne taşındı;
+  // GLB akışı hazır olana kadar gösterilir ve indirilemezse kalıcı yedektir.
   const proceduralBody = (
-    <group ref={bob}>
-        {/* legs + shoes */}
-        <group ref={legL} position={[0, 0.5, 0.1]}>
-          <RoundedBox args={[0.18, 0.52, 0.2]} radius={0.06} position={[0, -0.26, 0]}>
-            <meshStandardMaterial color={c.pants} roughness={0.9} />
-          </RoundedBox>
-          <RoundedBox args={[0.2, 0.12, 0.32]} radius={0.045} position={[0, -0.54, 0.03]}>
-            <meshStandardMaterial color={c.shoes} roughness={0.55} />
-          </RoundedBox>
-        </group>
-        <group ref={legR} position={[0, 0.5, -0.1]}>
-          <RoundedBox args={[0.18, 0.52, 0.2]} radius={0.06} position={[0, -0.26, 0]}>
-            <meshStandardMaterial color={c.pants} roughness={0.9} />
-          </RoundedBox>
-          <RoundedBox args={[0.2, 0.12, 0.32]} radius={0.045} position={[0, -0.54, 0.03]}>
-            <meshStandardMaterial color={c.shoes} roughness={0.55} />
-          </RoundedBox>
-        </group>
-        {/* torso */}
-        <RoundedBox args={[0.54, 0.6, 0.3]} radius={0.13} position={[0, 0.8, 0]} castShadow>
-          <meshStandardMaterial color={c.shirt} roughness={0.85} />
-        </RoundedBox>
-        {/* arms + hands */}
-        <group ref={armL} position={[0.33, 0.88, 0]}>
-          <RoundedBox args={[0.16, 0.54, 0.18]} radius={0.07} position={[0, -0.27, 0]}>
-            <meshStandardMaterial color={c.shirt} roughness={0.85} />
-          </RoundedBox>
-          <mesh position={[0, -0.52, 0]}>
-            <sphereGeometry args={[0.09, 10, 10]} />
-            <meshStandardMaterial color={c.skin} roughness={0.8} />
-          </mesh>
-        </group>
-        <group ref={armR} position={[-0.33, 0.88, 0]}>
-          <RoundedBox args={[0.16, 0.54, 0.18]} radius={0.07} position={[0, -0.27, 0]}>
-            <meshStandardMaterial color={c.shirt} roughness={0.85} />
-          </RoundedBox>
-          <mesh position={[0, -0.52, 0]}>
-            <sphereGeometry args={[0.09, 10, 10]} />
-            <meshStandardMaterial color={c.skin} roughness={0.8} />
-          </mesh>
-        </group>
-        {/* head */}
-        <group position={[0, 1.3, 0]}>
-          <mesh castShadow>
-            <sphereGeometry args={[0.2, 20, 20]} />
-            <meshStandardMaterial color={c.skin} roughness={0.75} />
-          </mesh>
-          {/* eyes + pupils */}
-          {[0.075, -0.075].map((sx) => (
-            <group key={sx} position={[sx, 0.03, 0.15]}>
-              <mesh>
-                <sphereGeometry args={[0.05, 10, 10]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.3} />
-              </mesh>
-              <mesh position={[0, 0, 0.035]}>
-                <sphereGeometry args={[0.024, 8, 8]} />
-                <meshStandardMaterial color="#1f2937" roughness={0.2} />
-              </mesh>
-            </group>
-          ))}
-          {/* eyebrows */}
-          {[0.075, -0.075].map((sx) => (
-            <mesh key={sx} position={[sx, 0.095, 0.165]}>
-              <boxGeometry args={[0.075, 0.02, 0.02]} />
-              <meshStandardMaterial color={c.hairColor} roughness={0.8} />
-            </mesh>
-          ))}
-          {/* mouth */}
-          <mesh position={[0, -0.3, 0.19]}>
-            <boxGeometry args={[0.1, 0.022, 0.02]} />
-            <meshStandardMaterial color="#8a4a3a" roughness={0.7} />
-          </mesh>
-          {/* hair styles */}
-          {c.hair !== "none" && (
-            <group>
-              <mesh position={[0, 0.17, 0]} scale={[1.02, 0.72, 1.02]}>
-                <sphereGeometry args={[0.2, 18, 18]} />
-                <meshStandardMaterial color={c.hairColor} roughness={0.9} />
-              </mesh>
-              {c.hair === "spiky" &&
-                Array.from({ length: 6 }).map((_, i) => {
-                  const a = (i / 6) * Math.PI * 2;
-                  return (
-                    <mesh
-                      key={i}
-                      position={[Math.cos(a) * 0.13, 0.3, Math.sin(a) * 0.13]}
-                      rotation={[Math.cos(a) * 0.4, 0, -Math.sin(a) * 0.4]}
-                    >
-                      <coneGeometry args={[0.055, 0.26, 8]} />
-                      <meshStandardMaterial color={c.hairColor} roughness={0.9} />
-                    </mesh>
-                  );
-                })}
-              {c.hair === "long" && (
-                <mesh position={[0, -0.12, -0.17]}>
-                  <boxGeometry args={[0.34, 0.62, 0.13]} />
-                  <meshStandardMaterial color={c.hairColor} roughness={0.9} />
-                </mesh>
-              )}
-              {c.hair === "curly" &&
-                Array.from({ length: 8 }).map((_, i) => {
-                  const a = (i / 8) * Math.PI * 2;
-                  return (
-                    <mesh key={i} position={[Math.cos(a) * 0.12, 0.26, Math.sin(a) * 0.12]}>
-                      <sphereGeometry args={[0.085, 10, 10]} />
-                      <meshStandardMaterial color={c.hairColor} roughness={0.95} />
-                    </mesh>
-                  );
-                })}
-              {c.hair === "bob" &&
-                [0.17, -0.17].map((sx) => (
-                  <mesh key={sx} position={[sx, -0.08, 0]}>
-                    <boxGeometry args={[0.13, 0.38, 0.34]} />
-                    <meshStandardMaterial color={c.hairColor} roughness={0.9} />
-                  </mesh>
-                ))}
-            </group>
-          )}
-        </group>
-    </group>
+    <ProceduralBody
+      c={c}
+      bob={bob}
+      legL={legL}
+      legR={legR}
+      armL={armL}
+      armR={armR}
+    />
   );
 
   return (
     <>
-    <group ref={root} scale={RIG_ROOT_SCALE}>
-      {/* rigged GLB character (same model as the street world); the
+      <group ref={root} scale={RIG_ROOT_SCALE}>
+        {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
-      <group ref={bodyWrap}>
-        <GlbModelBoundary fallback={proceduralBody}>
-          <Suspense fallback={proceduralBody}>
-            <GlbFighterBody fighter={fighter} />
-          </Suspense>
-        </GlbModelBoundary>
-      </group>
-      {/* Takım rengi halkası: dövüşçünün (oyuncunun seçtiği) karakter rengi
+        <group ref={bodyWrap}>
+          <GlbModelBoundary fallback={proceduralBody}>
+            <Suspense fallback={proceduralBody}>
+              <GlbFighterBody fighter={fighter} />
+            </Suspense>
+          </GlbModelBoundary>
+        </group>
+        {/* Takım rengi halkası: dövüşçünün (oyuncunun seçtiği) karakter rengi
           ayakların altında okunur — hem yakından hem uzaktan kim hangi
           renkte olduğu belli olur. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-        <ringGeometry args={[0.42, 0.56, 32]} />
-        <meshBasicMaterial
-          color={c.shirt}
-          transparent
-          opacity={0.6}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-          toneMapped={false}
-        />
-      </mesh>
-      {/* Vuruş kıvılcımları: karakterin merkezinden dışa saçılan küçük kor
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+          <ringGeometry args={[0.42, 0.56, 32]} />
+          <meshBasicMaterial
+            color={c.shirt}
+            transparent
+            opacity={0.6}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+        {/* Vuruş kıvılcımları: karakterin merkezinden dışa saçılan küçük kor
           parçacıkları. Beyaz parlama artık model kaplamasına uygulanıyor. */}
-      <group position={[0, 0.85, 0]}>
-        {Array.from({ length: HIT_SPARKS }).map((_, i) => (
-          <mesh
-            key={`sp${i}`}
-            ref={(el) => {
-              sparkRefs.current[i] = el;
-            }}
-            visible={false}
-          >
-            <sphereGeometry args={[1, 6, 6]} />
-            <meshBasicMaterial
-              color="#e0f2fe"
-              transparent
-              opacity={0}
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-            />
-          </mesh>
-        ))}
+        <group position={[0, 0.85, 0]}>
+          {Array.from({ length: HIT_SPARKS }).map((_, i) => (
+            <mesh
+              key={`sp${i}`}
+              ref={(el) => {
+                sparkRefs.current[i] = el;
+              }}
+              visible={false}
+            >
+              <sphereGeometry args={[1, 6, 6]} />
+              <meshBasicMaterial
+                color="#e0f2fe"
+                transparent
+                opacity={0}
+                depthWrite={false}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+          ))}
+        </group>
       </group>
-    </group>
       {/* Skillshot nişan göstergesi: zeminde menzil çemberi + yön oku.
           Yalnızca oyuncunun rig'inde çizilir (düşmanın menzili görünmez). */}
       {isPlayer && <SkillshotIndicator fighter={fighter} other={other} />}
       {/* spinning "this is you" ring under the player's feet */}
       {isPlayer && (
         <>
-        <group ref={ringSpin} position={[0, 0.035, 0]}>
-          {/* soft sky glow disc on the grass */}
-          <mesh
-            ref={ringDisc}
-            rotation={[-Math.PI / 2, 0, 0]}
-            raycast={() => null}
-          >
-            <circleGeometry args={[0.52 * HUD, 40]} />
-            <meshBasicMaterial
-              color="#38bdf8"
-              transparent
-              opacity={0.18}
-              blending={THREE.AdditiveBlending}
-              side={THREE.DoubleSide}
-              depthWrite={false}
-            />
-          </mesh>
-          {/* four dashed arcs spinning around the character */}
-          {[0, 1, 2, 3].map((i) => (
+          <group ref={ringSpin} position={[0, 0.035, 0]}>
+            {/* soft sky glow disc on the grass */}
             <mesh
-              key={i}
+              ref={ringDisc}
               rotation={[-Math.PI / 2, 0, 0]}
-              position={[0, 0.012, 0]}
               raycast={() => null}
             >
-              <ringGeometry
-                args={[0.44 * HUD, 0.52 * HUD, 8, 1, (i * Math.PI) / 2, 1.35]}
-              />
+              <circleGeometry args={[0.52 * HUD, 40]} />
               <meshBasicMaterial
-                color="#7dd3fc"
+                color="#38bdf8"
                 transparent
-                opacity={0.95}
+                opacity={0.18}
                 blending={THREE.AdditiveBlending}
                 side={THREE.DoubleSide}
                 depthWrite={false}
               />
             </mesh>
+            {/* four dashed arcs spinning around the character */}
+            {[0, 1, 2, 3].map((i) => (
+              <mesh
+                key={i}
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, 0.012, 0]}
+                raycast={() => null}
+              >
+                <ringGeometry
+                  args={[0.44 * HUD, 0.52 * HUD, 8, 1, (i * Math.PI) / 2, 1.35]}
+                />
+                <meshBasicMaterial
+                  color="#7dd3fc"
+                  transparent
+                  opacity={0.95}
+                  blending={THREE.AdditiveBlending}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+            ))}
+            {/* bright orbiting dot — makes the spin direction obvious */}
+            <mesh position={[0.52 * HUD, 0.02 * HUD, 0]} raycast={() => null}>
+              <sphereGeometry args={[0.055 * HUD, 12, 12]} />
+              <meshBasicMaterial
+                color="#e0f2fe"
+                transparent
+                opacity={1}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+          </group>
+          {/* electric strikes — lightning bolt sprites around the ring */}
+          {[0, 1, 2].map((i) => (
+            <sprite
+              key={i}
+              ref={(el) => {
+                boltPool.current[i] = el;
+              }}
+              position={[0, 0.85, 0]}
+              scale={[0.6 * HUD, 1.8 * HUD, 1]}
+              renderOrder={3}
+            >
+              <spriteMaterial
+                map={boltTex}
+                transparent
+                opacity={0}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </sprite>
           ))}
-          {/* bright orbiting dot — makes the spin direction obvious */}
-          <mesh position={[0.52 * HUD, 0.02 * HUD, 0]} raycast={() => null}>
-            <sphereGeometry args={[0.055 * HUD, 12, 12]} />
-            <meshBasicMaterial
-              color="#e0f2fe"
-              transparent
-              opacity={1}
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-        </group>
-        {/* electric strikes — lightning bolt sprites around the ring */}
-        {[0, 1, 2].map((i) => (
-          <sprite
-            key={i}
-            ref={(el) => {
-              boltPool.current[i] = el;
-            }}
-            position={[0, 0.85, 0]}
-            scale={[0.6 * HUD, 1.8 * HUD, 1]}
-            renderOrder={3}
+          {/* expanding shockwave ring on each strike */}
+          <mesh
+            ref={shockRing}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.04, 0]}
+            visible={false}
+            raycast={() => null}
           >
-            <spriteMaterial
-              map={boltTex}
+            <ringGeometry args={[0.5 * HUD, 0.57 * HUD, 40]} />
+            <meshBasicMaterial
+              ref={shockMat}
+              color="#a5f3fc"
               transparent
               opacity={0}
               blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
               depthWrite={false}
             />
-          </sprite>
-        ))}
-        {/* expanding shockwave ring on each strike */}
-        <mesh
-          ref={shockRing}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.04, 0]}
-          visible={false}
-          raycast={() => null}
-        >
-          <ringGeometry args={[0.5 * HUD, 0.57 * HUD, 40]} />
-          <meshBasicMaterial
-            ref={shockMat}
-            color="#a5f3fc"
-            transparent
-            opacity={0}
-            blending={THREE.AdditiveBlending}
-            side={THREE.DoubleSide}
-            depthWrite={false}
-          />
-        </mesh>
+          </mesh>
         </>
-      )}
-      {/* world-space head UI — billboard name chip + animated HP bar,
-          both float above the head and follow the fighter */}
+      )}{" "}
+      {/* world-space head UI — SABİT BOYUTLU can barı (solda seviye rozeti)
+          ve isim etiketi; ikisi de başın üzerinde süzülür ve dövüşçüyü
+          takip eder, mesafeyle küçülmez (sprite). */}
       <group ref={barGroup}>
-        {/* name / level tag */}
-        <sprite position={[0, 1.05, 0]} scale={[0.625 * HUD, 0.13 * HUD, 1]} renderOrder={0}>
+        {/* isim etiketi (emoji + isim) — can barının üstünde */}
+        <sprite
+          position={[0, 1.05, 0]}
+          scale={[0.6 * HUD, 0.1125 * HUD, 1]}
+          renderOrder={0}
+        >
           <spriteMaterial map={nameTex} transparent depthTest={false} />
         </sprite>
-        {/* animated HP bar (white ghost trails the damage) */}
-        <sprite ref={hpGhost} position={[0, 0.92, 0]} scale={[0.425 * HUD, 0.05 * HUD, 1]} renderOrder={1}>
-          <spriteMaterial map={hpGhostTex} depthTest={false} />
-        </sprite>
-        <sprite ref={hpFill} position={[0, 0.92, 0]} scale={[0.425 * HUD, 0.05 * HUD, 1]} renderOrder={2}>
+        {/* SABİT BOYUTLU can barı: koyu çerçeve + SOLDA seviye rozeti +
+            beyaz ghost iz + renkli dolgu — hepsi tek dokuda (320×64, 5:1). */}
+        <sprite
+          ref={hpFill}
+          position={[0, 0.86, 0]}
+          scale={[0.5 * HUD, 0.1 * HUD, 1]}
+          renderOrder={1}
+        >
           <spriteMaterial map={hpFillTex} depthTest={false} />
         </sprite>
       </group>
@@ -1584,8 +1320,10 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           // Damage Text Pop: ilk çıktığı an büyür, sonra süzülüp söner.
           const pop = t > 0.72 ? (t - 0.72) / 0.28 : 0;
           const sc = 1 + 0.7 * pop;
-          s.position.set(fx.x / S, 1.7 + (1 - t) * 1.8, fx.y / S);
-          s.scale.set(1.7 * HUD * sc, 0.64 * HUD * sc, 1);
+          // Hasar sayısı can barının hemen üstünden başlar ve yukarı süzülür;
+          // karakter ölçeği küçüldüğü için taban yüksekliği de indi.
+          s.position.set(fx.x / S, 1.12 + (1 - t) * 1.15, fx.y / S);
+          s.scale.set(1.3 * HUD * sc, 0.49 * HUD * sc, 1);
           (s.material as THREE.SpriteMaterial).opacity = Math.min(1, t * 1.7);
         }
         ti++;
@@ -1734,7 +1472,12 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           rotation={[-Math.PI / 2, 0, 0]}
         >
           <torusGeometry args={[1, 0.035, 8, 40]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0} depthWrite={false} />
+          <meshBasicMaterial
+            color="#ffffff"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
         </mesh>
       ))}
       {Array.from({ length: BURST_POOL }).map((_, i) => (
@@ -1763,7 +1506,12 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
           visible={false}
         >
           <boxGeometry args={[1, 0.16, 0.16]} />
-          <meshBasicMaterial color="#ffe066" transparent opacity={0} depthWrite={false} />
+          <meshBasicMaterial
+            color="#ffe066"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
         </mesh>
       ))}
       {Array.from({ length: SMOKE_POOL }).map((_, i) => (
@@ -1791,7 +1539,11 @@ function FxPool({ fxsRef }: { fxsRef: MutableRefObject<BattleFx[]> }) {
 /* Camera tuned for the portrait battle viewport.                      */
 /* ------------------------------------------------------------------ */
 
-function FollowCamera({ playerRef }: { playerRef: MutableRefObject<BattleFighter> }) {
+function FollowCamera({
+  playerRef,
+}: {
+  playerRef: MutableRefObject<BattleFighter>;
+}) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const target = useRef(new THREE.Vector3(CX, 0.6, CZ));
   const smoothed = useRef(new THREE.Vector3(CX, 0.6, CZ));
@@ -1876,7 +1628,11 @@ function BattleAtmosphere({
       {/* Large green tactical radius, like a MOBA skill/engagement zone. It
           is purely visual and never participates in movement or collision. */}
       <group ref={aura}>
-        <mesh ref={auraDisc} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <mesh
+          ref={auraDisc}
+          rotation={[-Math.PI / 2, 0, 0]}
+          raycast={() => null}
+        >
           <circleGeometry args={[4.25, 96]} />
           <meshBasicMaterial
             color="#39f27d"
@@ -1982,7 +1738,6 @@ export function Arena3D({
       <hemisphereLight args={["#ffffff", "#8a9aa8", 0.8]} />
       <directionalLight position={[12, 16, 8]} intensity={1.2} />
 
-
       {/* uploaded 5v5 battle-map environment (uniform scale, fitted) */}
       <BattleMapModel />
 
@@ -1998,7 +1753,6 @@ export function Arena3D({
 
       <ProjectilePool projsRef={projsRef} />
       <FxPool fxsRef={fxsRef} />
-
 
       {/* invisible click plane — converts taps to game coordinates */}
       <mesh

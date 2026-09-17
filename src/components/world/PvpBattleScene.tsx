@@ -521,7 +521,7 @@ export default function PvpBattleScene({
     applyHitReaction(p, bot.current.x, bot.current.y, dmg);
     // Taking damage in a bush reveals the victim (Brawl-style).
     p.revealUntil = performance.now() + BUSH_REVEAL_MS;
-    floatText(p.x, p.y - 130, `-${dmg}`, "#ff6b6b");
+    floatText(p.x, p.y - 8, `-${dmg}`, "#ff6b6b");
     playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
     playSound("hit", { volume: 0.35, rate: 1.5 });
     p.superCharge = Math.min(1, p.superCharge + 0.12);
@@ -738,7 +738,7 @@ export default function PvpBattleScene({
     const hit = Math.hypot(b.x - pr.x, b.y - pr.y) < r;
     pushEvent({ type: "explode", x: pr.x, y: pr.y, r, dmg: pr.dmg, hit });
     if (hit) {
-      floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
+      floatText(b.x, b.y - 8, `-${pr.dmg}`, "#fbbf24");
       hitRemote(pr.dmg);
       player.current.superCharge = Math.min(
         1,
@@ -767,7 +767,7 @@ export default function PvpBattleScene({
         hit,
       });
       if (hit) {
-        floatText(enemy.x, enemy.y - 130, "-300", "#ff6b6b");
+        floatText(enemy.x, enemy.y - 8, "-300", "#fbbf24");
         hitRemote(300);
       }
     },
@@ -833,12 +833,8 @@ export default function PvpBattleScene({
     blocked: hitsObstacle,
     bounds: { w: ARENA_W, h: ARENA_H, pad: 40 },
   };
-  const moveFighter = (
-    f: BattleFighter,
-    dx: number,
-    dy: number,
-    dt: number,
-  ) => moveOnGround(f, dx, dy, dt, ground);
+  const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) =>
+    moveOnGround(f, dx, dy, dt, ground);
 
   const endBattle = (win: "win" | "lose" | "draw" | "forfeit") => {
     if (resultRef.current) return;
@@ -921,7 +917,9 @@ export default function PvpBattleScene({
             const dir = facingDir(p);
             // Hasar yalnızca hat menzil içinde ve yönündeyse işler.
             const hit = aimedHit(p, dir, b, { rangePx: MAX_RANGE_PX });
-            const crack = emitUltCrack(p, dir.x, dir.y, skillHost, { trail: true });
+            const crack = emitUltCrack(p, dir.x, dir.y, skillHost, {
+              trail: true,
+            });
             pushEvent({
               type: "samuraiCrack",
               x1: crack.impactX,
@@ -932,12 +930,7 @@ export default function PvpBattleScene({
               hit,
             });
             if (hit) {
-              floatText(
-                b.x,
-                b.y - 130,
-                `-${SAMURAI_ULTIMATE_DAMAGE}`,
-                "#fbbf24",
-              );
+              floatText(b.x, b.y - 8, `-${SAMURAI_ULTIMATE_DAMAGE}`, "#fbbf24");
               hitRemote(SAMURAI_ULTIMATE_DAMAGE);
             }
           }
@@ -966,7 +959,7 @@ export default function PvpBattleScene({
         // enemy took a hit on their phone — reflect it here
         const diff = Math.round(b.hp - t.hp);
         hitRemote(diff);
-        floatText(b.x, b.y - 130, `-${diff}`, "#ff6b6b");
+        floatText(b.x, b.y - 8, `-${diff}`, "#fbbf24");
         playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
       }
       b.hp = t.hp;
@@ -1068,7 +1061,7 @@ export default function PvpBattleScene({
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < DASH_HIT_R) {
           p.dashHit = true;
           pushEvent({ type: "dashHit", dmg: 200 });
-          floatText(b.x, b.y - 130, "-200", "#ff6b6b");
+          floatText(b.x, b.y - 8, "-200", "#fbbf24");
           burstFx(b.x, b.y - 40, 90, "#e0f2fe", 0.4);
           hitRemote(200);
           playSound("hit", { volume: 0.9, rate: 1.1 });
@@ -1115,7 +1108,7 @@ export default function PvpBattleScene({
             explodeAt(pr);
           } else {
             pushEvent({ type: "hit", dmg: pr.dmg });
-            floatText(b.x, b.y - 130, `-${pr.dmg}`, "#ff6b6b");
+            floatText(b.x, b.y - 8, `-${pr.dmg}`, "#fbbf24");
             hitRemote(pr.dmg);
             vfx.coldFlameImpact(pr.x, pr.y - 40, 62);
             playSound("hit", {

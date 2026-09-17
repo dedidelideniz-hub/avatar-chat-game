@@ -653,7 +653,15 @@ export default function BattleScene({
     applyHitReaction(target, attacker.x, attacker.y, dmg);
     // Taking damage in a bush reveals the victim (Brawl-style).
     target.revealUntil = performance.now() + BUSH_REVEAL_MS;
-    floatText(target.x, target.y - 130, `-${dmg}`, "#ff6b6b");
+    // Hasar sayısı dövüşçünün hemen üzerinde doğar (eski 130 px'lik kayma
+    // sayıyı 2.6 birim öteye taşıyordu; artık baş-üstü HUD'ın dibinde) ve
+    // hedefe göre renklenir: SANA gelen hasar kırmızı, SENİN verdiğin amber.
+    floatText(
+      target.x,
+      target.y - 8,
+      `-${dmg}`,
+      target === player.current ? "#ff6b6b" : "#fbbf24",
+    );
     chargeGain(attacker, 0.26);
     chargeGain(target, 0.12);
     if (isSamuraiFighter(attacker)) {
@@ -712,12 +720,8 @@ export default function BattleScene({
     blocked: hitsObstacle,
     bounds: { w: ARENA_W, h: ARENA_H, pad: 40 },
   };
-  const moveFighter = (
-    f: BattleFighter,
-    dx: number,
-    dy: number,
-    dt: number,
-  ) => moveOnGround(f, dx, dy, dt, ground);
+  const moveFighter = (f: BattleFighter, dx: number, dy: number, dt: number) =>
+    moveOnGround(f, dx, dy, dt, ground);
 
   /* ---------------------------- yetenek katmanı -------------------------- */
   // SkillHost: yetenek KURALLARI SkillComponent'te kalır; hasar/olay uygulaması
