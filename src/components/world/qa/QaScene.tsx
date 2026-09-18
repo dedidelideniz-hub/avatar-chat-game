@@ -34,6 +34,7 @@ import {
   DIAG_MIN_OBSTACLE_H,
   findNearestWalkablePosition,
   hitsRockCollision,
+  PROTECT_MIN_OBSTACLE_H,
 } from "@/components/world/BattleMapModel";
 import {
   ARENA_H,
@@ -113,6 +114,16 @@ function logCollisionDiag(): void {
       `${d.obstacleMeshes} engel mesh | merkez probe ${d.blockedProbes}/${d.probes} blokeli | ` +
       `${d.restored} kaya hücresi erozyondan kurtarıldı`,
   );
+  // Kule/duvar/büyük kaya koruması: bu kütlelerin hücreleri geçit ferahlatma
+  // adımlarında silinemez; kaç hücrenin geri konduğu burada görünür.
+  if (d.protectedMeshes > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.protectedMeshes} yüksek kütle korundu (≥ ${PROTECT_MIN_OBSTACLE_H.toFixed(2)} birim): ` +
+        `${d.protectedCells} hücre maskelendi, ${d.protectedRestored} hücre kırpma sonrası geri kondu`,
+    );
+  }
   // Yükseklik kapısının altındaki prop'lar engel SAYILMAZ (yerde yatan yama,
   // piknik taşı) — geçirgen olmaları normaldir, ayrı sayılır.
   if (d.expectedPass > 0) {
@@ -120,7 +131,26 @@ function logCollisionDiag(): void {
       "info",
       "COLLISION",
       `${d.expectedPass} prop yükseklik kapısının altında (< ${DIAG_MIN_OBSTACLE_H.toFixed(2)} birim) — ` +
-        `engel değil, üzerinden geçilir (tasarım gereği) | ${d.obstacleMeshes - d.expectedPass} prop engel olmalı`,
+        `engel değil, üzerinden geçilir (tasarım gereği)`,
+    );
+  }
+  // Diz altı (PROTECT_MIN_OBSTACLE_H altı) prop'lar da basamaktır.
+  if (d.steppable > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.steppable} diz altı prop (< ${PROTECT_MIN_OBSTACLE_H.toFixed(2)} birim) — ` +
+        `dövüşçüyü durdurması beklenmez, üzerinden geçilir`,
+    );
+  }
+  // Izgaranın KASITLI olarak dışladığı parçalar (decal, zemin, terrain, nehir,
+  // istasyon, köprü, ağaç): engel sayılmamaları tasarım gereğidir.
+  if (d.excludedByDesign > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.excludedByDesign} mesh adı engel gibi ama ortam kabı (decal/zemin/terrain/nehir/istasyon/köprü/ağaç) — ` +
+        `engel sayılmaz (tasarım gereği)`,
     );
   }
   // Gerçek bulgu: engel sayılmalı ama merkezinde karakter durmuyor. Ad +

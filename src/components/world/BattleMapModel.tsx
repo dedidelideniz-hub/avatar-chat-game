@@ -131,14 +131,18 @@ const rockCollision: { grid: RockGrid | null; root: THREE.Object3D | null } = {
   root: null,
 };
 
-/** Teşhis için sonda yarıçapı (px) — dövüşçü yarıçapıyla aynı olmalı. */
 /** Son kurulumda erozyondan geri kurtarılan engel hücresi (yalnız teşhis). */
 let restoredObstacleCells = 0;
+/** Son kurulumda korunan (kule/duvar/büyük kaya) hücre + mesh sayısı. */
+let protectedObstacleCells = 0;
+let protectedObstacleMeshes = 0;
+/** Korumadan SONRA yeniden engellenen hücre (yalnız teşhis). */
+let protectedRestoredCells = 0;
+/** Korunan (kule/duvar/büyük kaya) hücre maskesi + ait olduğu ızgara. */
+let protectedSnapshot: Uint8Array | null = null;
+let protectedSnapshotGrid: RockGrid | null = null;
 /** Teşhis için sonda yarıçapı (px) — dövüşçü yarıçapıyla aynı olmalı. */
 const PROBE_RADIUS = 22;
-/** Ada üzerindeki engel sayılan mesh adları (grid kurucusuyla aynı dil). */
-const PROBE_NAME_RE =
-  /(?:rock|boulder|wildblock|block(?:buff|boss)?|tower|propswall|rockwall)/i;
 /**
  * Yükseklik kapısından MUAF prop'lar (duvar/üs parçaları) — grid kurucusundaki
  * `isWallMesh` / `isBaseWallMesh` ile aynı liste.
@@ -153,6 +157,61 @@ const PROBE_WALL_RE = /(?:propswall|rockwall|base(?:blue|red)part)/i;
  * (var olmayan bir hata kovalarız).
  */
 export const DIAG_MIN_OBSTACLE_H = 0.06;
+
+/**
+ * ENGEL KORUMASI EŞİĞİ (dünya birimi).
+ *
+ * Kendi boyu bu değerin ÜSTÜNDE olan gerçek engel (kule, duvar, büyük kaya)
+ * ızgaranın morfolojik adımlarından (katı çekirdek süzgeci + erozyon) muaf
+ * tutulur: bu kütleler görünürde dururken fizikte yok olamaz. Altındaki
+ * prop'lar (diz altı taş/dekor) eskisi gibi geçit ferahlatma adımlarıyla
+ * çekilebilir — dövüşçü boyu ~1.5 birim olduğu için onlar zaten basamaktır.
+ */
+export const PROTECT_MIN_OBSTACLE_H = 0.45;
+/** Korunan maskenin KENDİ erozyonu: çevresi bir hücre çekilir, koridor
+ *  ferahlığı korunur ama kütle asla tamamen silinemez. */
+const PROTECT_ERODE_PASSES = 1;
+
+/**
+ * GRID KURUCUSU SÖZLÜĞÜ (tek kaynak).
+ *
+ * Teşhis eskiden kendi basit isim testini kullanıyordu ("adında tower var
+ * mı") ve bu yüzden ızgaranın KASITLI olarak dışladığı decal/zemin/istasyon
+ * parçalarını "engel sayıldı ama geçilir" diye bildiriyordu (yanlış pozitif).
+ * Artık hem rasterizasyon hem teşhis aynı sınıflandırmayı kullanır.
+ */
+const OBSTACLE_TOKEN_RE =
+  /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower|base(?:blue|red)part)/i;
+const ENVIRONMENT_CONTAINER_RE =
+  /(?:background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase|perimeter|wallg|sidewalla)/i;
+
+/** Mesh'in kendi adı + üst zinciri + materyal adları (tek dil, tek yerde). */
+function semanticNamesOf(mesh: THREE.Mesh): string[] {
+  const names: string[] = [];
+  let node: THREE.Object3D | null = mesh;
+  while (node) {
+    if (node.name) names.push(node.name);
+    node = node.parent;
+  }
+  const material = mesh.material;
+  if (Array.isArray(material)) {
+    for (const item of material) if (item.name) names.push(item.name);
+  } else if (material?.name) {
+    names.push(material.name);
+  }
+  return names;
+}
+
+/**
+ * Engel sınıflandırması — `buildCollisionGrid` ile BİREBİR aynı kural:
+ * kaya/duvar/kule/üs token'ı olan ve ortam kabı (zemin, decal, terrain, nehir,
+ * istasyon, köprü, ağaç...) OLMAYAN mesh engeldir.
+ */
+function isObstacleMesh(mesh: THREE.Mesh): boolean {
+  const names = semanticNamesOf(mesh);
+  if (!OBSTACLE_TOKEN_RE.test(names.join("/"))) return false;
+  return !ENVIRONMENT_CONTAINER_RE.test(names.slice(0, -1).join("/"));
+}
 
 /**
  * QA/teşhis: engel ızgarasının sağlığı + GERÇEK engel testi.
@@ -176,6 +235,17 @@ export function collisionDiagnostics(): {
   /** Yükseklik kapısının altında kaldığı için engel SAYILMAYAN prop sayısı
    *  (yerde yatan yama / minik taş). Geçirgen olmaları beklenir. */
   expectedPass: number;
+  /** Adı engel gibi ama ızgara onu KASITLI olarak dışlıyor (decal, zemin,
+   *  terrain, nehir, istasyon, köprü, ağaç). Geçirgen olması tasarım gereği. */
+  excludedByDesign: number;
+  /** Diz altı prop (duvar olmayan, < PROTECT_MIN_OBSTACLE_H): dövüşçüyü
+   *  durdurması beklenmez, üzerinden geçilir. */
+  steppable: number;
+  /** Korunan (kule/duvar/büyük kaya) mesh sayısı ve hücre sayısı. */
+  protectedMeshes: number;
+  protectedCells: number;
+  /** Koruma adımından sonra yeniden engellenen hücre sayısı. */
+  protectedRestored: number;
   /** Engel sayıldığı hâlde merkezi blokeli OLMAYAN mesh'ler — gerçek bulgu.
    *  Ad + konum + yükseklik verilir ki tek taramada teşhis edilebilsin. */
   misses: { label: string; x: number; z: number; h: number }[];
@@ -191,6 +261,8 @@ export function collisionDiagnostics(): {
   let probes = 0;
   let blockedProbes = 0;
   let expectedPass = 0;
+  let excludedByDesign = 0;
+  let steppable = 0;
   const misses: { label: string; x: number; z: number; h: number }[] = [];
   const box = new THREE.Box3();
   const center = new THREE.Vector3();
@@ -198,26 +270,41 @@ export function collisionDiagnostics(): {
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.visible) return;
-    const names = [mesh.name, mesh.parent?.name].filter(Boolean).join("/");
-    if (!PROBE_NAME_RE.test(names)) return;
+    const nameList = semanticNamesOf(mesh);
+    const label = [mesh.name, mesh.parent?.name].filter(Boolean).join("/");
+    if (!OBSTACLE_TOKEN_RE.test(nameList.join("/"))) return;
     obstacleMeshes += 1;
     box.setFromObject(mesh);
     if (box.isEmpty()) return;
     box.getCenter(center);
     box.getSize(size);
+    // 1) Izgara bu mesh'i KASITLI olarak dışlıyorsa (decal/zemin/terrain/
+    //    istasyon/köprü) geçirgen olması tasarım gereğidir — sonda edilmez.
+    if (!isObstacleMesh(mesh)) {
+      excludedByDesign += 1;
+      return;
+    }
     // Duvarlar/üs parçaları yükseklik kapısından muaf tutulur; kalan prop'lar
-    // kendi boyu kapının altındaysa grid kurucusu tarafından zaten atlanır
-    // (yerde yatan yama engel değildir). Bunlar sonda edilmez.
-    if (!PROBE_WALL_RE.test(names) && size.y < DIAG_MIN_OBSTACLE_H) {
+    // kendi boyu kapının altındaysa grid tarafından zaten atlanır (yerde
+    // yatan yama engel değildir).
+    const isWall = PROBE_WALL_RE.test(nameList.join("/"));
+    if (!isWall && size.y < DIAG_MIN_OBSTACLE_H) {
       expectedPass += 1;
       return;
     }
+    // 2) Diz altı prop (basamak): dövüşçü boyu ~1.5 birim olduğu için bunların
+    //    karakteri durdurması beklenmez.
+    if (!isWall && size.y < PROTECT_MIN_OBSTACLE_H) {
+      steppable += 1;
+      return;
+    }
+    // 3) GERÇEK ÖLÇÜM: dövüşçü boyundaki kütle (kule/duvar/büyük kaya).
     probes += 1;
     if (hitsRockCollision(center.x * PX, center.z * PX, PROBE_RADIUS)) {
       blockedProbes += 1;
     } else if (misses.length < 8) {
       // Görünürde duran ama fizikte olmayan prop: adres burada.
-      misses.push({ label: names, x: center.x, z: center.z, h: size.y });
+      misses.push({ label, x: center.x, z: center.z, h: size.y });
     }
   });
   return {
@@ -230,6 +317,11 @@ export function collisionDiagnostics(): {
     blockedProbes,
     restored: restoredObstacleCells,
     expectedPass,
+    excludedByDesign,
+    steppable,
+    protectedMeshes: protectedObstacleMeshes,
+    protectedCells: protectedObstacleCells,
+    protectedRestored: protectedRestoredCells,
     misses,
   };
 }
@@ -441,6 +533,9 @@ function erodeObstacles(g: RockGrid, passes = OBSTACLE_ERODE_PASSES) {
   g.blocked.set(src);
   // KAYA KORUMA: küçük, derli toplu kaya kütleleri asla tamamen silinmesin.
   restoreSmallObstacleFootprints(g, before);
+  // KORUMALI KÜTLELER: kule/duvar/büyük kaya kırpma adımlarında silindiyse
+  // geri konur (bkz. captureProtectedCells / restoreProtectedObstacles).
+  applyProtectedCells(g);
 }
 
 function keepOnlySolidObstacles(g: RockGrid) {
@@ -550,6 +645,136 @@ function restoreSmallObstacleFootprints(target: RockGrid, raw: Uint8Array) {
 }
 
 /**
+ * KORUNAN KÜTLE GERİ GETİRME (tall obstacle protection).
+ *
+ * Geçit ferahlatma adımları (katı çekirdek süzgeci + erozyon) her kütlenin
+ * kenarından hücre yer. İnce bir taban halkası olan ya da katı çekirdek
+ * eşiğini (8 komşunun 5'i) geçemeyen bir KULE bu yüzden tamamen silinebiliyordu:
+ * görselde kule duruyor, karakter içinden geçiyordu (QA: "engel sayıldı ama
+ * geçilir · yükseklik 1.53 birim").
+ *
+ * Çözüm: bir mesh'in kendi boyu PROTECT_MIN_OBSTACLE_H üstündeyse
+ * rasterize edilen footprint'i ayrı bir maskeye yazılır ve morfolojik
+ * adımlardan SONRA bu maske `blocked` alanına geri konur (kendi erozyonuyla,
+ * koridorlar bir miktar ferah kalır). Görünürde duran bir kule/duvar/büyük
+ * kaya bu yüzden fizikte asla yok olamaz.
+ */
+function restoreProtectedObstacles(
+  g: RockGrid,
+  protectedCells: Uint8Array,
+  passes = PROTECT_ERODE_PASSES,
+) {
+  let mask = protectedCells;
+  for (let p = 0; p < passes; p++) {
+    const next = mask.slice();
+    for (let row = 0; row < g.rows; row++) {
+      const rowOff = row * g.cols;
+      for (let col = 0; col < g.cols; col++) {
+        const index = rowOff + col;
+        if (!mask[index]) continue;
+        let edge = false;
+        for (let dr = -1; dr <= 1 && !edge; dr++) {
+          const r = row + dr;
+          if (r < 0 || r >= g.rows) {
+            edge = true;
+            break;
+          }
+          const off = r * g.cols;
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const c = col + dc;
+            if (c < 0 || c >= g.cols || !mask[off + c]) {
+              edge = true;
+              break;
+            }
+          }
+        }
+        if (edge) next[index] = 0;
+      }
+    }
+    mask = next;
+  }
+  let restored = 0;
+  for (let i = 0; i < g.blocked.length; i++) {
+    if (!mask[i] || g.blocked[i]) continue;
+    g.blocked[i] = 1;
+    restored += 1;
+  }
+  protectedRestoredCells = restored;
+}
+
+/**
+ * KORUMALI KÜTLELERİ YAKALA (tall obstacle snapshot).
+ *
+ * Geçit ferahlatma adımları (katı çekirdek süzgeci + erozyon) her kütlenin
+ * kenarından hücre yer; ince bir taban halkası olan ya da katı çekirdek
+ * eşiğini (8 komşunun 5'i) geçemeyen bir KULE bu yüzden tamamen
+ * silinebiliyordu: görselde kule duruyor, karakter içinden geçiyordu
+ * (QA: "engel sayıldı ama geçilir · yükseklik 1.53 birim").
+ *
+ * Bu fonksiyon, engel maske HENÜZ kırpılmamışken (rasterizasyon bitmiş,
+ * `carveBaseExits` geçiş kapılarını açmış) çalışır ve kendi boyu
+ * PROTECT_MIN_OBSTACLE_H üstündeki her gerçek engelin (kule, duvar, büyük
+ * kaya) kapsadığı, O AN engelli olan hücreleri ayrı bir maskeye alır.
+ *
+ * Yalnız "zaten engelli" hücreler alındığı için yolda görünmez duvar
+ * üretilmez; üs parçaları (Base*Part) dışarıda tutulduğu ve anlık görüntü
+ * taban geçişleri açıldıktan SONRA alındığı için taban çıkışları da
+ * kapanmaz — koruma yalnızca görünürdeki kule/duvar/kaya kütlesini
+ * fizikte tutar.
+ */
+function captureProtectedCells(g: RockGrid) {
+  const root = rockCollision.root;
+  protectedSnapshot = null;
+  protectedSnapshotGrid = null;
+  protectedObstacleMeshes = 0;
+  protectedObstacleCells = 0;
+  if (!root) return;
+  const mask = new Uint8Array(g.blocked.length);
+  const box = new THREE.Box3();
+  let meshes = 0;
+  let cells = 0;
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.visible) return;
+    const semanticName = semanticNamesOf(mesh).join("/");
+    // Üs parçaları korunmaz: önlerindeki geçiş kapısını `carveBaseExits`
+    // açar ve koruma o kapıyı yeniden kapatmamalıdır.
+    if (/base(?:blue|red)part/i.test(semanticName)) return;
+    if (!isObstacleMesh(mesh)) return;
+    box.setFromObject(mesh);
+    if (box.isEmpty()) return;
+    // Diz altı prop (basamak) korunmaz: dövüşçüyü durdurması beklenmez.
+    if (box.max.y - box.min.y < PROTECT_MIN_OBSTACLE_H) return;
+    meshes += 1;
+    const minCol = Math.max(0, Math.floor((box.min.x * PX) / g.cell));
+    const maxCol = Math.min(g.cols - 1, Math.ceil((box.max.x * PX) / g.cell));
+    const minRow = Math.max(0, Math.floor((box.min.z * PX) / g.cell));
+    const maxRow = Math.min(g.rows - 1, Math.ceil((box.max.z * PX) / g.cell));
+    for (let row = minRow; row <= maxRow; row++) {
+      const rowOff = row * g.cols;
+      for (let col = minCol; col <= maxCol; col++) {
+        const index = rowOff + col;
+        if (!g.blocked[index] || mask[index]) continue;
+        mask[index] = 1;
+        cells += 1;
+      }
+    }
+  });
+  if (meshes === 0) return;
+  protectedSnapshot = mask;
+  protectedSnapshotGrid = g;
+  protectedObstacleMeshes = meshes;
+  protectedObstacleCells = cells;
+}
+
+/** Yakalanan korumalı kütleleri kırpma adımlarından SONRA geri koyar. */
+function applyProtectedCells(g: RockGrid) {
+  if (!protectedSnapshot || protectedSnapshotGrid !== g) return;
+  restoreProtectedObstacles(g, protectedSnapshot);
+}
+
+/**
  * Arazi dikişi temizliği (Internal Edge Bug).
  *
  * Yürünebilir zemin, haritanın gerçek üçgenlerinden rasterize edilir; iki
@@ -563,6 +788,9 @@ function restoreSmallObstacleFootprints(target: RockGrid, raw: Uint8Array) {
  * çatlaklar ve kırıntı delikleri kapanır.
  */
 function closeWalkableSeams(g: RockGrid, passes = 2) {
+  // Engel maskesi henüz kırpılmadı (rasterizasyon bitti, taban geçiş
+  // kapıları açıldı): korunacak kütleleri ŞİMDİ yakala.
+  captureProtectedCells(g);
   for (let pass = 0; pass < passes; pass++) {
     const source = g.walkable;
     const filled: number[] = [];
@@ -1111,44 +1339,17 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     walkable: new Uint8Array(GRID_COLS * GRID_ROWS),
     walkableCount: 0,
   };
-  // Use only named gameplay obstacle meshes. In particular, do not use a
-  // broad /wall/ or /block/ match: the GLB contains decorative perimeter
-  // walls, underside chunks and low path dressing with those words in their
-  // names. Those meshes were the reason the visible roads became blocked.
-  const isObstacleMesh = (mesh: THREE.Mesh) => {
-    // BaseBluePart/BaseRedPart meshes combine the walkable base floor with
-    // decorative side pieces. Treating the whole mesh as an obstacle closes
-    // the central stone entrance shown in the screenshot. Towers and actual
-    // rock/wall props remain obstacle sources; base floor geometry remains
-    // part of the walkable surface mask.
-    const names: string[] = [];
-    let node: THREE.Object3D | null = mesh;
-    while (node) {
-      if (node.name) names.push(node.name);
-      node = node.parent;
-    }
-    const material = mesh.material;
-    if (Array.isArray(material)) {
-      for (const item of material) if (item.name) names.push(item.name);
-    } else if (material?.name) {
-      names.push(material.name);
-    }
-    const semanticName = names.join("/");
-    // A camp island is often exported as BlockBuff/WildBlock with a child
-    // mesh or material named Grass. Do not discard that whole prop merely
-    // because its decorative skirt is green: the raised island body still
-    // needs its real GLB footprint. Only explicit environmental containers
-    // (terrain, water, bridge, etc.) override an obstacle token.
-    const hasObstacleToken =
-      /(?:rock|boulder|propswall|rockwall|wildblock|block(?:buff|boss)?|tower|base(?:blue|red)part)/i.test(
-        semanticName,
-      );
-    const hasEnvironmentalContainer =
-      /(?:background|ground|terrain|decal|river|water|stream|lake|pond|bridge|crossing|walkway|station|tree|bush|shrub|reed|plant|leaf|foliage|vegetation|flower|fern|underbrush|groundcover|monster|sculpture|rockfloor|rockbase|perimeter|wallg|sidewalla)/i.test(
-        names.slice(0, -1).join("/"),
-      );
-    return hasObstacleToken && !hasEnvironmentalContainer;
-  };
+  // Engel sınıflandırması TEK KAYNAKTAN gelir (`isObstacleMesh`, bkz. dosya
+  // başı): adında kaya/duvar/kule/üs token'ı olan ve ortam kabı (zemin,
+  // terrain, decal, nehir, istasyon, köprü, ağaç...) OLMAYAN mesh. Geniş bir
+  // /wall/ veya /block/ eşleşmesi KULLANILMAZ: GLB'de bu sözcükleri taşıyan
+  // dekoratif çevre duvarları, alt kütleler ve yoldaki düşük süsler vardır ve
+  // eskiden görünür yolları kapatıyorlardı.
+  //
+  // BaseBluePart/BaseRedPart hem yürünebilir üs tabanını hem dekoratif yan
+  // parçaları içerir; tüm mesh'i engel saymak ekran görüntüsündeki taş girişi
+  // kapatıyordu. Kuleler ve gerçek kaya/duvar prop'ları engel kaynağı olmaya
+  // devam eder; üs tabanı yürünebilir maskenin parçası kalır.
   // A fighter collides with the part of a prop that actually reaches ITS OWN
   // ground contact, not with every triangle in its full exported volume. This
   // removes below-ground/upper decorative triangles while preserving the
