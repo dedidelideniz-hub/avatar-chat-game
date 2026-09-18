@@ -20,7 +20,7 @@
 // Koordinatlar Arena3D ile aynıdır (S = 50 px/birim; arena 34 x 22 birim).
 // Bileşen BattleMapModel içinde haritanın KARDEŞİ olarak render edilir, yani
 // haritanın fit dönüşümünden etkilenmez ve doğrudan arena uzayında durur.
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -991,7 +991,12 @@ function ArenaShadowLight() {
     [],
   );
   if (coarse) return null;
-  return <ArenaShadowCaster />;
+  return (
+    <>
+      <ArenaShadowCaster />
+      <MapShadowFlags />
+    </>
+  );
 }
 
 /**
@@ -1024,19 +1029,91 @@ function ArenaShadowCaster() {
       userData={{ mobaLight: true }}
       position={[ARENA_W / 2 + 14, 20, ARENA_D / 2 - 10]}
       color="#ffe6c8"
-      intensity={0.46}
+      intensity={1.45}
       castShadow
       shadow-mapSize={[2048, 2048]}
-      shadow-camera-left={-16}
-      shadow-camera-right={16}
-      shadow-camera-top={16}
-      shadow-camera-bottom={-16}
+      shadow-camera-left={-19}
+      shadow-camera-right={19}
+      shadow-camera-top={19}
+      shadow-camera-bottom={-19}
       shadow-camera-near={1}
-      shadow-camera-far={64}
-      shadow-bias={-0.0009}
-      shadow-normalBias={0.02}
+      shadow-camera-far={70}
+      shadow-bias={-0.0006}
+      shadow-normalBias={0.03}
     />
   );
+}
+
+/*
+ * GÖLGENİN ŞİDDETİ NEDEN ARTIRILDI (0.46 → 1.45):
+ * Sahnedeki düz dolgu ışığı (ambient/hemisfer) o kadar yüksekti ki bu ışık
+ * gölge bıraksa bile gölge okunmuyordu — "her yere eşit dağılmış ışık".
+ * Artık dolgu ArenaCamera tarafında kısıldı, ana ışık burada güçlendirildi:
+ * gölge sahnenin gerçek "biçim" bilgisi olur (Wild Rift'teki net temas
+ * gölgesi). Gölge çerçevesi arena genişliğine göre ±19'a alındı; 2048²
+ * haritada texel ~1.9 cm, karakter ve kaya gölgeleri keskin kalır.
+ *
+ * NOT: haritanın kendisi gölge ALMIYORSA (receiveShadow) bu ışık görünmez
+ * iş yapar; zemin/bayır/alıcı bayrakları `MapShadowFlags` kurar.
+ */
+
+/**
+ * HARİTA GÖLGE BAYRAKLARI (receive / cast).
+ *
+ * Gölge düşüren ışık baştan beri vardı ama harita mesh'lerinin HİÇBİRİ
+ * varsayılan `receiveShadow = false` durumundan çıkmamıştı: karakterin ve
+ * kulelerin gölgesi düşecek bir yüzey bulamıyordu, bu yüzden zemin ile
+ * karakter birbirinin üzerine yapışık görünüyordu. Aynı şekilde kaya/kule/
+ * duvar kütleleri de gölge DÜŞÜRMÜYORDU.
+ *
+ * Bu geçiş, adı haritanın kendi sözlüğüne uyan mesh'leri ikiye ayırır:
+ *   • zemin ve alçak yüzeyler (terrain, ground, decal, nehir, yol, çimen):
+ *     gölge ALICI.
+ *   • yükselen kütleler (kaya, kule, duvar, üs, dikilitaş, istasyon, ada):
+ *     alıcı + VERİCİ — birbirlerinin ve zeminin üzerine gölge bırakırlar.
+ *
+ * Yalnızca görsel bayraklar: fizik, çarpışma ızgarası, hasar ve ağ sistemi
+ * etkilenmez. Harita asenkron yüklendiği için birkaç kare boyunca denenir,
+ * mesh bulununca arama tamamen durur (kare maliyeti ~0).
+ */
+const SHADOW_RECEIVE_RE =
+  /(?:terrain|ground|decal|river|water|bridge|crossing|path|lane|grass|cliff|rock|boulder|tower|wall|props|sculpture|station|island|block|base)/i;
+const SHADOW_CAST_RE =
+  /(?:rock|boulder|tower|wall|props|sculpture|station|island|block|base)/i;
+
+function MapShadowFlags() {
+  const scene = useThree((s) => s.scene);
+  const done = useRef(false);
+  const tries = useRef(0);
+  useFrame(() => {
+    if (done.current || tries.current > 300) return;
+    tries.current += 1;
+    let receivers = 0;
+    let casters = 0;
+    scene.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.visible) return;
+      const names: string[] = [];
+      let node: THREE.Object3D | null = mesh;
+      while (node) {
+        if (node.name) names.push(node.name);
+        node = node.parent;
+      }
+      const key = names.join("/");
+      if (!SHADOW_RECEIVE_RE.test(key)) return;
+      mesh.receiveShadow = true;
+      receivers += 1;
+      if (!SHADOW_CAST_RE.test(key)) return;
+      mesh.castShadow = true;
+      casters += 1;
+    });
+    if (receivers === 0) return;
+    done.current = true;
+    console.log(
+      `[shadow] harita gölge bayrakları: ${receivers} alıcı / ${casters} verici mesh`,
+    );
+  });
+  return null;
 }
 
 /* ------------------------------------------------------------------ */

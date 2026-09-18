@@ -25,8 +25,11 @@
 //      violet background (0x1a1a2e) plus an environment haze: a FogExp2
 //      (0x262648) that is gentle in portrait (FOG_DENSITY_P) and dense in
 //      landscape (FOG_DENSITY_L), so the horizon melts into haze instead of
-//      showing black space. The fill lights are raised to a bright ambient
-//      floor (1.5) so grass, lane and fighters read clearly.
+//      showing black space. The fill lights are balanced so grass, lane and
+//      fighters read clearly WITHOUT flattening the scene: the flat ambient
+//      floor is kept low and the directional key light carries the
+//      brightness, so real-time shadows (ArenaShadowLight) stay readable and
+//      characters/rocks do not look pasted onto the ground.
 //   5. Tracking — the camera is a close offset follow (player X/Z plus a
 //      small movement lookahead), then clamped to a thin margin inside the
 //      arena, so the player always sits near screen center and the map's
@@ -112,7 +115,30 @@ const KEY_LIGHT_DIR: [number, number, number] = [14, 26, -10];
 // rengi + yüksek şiddetiyle ezmesini engeller.
 const FILL_LIGHT_DIR: [number, number, number] = [-14, 9, 20];
 const FILL_LIGHT_COLOR = "#cfd8ff";
-const FILL_LIGHT_INTENSITY = 0.42;
+const FILL_LIGHT_INTENSITY = 0.5;
+
+/* --- DERİNLİK KONTRASTI (gölge dengesi) ------------------------------
+ * Wild Rift / LoL Mobile referansında karakterin, kayanın ve kulenin ALTINDA
+ * net, koyu bir temas gölgesi vardır; zemin ile nesne birbirine yapışık
+ * görünmez. Bunun tek koşulu "ışığın bir yönü olması": düz (yönsüz) dolgu
+ * ışığı ne kadar yüksekse gölge o kadar silikleşir.
+ *
+ * Eski denge ambient 1.5 + hemisfer 0.85 idi: her yüz neredeyse aynı
+ * parlaklıkta okunuyordu, yani gölge düşse bile görünmezdi. Yeni denge düz
+ * dolguyu düşürüp yönlü ana ışığı öne çıkarır; gölgeler (ArenaShadowLight)
+ * böylece sahnenin ana "biçim" bilgisi olur.
+ * Gölge düşüremeyen cihazlarda (Canvas shadows kapalı: pointer coarse)
+ * aynı değerler sahneyi gereksiz karanlığa itmesin diye daha yüksek bir
+ * yedek denge kullanılır — mobilde görünüm eskisi gibi kalır.
+ */
+const AMBIENT_SHADOWED = 0.62;
+const AMBIENT_FLAT = 1.35;
+const HEMI_SHADOWED = 0.5;
+const HEMI_FLAT = 0.75;
+/* Ana yönlü ışık: gölge varken dolguyu biraz geri çeker (gölge ışığı zaten
+ * yönü o taşır), yoksa parlaklığı yalnız başına üstlenir. */
+const KEY_INTENSITY_SHADOWED = 1.0;
+const KEY_INTENSITY_FLAT = 1.18;
 
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
@@ -142,32 +168,39 @@ export function useArenaCamera(
   // yerden ayarlanır. WarAtmosphere'in kendi ışıkları `userData.mobaLight`
   // ile işaretlidir ve bu geçişte dokunulmaz.
   //
-  // Işık dengesi: ortam ışığı (düz, yönü olmayan dolgu) artık PARLAK bir taban
-  // (1.5) — sahne karanlık/boğuk değil; biçim ve derinlik yönlü ışık ile
-  // sise bırakılır. Gökyüzü tarafı gece moru, hemisferin zemin rengi nötr-
-  // sıcak: arazi kahverengi bir peçeyle değil temiz bir dolguyla okunur.
+  // Işık dengesi: düz dolgu (ambient/hemisfer) ARTIK GERİ PLÂNDA — yalnız
+  // sahneyi karanlığa boğmasın diye durur; parlaklığı ve biçimi yönlü ana
+  // ışık taşır ki gölgeler okunsun (bkz. dosya başı → DERİNLİK KONTRASTI).
+  // Gökyüzü tarafı gece moru, hemisferin zemin rengi nötr-sıcak: arazi
+  // kahverengi bir peçeyle değil temiz bir dolguyla okunur.
   useEffect(() => {
+    // Canvas gölgeleri bu cihazda açık mı? Renderer'ın kendi bayrağı tek
+    // doğru kaynaktır (Arena3D `shadows={!coarse}` ile kurar).
+    const shadowed = gl.shadowMap.enabled;
     scene.traverse((obj) => {
       const light = obj as THREE.Light;
       if (!light.isLight || light.userData?.mobaLight) return;
       if ((light as THREE.AmbientLight).isAmbientLight) {
-        // PARLAK DOLGU: sahnenin genel karanlığı/boğukluğu buradan kalkar.
-        // Ambians çim, koridor ve karakterleri net okutacak kadar yüksek
-        // (istenen aralık 1.5–2.0); üst sınırda bloom ile beyaza kaçmasın diye
-        // alt uçta tutulur ve derinlik/kontrast yönlü ışık + sise bırakılır.
-        light.intensity = 1.5;
+        // DÜZ DOLGU (yönsüz ışık): DERİNLİĞİ ÖLDÜREN katman bu. Eski 1.5
+        // değeri her yüzü aynı parlaklığa çekiyor, dolayısıyla karakter ile
+        // zemin birbirine yapışık ve düz görünüyordu. Gölge çalışan cihazda
+        // düşürülür: karanlık artık ambient'ten değil, GERÇEK gölgeden gelir.
+        light.intensity = shadowed ? AMBIENT_SHADOWED : AMBIENT_FLAT;
       } else if ((light as THREE.HemisphereLight).isHemisphereLight) {
         const hemi = light as THREE.HemisphereLight;
         // Gökyüzü tarafı gece moru, zemin tarafı nötr-sıcak: arazi kahverengi
-        // bir peçeye değil, temiz bir dolguya boyanır.
+        // bir peçeye değil, temiz bir dolguya boyanır. Gölgeli sahnede şiddet
+        // kısılır (yönsüz dolgu yine kontrastı yer).
         hemi.color.set("#6f7fc4");
         hemi.groundColor.set("#8d7a63");
-        hemi.intensity = 0.85;
+        hemi.intensity = shadowed ? HEMI_SHADOWED : HEMI_FLAT;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
         // Arena3D'nin nötr ana ışığı: yumuşak sıcak. Parlaklığın büyük kısmını
         // üstlenir ki her yüz aynı düzeyde aydınlanmasın ve form/gölge okunsun.
         light.color.set("#ffe8cf");
-        light.intensity = 1.15;
+        light.intensity = shadowed
+          ? KEY_INTENSITY_SHADOWED
+          : KEY_INTENSITY_FLAT;
         // IŞIK AÇISI DENGESİ: yönlü ışığın yönü konumundan gelir; eski düşük
         // yan açı sahnenin bir tarafını gölgede bırakıyordu. Yeni yön ışığı
         // arenanın köşegeni üzerinden yükseğe taşır ve ışığı iki üsse de
@@ -190,7 +223,7 @@ export function useArenaCamera(
       scene.remove(fill);
       fill.dispose();
     };
-  }, [scene]);
+  }, [scene, gl]);
 
   // Orientation changes and window resizes are handled by the renderer's own
   // resize observer, but we also re-assert the projection (and atmosphere)
