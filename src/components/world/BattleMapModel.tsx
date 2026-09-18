@@ -60,6 +60,21 @@ const WALK_PLANE_EPSILON = 0.035;
 // catches rocks whose exported bottom is a few centimetres above/below the
 // terrain, without projecting their tall upper faces across nearby roads.
 const OBSTACLE_BASE_BAND = 0.12;
+/* --- ENGEL TABANI: ARTIK HARİTA DÜZLEMİ DEİL, PROP'UN KENDİSİ ------------
+ * Eskiden her engel, TÜM harita için tek olan `WALK_PLANE_Y = 0` düzlemine
+ * göre örneklenirdi (bant: y=0 ± 0.12). Ama yürünebilir maske ALT SINIR
+ * tanımaz (adanın tamamı yürünebilir), yalnızca engel maske o banda kilitliydi:
+ * harita ölçeklenip yüksekliği tek düzleme indirgendiği için SADECE o düzleme
+ * yakın duran taşlar engel sayılıyordu. Vadi, nehir kenarı, orman tabanı ve üs
+ * çevresindeki kayalar/duvarlar/kuleler ise hiç engel olmuyordu — oyuncu bu
+ * taşların içinden geçiyordu.
+ *
+ * Çözüm: temas bandı her mesh'in KENDİ tabanından (bbox min.y) ölçülür; bant
+ * yüksekliği prop boyunun bu oranı kadardır (kısa taşta ince, uzun kulede
+ * taban plintusu kadar). Böylece "yerden yükselen kütle" haritanın neresinde
+ * olursa olsun engeldir.
+ */
+const OBSTACLE_BASE_BAND_RATIO = 0.35;
 // Raised camp/island tops are not walkable surfaces. They are sampled only
 // when the actual GLB face is above the fitted walk plane; flat grass beside
 // a lane remains walkable. This prevents a fighter from climbing onto the
@@ -90,7 +105,12 @@ const GRID_ROWS = Math.ceil((ARENA_D * PX) / GRID_CELL);
  * haritanın dışına çıkılamaz; yalnızca dar geçitler ferahlar.
  */
 const WALKABLE_DILATE_PASSES = 7;
-const OBSTACLE_ERODE_PASSES = 3;
+// GEÇİT GENİŞLETME notu güncellendi: engeller artık gerçekten engel olduğu
+// için erozyon kasten sığ tutulur. 3 tur, 4-6 px kalınlığındaki taş sıralarını
+// tamamen siliyordu (duvar/dikilitaş izi kalmıyordu); 2 tur × 2 px = kenar
+// başına 4 px geri çekilme koridorları yeterince ferahlatır, ince engeller de
+// ayakta kalır.
+const OBSTACLE_ERODE_PASSES = 1;
 
 export interface RockGrid {
   cell: number;
@@ -104,7 +124,79 @@ export interface RockGrid {
 }
 
 // Populated once when the map finishes fitting; read per-frame by the sim.
-const rockCollision: { grid: RockGrid | null } = { grid: null };
+// `root` yalnızca TEŞHİS için saklanır (`collisionDiagnostics`): engel
+// mesh'lerinin merkezleri ızgarada gerçekten blokeli mi, tek yerden ölçülsün.
+const rockCollision: { grid: RockGrid | null; root: THREE.Object3D | null } = {
+  grid: null,
+  root: null,
+};
+
+/** Teşhis için sonda yarıçapı (px) — dövüşçü yarıçapıyla aynı olmalı. */
+/** Son kurulumda erozyondan geri kurtarılan engel hücresi (yalnız teşhis). */
+let restoredObstacleCells = 0;
+/** Teşhis için sonda yarıçapı (px) — dövüşçü yarıçapıyla aynı olmalı. */
+const PROBE_RADIUS = 22;
+/** Ada üzerindeki engel sayılan mesh adları (grid kurucusuyla aynı dil). */
+const PROBE_NAME_RE =
+  /(?:rock|boulder|wildblock|block(?:buff|boss)?|tower|propswall|rockwall)/i;
+
+/**
+ * QA/teşhis: engel ızgarasının sağlığı + GERÇEK engel testi.
+ *
+ * `blocked` hücre sayısı ızgaranın dolu olduğunu söyler; asıl kanıt ikinci
+ * kısımdır — haritadaki kaya/duvar/kule mesh'lerinin MERKEZİNDE duran bir
+ * dövüşçü gerçekten engelleniyor mu? `blockedProbes / probes` oranı 1'e yakın
+ * değilse, o mesh'ler görselde duruyor ama fizikte yok demektir.
+ *
+ * Fizik bu fonksiyondan etkilenmez; yalnızca okur.
+ */
+export function collisionDiagnostics(): {
+  cols: number;
+  rows: number;
+  blocked: number;
+  walkable: number;
+  obstacleMeshes: number;
+  probes: number;
+  blockedProbes: number;
+  restored: number;
+} | null {
+  const g = rockCollision.grid;
+  const root = rockCollision.root;
+  if (!g || !root) return null;
+  let blocked = 0;
+  for (let i = 0; i < g.blocked.length; i++) if (g.blocked[i]) blocked += 1;
+  let walkable = 0;
+  for (let i = 0; i < g.walkable.length; i++) if (g.walkable[i]) walkable += 1;
+  let obstacleMeshes = 0;
+  let probes = 0;
+  let blockedProbes = 0;
+  const box = new THREE.Box3();
+  const center = new THREE.Vector3();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.visible) return;
+    const names = [mesh.name, mesh.parent?.name].filter(Boolean).join("/");
+    if (!PROBE_NAME_RE.test(names)) return;
+    obstacleMeshes += 1;
+    box.setFromObject(mesh);
+    if (box.isEmpty()) return;
+    box.getCenter(center);
+    probes += 1;
+    if (hitsRockCollision(center.x * PX, center.z * PX, PROBE_RADIUS)) {
+      blockedProbes += 1;
+    }
+  });
+  return {
+    cols: g.cols,
+    rows: g.rows,
+    blocked,
+    walkable,
+    obstacleMeshes,
+    probes,
+    blockedProbes,
+    restored: restoredObstacleCells,
+  };
+}
 
 /**
  * GÖRÜNMEZ DÜZ TABAN COLLIDER'I (game-space px).
@@ -274,6 +366,11 @@ function dilateWalkableField(g: RockGrid, passes = WALKABLE_DILATE_PASSES) {
  */
 function erodeObstacles(g: RockGrid, passes = OBSTACLE_ERODE_PASSES) {
   const { cols, rows } = g;
+  // Erozyon ÖNCESİ maske: aşağıdaki geçiş her kütlenin kenarından hücre yer ve
+  // haritadaki küçük kayaları tamamen silebiliyordu (görselde duran kaya
+  // fizikte yok oluyordu). Bu kopya, küçük ve derli toplu kaya kütlelerini
+  // erozyondan sonra geri getirmek için saklanır.
+  const before = g.blocked.slice();
   let src = g.blocked;
   for (let p = 0; p < passes; p++) {
     const next = src.slice();
@@ -306,6 +403,8 @@ function erodeObstacles(g: RockGrid, passes = OBSTACLE_ERODE_PASSES) {
     src = next;
   }
   g.blocked.set(src);
+  // KAYA KORUMA: küçük, derli toplu kaya kütleleri asla tamamen silinmesin.
+  restoreSmallObstacleFootprints(g, before);
 }
 
 function keepOnlySolidObstacles(g: RockGrid) {
@@ -333,6 +432,85 @@ function keepOnlySolidObstacles(g: RockGrid) {
     }
   }
   blocked.set(solid);
+}
+
+/**
+ * KAYA KORUMA (small obstacle retention).
+ *
+ * Engel maskesi geçitleri ferahlatmak için morfolojik adımlardan geçer (katı
+ * çekirdek süzgeci + erozyon) ve bu adımlar her kütlenin kenarından hücre yer.
+ * Haritada tek tek duran küçük kayalar bu yüzden TAMAMEN silinebiliyordu:
+ * görselde kaya duruyor, karakter içinden geçiyor.
+ *
+ * Bu geçiş erozyondan ÖNCEKİ maskeyi tarar ve KÜÇÜK + DERLİ TOPLU
+ * (compact) her bileşeni engel olarak geri getirir. İnce şeritler (korkuluk,
+ * dekor kenarı, dikiş artığı) ve dev kütleler etkilenmez — onlar eskisi gibi
+ * süzülür/eritilir.
+ */
+function restoreSmallObstacleFootprints(target: RockGrid, raw: Uint8Array) {
+  const { cols, rows, blocked } = target;
+  const seen = new Uint8Array(raw.length);
+  const queue = new Int32Array(raw.length);
+  /** Bu boyutun üstü zaten erozyondan sağ çıkar; altı gürültüdür. */
+  const MAX_CELLS = 2600; // ≈ 10.400 px² (tek duran kaya kümesi)
+  const MIN_CELLS = 12; // ≈ 48 px² — daha küçüğü tek hücre kırıntısıdır
+  /** En/boy oranı bu sınırı aşan UZUN-İNCE kümeler (korkuluk, çit, dekor
+   *  kenarı, dikiş çizgisi) engel olmaya devam etmesin: yalnızca "blok"
+   *  biçimli kaya kütleleri geri getirilir. */
+  const MAX_ASPECT = 3.5;
+  let restored = 0;
+  for (let start = 0; start < raw.length; start++) {
+    if (!raw[start] || seen[start]) continue;
+    let head = 0;
+    let tail = 0;
+    let cells = 0;
+    let minC = cols;
+    let maxC = -1;
+    let minR = rows;
+    let maxR = -1;
+    queue[tail++] = start;
+    seen[start] = 1;
+    while (head < tail) {
+      const index = queue[head++];
+      const row = (index / cols) | 0;
+      const col = index - row * cols;
+      cells += 1;
+      if (col < minC) minC = col;
+      if (col > maxC) maxC = col;
+      if (row < minR) minR = row;
+      if (row > maxR) maxR = row;
+      for (let dr = -1; dr <= 1; dr++) {
+        const r = row + dr;
+        if (r < 0 || r >= rows) continue;
+        const off = r * cols;
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const c = col + dc;
+          if (c < 0 || c >= cols) continue;
+          const n = off + c;
+          if (!raw[n] || seen[n]) continue;
+          seen[n] = 1;
+          queue[tail++] = n;
+        }
+      }
+    }
+    if (cells < MIN_CELLS || cells > MAX_CELLS) continue;
+    const width = maxC - minC + 1;
+    const height = maxR - minR + 1;
+    if (Math.max(width, height) > MAX_ASPECT * Math.min(width, height)) {
+      continue;
+    }
+    const boxArea = width * height;
+    // Derli toplu mu? Uzun/ince kırıntılar (korkuluk, dekor kenarı) engel
+    // olmaya devam etmesin; kaya kümeleri kutusunu belirgin şekilde doldurur.
+    if (boxArea === 0 || cells / boxArea < 0.35) continue;
+    for (let i = 0; i < tail; i++) {
+      if (blocked[queue[i]]) continue;
+      blocked[queue[i]] = 1;
+      restored += 1;
+    }
+  }
+  restoredObstacleCells = restored;
 }
 
 /**
@@ -887,6 +1065,8 @@ function rasterizeProjectedTriangle(
  * clear.
  */
 function buildCollisionGrid(root: THREE.Object3D): RockGrid {
+  // Kökü teşhis için sakla (`collisionDiagnostics`) — fizik etkilenmez.
+  rockCollision.root = root;
   const grid: RockGrid = {
     cell: GRID_CELL,
     cols: GRID_COLS,
@@ -933,12 +1113,18 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       );
     return hasObstacleToken && !hasEnvironmentalContainer;
   };
-  // A fighter collides with the part of a prop that actually reaches the
-  // walking plane, not with every triangle in its full exported volume. This
+  // A fighter collides with the part of a prop that actually reaches ITS OWN
+  // ground contact, not with every triangle in its full exported volume. This
   // removes below-ground/upper decorative triangles while preserving the
-  // footprint of raised rocks, jungle blocks and towers.
-  const MIN_OBSTACLE_H = 0.18; // world units — small raised rocks still block
-  const MIN_TOP = 0.08; // world units — a blocker must rise above the walk plane
+  // footprint of raised rocks, jungle blocks and towers — wherever on the map
+  // they stand (bkz. OBSTACLE_BASE_BAND_RATIO).
+  // ÖLÇÜLEREK DÜZELTİLDİ (0.18 → 0.06): `mapDecorScale` haritanın dekorunu
+  // %48 küçültüyor ve kaya grupları da dekor sayılıyor. Küçülen bir kayanın
+  // boyu 0.14–0.30 birime iniyor; 0.18 eşiği kayaların YARISINI burada
+  // eleyip fizikten tamamen siliyordu (görselde kaya duruyor, karakter
+  // üstünden geçiyordu). Eşik artık yalnızca "hiç yükselmeyen" yamayı eler.
+  const MIN_OBSTACLE_H = 0.06; // world units — küçülmüş taşlar da engeldir
+  const MIN_TOP = 0.08; // world units — yalnızca "hiç yükselmeyen" düz yamayı eler
   const va = new THREE.Vector3();
   const vb = new THREE.Vector3();
   const vc = new THREE.Vector3();
@@ -1135,9 +1321,34 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     const isWallMesh = /(?:propswall|rockwall)/i.test(semanticName);
     tmpBox.setFromObject(mesh);
     const top = tmpBox.max.y;
-    if (!isWallMesh && !isBaseWallMesh && top < MIN_TOP) return;
-    if (!isWallMesh && !isBaseWallMesh && top - tmpBox.min.y < MIN_OBSTACLE_H)
-      return;
+    // ENGELİN KENDİ TABANI: bant buradan ölçülür (haritanın y=0 düzleminden
+    // değil). Böylece vadide/kıyıda duran kaya ve duvarlar da engel sayılır.
+    const baseY = tmpBox.min.y;
+    const meshH = top - baseY;
+    // Yükseklik kapısı KENDİ boyuna göre: yerde yatan düz bir yama (kaya
+    // değişkeni/decote) engel değildir; yerden yükselen her kütle engeldir.
+    // "Hiç yükselmeyen" yama, MIN_TOP ile elenir.
+    if (!isWallMesh && !isBaseWallMesh && meshH < MIN_OBSTACLE_H) return;
+    const contactLo = baseY - WALK_PLANE_EPSILON;
+    const contactHi =
+      baseY + Math.max(OBSTACLE_BASE_BAND, meshH * OBSTACLE_BASE_BAND_RATIO);
+    // İKİNCİ TEMAS BANDI: haritanın YÜRÜME DÜZLEMİ (y=0). Tek banda indirmek
+    // iki ayrı hataya yol açıyordu: yalnız y=0 bandı vadide/nehir kenarında
+    // duran taşı hiç engellemiyordu; yalnız prop'un kendi tabanı ise altına
+    // uzanan (gömülü etek/kuyruk) geometrisi olanleri bandı YERİN ALTINA
+    // taşıyor — kaya görünürde dururken karakter içinden geçiyordu. Artık
+    // üçgen bu iki banttan HERHANGİ BİRİNE değiyorsa engel sayılır.
+    const planeLo = WALK_PLANE_Y - WALK_PLANE_EPSILON;
+    const planeHi = WALK_PLANE_Y + OBSTACLE_BASE_BAND;
+    const contactBandFor = (triMinY: number, triMaxY: number) => {
+      if (triMinY <= contactHi && triMaxY >= contactLo) {
+        return { lo: contactLo, hi: contactHi, plane: false };
+      }
+      if (triMinY <= planeHi && triMaxY >= planeLo) {
+        return { lo: planeLo, hi: planeHi, plane: true };
+      }
+      return null;
+    };
     const obstaclePos = (
       mesh.geometry as THREE.BufferGeometry | undefined
     )?.getAttribute("position");
@@ -1150,7 +1361,9 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
     const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(
       semanticName,
     );
-    const raisedFaceMinTop = isBroadBlock ? 0.35 : 0.22;
+    // Dikey yüz (yan) kalınlık ölçütü de prop boyuna göre: küçük bir taşın
+    // yan yüzü 0.16 birim kalın olmayacağı için eskiden hiç engellenemiyordu.
+    const minFaceThickness = Math.min(isBroadBlock ? 0.28 : 0.16, meshH * 0.3);
     const indexAttr = (mesh.geometry as THREE.BufferGeometry).getIndex();
     const triCount = indexAttr ? indexAttr.count / 3 : obstaclePos.count / 3;
     for (let t = 0; t < triCount; t++) {
@@ -1200,7 +1413,7 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         // grid and cannot be climbed onto.
         const isRaisedBaseTop =
           faceNormal.y > 0.55 &&
-          triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
+          triangleMinY > baseY + RAISED_ISLAND_MIN_Y &&
           triangleMaxY - triangleMinY < 0.75;
         if (isRaisedBaseTop) {
           rasterizeProjectedTriangle(grid, va, vb, vc);
@@ -1209,24 +1422,24 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
         }
         const isGroundContactWall =
           Math.abs(faceNormal.y) < 0.45 &&
-          triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
-          triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON &&
-          triangleMaxY - triangleMinY >= 0.12;
+          triangleMinY <= contactHi &&
+          triangleMaxY >= contactLo &&
+          triangleMaxY - triangleMinY >= Math.min(0.12, meshH * 0.25);
         if (!isGroundContactWall) continue;
         const baseSlice = rasterizeObstacleBase(
           { ...grid, blocked: meshBoundary },
           va,
           vb,
           vc,
-          WALK_PLANE_Y - WALK_PLANE_EPSILON,
-          WALK_PLANE_Y + OBSTACLE_BASE_BAND,
+          contactLo,
+          contactHi,
         );
         rasterizeWalkSlice(
           { ...grid, blocked: meshBoundary },
           va,
           vb,
           vc,
-          WALK_PLANE_Y,
+          baseY,
         );
         for (const point of baseSlice) collisionBounds.expandByPoint(point);
         hasCollisionFace = true;
@@ -1238,13 +1451,12 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // Let the common ground-slice path below use only the real section where
       // the wall meets the walk plane; raised horizontal faces are handled by
       // `isRaisedSurface` and remain un-climbable.
-      const touchesWalkPlane =
-        triangleMinY <= WALK_PLANE_Y + OBSTACLE_BASE_BAND &&
-        triangleMaxY >= WALK_PLANE_Y - WALK_PLANE_EPSILON;
+      // Temas bandı prop'un KENDİ tabanından ölçülür (bkz. dosya başı notu):
+      // haritanın neresinde durursa dursun, yerle temas eden her kütle engeldir.
+      const touchesBase =
+        triangleMinY <= contactHi && triangleMaxY >= contactLo;
       const isRaisedSurface =
-        faceNormal.y > 0.55 &&
-        triangleMinY > WALK_PLANE_Y + RAISED_ISLAND_MIN_Y &&
-        triangleMaxY - triangleMinY < 0.75;
+        faceNormal.y > 0.55 && triangleMaxY - triangleMinY < 0.75;
       if (isRaisedSurface) {
         // Block only the visible top footprint, never the wall's entire
         // exported height or its decorative upper projection.
@@ -1254,28 +1466,20 @@ function buildCollisionGrid(root: THREE.Object3D): RockGrid {
       // collider. This keeps the adjacent road open up to the exact visual
       // base instead of filling the whole corridor with the wall's upper
       // geometry.
-      const hasRaisedFace =
-        triangleMaxY >= (isWallMesh ? MIN_TOP : raisedFaceMinTop) &&
-        triangleMaxY - triangleMinY >= (isBroadBlock ? 0.28 : 0.16);
-      if (!touchesWalkPlane || !hasRaisedFace) continue;
+      const hasRaisedFace = triangleMaxY - triangleMinY >= minFaceThickness;
+      if (!touchesBase || !hasRaisedFace) continue;
       const baseSlice = rasterizeObstacleBase(
         { ...grid, blocked: meshBoundary },
         va,
         vb,
         vc,
-        WALK_PLANE_Y - WALK_PLANE_EPSILON,
-        WALK_PLANE_Y + OBSTACLE_BASE_BAND,
+        contactLo,
+        contactHi,
       );
       // Keep the exact plane edge as well. The clipped lower face blocks the
       // real raised part of a rock, while the edge keeps the collider aligned
       // with the visible bottom contour.
-      rasterizeWalkSlice(
-        { ...grid, blocked: meshBoundary },
-        va,
-        vb,
-        vc,
-        WALK_PLANE_Y,
-      );
+      rasterizeWalkSlice({ ...grid, blocked: meshBoundary }, va, vb, vc, baseY);
       // Keep the bounds limited to the clipped, low obstacle slice. This
       // fills a rock's real enclosed interior (preventing entry through
       // triangulation gaps) without filling the much larger grass skirt or

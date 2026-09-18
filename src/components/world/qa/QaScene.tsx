@@ -30,6 +30,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { BattleFighter } from "@/components/world/Arena3D";
 import {
+  collisionDiagnostics,
   findNearestWalkablePosition,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
@@ -83,6 +84,35 @@ const BOUNDS_TRI_LIMIT = 40_000;
 const BOUNDS_MARGIN = 2;
 
 const blocked = (x: number, y: number, r: number) => hitsRockCollision(x, y, r);
+
+/**
+ * ENGEL TEŞHİSİ.
+ *
+ * "Haritadaki taşlar engel mi?" sorusunu sayıyla yanıtlar: ızgarada kaç engel
+ * hücre var, kaç mesh engel sayıldı ve — asıl kanıt — o mesh'lerin MERKEZİNDE
+ * duran bir dövüşçü gerçekten engelleniyor mu (`probe`). Oran 1'in altındaysa o
+ * mesh'ler görselde duruyor ama fizikte yok demektir (yanlış pozitif değil,
+ * gerçek bulgu).
+ */
+function logCollisionDiag(): void {
+  const d = collisionDiagnostics();
+  if (!d) {
+    qaLog(
+      "info",
+      "COLLISION",
+      "engel ızgarası henüz kurulmadı (harita yükleniyor)",
+    );
+    return;
+  }
+  const ratio = d.probes > 0 ? d.blockedProbes / d.probes : 0;
+  qaLog(
+    ratio >= 0.6 ? "info" : "warn",
+    "COLLISION",
+    `ızgara ${d.cols}×${d.rows}: ${d.blocked} engel hücre / ${d.walkable} yürünebilir | ` +
+      `${d.obstacleMeshes} engel mesh | merkez probe ${d.blockedProbes}/${d.probes} blokeli | ` +
+      `${d.restored} kaya hücresi erozyondan kurtarıldı`,
+  );
+}
 
 /**
  * Bulgu etiketi. Harita GLB'sinde çoğu yaprak mesh adsızdır ("(isimsiz)") ve
@@ -221,6 +251,8 @@ export function QaScene({
     s.found = 0;
     qa.scanning = true;
     qaLog("info", "SCAN", `tarama başladı: ${list.length} görünür mesh`);
+    // Harita bu noktada kesin yüklü: engel ızgarasını da raporla.
+    logCollisionDiag();
   };
 
   /** Tek karede bir dilim mesh tarar (mobilde takılma olmaması için). */

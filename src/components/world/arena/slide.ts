@@ -20,10 +20,17 @@
 //     bölünür; hem tünelleme hem de tek karelik takılma engellenir.
 
 /** Tek alt adımda en fazla bu kadar px ilerlenir (tünelleme/takılma önler). */
-const MAX_SUB_STEP = 5;
+const MAX_SUB_STEP = 3;
 /** Adım payı (step offset): engellendiğinde bu kadar küçültülmüş yarıçapla
- *  yeniden denenir — dikişler ve küçük dekoratif taşlar tırmanılır. */
-const STEP_OFFSET = 4;
+ *  yeniden denenir — mikro dikişleri aşar.
+ *
+ *  4 px → 2 px: eski değer, erozyondan sonra ince kalan gerçek engel
+ *  çekirdeklerini (haritadaki küçük kayalar) de "tırmanılabilir" sayıyordu;
+ *  yani görselde duran kayanın içinden geçilebiliyordu. Kısılan değer hâlâ
+ *  dikişleri aşar (engel maskesi artık yalnızca gerçek kaya/duvar/kule
+ *  kütlelerinden gelir, arazi kırıntılarından değil) ama ince bir engeli
+ *  geçirmez. */
+const STEP_OFFSET = 2;
 /** Bir alt adımda sırayla denenen ilerleme oranları: temas mesafesine kadar
  *  yaklaşmayı sağlar (engelin önünde boşlukta donma yok). */
 const FRACTIONS = [1, 0.72, 0.5, 0.34, 0.22, 0.14, 0.08] as const;
