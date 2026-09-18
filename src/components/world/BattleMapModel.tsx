@@ -139,6 +139,20 @@ const PROBE_RADIUS = 22;
 /** Ada üzerindeki engel sayılan mesh adları (grid kurucusuyla aynı dil). */
 const PROBE_NAME_RE =
   /(?:rock|boulder|wildblock|block(?:buff|boss)?|tower|propswall|rockwall)/i;
+/**
+ * Yükseklik kapısından MUAF prop'lar (duvar/üs parçaları) — grid kurucusundaki
+ * `isWallMesh` / `isBaseWallMesh` ile aynı liste.
+ */
+const PROBE_WALL_RE = /(?:propswall|rockwall|base(?:blue|red)part)/i;
+/**
+ * Grid kurucusunun yükseklik kapısı (dünya birimi) — `buildCollisionGrid`
+ * içindeki `MIN_OBSTACLE_H` ile AYNI olmalı.
+ *
+ * Yerde yatan düz yama/piknik taşı bu kapının altında kalır ve zaten engel
+ * SAYILMAZ; teşhis bunu "gerçek hata"dan ayırmazsa oran yanıltıcı olur
+ * (var olmayan bir hata kovalarız).
+ */
+export const DIAG_MIN_OBSTACLE_H = 0.06;
 
 /**
  * QA/teşhis: engel ızgarasının sağlığı + GERÇEK engel testi.
@@ -159,6 +173,12 @@ export function collisionDiagnostics(): {
   probes: number;
   blockedProbes: number;
   restored: number;
+  /** Yükseklik kapısının altında kaldığı için engel SAYILMAYAN prop sayısı
+   *  (yerde yatan yama / minik taş). Geçirgen olmaları beklenir. */
+  expectedPass: number;
+  /** Engel sayıldığı hâlde merkezi blokeli OLMAYAN mesh'ler — gerçek bulgu.
+   *  Ad + konum + yükseklik verilir ki tek taramada teşhis edilebilsin. */
+  misses: { label: string; x: number; z: number; h: number }[];
 } | null {
   const g = rockCollision.grid;
   const root = rockCollision.root;
@@ -170,8 +190,11 @@ export function collisionDiagnostics(): {
   let obstacleMeshes = 0;
   let probes = 0;
   let blockedProbes = 0;
+  let expectedPass = 0;
+  const misses: { label: string; x: number; z: number; h: number }[] = [];
   const box = new THREE.Box3();
   const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.visible) return;
@@ -181,9 +204,20 @@ export function collisionDiagnostics(): {
     box.setFromObject(mesh);
     if (box.isEmpty()) return;
     box.getCenter(center);
+    box.getSize(size);
+    // Duvarlar/üs parçaları yükseklik kapısından muaf tutulur; kalan prop'lar
+    // kendi boyu kapının altındaysa grid kurucusu tarafından zaten atlanır
+    // (yerde yatan yama engel değildir). Bunlar sonda edilmez.
+    if (!PROBE_WALL_RE.test(names) && size.y < DIAG_MIN_OBSTACLE_H) {
+      expectedPass += 1;
+      return;
+    }
     probes += 1;
     if (hitsRockCollision(center.x * PX, center.z * PX, PROBE_RADIUS)) {
       blockedProbes += 1;
+    } else if (misses.length < 8) {
+      // Görünürde duran ama fizikte olmayan prop: adres burada.
+      misses.push({ label: names, x: center.x, z: center.z, h: size.y });
     }
   });
   return {
@@ -195,6 +229,8 @@ export function collisionDiagnostics(): {
     probes,
     blockedProbes,
     restored: restoredObstacleCells,
+    expectedPass,
+    misses,
   };
 }
 

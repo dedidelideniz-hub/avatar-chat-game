@@ -31,6 +31,7 @@ import * as THREE from "three";
 import type { BattleFighter } from "@/components/world/Arena3D";
 import {
   collisionDiagnostics,
+  DIAG_MIN_OBSTACLE_H,
   findNearestWalkablePosition,
   hitsRockCollision,
 } from "@/components/world/BattleMapModel";
@@ -112,6 +113,26 @@ function logCollisionDiag(): void {
       `${d.obstacleMeshes} engel mesh | merkez probe ${d.blockedProbes}/${d.probes} blokeli | ` +
       `${d.restored} kaya hücresi erozyondan kurtarıldı`,
   );
+  // Yükseklik kapısının altındaki prop'lar engel SAYILMAZ (yerde yatan yama,
+  // piknik taşı) — geçirgen olmaları normaldir, ayrı sayılır.
+  if (d.expectedPass > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.expectedPass} prop yükseklik kapısının altında (< ${DIAG_MIN_OBSTACLE_H.toFixed(2)} birim) — ` +
+        `engel değil, üzerinden geçilir (tasarım gereği) | ${d.obstacleMeshes - d.expectedPass} prop engel olmalı`,
+    );
+  }
+  // Gerçek bulgu: engel sayılmalı ama merkezinde karakter durmuyor. Ad +
+  // konum verilir ki haritada doğrudan o noktaya bakılabilsin.
+  for (const m of d.misses) {
+    qaLog(
+      "warn",
+      "COLLISION",
+      `engel sayıldı ama geçilir: ${m.label} @ (${Math.round(m.x * S)}, ${Math.round(m.z * S)})px ` +
+        `· yükseklik ${m.h.toFixed(2)} birim`,
+    );
+  }
 }
 
 /**
