@@ -138,9 +138,13 @@ let protectedObstacleCells = 0;
 let protectedObstacleMeshes = 0;
 /** Korumadan SONRA yeniden engellenen hücre (yalnız teşhis). */
 let protectedRestoredCells = 0;
-/** Korunan (kule/duvar/büyük kaya) hücre maskesi + ait olduğu ızgara. */
-let protectedSnapshot: Uint8Array | null = null;
-let protectedSnapshotGrid: RockGrid | null = null;
+/** Güvenlik vanası: üssü kapatmasın diye geri alınan koruma hücresi. */
+let baseSealClearedCells = 0;
+/** Son kurulumdaki koruma maskesi (yalnız teşhis: "bu mesh korunuyor muydu?"). */
+let lastProtectionMask: Uint8Array | null = null;
+/** Üs çıkış kontrolü: hedef, arena merkezine bu yarıçaptan (px) yakın
+ *  yürünebilir bir hücreye ulaşmaktır — yani "üssünden çıkabiliyor mu?". */
+const BASE_EXIT_TARGET_R = 420;
 /** Teşhis için sonda yarıçapı (px) — dövüşçü yarıçapıyla aynı olmalı. */
 const PROBE_RADIUS = 22;
 /**
@@ -246,9 +250,20 @@ export function collisionDiagnostics(): {
   protectedCells: number;
   /** Koruma adımından sonra yeniden engellenen hücre sayısı. */
   protectedRestored: number;
+  /** Güvenlik vanasının, üssü kapatmasın diye geri aldığı koruma hücresi. */
+  baseSealCleared: number;
   /** Engel sayıldığı hâlde merkezi blokeli OLMAYAN mesh'ler — gerçek bulgu.
    *  Ad + konum + yükseklik verilir ki tek taramada teşhis edilebilsin. */
-  misses: { label: string; x: number; z: number; h: number }[];
+  misses: {
+    label: string;
+    x: number;
+    z: number;
+    h: number;
+    /** Bu mesh koruma maskesine girdi mi? Teşhisi ikiye ayırır:
+     *  `true` → maske doğru, sonradan bir adım sildi (güvenlik vanası?);
+     *  `false` → maske üretimi bu kütleyi hiç görmemiş. */
+    masked: boolean;
+  }[];
 } | null {
   const g = rockCollision.grid;
   const root = rockCollision.root;
@@ -263,7 +278,13 @@ export function collisionDiagnostics(): {
   let expectedPass = 0;
   let excludedByDesign = 0;
   let steppable = 0;
-  const misses: { label: string; x: number; z: number; h: number }[] = [];
+  const misses: {
+    label: string;
+    x: number;
+    z: number;
+    h: number;
+    masked: boolean;
+  }[] = [];
   const box = new THREE.Box3();
   const center = new THREE.Vector3();
   const size = new THREE.Vector3();
@@ -303,8 +324,19 @@ export function collisionDiagnostics(): {
     if (hitsRockCollision(center.x * PX, center.z * PX, PROBE_RADIUS)) {
       blockedProbes += 1;
     } else if (misses.length < 8) {
-      // Görünürde duran ama fizikte olmayan prop: adres burada.
-      misses.push({ label, x: center.x, z: center.z, h: size.y });
+      // Görünürde duran ama fizikte olmayan prop: adres burada. Mesh'in kendi
+      // koruma maskesinde olup olmadığı da yazılır (teşhisi ikiye böler).
+      const cell = rockCollision.grid?.cell ?? 2;
+      const col = Math.floor((center.x * PX) / cell);
+      const row = Math.floor((center.z * PX) / cell);
+      const index = row * (rockCollision.grid?.cols ?? 0) + col;
+      misses.push({
+        label,
+        x: center.x,
+        z: center.z,
+        h: size.y,
+        masked: lastProtectionMask ? lastProtectionMask[index] === 1 : false,
+      });
     }
   });
   return {
@@ -322,6 +354,7 @@ export function collisionDiagnostics(): {
     protectedMeshes: protectedObstacleMeshes,
     protectedCells: protectedObstacleCells,
     protectedRestored: protectedRestoredCells,
+    baseSealCleared: baseSealClearedCells,
     misses,
   };
 }
@@ -704,74 +737,253 @@ function restoreProtectedObstacles(
 }
 
 /**
- * KORUMALI KÜTLELERİ YAKALA (tall obstacle snapshot).
+ * KORUMALI KÜTLE MASKESİ (tall obstacle protection) — KENDİ RASTERİZASYONU.
  *
- * Geçit ferahlatma adımları (katı çekirdek süzgeci + erozyon) her kütlenin
- * kenarından hücre yer; ince bir taban halkası olan ya da katı çekirdek
- * eşiğini (8 komşunun 5'i) geçemeyen bir KULE bu yüzden tamamen
- * silinebiliyordu: görselde kule duruyor, karakter içinden geçiyordu
- * (QA: "engel sayıldı ama geçilir · yükseklik 1.53 birim").
+ * Neden kırpılmış maskeye güvenilmiyor: engel maskesi iki yerden kırpılır —
+ *   • geçit ferahlatma adımları (katı çekirdek süzgeci + erozyon),
+ *   • üs çıkış koridorları (`carveBaseExits`: her üssün önünde ~±30 px şerit).
+ * Üs diyagonal koridorunun TAM ÜZERİNDE duran bir kule bu yüzden maskeden
+ * tamamen silinebiliyordu: görselde kule duruyor, karakter içinden geçiyordu
+ * (QA: "engel sayıldı ama geçilir · yükseklik 1.53 birim" — tam olarak
+ * (520,219)px · (613,340)px · (1184,882)px, yani üs çıkış şeritlerinin
+ * üzerindeki üç kule).
  *
- * Bu fonksiyon, engel maske HENÜZ kırpılmamışken (rasterizasyon bitmiş,
- * `carveBaseExits` geçiş kapılarını açmış) çalışır ve kendi boyu
- * PROTECT_MIN_OBSTACLE_H üstündeki her gerçek engelin (kule, duvar, büyük
- * kaya) kapsadığı, O AN engelli olan hücreleri ayrı bir maskeye alır.
- *
- * Yalnız "zaten engelli" hücreler alındığı için yolda görünmez duvar
- * üretilmez; üs parçaları (Base*Part) dışarıda tutulduğu ve anlık görüntü
- * taban geçişleri açıldıktan SONRA alındığı için taban çıkışları da
- * kapanmaz — koruma yalnızca görünürdeki kule/duvar/kaya kütlesini
- * fizikte tutar.
+ * Bu yüzden maske kırpılmış ızgaradan DEĞİL, sahnenin kendi geometrisinden
+ * yeniden üretilir: kendi boyu PROTECT_MIN_OBSTACLE_H üstündeki her gerçek
+ * engelin (kule, duvar, büyük kaya) taban bandı, `buildCollisionGrid` ile
+ * AYNI kurallarla rasterize edilir. Yalnızca görünür kütle engellenir; yola
+ * gölge/dekor projeksiyonu düşmez.
  */
-function captureProtectedCells(g: RockGrid) {
+function buildTallObstacleMask(g: RockGrid): Uint8Array | null {
   const root = rockCollision.root;
-  protectedSnapshot = null;
-  protectedSnapshotGrid = null;
   protectedObstacleMeshes = 0;
   protectedObstacleCells = 0;
-  if (!root) return;
+  lastProtectionMask = null;
+  if (!root) return null;
   const mask = new Uint8Array(g.blocked.length);
   const box = new THREE.Box3();
+  const va = new THREE.Vector3();
+  const vb = new THREE.Vector3();
+  const vc = new THREE.Vector3();
+  const edgeA = new THREE.Vector3();
+  const edgeB = new THREE.Vector3();
+  const faceNormal = new THREE.Vector3();
+  const m = new THREE.Matrix4();
+  // Mesh başına 467 KB ayırmak yerine TEK tampon kullanılır (mesh başına
+  // sıfırlanır): aynı sonuç, çok daha az çöp/bellek baskısı.
+  const meshBoundary = new Uint8Array(g.blocked.length);
+  const bounds = new THREE.Box3();
   let meshes = 0;
-  let cells = 0;
   root.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh || !mesh.visible) return;
     const semanticName = semanticNamesOf(mesh).join("/");
-    // Üs parçaları korunmaz: önlerindeki geçiş kapısını `carveBaseExits`
-    // açar ve koruma o kapıyı yeniden kapatmamalıdır.
-    if (/base(?:blue|red)part/i.test(semanticName)) return;
     if (!isObstacleMesh(mesh)) return;
+    // Üs parçaları korunmaz: önlerindeki geçiş kapısını `carveBaseExits`
+    // açar; koruma o kapıyı yeniden kapatmamalıdır.
+    if (/base(?:blue|red)part/i.test(semanticName)) return;
     box.setFromObject(mesh);
     if (box.isEmpty()) return;
+    const baseY = box.min.y;
+    const meshH = box.max.y - baseY;
     // Diz altı prop (basamak) korunmaz: dövüşçüyü durdurması beklenmez.
-    if (box.max.y - box.min.y < PROTECT_MIN_OBSTACLE_H) return;
+    if (meshH < PROTECT_MIN_OBSTACLE_H) return;
+    const geometry = mesh.geometry as THREE.BufferGeometry | undefined;
+    const pos = geometry?.getAttribute("position");
+    if (!pos) return;
     meshes += 1;
-    const minCol = Math.max(0, Math.floor((box.min.x * PX) / g.cell));
-    const maxCol = Math.min(g.cols - 1, Math.ceil((box.max.x * PX) / g.cell));
-    const minRow = Math.max(0, Math.floor((box.min.z * PX) / g.cell));
-    const maxRow = Math.min(g.rows - 1, Math.ceil((box.max.z * PX) / g.cell));
-    for (let row = minRow; row <= maxRow; row++) {
-      const rowOff = row * g.cols;
-      for (let col = minCol; col <= maxCol; col++) {
-        const index = rowOff + col;
-        if (!g.blocked[index] || mask[index]) continue;
-        mask[index] = 1;
-        cells += 1;
+    mesh.updateWorldMatrix(true, false);
+    m.copy(mesh.matrixWorld);
+    const contactLo = baseY - WALK_PLANE_EPSILON;
+    const contactHi =
+      baseY + Math.max(OBSTACLE_BASE_BAND, meshH * OBSTACLE_BASE_BAND_RATIO);
+    const isBroadBlock = /(?:wildblock|block(?:buff|boss)?)/i.test(
+      semanticName,
+    );
+    const minFaceThickness = Math.min(isBroadBlock ? 0.28 : 0.16, meshH * 0.3);
+    meshBoundary.fill(0);
+    bounds.makeEmpty();
+    const local: RockGrid = {
+      cell: g.cell,
+      cols: g.cols,
+      rows: g.rows,
+      blocked: meshBoundary,
+      walkable: g.walkable,
+      walkableCount: g.walkableCount,
+    };
+    let hasCollisionFace = false;
+    const indexAttr = geometry!.getIndex();
+    const triCount = indexAttr ? indexAttr.count / 3 : pos.count / 3;
+    for (let t = 0; t < triCount; t++) {
+      const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+      const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+      const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+      va.set(pos.getX(i0), pos.getY(i0), pos.getZ(i0)).applyMatrix4(m);
+      vb.set(pos.getX(i1), pos.getY(i1), pos.getZ(i1)).applyMatrix4(m);
+      vc.set(pos.getX(i2), pos.getY(i2), pos.getZ(i2)).applyMatrix4(m);
+      edgeA.subVectors(vb, va);
+      edgeB.subVectors(vc, va);
+      faceNormal.crossVectors(edgeA, edgeB).normalize();
+      const triangleMinY = Math.min(va.y, vb.y, vc.y);
+      const triangleMaxY = Math.max(va.y, vb.y, vc.y);
+      // Yükselen yatay yüz: kütlenin görünen tepesi (asla tırmanılamaz).
+      if (faceNormal.y > 0.55 && triangleMaxY - triangleMinY < 0.75) {
+        rasterizeProjectedTriangle(local, va, vb, vc);
       }
+      // Yerle temas eden dikey yüz: gerçek taban izi.
+      const touchesBase =
+        triangleMinY <= contactHi && triangleMaxY >= contactLo;
+      if (!touchesBase || triangleMaxY - triangleMinY < minFaceThickness) {
+        continue;
+      }
+      const baseSlice = rasterizeObstacleBase(
+        local,
+        va,
+        vb,
+        vc,
+        contactLo,
+        contactHi,
+      );
+      rasterizeWalkSlice(local, va, vb, vc, baseY);
+      for (const point of baseSlice) bounds.expandByPoint(point);
+      hasCollisionFace = true;
+    }
+    if (!hasCollisionFace) return;
+    // Kaya/kule gibi kapalı kütlelerin İÇİ de dolsun (üçgen dikişinden
+    // geçilmesin). Uzun duvar şeritleri bu adımda dışarıda tutulur.
+    if (!/(?:propswall|rockwall)/i.test(semanticName)) {
+      mergeClosedMeshFootprint(local, meshBoundary, bounds);
+    }
+    for (let i = 0; i < meshBoundary.length; i++) {
+      if (meshBoundary[i]) mask[i] = 1;
     }
   });
-  if (meshes === 0) return;
-  protectedSnapshot = mask;
-  protectedSnapshotGrid = g;
+  let cells = 0;
+  for (let i = 0; i < mask.length; i++) if (mask[i]) cells += 1;
+  if (meshes === 0 || cells === 0) return null;
   protectedObstacleMeshes = meshes;
   protectedObstacleCells = cells;
+  // Teşhis için saklanır (QA: "engel sayıldı ama geçilir" satırı bu mesh'in
+  // korumaya girip girmediğini yazar).
+  lastProtectionMask = mask;
+  return mask;
 }
 
-/** Yakalanan korumalı kütleleri kırpma adımlarından SONRA geri koyar. */
+/**
+ * GÜVENLİK VANASI (base exit check).
+ *
+ * Koruma geri konduktan sonra her üs merkezinden, dövüşçünün GERÇEKTEN
+ * yürüyebileceği hücrelerden (yürünebilir + engelsiz) yayılarak arenanın
+ * ortasına ulaşılıp ulaşılamadığı ölçülür. Ulaşılamıyorsa koruma bir üs
+ * çıkışını tıkamıştır.
+ *
+ * Gevşetme NOKTAZ Bu yüzden kulelerin fizikte silinmesine izin verilmez:
+ * yalnız üssün çevresindeki koruma hücrelerinden, tıkanıklığın SINIRINDA
+ * duranlar (bir hücrelik halka) açılır ve yayılma yeniden denenir. Eski sürüm
+ * üssün etrafındaki ±420 px'lik kutudaki TÜM korumayı siliyordu — bu da
+ * üssün yanındaki kulelerin yeniden geçilmesine yol açıyordu (QA: aynı üç
+ * kule). Artık karakter hiçbir koşulda üssünde kilitli kalmaz, ama koridorun
+ * ortasındaki bir kule de bu yüzden feda edilmez.
+ */
+function openSealedBaseExits(g: RockGrid, mask: Uint8Array) {
+  const { cols, rows, cell } = g;
+  const centerX = (ARENA_W * PX) / 2;
+  const centerY = (ARENA_D * PX) / 2;
+  const queue = new Int32Array(cols * rows);
+  const seen = new Uint8Array(cols * rows);
+  const frontier: number[] = [];
+  // Tur sayısı: her turda tıkanıklığın YALNIZCA bir hücrelik sınır halkası
+  // açılır. Sekiz tur, üssün önündeki gerçek kapıyı açmaya fazlasıyla yeter;
+  // ama asla üssün çevresindeki geniş bir alanı (komşu kule/durvar) silmez.
+  const MAX_ROUNDS = 8;
+  // Gevşetme yalnız üssün KENDİ çevresinde yapılır: koruma hücreleri bu
+  // yarıçapın dışındaysa (ör. koridorun ortasındaki bir kule) dokunulmaz.
+  const RELAX_R = BASE_EXIT_TARGET_R;
+  let cleared = 0;
+  for (const [bx, by] of BASE_CENTERS) {
+    const startCol = Math.floor(bx / cell);
+    const startRow = Math.floor(by / cell);
+    if (startCol < 0 || startCol >= cols || startRow < 0 || startRow >= rows) {
+      continue;
+    }
+    const start = startRow * cols + startCol;
+    if (!g.walkable[start]) continue;
+    // Üssün zemini korumayla kapanmışsa yalnız o tek hücre açılır.
+    if (g.blocked[start] && mask[start]) {
+      g.blocked[start] = 0;
+      cleared += 1;
+    }
+    if (g.blocked[start]) continue;
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      seen.fill(0);
+      seen[start] = 1;
+      let head = 0;
+      let tail = 1;
+      queue[0] = start;
+      let escaped = false;
+      frontier.length = 0;
+      while (head < tail && !escaped) {
+        const index = queue[head++];
+        const row = (index / cols) | 0;
+        const col = index - row * cols;
+        const px = (col + 0.5) * cell;
+        const py = (row + 0.5) * cell;
+        if (
+          g.walkable[index] &&
+          Math.hypot(px - centerX, py - centerY) <= BASE_EXIT_TARGET_R
+        ) {
+          escaped = true;
+          break;
+        }
+        for (let dr = -1; dr <= 1; dr++) {
+          const r = row + dr;
+          if (r < 0 || r >= rows) continue;
+          const off = r * cols;
+          for (let dc = -1; dc <= 1; dc++) {
+            const c = col + dc;
+            if (c < 0 || c >= cols) continue;
+            const n = off + c;
+            if (seen[n] || !g.walkable[n]) continue;
+            if (g.blocked[n]) {
+              // Tıkanıklığın sınır halkası: yalnız KORUMA hücreleri kapı
+              // olabilir; ham arazi/duvar engelleri (mask dışı) açılmaz.
+              if (!mask[n]) continue;
+              const np = ((n % cols) + 0.5) * cell;
+              const nr = (((n / cols) | 0) + 0.5) * cell;
+              if (
+                Math.hypot(np - bx, nr - by) <= RELAX_R &&
+                frontier.length < 2048
+              ) {
+                frontier.push(n);
+              }
+              continue;
+            }
+            seen[n] = 1;
+            queue[tail++] = n;
+          }
+        }
+      }
+      if (escaped) break;
+      // Sınır halkasında koruma hücresi yoksa tıkanıklık korumadan değil,
+      // haritanın kendi geometrisinden geliyordur: dokunmadan dur.
+      if (frontier.length === 0) break;
+      for (const n of frontier) {
+        if (!g.blocked[n]) continue;
+        g.blocked[n] = 0;
+        cleared += 1;
+      }
+    }
+  }
+  baseSealClearedCells = cleared;
+}
+
+/** Korumalı kütle maskesini üretir, kırpma adımlarından SONRA geri koyar ve
+ *  üs çıkışlarının açık kaldığını doğrular. */
 function applyProtectedCells(g: RockGrid) {
-  if (!protectedSnapshot || protectedSnapshotGrid !== g) return;
-  restoreProtectedObstacles(g, protectedSnapshot);
+  const mask = buildTallObstacleMask(g);
+  if (!mask) return;
+  restoreProtectedObstacles(g, mask);
+  openSealedBaseExits(g, mask);
 }
 
 /**
@@ -788,9 +1000,6 @@ function applyProtectedCells(g: RockGrid) {
  * çatlaklar ve kırıntı delikleri kapanır.
  */
 function closeWalkableSeams(g: RockGrid, passes = 2) {
-  // Engel maskesi henüz kırpılmadı (rasterizasyon bitti, taban geçiş
-  // kapıları açıldı): korunacak kütleleri ŞİMDİ yakala.
-  captureProtectedCells(g);
   for (let pass = 0; pass < passes; pass++) {
     const source = g.walkable;
     const filled: number[] = [];

@@ -124,6 +124,16 @@ function logCollisionDiag(): void {
         `${d.protectedCells} hücre maskelendi, ${d.protectedRestored} hücre kırpma sonrası geri kondu`,
     );
   }
+  // Güvenlik vanası: koruma bir üs çıkışını tıkamışsa geri alınan hücreler.
+  // 0 ise koruma üsleri kapatmamış demektir (istenen durum).
+  if (d.baseSealCleared > 0) {
+    qaLog(
+      "warn",
+      "COLLISION",
+      `${d.baseSealCleared} koruma hücresi geri alındı: bir üs çıkışı tıkanmıştı ` +
+        `(karakter üssünde kilitli kalmasın diye gevşetildi)`,
+    );
+  }
   // Yükseklik kapısının altındaki prop'lar engel SAYILMAZ (yerde yatan yama,
   // piknik taşı) — geçirgen olmaları normaldir, ayrı sayılır.
   if (d.expectedPass > 0) {
@@ -160,7 +170,7 @@ function logCollisionDiag(): void {
       "warn",
       "COLLISION",
       `engel sayıldı ama geçilir: ${m.label} @ (${Math.round(m.x * S)}, ${Math.round(m.z * S)})px ` +
-        `· yükseklik ${m.h.toFixed(2)} birim`,
+        `· yükseklik ${m.h.toFixed(2)} birim · koruma maskesi: ${m.masked ? "VAR (sonradan silinmiş)" : "YOK (maske bu kütleyi görmedi)"}`,
     );
   }
 }
