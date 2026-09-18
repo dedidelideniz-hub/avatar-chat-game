@@ -203,6 +203,8 @@ export function QaScene({
     texs: 0,
   });
   const lastScanTrigger = useRef(0);
+  // Gövde ölçümü teşhisi bir kez panele yazılır (bkz. kare döngüsü).
+  const bodyLogged = useRef(false);
 
   const cfg = useMemo<GroundConfig>(() => ({ radius: BOT_R, blocked }), []);
 
@@ -448,7 +450,23 @@ export function QaScene({
     const now = performance.now();
     const c = clockRef.current;
 
-    // ── 0) çizim istatistikleri: önce GEÇEN karenin toplamı alınır (bu ana
+    // ── 0) gövde ölçümü: karakter hangi ölçekle çiziliyor?
+    //    Her görünüm (varsayılan / Samuray / Kraliyet Savaşçısı / Şövalye)
+    //    aynı gövde boyuna normalize edilir; ölçek hâlâ ufak geliyorsa
+    //    `BODY_SCALE_GAIN` (Arena3D) bu satırdaki sayıya göre büyütülür. ──
+    const bm = player.current.bodyMetrics;
+    if (bm && !bodyLogged.current) {
+      bodyLogged.current = true;
+      qaLog(
+        "info",
+        "BODY",
+        `${bm.skin ? "tam gövde skini" : "varsayılan görünüm"}: sınır kutusu ` +
+          `${bm.boxH.toFixed(2)} | uygulanan ölçek ${bm.scale.toFixed(3)} | ` +
+          `dünya gövde yüksekliği ${bm.worldH.toFixed(2)} birim`,
+      );
+    }
+
+    // ── 1) çizim istatistikleri: önce GEÇEN karenin toplamı alınır (bu ana
     //    kadar tüm pass'ler birikmiştir), sonra sayaç bu kare için sıfırlanır.
     //    autoReset kapatıldığı için sıfırlama tek yerden — buradan — yapılır. ──
     const info = gl.info;
@@ -458,19 +476,19 @@ export function QaScene({
     c.texs = info.memory.textures;
     info.reset();
 
-    // ── 1) FPS ölçümü (yumuşatılmış) ──
+    // ── 2) FPS ölçümü (yumuşatılmış) ──
     const inst = 1 / Math.max(rawDt, 1 / 240);
     c.fps += (inst - c.fps) * 0.12;
     qa.fps = c.fps;
 
-    // ── 2) tarama dilimi ──
+    // ── 3) tarama dilimi ──
     if (qa.scanning) scanSlice();
     if (qaScanTrigger.at !== lastScanTrigger.current) {
       lastScanTrigger.current = qaScanTrigger.at;
       startScan();
     }
 
-    // ── 3) yarım saniyelik ölçümler: bölge FPS, çizim yükü, sınır kontrolü ──
+    // ── 4) yarım saniyelik ölçümler: bölge FPS, çizim yükü, sınır kontrolü ──
     if (now - c.tick > 500) {
       c.tick = now;
       c.avg += c.fps;
@@ -540,7 +558,7 @@ export function QaScene({
       }
     }
 
-    // ── 4) test botu: rota takibi + takılma teşhisi ──
+    // ── 5) test botu: rota takibi + takılma teşhisi ──
     const b = bot.current;
     const g = botGroup.current;
     if (!qa.botOn) {

@@ -44,9 +44,10 @@ export const CHAR_HUD = 2;
 
 /** Baş-üstü HUD (can barı + isim etiketi) oranı.
  *  RIG_ROOT_SCALE ile AYNI adımı izler: gövde %15 küçülüp sonra %20 büyüdüğü
- *  için bar da aynı yolu izledi (0.85 × 1.2 ≈ 1.0). Ölçek gruba verildiği
- *  için hem barın boyu hem de yüksekliği karakterle birlikte değişir; bar
- *  büyüyen karakterin kafasına gömülmez, hep hemen üstünde kalır. */
+ *  için bar da aynı yolu izledi (0.85 × 1.2 ≈ 1.0). Bar boyutu burada sabittir;
+ *  karakterin gövde kazancından gelen yükseklik artışı `Arena3D`'deki
+ *  `HEAD_UI_LIFT` ile karşılanır — bar büyüyen karakterin kafasına gömülmez,
+ *  boyu da büyümez. */
 export const HEAD_UI_SCALE = 1;
 
 /**
@@ -56,15 +57,16 @@ export const HEAD_UI_SCALE = 1;
  *   · `fwd`  — nişan yönünde öne kayma (gövde yarıçapının dışına taşar),
  *   · `side` — kullanılan el tarafına yanal kayma,
  *   · `up`   — yerden yükseklik; hem namlu şimşeği hem merminin uçuş
- *              yüksekliğidir. Karakter boyu 0.72 birim, el ≈ 0.46 birim:
- *              0.52 "elden çıkıyor" hissini verirken mermiyi zemin
- *              engebelerinin de üzerinde tutar.
+ *              yüksekliğidir. Gövde artık `BODY_SCALE_GAIN` ile büyüdüğü için
+ *              (Arena3D) karakter 0.94 birim, el ≈ 0.60 birim: 0.66 "elden
+ *              çıkıyor" hissini verirken mermiyi zemin engebelerinin de
+ *              üzerinde tutar.
  * Değerler `S` ile çarpılarak oyun px'ine çevrilir (sim px uzayında çalışır).
  */
 export const MUZZLE = {
   fwd: 0.34,
   side: 0.16,
-  up: 0.52,
+  up: 0.66,
 } as const;
 
 export interface BattleProj {

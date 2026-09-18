@@ -365,6 +365,17 @@ export interface BattleFighter {
   /** Bush stealth: timestamp (performance.now) until which the fighter is
    *  revealed again after attacking / taking damage inside a bush. */
   revealUntil: number;
+  /** QA teşhisi (yalnızca okunur): gövde ölçümü.
+   *  `boxH` sınır kutusu, `span` iskelet kemik açıklığı, `bodyH` seçilen gövde
+   *  yüksekliği ve `scale` uygulanan ölçek. Oyun mantığını etkilemez;
+   *  `qa/QaScene` bunu panele `[BODY]` satırı olarak yazar. */
+  bodyMetrics?: {
+    boxH: number;
+    scale: number;
+    /** Kazançla birlikte dünya cinsinden gövde yüksekliği (birim). */
+    worldH: number;
+    skin: boolean;
+  };
 }
 
 /** Brawl-style bush (stealth) zones — fighters can walk through bushes and
@@ -417,6 +428,27 @@ export function isHiddenFrom(f: BattleFighter, o: BattleFighter): boolean {
  *  gövdenin ~1.5 birimlik siluetiyle aynı, böylece ölçek zıplamıyor. Dünya
  *  cinsinden yükseklik bunun RIG_ROOT_SCALE ile çarpımıdır. */
 const FIGHTER_MODEL_H = 1.5;
+
+/** Arena gövde ölçeği kazancı.
+ *
+ *  Normalizasyon her gövdeyi (varsayılan görünüm, Samuray, Kraliyet Savaşçısı,
+ *  Şövalye, bot ve PvP rakibi) aynı `FIGHTER_MODEL_H` yüksekliğine getirir —
+ *  yani boylar zaten EŞİTTİR. Bu sabit o ortak boyun üstüne uygulanan kazançtır:
+ *  karakter arenada yerdeki taşlara/çalıluğa kıyasla belirgin ve okunur durur
+ *  (ölçüldü: gövde 0.72 dünya birimiydi, harita 34×22 — karakter fazla ufak
+ *  kalıyordu). Baş-üstü can barı aynı adımı `HEAD_UI_LIFT` ile izler, böylece
+ *  bar büyüyen gövdenin kafasına gömülmez. */
+const BODY_SCALE_GAIN = 1.3;
+
+/** Gövde büyürken baş-üstü HUD'ın yukarı kayması (dünya birimi).
+ *  İsim etiketi 1.05, can barı 0.86 yükseklikte durur; kazanç kadar yukarı
+ *  çekilirler — barın BOYU değişmez (bar 1.3× büyümesin). */
+const HEAD_UI_LIFT = (BODY_SCALE_GAIN - 1) * 1.05;
+
+/** Göğüs hizası (rig birimi). Vuruş kıvılcımları ve şimşek sprite'ları bu
+ *  yükseklikten çıkar; gövde kazancıyla birlikte ölçeklenir ki efektler
+ *  büyüyen gövdenin göğsünde kalsın (0.85 × kazanç). */
+const CHEST_Y = 0.85 * BODY_SCALE_GAIN;
 
 /** QA tarayıcısı için işaret: dövüşçü rig'i harita geometrisi DEĞİLDİR.
  *  Kemikli (skinned) gövde/zırh parçalarının bounding box'ı bind-pose'dur ve
@@ -479,22 +511,26 @@ function GlbFighterBodyCore({
     movingRef,
   );
 
-  // Normalize to FIGHTER_MODEL_H.
-  // For character skins (Sketchfab), use skeleton bone heights to avoid
-  // armor mesh inflation. For default models, keep bounding box.
+  // Normalize to FIGHTER_MODEL_H — her görünüm (varsayılan / Samuray /
+  // Kraliyet Savaşçısı / Şövalye) aynı gövde boyuna gelir ve üstüne ortak
+  // `BODY_SCALE_GAIN` uygulanır. Skinlerin kendi aksesuarları (kılıç, kalkan)
+  // de bu kutuya dahildir; ölçüm yalnızca YÜKSEKLİĞİ kullandığı için silahın
+  // yana/yukarı taşması gövdeyi küçültmez (kuantize modellerde `Box3`
+  // iskeletli tepe noktaları dahil ölçülür — gerçek üç.js davranışı).
   const normScale = useMemo(() => {
     scene.updateMatrixWorld(true);
-    if (skinUrl) {
-      // Include the actual soles, not only bone endpoints; external GLB
-      // walking rigs often place foot geometry below the foot bones.
-      const box = new THREE.Box3().setFromObject(scene);
-      return FIGHTER_MODEL_H / Math.max(box.max.y - box.min.y, 0.0001);
-    }
     const box = new THREE.Box3().setFromObject(scene);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    return FIGHTER_MODEL_H / Math.max(size.y, 0.0001);
-  }, [scene, skinUrl]);
+    const boxH = Math.max(box.max.y - box.min.y, 0.0001);
+    const scale = (FIGHTER_MODEL_H * BODY_SCALE_GAIN) / boxH;
+    // QA teşhisi: gövde ölçümü panelde `[BODY]` satırı olarak görünür.
+    fighter.current.bodyMetrics = {
+      boxH,
+      scale,
+      worldH: FIGHTER_MODEL_H * BODY_SCALE_GAIN * RIG_ROOT_SCALE,
+      skin: skinUrl !== null,
+    };
+    return scale;
+  }, [scene, skinUrl, fighter]);
 
   useEffect(() => {
     clone.traverse((obj) => {
@@ -878,7 +914,10 @@ function FighterRig({
     // da hızlıdır: mermi çıkarken gövde çoktan hedefe bakıyor olmalı.
     const maxTurn = (ulting || aimLocked ? 26 : 16) * dt;
     root.current.rotation.y += Math.max(-maxTurn, Math.min(maxTurn, yawDiff));
-    if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
+    // Baş-üstü HUD (isim + can barı) gövde kazancı kadar yukarı kayar:
+    // gövde büyürken bar kafaya gömülmez, hep hemen üstünde kalır.
+    if (barGroup.current)
+      barGroup.current.position.set(f.x / S, HEAD_UI_LIFT, f.y / S);
     // spinning identity ring under the player's feet — dashed ring + orbit
     // dot turning around them, with a soft pulsing glow disc
     if (isPlayer && ringSpin.current) {
@@ -1180,8 +1219,10 @@ function FighterRig({
         </mesh>
         {/* Hit Particle System — vuruş anında göğüsten dışa saçılan kor
           kıymıkları + kısa beyaz çekirdek flaşı. Yönlü yelpaze ve yerçekimi
-          yukarıdaki tek kare döngüsünde hesaplanır. */}
-        <group position={[0, 0.85, 0]}>
+          yukarıdaki tek kare döngüsünde hesaplanır. Yükseklik gövde kazancıyla
+          ölçeklenir: kıvılcımlar büyüyen gövdenin karın boşluğundan değil
+          göğsünden çıkar. */}
+        <group position={[0, CHEST_Y, 0]}>
           {Array.from({ length: HIT_SPARKS }).map((_, i) => (
             <mesh
               key={`sp${i}`}
