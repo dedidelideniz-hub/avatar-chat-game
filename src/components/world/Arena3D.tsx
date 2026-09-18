@@ -357,6 +357,12 @@ export interface BattleFighter {
   aimYaw?: number;
   /** Yön kilidinin kalan süresi (saniye). 0 → kilit yok. */
   aimYawT?: number;
+  /**
+   * 🧭 KALICI bakış yönü (radyan, arena uzayı — modelTurn hariç). Kilit
+   * bittiğinde gövde eski pozisyonuna dönmez: ateş ettiği/yürüdüğü son yönde
+   * kalır. `aimYaw` (kilit) ve hareket yönü buraya da yazılır.
+   */
+  restYaw?: number;
   /** Bot strafe direction after firing (1 or -1). Only used by the AI. */
   strafeDir?: number;
   /** Bot only: how long (seconds) the bot has been barely moving while trying to move. */
@@ -948,22 +954,26 @@ function FighterRig({
     // facing/vy 4 yöne yuvarlandığı için çapraz hedef ıskalanıyordu).
     const aimYaw = f.aimYaw;
     const aimLocked = (f.aimYawT ?? 0) > 0 && typeof aimYaw === "number";
-    let targetYaw: number;
-    if (aimLocked) {
-      targetYaw = (aimYaw as number) + modelTurn;
-    } else if (ulting) {
-      targetYaw =
-        ((f.vy ?? 0) !== 0
-          ? f.vy < 0
-            ? Math.PI
-            : 0
-          : f.facing >= 0
-            ? Math.PI / 2
-            : -Math.PI / 2) + modelTurn;
-    } else if (!f.moving) targetYaw = modelTurn;
-    else if ((f.vy ?? 0) !== 0)
-      targetYaw = (f.vy < 0 ? Math.PI : 0) + modelTurn;
-    else targetYaw = (f.facing >= 0 ? Math.PI / 2 : -Math.PI / 2) + modelTurn;
+    // Kilitli değilken gövdenin döndüğü yön (modelTurn hariç, arena açısı):
+    // yürürken hareket yönü, dururken KALICI bakış yönü (restYaw). Böylece
+    // yetenek/ulti sonrası karakter eski pozisyonuna dönmez, ateş ettiği (ve
+    // yürüdüğü) son yönde kalır.
+    const moveYaw =
+      (f.vy ?? 0) !== 0
+        ? f.vy < 0
+          ? Math.PI
+          : 0
+        : f.facing >= 0
+          ? Math.PI / 2
+          : -Math.PI / 2;
+    let dirYaw: number;
+    if (aimLocked) dirYaw = aimYaw as number;
+    else if (f.moving) dirYaw = moveYaw;
+    else dirYaw = f.restYaw ?? 0;
+    // Kalıcı bakış: atış/yetenek anında nişan açısı, yürürken hareket yönü.
+    if (aimLocked) f.restYaw = aimYaw as number;
+    else if (f.moving) f.restYaw = moveYaw;
+    const targetYaw = dirYaw + modelTurn;
     let yawDiff = targetYaw - root.current.rotation.y;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;

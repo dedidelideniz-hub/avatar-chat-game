@@ -33,7 +33,7 @@ import {
   MAX_RANGE_PX,
   aimState,
   aimedHit,
-  facingDir,
+  bodyDir,
   resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
@@ -994,13 +994,13 @@ export default function BattleScene({
           // ve en fazla MAX_RANGE ilerler. Yön kuralı: MENZİL ÇEMBERİ İÇİNDE
           // düşman varsa ulti ONA GİDER (kilitli tam yön — çapraz hedef kaçmaz).
           // Çember içinde düşman yoksa karakterin baktığı yöne gider.
-          // (facingDir gövde dönüşünü 4 yöne yuvarlar; kilitli hedefte tam
-          // vektör kullanılır, yoksa çaprazdaki düşman ıskalanır.)
+          // (bodyDir gövdenin baktığı TAM açıyı verir — karakter atış
+          // sonrası kendi yönünde kaldığı için kılıç da o hatta iner.)
           const locked = resolveAim(p, b, 0, 0, {
             canLock: !isHiddenFrom(b, p),
             preferLock: true,
           });
-          const dir = locked.locked ? locked : facingDir(p);
+          const dir = locked.locked ? locked : bodyDir(p);
           const crack = emitUltCrack(p, dir.x, dir.y, skillHost, {
             smokeCount: 4,
             smokeGrow: 80,

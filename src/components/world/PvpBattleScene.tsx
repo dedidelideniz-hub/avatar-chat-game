@@ -64,7 +64,7 @@ import {
   MAX_RANGE_PX,
   aimState,
   aimedHit,
-  facingDir,
+  bodyDir,
   resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
@@ -943,7 +943,7 @@ export default function PvpBattleScene({
               canLock: true,
               preferLock: true,
             });
-            const dir = locked.locked ? locked : facingDir(p);
+            const dir = locked.locked ? locked : bodyDir(p);
             // 🎯 Kılıç yere indiği anda gövde yarığın TAM yönüne kilitlenir
             // (hedef kaçmış olsa bile kılıç nereye iniyorsa gövde oraya
             // bakar; facing/vy 4 yönlü olduğu için çapraz kaçıyordu).
@@ -982,8 +982,11 @@ export default function PvpBattleScene({
       // karşı telefondan yayınlanan yön kilidi buraya aynalanır (yerelde her
       // kare azalır, snapshot geldikçe tazelenir).
       tickAimYaw(b, dt);
+      // Rakip de attığı yönde kalır: son nişan açısı kilidi bittiğinde
+      // kaybolmasın diye aimYaw her snapshot'ta aynalanır (gövdenin kalıcı
+      // bakışına `restYaw` olarak yazılır).
+      if (typeof t.aimYaw === "number") b.aimYaw = t.aimYaw;
       if (t.aimYawT > 0) {
-        b.aimYaw = t.aimYaw;
         b.aimYawT = Math.max(b.aimYawT ?? 0, t.aimYawT);
       }
       // Rakibin samuray-kılıç ultisi animasyonu burada akar.

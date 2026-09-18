@@ -73,6 +73,26 @@ export function facingDir(f: { facing: number; vy: number }): AimDir {
   return { x: f.facing >= 0 ? 1 : -1, y: 0, locked: false };
 }
 
+/**
+ * 🧭 Gövdenin GERÇEK bakış yönü. `facingDir` yönü 4 yöne yuvarlar; karakter
+ * atış/yeteneği bıraktıktan sonra `restYaw`'ında (tam açı) kaldığı için,
+ * kilitli hedef yokken atışın/yarığın gideceği yön de gövdenin baktığı tam
+ * açı olmalıdır — yoksa gövde çapraz bakarken mermi eksene sapar.
+ */
+export function bodyDir(f: {
+  facing: number;
+  vy: number;
+  restYaw?: number;
+}): AimDir {
+  const yaw = f.restYaw;
+  if (typeof yaw === "number" && Number.isFinite(yaw)) {
+    const x = Math.sin(yaw);
+    const y = Math.cos(yaw);
+    if (Math.hypot(x, y) > 1e-3) return { x, y, locked: false };
+  }
+  return facingDir(f);
+}
+
 /** İki nokta arasındaki mesafe (px). */
 export function distPx(
   a: { x: number; y: number },
@@ -128,8 +148,10 @@ export function resolveAim(
     return { x: aimDx / mag, y: aimDy / mag, locked: false };
   }
   if (lockable) return lockDir();
-  // Menzil dışında kilit yok: karakterin baktığı yöne, tam menzile atış.
-  return facingDir(caster);
+  // Menzil dışında kilit yok: karakterin baktığı (gövdesinin döndüğü) yöne,
+  // tam menzile atış — gövde atış sonrası kendi yönünde kaldığı için ok ile
+  // mermi aynı hattı gösterir.
+  return bodyDir(caster);
 }
 
 /**

@@ -30,7 +30,7 @@ import {
   MAX_RANGE_PX,
   aimState,
   aimedHit,
-  facingDir,
+  bodyDir,
   rangePoint,
   resolveAim,
   type AimDir,
@@ -335,9 +335,15 @@ export interface UltCrackPath {
  */
 export function ultCrackPath(
   caster: BattleFighter,
-  dirX = facingDir(caster).x,
-  dirY = facingDir(caster).y,
+  dirX?: number,
+  dirY?: number,
 ): UltCrackPath {
+  if (dirX === undefined || dirY === undefined) {
+    // Yön verilmediyse gövdenin baktığı tam açı (restYaw) kullanılır.
+    const body = bodyDir(caster);
+    dirX = body.x;
+    dirY = body.y;
+  }
   const reach = MAX_RANGE_PX;
   return {
     impactX: caster.x + dirX * 50,
