@@ -16,6 +16,7 @@ import {
   randomAvatar,
   type AvatarConfig,
 } from "@/lib/avatar";
+import { wornCharacterSkin } from "@/lib/shop";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "convex/react";
@@ -130,6 +131,11 @@ export default function Studio() {
   // tarafı da aynı kuralı zorlar (profiles.saveProfile).
   const colorLocked =
     (profile?.colorChosen ?? false) && !(profile?.vip ?? false);
+  // 👑 HAZIR KARAKTER GÖRÜNÜMÜ (Kraliyet Savaşçısı / Samuray / Şövalye): bu
+  // modeller ORİJİNAL renklerini korur, seçilen renk onlara uygulanmaz —
+  // bu yüzden üst rengi paleti kapalıdır.
+  const skinWorn = wornCharacterSkin(profile?.equipped);
+  const colorDisabled = colorLocked || skinWorn !== undefined;
 
   const handleSave = async () => {
     const trimmed = username.trim();
@@ -145,7 +151,7 @@ export default function Studio() {
       // Renk hakkı kilitliyse kayıt HER ZAMAN kayıtlı rengi taşır: saç/yüz/
       // kıyafet düzenlemeleri kaydedilebilsin, sunucu renk değişikliği diye
       // reddetmesin.
-      const avatar = colorLocked
+      const avatar = colorDisabled
         ? { ...config, shirt: profile?.avatar.shirt ?? config.shirt }
         : config;
       await saveProfile({ username: trimmed, avatar });
@@ -364,7 +370,16 @@ export default function Studio() {
                 }
               />
 
-              {colorLocked ? (
+              {skinWorn ? (
+                <div className="flex items-start gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-100">
+                  <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    <strong>{skinWorn.name}</strong> görünümü orijinal
+                    renklerini kullanır — hazır karakter modelleri boyanmaz.
+                    Renk yalnızca <strong>varsayılan</strong> görünümde seçilir.
+                  </span>
+                </div>
+              ) : colorLocked ? (
                 <div className="flex items-start gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-100">
                   <Lock className="mt-0.5 size-3.5 shrink-0" />
                   <span>
@@ -416,8 +431,9 @@ export default function Studio() {
                   onClick={() =>
                     setConfig((c) => {
                       const next = randomAvatar();
-                      // Kilitliyken renk korunur (rastgele seçim rengi bozmaz).
-                      return colorLocked ? { ...next, shirt: c.shirt } : next;
+                      // Renk kilitliyken/skin giyiliyken renk korunur
+                      // (rastgele seçim rengi bozmaz).
+                      return colorDisabled ? { ...next, shirt: c.shirt } : next;
                     })
                   }
                   disabled={isSaving}

@@ -41,7 +41,10 @@ import {
   sampleGroundCrack,
   updateGroundCrack,
 } from "@/engine/GroundCrack";
-import { resolveSkinUrl } from "@/engine/EquipmentRegistry";
+import {
+  hasCharacterSkin,
+  resolveSkinUrl,
+} from "@/engine/EquipmentRegistry";
 import {
   RIG_ROOT_SCALE,
   measureStrideRatio,
@@ -484,10 +487,17 @@ function GlbFighterBodyCore({
         }
       }
     });
-    // Oyuncunun oyun girişinde seçtiği renk: savaş alanındaki zırh/beden
-    // dokusu bu renge boyanır — herkes kendi rengiyle dövüşür. Renk, az
-    // önce üretilen bireysel materyal klonlarından başlayarak uygulanır.
-    applyCharacterTint(clone, fighter.current.config?.shirt);
+    // Oyuncunun oyun girişinde seçtiği renk VARSAYILAN görünümü boyar.
+    // TAM karakter skini kuşanılmışsa (Kraliyet Savaşçısı / Samuray / Şövalye)
+    // boyama HİÇ uygulanmaz: o modeller orijinal renklerini (yazarın
+    // dokularını) korur — "skinli karaktere renk seçilmez". Renk, az önce
+    // üretilen bireysel materyal klonlarından başlayarak uygulanır.
+    applyCharacterTint(
+      clone,
+      hasCharacterSkin(fighter.current.equipped)
+        ? null
+        : fighter.current.config?.shirt,
+    );
   }, [clone]);
 
   // Hareket klibi seçimi + adım oranı (modelden BİR KEZ ölçülür).

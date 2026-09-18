@@ -340,7 +340,8 @@ export const PRODUCTS: Product[] = [
     name: "Samuray Savaşçı",
     emoji: "⚔️",
     price: 1200,
-    description: "Stilize düşük poligon samuray — idle/walk/run/jump animasyonları dahil.",
+    description:
+      "Stilize düşük poligon samuray — idle/walk/run/jump animasyonları dahil.",
     vendorId: "moda",
     slot: "chest",
     skinUrl: "/models/skin-samuray.glb",
@@ -350,7 +351,8 @@ export const PRODUCTS: Product[] = [
     name: "Şövalye Karakter",
     emoji: "🛡️",
     price: 1500,
-    description: "Detaylı şövalye zırhlı karakter — idle/walk animasyonları dahil.",
+    description:
+      "Detaylı şövalye zırhlı karakter — idle/walk animasyonları dahil.",
     vendorId: "moda",
     slot: "chest",
     skinUrl: "/models/skin-sevalye.glb",
@@ -360,7 +362,8 @@ export const PRODUCTS: Product[] = [
     name: "Kraliyet Savaşçısı",
     emoji: "⚔️",
     price: 1350,
-    description: "Tam gövdeli, ayakları görünür savaşçı karakter — animasyonlu GLB skin.",
+    description:
+      "Tam gövdeli, ayakları görünür savaşçı karakter — animasyonlu GLB skin.",
     vendorId: "moda",
     slot: "chest",
     skinUrl: "/models/skin-savasci.glb",
@@ -378,6 +381,22 @@ export function getVendor(id: string): Vendor | undefined {
 
 export function productsOf(vendorId: string): Product[] {
   return PRODUCTS.filter((p) => p.vendorId === vendorId);
+}
+
+/**
+ * Kuşanılmış TAM karakter skini (Kraliyet Savaşçısı / Samuray / Şövalye).
+ *
+ * KURAL: hazır karakter modelleri ORİJİNAL renklerini (yazarın dokularını)
+ * korur — oyuncunun seçtiği renk yalnızca VARSAYILAN görünümü boyar. Bu
+ * yüzden skin giyiliyken renk seçimi hiç açılmaz (boşa renk hakkı harcanmaz)
+ * ve 3D tarafta boyama uygulanmaz (bkz. applyCharacterTint çağrıları).
+ */
+export function wornCharacterSkin(
+  equipped: string[] | undefined,
+): Product | undefined {
+  return (equipped ?? [])
+    .map((id) => getProduct(id))
+    .find((product) => product !== undefined && product.skinUrl !== undefined);
 }
 
 /** Daily gift box position + reach radius (world coordinates). */

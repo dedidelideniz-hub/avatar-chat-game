@@ -1,4 +1,5 @@
 import { GlbCharacterPortrait } from "@/engine/GlbAvatar3D";
+import { hasCharacterSkin } from "@/engine/EquipmentRegistry";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -74,7 +75,11 @@ function Aura({ color }: { color: string }) {
         />
       </mesh>
       {/* iç halka — karakterin ayak izi */}
-      <mesh ref={inner} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        ref={inner}
+        position={[0, 0.012, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
         <ringGeometry args={[0.86, 0.95, 64]} />
         <meshBasicMaterial
           color={color}
@@ -85,7 +90,11 @@ function Aura({ color }: { color: string }) {
         />
       </mesh>
       {/* dış halka — nefes alan parıltı */}
-      <mesh ref={outer} position={[0, 0.008, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        ref={outer}
+        position={[0, 0.008, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
         <ringGeometry args={[1.14, 1.24, 64]} />
         <meshBasicMaterial
           color={color}
@@ -124,6 +133,10 @@ export function EntryCharacterStage({
   spin?: boolean;
   className?: string;
 }) {
+  // 👑 Hazır karakter görünümü (Kraliyet Savaşçısı / Samuray / Şövalye)
+  // orijinal renkleriyle gösterilir; seçilen renk yalnızca VARSAYILAN
+  // görünümü boyar. Kaide ışığı da skinde nötr kalır.
+  const skinWorn = hasCharacterSkin(equipped);
   return (
     <div className={className}>
       <Canvas
@@ -143,16 +156,29 @@ export function EntryCharacterStage({
         <hemisphereLight args={["#8fb6ff", "#120c06", 0.5]} />
         <directionalLight position={[2.6, 4.4, 3.4]} intensity={1.35} />
         {/* Seçilen renk karakterin arkasından vurur (rim light) + kaide parıltısı */}
-        <pointLight position={[-1.6, 2.2, -2.2]} intensity={9} distance={9} color={color} />
-        <pointLight position={[0, 0.3, 0]} intensity={4.5} distance={4} color={color} />
+        <pointLight
+          position={[-1.6, 2.2, -2.2]}
+          intensity={9}
+          distance={9}
+          color={color}
+        />
+        <pointLight
+          position={[0, 0.3, 0]}
+          intensity={4.5}
+          distance={4}
+          color={color}
+        />
         <fog attach="fog" args={["#05070f", 7, 14]} />
         <Suspense fallback={null}>
           <group position={[0, 0, 0]}>
+            {/* Renk yalnızca VARSAYILAN görünümü boyar: tam karakter skini
+                (Kraliyet Savaşçısı / Samuray / Şövalye) kuşanılmışsa model
+                orijinal renklerini korur. */}
             <GlbCharacterPortrait
               equipped={equipped}
               height={2.15}
               spin={spin}
-              tint={color}
+              tint={skinWorn ? undefined : color}
             />
           </group>
         </Suspense>

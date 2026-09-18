@@ -12,6 +12,7 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
 import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
+import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
 import {
@@ -650,13 +651,15 @@ function PlayerAvatar3D({
   if (SVG_DEBUG_MODE) {
     return <SvgPlayerAvatar3D posRef={posRef} config={config} equipped={equipped} facingRef={facingRef} />;
   }
-  // Oyuncunun oyun girişinde seçtiği renk karakterin dokusuna boyanır.
+  // Oyuncunun oyun girişinde seçtiği renk karakterin dokusuna boyanır — ama
+  // YALNIZCA varsayılan görünümde: tam karakter skini (Kraliyet Savaşçısı /
+  // Samuray / Şövalye) kuşanılmışsa model orijinal renklerini korur.
   return (
     <GlbAvatar3D
       posRef={posRef}
       facingRef={facingRef}
       equipped={equipped}
-      tint={config.shirt}
+      tint={hasCharacterSkin(equipped) ? undefined : config.shirt}
     />
   );
 }
@@ -761,7 +764,12 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
         facingRef={facingRef}
         equipped={data.equipped ?? []}
         lerpSpeed={12}
-        tint={data.config?.shirt}
+        // Karşı oyuncu da kendi rengini giyer; ama skini varsa orijinal kalır.
+        tint={
+          hasCharacterSkin(data.equipped)
+            ? undefined
+            : data.config?.shirt
+        }
       />
     </>
   );
@@ -845,7 +853,12 @@ function GlbBotAvatar3D({
   // Satıcılar boyanmaz — kendi renklerinde kalır, sadece etraflarında
   // simli parıltı döner (tezgâh başında oldukları belli olsun).
   const isVendor = bot?.def.isVendor === true;
-  const tint = isVendor ? undefined : bot?.def.config?.shirt;
+  // Skin kuşanmış botlar (ve satıcılar) boyanmaz: orijinal görünümlerini
+  // korurlar. Diğer botlar kendi karakter rengiyle dolaşır.
+  const tint =
+    isVendor || hasCharacterSkin(equipped)
+      ? undefined
+      : bot?.def.config?.shirt;
 
   return (
     <GlbAvatar3D

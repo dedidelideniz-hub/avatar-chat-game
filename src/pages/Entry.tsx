@@ -10,6 +10,7 @@ import {
   WINS_PER_LEVEL,
   winsToNextLevel,
 } from "@/lib/levels";
+import { wornCharacterSkin } from "@/lib/shop";
 import { useProgress } from "@react-three/drei";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -127,6 +128,10 @@ export default function Entry() {
   // 👑 RENK HAKKI: karakter rengi TEK SEFER seçilir; yalnızca VIP üyeler
   // serbestçe değiştirir. Sunucu tarafında da zorlanır (profiles.saveProfile).
   const colorLocked = (profile?.colorChosen ?? false) && !isVip;
+  // 👑 HAZIR KARAKTER GÖRÜNÜMÜ: Kraliyet Savaşçısı / Samuray / Şövalye kendi
+  // orijinal renkleriyle oynanır — bu modellerde renk seçimi kapalıdır.
+  const skinWorn = wornCharacterSkin(profile?.equipped);
+  const colorDisabled = colorLocked || skinWorn !== undefined;
   const membership = membershipInfo(
     profile?.vip ?? false,
     profile?.vipUntil ?? undefined,
@@ -152,7 +157,7 @@ export default function Entry() {
     if (!profile) return;
     setEntering(true);
     try {
-      if (!colorLocked && color !== profile.avatar.shirt) {
+      if (!colorDisabled && color !== profile.avatar.shirt) {
         await saveProfile({
           username: profile.username,
           avatar: { ...profile.avatar, shirt: color },
@@ -269,7 +274,9 @@ export default function Entry() {
 
             <span className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-200 backdrop-blur">
               <Palette className="size-3" />
-              {characterColorLabel(color)}
+              {skinWorn
+                ? `${skinWorn.emoji} ${skinWorn.name}`
+                : characterColorLabel(color)}
             </span>
 
             <EntryCharacterStage
@@ -392,84 +399,103 @@ export default function Entry() {
             </div>
             <p className="mt-1 text-[11px] font-semibold leading-5 text-white/45">
               Girişte yalnızca rengini seç — saç, yüz ve kıyafet detaylarını
-              istediğin zaman Stüdyo'dan ayarlayabilirsin. Renk yalnızca ANA
+              istediğin zaman Stüdyodan ayarlayabilirsin. Renk yalnızca ANA
               KARAKTERİ boyar: botlar ve rakipler kendi renkleriyle savaşır.
+              Kraliyet Savaşçısı, Samuray ve Şövalye görünümleri ise orijinal
+              renkleriyle oynanır — onlarda renk seçilmez.
             </p>
 
-            <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-6">
-              {CHARACTER_COLORS.map((c) => {
-                const selected = c.hex === color;
-                const premium = c.vip === true;
-                const locked = premium && !isVip;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => {
-                      if (locked) {
-                        // VIP'ye özel premium renk: kilitliyken seçilemez,
-                        // nereden alınacağı söylenir.
-                        toast.info(
-                          `👑 ${c.label} VIP üyeliğe özel — VIP alınca çantana eklenir.`,
-                        );
-                        return;
+            {skinWorn ? (
+              <p className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-100">
+                <Crown className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  <strong>{skinWorn.name}</strong> görünümü orijinal renklerini
+                  kullanır — hazır karakter modelleri boyanmaz. Kendi rengini
+                  seçmek için Stüdyodan <strong>varsayılan</strong> görünüme
+                  geç.
+                </span>
+              </p>
+            ) : (
+              <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-6">
+                {CHARACTER_COLORS.map((c) => {
+                  const selected = c.hex === color;
+                  const premium = c.vip === true;
+                  const locked = premium && !isVip;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        if (locked) {
+                          // VIP'ye özel premium renk: kilitliyken seçilemez,
+                          // nereden alınacağı söylenir.
+                          toast.info(
+                            `👑 ${c.label} VIP üyeliğe özel — VIP alınca çantana eklenir.`,
+                          );
+                          return;
+                        }
+                        // Renk hakkı kullanıldıysa palet kilitlidir.
+                        if (colorLocked && c.hex !== color) {
+                          toast.info(
+                            "🎨 Rengini bir kez seçtin — değiştirmek için 👑 VIP üyelik gerekiyor.",
+                          );
+                          return;
+                        }
+                        setColor(c.hex);
+                      }}
+                      aria-label={c.label}
+                      aria-pressed={selected}
+                      title={locked ? `${c.label} — VIP üyeliğe özel` : c.label}
+                      className={`group relative aspect-square w-full overflow-hidden rounded-2xl border transition-transform active:scale-95 ${
+                        selected
+                          ? "border-white/80 ring-2 ring-amber-300 ring-offset-2 ring-offset-[#0a0f1c]"
+                          : locked
+                            ? "border-amber-300/40"
+                            : "border-white/15 hover:border-white/40"
+                      } ${locked ? "opacity-60" : colorLocked ? "opacity-70" : ""}`}
+                      style={
+                        premium
+                          ? {
+                              // Premium renkler düz değil: parlayan ve yarı
+                              // saydam görünen bir küre (oyun içindeki
+                              // parlama + şeffaflık efektinin palet hali).
+                              background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${c.hex} 58%)`,
+                              boxShadow: `0 0 16px ${c.hex}, inset 0 0 12px rgba(255,255,255,0.35)`,
+                              borderColor: c.hex,
+                              opacity: locked ? 0.6 : 0.9,
+                            }
+                          : { backgroundColor: c.hex }
                       }
-                      // Renk hakkı kullanıldıysa palet kilitlidir.
-                      if (colorLocked && c.hex !== color) {
-                        toast.info(
-                          "🎨 Rengini bir kez seçtin — değiştirmek için 👑 VIP üyelik gerekiyor.",
-                        );
-                        return;
-                      }
-                      setColor(c.hex);
-                    }}
-                    aria-label={c.label}
-                    aria-pressed={selected}
-                    title={locked ? `${c.label} — VIP üyeliğe özel` : c.label}
-                    className={`group relative aspect-square w-full overflow-hidden rounded-2xl border transition-transform active:scale-95 ${
-                      selected
-                        ? "border-white/80 ring-2 ring-amber-300 ring-offset-2 ring-offset-[#0a0f1c]"
-                        : locked
-                          ? "border-amber-300/40"
-                          : "border-white/15 hover:border-white/40"
-                    } ${locked ? "opacity-60" : colorLocked ? "opacity-70" : ""}`}
-                    style={
-                      premium
-                        ? {
-                            // Premium renkler düz değil: parlayan ve yarı
-                            // saydam görünen bir küre (oyun içindeki
-                            // parlama + şeffaflık efektinin palet hali).
-                            background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${c.hex} 58%)`,
-                            boxShadow: `0 0 16px ${c.hex}, inset 0 0 12px rgba(255,255,255,0.35)`,
-                            borderColor: c.hex,
-                            opacity: locked ? 0.6 : 0.9,
-                          }
-                        : { backgroundColor: c.hex }
-                    }
-                  >
-                    {premium && (
-                      <span className="absolute right-1 top-1 flex items-center gap-0.5 rounded-full bg-black/55 px-1 py-0.5 text-[7px] font-black tracking-wider text-amber-200 backdrop-blur">
-                        {locked ? (
-                          <Lock className="size-2" />
-                        ) : (
-                          <Crown className="size-2" />
-                        )}
-                        VIP
-                      </span>
-                    )}
-                    {selected && (
-                      <span className="entry-color-pop absolute inset-0 rounded-2xl shadow-[0_0_22px_rgba(255,255,255,0.35)]" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                    >
+                      {premium && (
+                        <span className="absolute right-1 top-1 flex items-center gap-0.5 rounded-full bg-black/55 px-1 py-0.5 text-[7px] font-black tracking-wider text-amber-200 backdrop-blur">
+                          {locked ? (
+                            <Lock className="size-2" />
+                          ) : (
+                            <Crown className="size-2" />
+                          )}
+                          VIP
+                        </span>
+                      )}
+                      {selected && (
+                        <span className="entry-color-pop absolute inset-0 rounded-2xl shadow-[0_0_22px_rgba(255,255,255,0.35)]" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {colorLocked ? (
               <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-amber-100">
                 <Lock className="mt-0.5 size-3 shrink-0" />
                 Renk hakkını kullandın! Karakter rengi tek sefer seçilir —
                 değiştirmek için 👑 VIP üyelik gerekiyor.
+              </p>
+            ) : skinWorn ? (
+              <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
+                🎨 Renk hakkın harcanmadı: renk seçimi yalnızca varsayılan
+                görünümde yapılır.
               </p>
             ) : (
               <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
@@ -484,9 +510,9 @@ export default function Entry() {
             </p>
 
             <p className="mt-3 flex items-center justify-between text-[11px] font-bold text-white/50">
-              <span>Seçilen renk</span>
+              <span>{skinWorn ? "Görünüm" : "Seçilen renk"}</span>
               <span className="text-amber-200">
-                {characterColorLabel(color)}
+                {skinWorn ? skinWorn.name : characterColorLabel(color)}
               </span>
             </p>
           </div>

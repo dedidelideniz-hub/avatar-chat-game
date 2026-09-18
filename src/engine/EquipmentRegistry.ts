@@ -112,3 +112,15 @@ export function resolveSkinUrl(equipped: string[]): string | null {
   for (const id of equipped) { const def = registry.get(id); if (def?.skinUrl) return def.skinUrl; }
   return null;
 }
+
+/**
+ * Bu kuşanımda TAM karakter skini var mı?
+ *
+ * KURAL: karakter renk seçimi yalnızca VARSAYILAN görünümü boyar. Kraliyet
+ * Savaşçısı, Samuray, Şövalye gibi hazır karakter modelleri ORİJİNAL
+ * renklerini (yazarın dokularını) korur — seçilen renk onlara uygulanmaz
+ * (bkz. GlbAvatar3D.applyCharacterTint çağrıları).
+ */
+export function hasCharacterSkin(equipped: string[] | undefined): boolean {
+  return equipped !== undefined && resolveSkinUrl(equipped) !== null;
+}

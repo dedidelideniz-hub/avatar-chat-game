@@ -190,6 +190,9 @@ export default function ArenaTest() {
   const profile = useQuery(api.profiles.getMyProfile);
   const colorLocked =
     (profile?.colorChosen ?? false) && !(profile?.vip ?? false);
+  // 👑 Hazır karakter görünümü seçildiyse renk seçimi kapalıdır: Kraliyet
+  // Savaşçısı / Samuray / Şövalye modelleri ORİJİNAL renklerini kullanır.
+  const skinWorn = setup.playerSkin !== "";
   /** Botun KENDİ rengi: oyuncunun renginden bağımsız, seviyeye göre sabit. */
   const botColor = opponentColorFor(
     `test-bot:${setup.level}`,
@@ -265,14 +268,19 @@ export default function ArenaTest() {
               title="Karakter rengi"
               value={setup.playerColor}
               onChange={(hex) => patch({ playerColor: hex })}
-              locked={colorLocked}
+              locked={colorLocked || skinWorn}
             />
-            {colorLocked && (
+            {skinWorn ? (
+              <p className="rounded-xl border border-[#22d3ee]/30 bg-[#22d3ee]/10 px-2.5 py-1.5 text-[11px] font-bold leading-4 text-[#c8f4ff]">
+                🎨 Hazır karakter görünümü orijinal renklerini kullanır — renk
+                seçimi kapalı. Renk yalnızca "Varsayılan" görünümde geçerli.
+              </p>
+            ) : colorLocked ? (
               <p className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[11px] font-bold leading-4 text-amber-100">
                 🔒 Renk hakkını kullandın — karakter rengi tek sefer seçilir.
                 Değiştirmek için 👑 VIP üyelik gerekiyor.
               </p>
-            )}
+            ) : null}
             <div>
               <div className="mb-2 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
                 Görünüm (skin)

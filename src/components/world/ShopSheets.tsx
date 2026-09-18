@@ -7,14 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import {
-  Check,
-  Coins,
-  Crown as CrownIcon,
-  Lock,
-  Shirt,
-  X,
-} from "lucide-react";
+import { Check, Coins, Crown as CrownIcon, Lock, Shirt, X } from "lucide-react";
 import { VIP_CHARACTER_COLORS, characterColorLabel } from "@/lib/avatar";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -28,6 +21,7 @@ import {
   VIP_PRICE,
   WEAR_SLOT_LABELS,
   type Vendor,
+  wornCharacterSkin,
 } from "@/lib/shop";
 import { playSound } from "@/lib/sounds";
 
@@ -48,7 +42,12 @@ const sheetPanel = {
   initial: { y: 70, opacity: 0, scale: 0.96 },
   animate: { y: 0, opacity: 1, scale: 1 },
   exit: { y: 70, opacity: 0, scale: 0.96 },
-  transition: { type: "spring" as const, stiffness: 380, damping: 27, mass: 0.85 },
+  transition: {
+    type: "spring" as const,
+    stiffness: 380,
+    damping: 27,
+    mass: 0.85,
+  },
 };
 
 /* ── Smoke particle system for gaming-style preview ────────── */
@@ -86,11 +85,14 @@ function SmokeParticles() {
       dummy.scale.setScalar(p.scale * (1 + y * 0.3));
       dummy.updateMatrix();
       meshRef.current!.setMatrixAt(i, dummy.matrix);
-      const color = new THREE.Color(0x8888aa).multiplyScalar(0.4 + opacity * 0.6);
+      const color = new THREE.Color(0x8888aa).multiplyScalar(
+        0.4 + opacity * 0.6,
+      );
       meshRef.current!.setColorAt(i, color);
     });
     meshRef.current.instanceMatrix.needsUpdate = true;
-    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+    if (meshRef.current.instanceColor)
+      meshRef.current.instanceColor.needsUpdate = true;
   });
 
   return (
@@ -114,9 +116,18 @@ function GlowRing() {
     }
   });
   return (
-    <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.48, 0]}>
+    <mesh
+      ref={ringRef}
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, -0.48, 0]}
+    >
       <ringGeometry args={[0.35, 0.6, 32]} />
-      <meshBasicMaterial color="#6366f1" transparent opacity={0.3} side={THREE.DoubleSide} />
+      <meshBasicMaterial
+        color="#6366f1"
+        transparent
+        opacity={0.3}
+        side={THREE.DoubleSide}
+      />
     </mesh>
   );
 }
@@ -144,7 +155,7 @@ function EnergySparks() {
     if (!meshRef.current) return;
     const t = performance.now() / 1000;
     sparks.forEach((s, i) => {
-      const rawY = ((t * s.speed + s.phase) % 1.5);
+      const rawY = (t * s.speed + s.phase) % 1.5;
       const y = rawY - 0.4;
       dummy.position.set(
         s.x + Math.sin(t * 2 + s.phase) * 0.1,
@@ -161,7 +172,12 @@ function EnergySparks() {
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, SPARK_COUNT]}>
       <sphereGeometry args={[1, 6, 4]} />
-      <meshBasicMaterial color="#a78bfa" transparent opacity={0.8} depthWrite={false} />
+      <meshBasicMaterial
+        color="#a78bfa"
+        transparent
+        opacity={0.8}
+        depthWrite={false}
+      />
     </instancedMesh>
   );
 }
@@ -222,7 +238,11 @@ function SkinPreviewScene({ url }: { url: string }) {
         castShadow
       />
       {/* Dark floor */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.48, 0]} receiveShadow>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.48, 0]}
+        receiveShadow
+      >
         <circleGeometry args={[1.5, 32]} />
         <meshStandardMaterial color="#0f0f1a" roughness={0.9} />
       </mesh>
@@ -245,7 +265,14 @@ export function SkinPreviewModal({
   onBuy,
   onClose,
 }: {
-  product: { id: string; name: string; emoji: string; price: number; description: string; skinUrl?: string };
+  product: {
+    id: string;
+    name: string;
+    emoji: string;
+    price: number;
+    description: string;
+    skinUrl?: string;
+  };
   coins: number;
   owned: boolean;
   onBuy: (id: string) => void;
@@ -299,9 +326,13 @@ export function SkinPreviewModal({
         <div className="flex flex-col items-center gap-3 px-6 pb-5 pt-2">
           <div className="flex items-center gap-2">
             <span className="text-2xl">{product.emoji}</span>
-            <h3 className="text-xl font-extrabold text-white">{product.name}</h3>
+            <h3 className="text-xl font-extrabold text-white">
+              {product.name}
+            </h3>
           </div>
-          <p className="text-center text-sm leading-5 text-white/60">{product.description}</p>
+          <p className="text-center text-sm leading-5 text-white/60">
+            {product.description}
+          </p>
 
           {owned ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/20 px-4 py-2 text-sm font-bold text-green-400">
@@ -338,7 +369,13 @@ const shopPanelVariants = {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: "spring" as const, stiffness: 280, damping: 22, mass: 1.0, delay: 0.15 },
+    transition: {
+      type: "spring" as const,
+      stiffness: 280,
+      damping: 22,
+      mass: 1.0,
+      delay: 0.15,
+    },
   },
   exit: {
     opacity: 0,
@@ -385,7 +422,9 @@ export function ShopSheet({
 
   // Cinematic opening: play shop sound on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useState(() => { playSound("coin"); });
+  useState(() => {
+    playSound("coin");
+  });
 
   const handleBuy = async (productId: string) => {
     setBuyingId(productId);
@@ -400,7 +439,9 @@ export function ShopSheet({
       console.error("Satın alma hatası:", error);
       playSound("error");
       toast.error(
-        error instanceof Error ? error.message : "Satın alınamadı. Tekrar dene.",
+        error instanceof Error
+          ? error.message
+          : "Satın alınamadı. Tekrar dene.",
       );
     } finally {
       setBuyingId(null);
@@ -421,20 +462,21 @@ export function ShopSheet({
 
       {/* Skin preview modal */}
       <AnimatePresence>
-        {previewId && (() => {
-          const prod = products.find((p) => p.id === previewId);
-          if (!prod || !prod.skinUrl) return null;
-          return (
-            <SkinPreviewModal
-              key={previewId}
-              product={prod}
-              coins={coins}
-              owned={owned.includes(prod.id)}
-              onBuy={handleBuy}
-              onClose={() => setPreviewId(null)}
-            />
-          );
-        })()}
+        {previewId &&
+          (() => {
+            const prod = products.find((p) => p.id === previewId);
+            if (!prod || !prod.skinUrl) return null;
+            return (
+              <SkinPreviewModal
+                key={previewId}
+                product={prod}
+                coins={coins}
+                owned={owned.includes(prod.id)}
+                onBuy={handleBuy}
+                onClose={() => setPreviewId(null)}
+              />
+            );
+          })()}
       </AnimatePresence>
 
       {/* Main panel — cinematic scale-in from bottom center */}
@@ -473,7 +515,12 @@ export function ShopSheet({
             <motion.span
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3, type: "spring" as const, stiffness: 400, damping: 20 }}
+              transition={{
+                delay: 0.3,
+                type: "spring" as const,
+                stiffness: 400,
+                damping: 20,
+              }}
               className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-sm font-extrabold text-amber-600 dark:text-amber-400"
               title="Vaelos Parası"
             >
@@ -523,7 +570,12 @@ export function ShopSheet({
                     <motion.div
                       className="absolute -inset-1 bg-gradient-to-r from-transparent via-amber-400/15 to-transparent"
                       animate={{ x: ["-100%", "200%"] }}
-                      transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 3, ease: "easeInOut" }}
+                      transition={{
+                        duration: 2.5,
+                        repeat: Infinity,
+                        repeatDelay: 3,
+                        ease: "easeInOut",
+                      }}
                     />
                   </div>
                 )}
@@ -532,14 +584,22 @@ export function ShopSheet({
                   <motion.div
                     className="pointer-events-none absolute -inset-px rounded-2xl border border-amber-400/30"
                     animate={{ opacity: [0.3, 0.7, 0.3] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
                   />
                 )}
 
                 <motion.span
                   className="relative z-10 text-3xl leading-none"
                   animate={product.skinUrl && !isOwned ? { y: [0, -3, 0] } : {}}
-                  transition={product.skinUrl ? { duration: 2, repeat: Infinity, ease: "easeInOut" } : {}}
+                  transition={
+                    product.skinUrl
+                      ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                      : {}
+                  }
                 >
                   {product.emoji}
                 </motion.span>
@@ -553,7 +613,11 @@ export function ShopSheet({
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    transition={{ type: "spring" as const, stiffness: 500, damping: 20 }}
+                    transition={{
+                      type: "spring" as const,
+                      stiffness: 500,
+                      damping: 20,
+                    }}
                     className="relative z-10 mt-2.5 inline-flex w-fit items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 text-[11px] font-extrabold text-green-600 dark:text-green-400"
                   >
                     <Check className="size-3" /> Sahipsin
@@ -573,7 +637,10 @@ export function ShopSheet({
                           : ""
                       }`}
                       disabled={isBuying || cantAfford}
-                      onClick={(e) => { e.stopPropagation(); handleBuy(product.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleBuy(product.id);
+                      }}
                     >
                       {isBuying ? (
                         <span className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
@@ -603,7 +670,12 @@ const bagPanelVariants = {
     opacity: 1,
     scale: 1,
     y: 0,
-    transition: { type: "spring" as const, stiffness: 320, damping: 24, mass: 0.9 },
+    transition: {
+      type: "spring" as const,
+      stiffness: 320,
+      damping: 24,
+      mass: 0.9,
+    },
   },
   exit: {
     opacity: 0,
@@ -671,6 +743,9 @@ export function BagSheet({
   const profile = useQuery(api.profiles.getMyProfile);
   const isVip = profile?.vip ?? false;
   const colorHex = profile?.avatar.shirt ?? "";
+  // 👑 Hazır karakter görünümü (Kraliyet Savaşçısı / Samuray / Şövalye) kendi
+  // orijinal renkleriyle oynanır: bu görünümdeyken renk giyilemez.
+  const skinWorn = wornCharacterSkin(equipped);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   /** VIP değilken gösterilen yönlendirme (VIP caddedeki köşeden alınır). */
@@ -692,6 +767,13 @@ export function BagSheet({
       showVipInfo();
       return;
     }
+    if (skinWorn) {
+      playSound("error");
+      toast.info(
+        `🎨 ${skinWorn.name} görünümü orijinal renklerini kullanır — renk giymek için varsayılan görünüme geç.`,
+      );
+      return;
+    }
     try {
       await saveProfile({
         username: profile.username,
@@ -704,9 +786,7 @@ export function BagSheet({
     } catch (error) {
       console.error("VIP renk hatası:", error);
       playSound("error");
-      toast.error(
-        error instanceof Error ? error.message : "Renk giyilemedi.",
-      );
+      toast.error(error instanceof Error ? error.message : "Renk giyilemedi.");
     }
   };
   const [flashId, setFlashId] = useState<string | null>(null);
@@ -732,7 +812,9 @@ export function BagSheet({
     } catch (error) {
       console.error("Giy/çıkar hatası:", error);
       toast.error(
-        error instanceof Error ? error.message : "Değiştirilemedi. Tekrar dene.",
+        error instanceof Error
+          ? error.message
+          : "Değiştirilemedi. Tekrar dene.",
       );
     } finally {
       setTogglingId(null);
@@ -832,14 +914,25 @@ export function BagSheet({
             )}
           </div>
           <p className="mt-1 text-[10px] font-semibold leading-4 text-muted-foreground">
-            VIP üyelere özel premium renk: karakterin gövdesi yarı saydam
-            olur ve rengi nabız gibi parlar.
+            VIP üyelere özel premium renk: karakterin gövdesi yarı saydam olur
+            ve rengi nabız gibi parlar.
           </p>
+
+          {skinWorn && (
+            <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300/30 bg-amber-300/10 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-amber-700 dark:text-amber-200">
+              <Lock className="mt-0.5 size-3 shrink-0" />
+              <span>
+                <strong>{skinWorn.name}</strong> görünümü orijinal renklerini
+                kullanır: hazır karakter modelleri boyanmaz, bu yüzden renk
+                giyilemez.
+              </span>
+            </p>
+          )}
 
           <div className="mt-2.5 grid grid-cols-2 gap-2">
             {VIP_CHARACTER_COLORS.map((c) => {
               const worn = c.hex === colorHex;
-              const locked = !isVip;
+              const locked = !isVip || Boolean(skinWorn);
               return (
                 <button
                   key={c.id}
@@ -895,14 +988,18 @@ export function BagSheet({
               className="text-5xl"
               initial={{ rotate: -10, scale: 0 }}
               animate={{ rotate: 0, scale: 1 }}
-              transition={{ delay: 0.25, type: "spring" as const, stiffness: 300, damping: 15 }}
+              transition={{
+                delay: 0.25,
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 15,
+              }}
             >
               🥺
             </motion.span>
             <p className="text-base font-extrabold">Çantan şimdilik boş</p>
             <p className="max-w-xs text-sm text-muted-foreground">
-              Caddedeki tezgâhlara uğra, sevdiğin ürünleri Vaelos Paranla
-              topla.
+              Caddedeki tezgâhlara uğra, sevdiğin ürünleri Vaelos Paranla topla.
             </p>
             <Button className="mt-1 rounded-full" onClick={onBrowseStalls}>
               Tezgâhlara git
@@ -928,9 +1025,7 @@ export function BagSheet({
                     isEquipped
                       ? "border-primary/50 bg-primary/8 shadow-sm shadow-primary/10"
                       : "border-border/70 bg-background"
-                  } ${
-                    isFlashing ? "ring-2 ring-green-400/60" : ""
-                  }`}
+                  } ${isFlashing ? "ring-2 ring-green-400/60" : ""}`}
                 >
                   {/* Equip flash overlay */}
                   {isFlashing && (
@@ -945,7 +1040,7 @@ export function BagSheet({
                   <div className="flex items-start justify-between">
                     <motion.span
                       className="text-3xl leading-none"
-                      animate={isFlashing ? { scale: [1, 1.3, 1] } : {} }
+                      animate={isFlashing ? { scale: [1, 1.3, 1] } : {}}
                       transition={{ duration: 0.35 }}
                     >
                       {product.emoji}
@@ -954,7 +1049,11 @@ export function BagSheet({
                       <motion.span
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        transition={{ type: "spring" as const, stiffness: 500, damping: 20 }}
+                        transition={{
+                          type: "spring" as const,
+                          stiffness: 500,
+                          damping: 20,
+                        }}
                         className="inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-extrabold text-primary-foreground"
                       >
                         <Check className="size-2.5" /> Giyili
@@ -979,7 +1078,9 @@ export function BagSheet({
                     type="button"
                     size="sm"
                     className={`mt-2.5 w-full rounded-full ${
-                      isEquipped ? "" : "bg-primary/10 text-primary hover:bg-primary/20"
+                      isEquipped
+                        ? ""
+                        : "bg-primary/10 text-primary hover:bg-primary/20"
                     }`}
                     variant={isEquipped ? "outline" : "ghost"}
                     disabled={isToggling}
@@ -1040,7 +1141,9 @@ export function VipSheet({
       console.error("VIP satın alma hatası:", error);
       playSound("error");
       toast.error(
-        error instanceof Error ? error.message : "Satın alınamadı. Tekrar dene.",
+        error instanceof Error
+          ? error.message
+          : "Satın alınamadı. Tekrar dene.",
       );
     } finally {
       setBuying(false);
@@ -1060,8 +1163,8 @@ export function VipSheet({
               👑 Kraliyet VIP Köşesi
             </h2>
             <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
-              Cadderin en ayrıcalıklı üyeliği — tüm balon renkleri ve 2
-              premium karakter rengi kapıda.
+              Cadderin en ayrıcalıklı üyeliği — tüm balon renkleri ve 2 premium
+              karakter rengi kapıda.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1090,7 +1193,8 @@ export function VipSheet({
               VIP üyeliğin aktif!
             </p>
             <p className="mt-1 text-sm font-semibold text-amber-700/80 dark:text-amber-300/80">
-              {daysLeft} gün kaldı — tüm balon renklerini sohbetten seçebilirsin.
+              {daysLeft} gün kaldı — tüm balon renklerini sohbetten
+              seçebilirsin.
             </p>
             <Button
               className="mt-4 w-full rounded-full"
