@@ -14,7 +14,12 @@
 //      (kaplama yok), mor (klasik eksik doku rengi) veya simsiyah modeller
 //      koordinatlarıyla raporlanır. Yüksek poligonlu objeler ayrı listede.
 //      Efekt havuzları (MeshBasicMaterial) kasten taranmaz: onlar zaten
-//      dokusuz düz renkli ışıklardır ve gerçek bir bulgu değildir.
+//      dokusuz düz renkli ışıklardır ve gerçek bir bulgu değildir. Dövüşçü
+//      rig'i (GLB gövde + zırh kemikleri + prosedürel yedek + kendi efektleri)
+//      `userData.qaIgnore` ile işaretlidir ve taranmaz: skinned mesh'lerin
+//      bounding box'ı bind-pose'dur, dünya konumu da karakteri takip eder →
+//      "harita sınırının dışında" / "siyah yüzey" gibi onlarca yanlış bulgu
+//      üretiyordu.
 //
 //   3) PERFORMANS — FPS sürekli ölçülür ve harita 6×5 bölgeye ayrılarak her
 //      bölgenin ortalaması/minimumu tutulur ("FPS düşen yer" raporu). Ayrıca
@@ -120,7 +125,17 @@ export function QaScene({
     heavy: [],
     found: 0,
   });
-  const clockRef = useRef({ fps: 0, tick: 0, avg: 0, avgN: 0 });
+  const clockRef = useRef({
+    fps: 0,
+    tick: 0,
+    avg: 0,
+    avgN: 0,
+    // Geçen karenin GERÇEK çizim toplamları (bkz. autoReset notu).
+    calls: 0,
+    tris: 0,
+    geos: 0,
+    texs: 0,
+  });
   const lastScanTrigger = useRef(0);
 
   const cfg = useMemo<GroundConfig>(() => ({ radius: BOT_R, blocked }), []);
@@ -141,6 +156,23 @@ export function QaScene({
     );
   }, []);
 
+  /* ------------------- çizim istatistikleri (renderer.info) ------------- */
+  // EffectComposer bir kareyi BİRDEN FAZLA kez `render()` eder ve
+  // `renderer.info` varsayılan `autoReset` ile HER çağrıda sıfırlanır: panel
+  // bu yüzden zincirin sonundaki tam ekran quad'ını okuyordu ("1 call /
+  // 1 üçgen") ve gerçek çizim yükü hiç görünmüyordu. Sayaç burada kapatılıp
+  // QA'nın kendi kare döngüsünde kare başına bir kez sıfırlanır → gölge +
+  // sahne + bloom + çıkış pass'lerinin tümü birikir.
+  useEffect(() => {
+    const info = gl.info;
+    const prev = info.autoReset;
+    info.autoReset = false;
+    return () => {
+      info.autoReset = prev;
+      info.reset();
+    };
+  }, [gl]);
+
   /* ---------------------------- tarama motoru --------------------------- */
   const startScan = () => {
     const list: THREE.Mesh[] = [];
@@ -149,6 +181,13 @@ export function QaScene({
       if (!mesh.isMesh || !mesh.visible) return;
       // QA'nın kendi görselleri ve efekt havuzları taranmaz.
       if (/^qa-/.test(mesh.name || "")) return;
+      // Dövüşçü rig'i harita geometrisi DEĞİLDİR (bkz. dosya başı notu):
+      // kemikli (skinned) gövde/zırh parçaları bind-pose bbox'ı ve karakteri
+      // takip eden dünya konumu yüzünden yanlış "sınır ihlali" üretir, siyah
+      // kalan göz/kaş dokusu da kasıtlıdır. İşaret `Arena3D`'deki rig kökünde.
+      for (let p: THREE.Object3D | null = mesh; p; p = p.parent) {
+        if (p.userData?.qaIgnore) return;
+      }
       list.push(mesh);
     });
     const s = scan.current;
@@ -197,6 +236,8 @@ export function QaScene({
       const materials = Array.isArray(mesh.material)
         ? mesh.material
         : [mesh.material];
+      // Haritaya ait mi? (Efekt katmanları Basic/additive'dir — bkz. sınır testi)
+      let litStandard = false;
       for (const entry of materials) {
         const mat = entry as THREE.MeshStandardMaterial | undefined;
         if (!mat) {
@@ -227,15 +268,21 @@ export function QaScene({
         // (Runtime'da materyal Basic de olabildiği için bu bayrak gerçek
         //  nesneden okunur; tip tarafında MeshStandardMaterial görünür.)
         if (!mat.isMeshStandardMaterial) continue;
+        litStandard = true;
         const c = mat.color;
         if (!c) continue;
         const max = Math.max(c.r, c.g, c.b);
         const min = Math.min(c.r, c.g, c.b);
+        // "Mor" = kırmızı + MAVİ yüksek, yeşil düşük. Mavi şartı olmadan
+        // doygun sıcak ışımalar da yakalanıyordu: Three.js renkleri lineer
+        // uzaya çevirdiği için `#ff6a1f` bile (1.00, 0.15, 0.01) oluyor, yani
+        // g < 0.25 — dikilitaş rünü ve lavlar "eksik doku" sanılıyordu.
         if (
           !map &&
           mat.emissive &&
-          mat.emissive.g < 0.25 &&
-          mat.emissive.r > 0.45
+          mat.emissive.r > 0.45 &&
+          mat.emissive.b > 0.45 &&
+          mat.emissive.g < 0.25
         ) {
           qaLog(
             "warn",
@@ -271,8 +318,11 @@ export function QaScene({
         }
       }
 
-      // Sınır kontrolü: yalnızca hafif mesh'lerde bbox hesaplanır.
-      if (tris <= BOUNDS_TRI_LIMIT) {
+      // Sınır kontrolü: yalnızca haritaya ait (kaplamalı/standart materyalli)
+      // hafif mesh'lerde bbox hesaplanır. Efekt katmanları (nişan çemberi,
+      // yetenek şeridi, zemindeki halka: Basic + additive) oyuncuyu takip
+      // ettikleri için harita kenarında "sınır ihlali" gibi görünürlerdi.
+      if (litStandard && tris <= BOUNDS_TRI_LIMIT) {
         if (!geo.boundingBox) geo.computeBoundingBox();
         const bb = geo.boundingBox;
         if (bb && !bb.isEmpty()) {
@@ -318,6 +368,16 @@ export function QaScene({
     const dt = Math.min(rawDt, 1 / 20);
     const now = performance.now();
     const c = clockRef.current;
+
+    // ── 0) çizim istatistikleri: önce GEÇEN karenin toplamı alınır (bu ana
+    //    kadar tüm pass'ler birikmiştir), sonra sayaç bu kare için sıfırlanır.
+    //    autoReset kapatıldığı için sıfırlama tek yerden — buradan — yapılır. ──
+    const info = gl.info;
+    c.calls = info.render.calls;
+    c.tris = info.render.triangles;
+    c.geos = info.memory.geometries;
+    c.texs = info.memory.textures;
+    info.reset();
 
     // ── 1) FPS ölçümü (yumuşatılmış) ──
     const inst = 1 / Math.max(rawDt, 1 / 240);
@@ -376,11 +436,12 @@ export function QaScene({
         );
       }
 
-      const info = gl.info;
-      qa.drawCalls = info.render.calls;
-      qa.triangles = info.render.triangles;
-      qa.geometries = info.memory.geometries;
-      qa.textures = info.memory.textures;
+      // Kare döngüsünde toplanan toplamlar: tek pass değil, karenin TÜM
+      // çizim zinciri (gölge + sahne + bloom + çıkış).
+      qa.drawCalls = c.calls;
+      qa.triangles = c.tris;
+      qa.geometries = c.geos;
+      qa.textures = c.texs;
 
       // Sınır ihlali: fizik ARENA_W/H içinde tutar; tutmuyorsa gerçek bir hata.
       const outside = (x: number, y: number) =>

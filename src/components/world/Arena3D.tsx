@@ -372,6 +372,14 @@ export function isHiddenFrom(f: BattleFighter, o: BattleFighter): boolean {
  *  cinsinden yükseklik bunun RIG_ROOT_SCALE ile çarpımıdır. */
 const FIGHTER_MODEL_H = 1.5;
 
+/** QA tarayıcısı için işaret: dövüşçü rig'i harita geometrisi DEĞİLDİR.
+ *  Kemikli (skinned) gövde/zırh parçalarının bounding box'ı bind-pose'dur ve
+ *  dünya konumları karakteri takip eder; taranınca onlarca yanlış "harita
+ *  sınırının dışında" / "dokusuz siyah yüzey" bulgusu üretiyorlardı
+ *  (siyah göz/kaş dokusu zaten kasıtlı). Tarayıcı bu bayrağı taşıyan alt
+ *  ağacı atlar — bkz. `qa/QaScene.startScan`. */
+const FIGHTER_RIG_MARK = { qaIgnore: true };
+
 /** Adım senkronu: ışınlanma sıçramalarını kırpan üst sınır ve "duruyor"
  *  eşiği (px/sn). */
 const MAX_TRACKED_SPEED = 1400;
@@ -1085,7 +1093,7 @@ function FighterRig({
 
   return (
     <>
-      <group ref={root} scale={RIG_ROOT_SCALE}>
+      <group ref={root} scale={RIG_ROOT_SCALE} userData={FIGHTER_RIG_MARK}>
         {/* rigged GLB character (same model as the street world); the
           procedural body renders while it loads and stays as fallback */}
         <group ref={bodyWrap}>
