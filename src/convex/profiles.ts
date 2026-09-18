@@ -34,7 +34,10 @@ export const WINS_PER_LEVEL = 100;
 
 /** Level 1 starts at zero wins; each next level requires another 100 wins. */
 export function levelFromWins(wins: number): number {
-  return Math.min(MAX_LEVEL, Math.floor(Math.max(0, wins) / WINS_PER_LEVEL) + 1);
+  return Math.min(
+    MAX_LEVEL,
+    Math.floor(Math.max(0, wins) / WINS_PER_LEVEL) + 1,
+  );
 }
 
 function withWallet(profile: Doc<"profiles">) {
@@ -50,6 +53,10 @@ function withWallet(profile: Doc<"profiles">) {
     equippedAbility: profile.equippedAbility ?? DEFAULT_ABILITY,
     // VIP is a time-boxed membership — derive the live flag at read time.
     vip: (profile.vipUntil ?? 0) > Date.now(),
+    // Karakter rengi TEK SEFER seçilir (VIP hariç). Eski profillerde alan
+    // olmadığı için `false` kabul edilir: oyuncu hakkını henüz kullanmamış
+    // sayılır ve ilk rengini seçebilir.
+    colorChosen: profile.colorChosen ?? false,
   };
 }
 
@@ -143,12 +150,34 @@ export const saveProfile = mutation({
 
     if (existing !== null) {
       assertNotBanned(existing);
+      // RENK HAKKI (tek sefer, VIP hariç) — istemciye güvenilmez, kural burada
+      // da zorlanır: renk değiştirilmek isteniyorsa ve oyuncu hakkını zaten
+      // kullanmışsa (ve VIP değilse) kayıt reddedilir.
+      const vip = (existing.vipUntil ?? 0) > now;
+      const colorChanged = avatar.shirt !== existing.avatar.shirt;
+      const colorChosen = existing.colorChosen ?? false;
+      if (colorChanged && colorChosen && !vip) {
+        throw new Error(
+          "Karakter rengini yalnızca bir kez seçebilirsin. Rengini değiştirmek için 👑 VIP üyelik gerekiyor.",
+        );
+      }
       await ctx.db.patch(existing._id, {
         username: trimmed,
         avatar,
+        // Renk seçildiği anda hak kullanılmış sayılır (VIP de aynı bayrağı
+        // taşır: üyeliği biterse kilit geri gelir).
+        colorChosen: colorChanged ? true : colorChosen,
         updatedAt: now,
-      });    return { _id: existing._id, userId, username: trimmed, avatar, createdAt: existing.createdAt, updatedAt: now };
-  }
+      });
+      return {
+        _id: existing._id,
+        userId,
+        username: trimmed,
+        avatar,
+        createdAt: existing.createdAt,
+        updatedAt: now,
+      };
+    }
 
     const id = await ctx.db.insert("profiles", {
       userId,
@@ -162,7 +191,19 @@ export const saveProfile = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    return { _id: id, userId, username: trimmed, avatar, coins: STARTING_COINS, items: [], equipped: [], abilities: [DEFAULT_ABILITY], equippedAbility: DEFAULT_ABILITY, createdAt: now, updatedAt: now };
+    return {
+      _id: id,
+      userId,
+      username: trimmed,
+      avatar,
+      coins: STARTING_COINS,
+      items: [],
+      equipped: [],
+      abilities: [DEFAULT_ABILITY],
+      equippedAbility: DEFAULT_ABILITY,
+      createdAt: now,
+      updatedAt: now,
+    };
   },
 });
 
@@ -365,7 +406,9 @@ export const claimDailyBonus = mutation({
     assertNotBanned(profile);
     const last = profile.lastDailyClaim ?? 0;
     if (Date.now() - last < DAILY_BONUS_MS) {
-      throw new Error("Bugünkü hediye kutusu çoktan toplandı. Yarın tekrar uğra!");
+      throw new Error(
+        "Bugünkü hediye kutusu çoktan toplandı. Yarın tekrar uğra!",
+      );
     }
     const coins = (profile.coins ?? STARTING_COINS) + DAILY_BONUS;
     await ctx.db.patch(profile._id, {

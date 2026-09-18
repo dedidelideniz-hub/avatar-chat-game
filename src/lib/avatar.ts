@@ -138,6 +138,46 @@ export const CHARACTER_COLORS: readonly CharacterColor[] = [
 export const VIP_CHARACTER_COLORS: readonly CharacterColor[] =
   CHARACTER_COLORS.filter((c) => c.vip === true);
 
+/** VIP olmayan standart palet — bot/rakip karakterler yalnızca bunlardan alır. */
+export const BASE_CHARACTER_COLORS: readonly CharacterColor[] =
+  CHARACTER_COLORS.filter((c) => c.vip !== true);
+
+/**
+ * Rakip/bot karakterin KENDİ rengi.
+ *
+ * KURAL: oyuncunun seçtiği renk yalnızca ANA KARAKTERİ boyar. Bot ve rakipler
+ * kendi rengini korur; rengi oyuncunun seçimi asla değiştirmez. Yine de bot
+ * rengi oyuncununkiyle birebir aynı olursa iki karakter ayırt edilemez — bu
+ * yüzden `seed` (bot adı + seviye) ile KARARLI bir palet rengi seçilir ve
+ * oyuncunun rengi dışlanır: bot her maçta aynı rengi giyer, oyuncu rengini
+ * değiştirse bile.
+ */
+export function opponentColorFor(
+  seed: string,
+  exclude?: string | null,
+): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const pool = BASE_CHARACTER_COLORS.filter((c) => c.hex !== exclude);
+  const list = pool.length > 0 ? pool : BASE_CHARACTER_COLORS;
+  return list[Math.abs(hash) % list.length].hex;
+}
+
+/**
+ * Bir rakibin avatarını "kendi rengi"yle döndürür: rengi oyuncunun rengiyle
+ * çakışmıyorsa dokunmaz, çakışıyorsa `seed`ten türetilen kararlı renge çevirir.
+ */
+export function withOwnColor(
+  config: AvatarConfig,
+  seed: string,
+  exclude?: string | null,
+): AvatarConfig {
+  if (!exclude || config.shirt !== exclude) return config;
+  return { ...config, shirt: opponentColorFor(seed, exclude) };
+}
+
 /** Hex ile palet tanımı (yoksa undefined). */
 export function characterColorDef(hex: string): CharacterColor | undefined {
   return CHARACTER_COLORS.find((c) => c.hex === hex);

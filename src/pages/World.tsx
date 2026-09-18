@@ -1,7 +1,12 @@
 // The Vaelos street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { StreetScene } from "@/components/world/StreetScene";
-import { GameEngine3D, raycastScreenToSVG, svgToWorld, worldToScreen } from "@/engine/GameEngine3D";
+import {
+  GameEngine3D,
+  raycastScreenToSVG,
+  svgToWorld,
+  worldToScreen,
+} from "@/engine/GameEngine3D";
 
 /** Dev-only Phase 1 GLB avatar test toggle: add ?glbtest=1 to the URL. */
 const glbTestParam =
@@ -86,12 +91,36 @@ const SPAWN = { x: 800, y: 610 };
 
 /** Random things the vendors say in the street chat. */
 const VENDOR_PHRASES: Record<string, string[]> = {
-  dondurma: ["Dondurmaaa! 🍦", "Serin serin dondurmalar!", "Bugün çileklisi bol!"],
-  balon: ["Balon alır mısın? 🎈", "Gökkuşağı balonu kalmadı!", "Rengârenk balonlar!"],
-  oyuncak: ["Oyuncaklarım çok tatlı 🧸", "Ayıcık sana sarılmak ister!", "Zıpzıp topu kaçırma!"],
-  moda: ["Yeni sezon burada! 🕶️", "Şapka sana çok yakışır!", "Caddede şıklık önemli!"],
-  silahci: ["Kılıçlar burada! ⚔️", "Savaşa hazır mısın?", "En sağlam zırhlar benim tezgâhta!"],
-  vip: ["Sana özel fırsat! 👑", "Balonun rengârenk olsun!", "VIP üyelikle her renk senin!"],
+  dondurma: [
+    "Dondurmaaa! 🍦",
+    "Serin serin dondurmalar!",
+    "Bugün çileklisi bol!",
+  ],
+  balon: [
+    "Balon alır mısın? 🎈",
+    "Gökkuşağı balonu kalmadı!",
+    "Rengârenk balonlar!",
+  ],
+  oyuncak: [
+    "Oyuncaklarım çok tatlı 🧸",
+    "Ayıcık sana sarılmak ister!",
+    "Zıpzıp topu kaçırma!",
+  ],
+  moda: [
+    "Yeni sezon burada! 🕶️",
+    "Şapka sana çok yakışır!",
+    "Caddede şıklık önemli!",
+  ],
+  silahci: [
+    "Kılıçlar burada! ⚔️",
+    "Savaşa hazır mısın?",
+    "En sağlam zırhlar benim tezgâhta!",
+  ],
+  vip: [
+    "Sana özel fırsat! 👑",
+    "Balonun rengârenk olsun!",
+    "VIP üyelikle her renk senin!",
+  ],
 };
 
 /** An autonomous street walker — a bot that wanders the road on its own. */
@@ -561,8 +590,8 @@ function AbilitiesSheet({
         })}
       </div>
       <p className="mt-4 text-center text-xs font-semibold text-muted-foreground">
-        Yetenek, savaşta süper güç olarak kullanılır — hasar vererek
-        doldurulur. ⚔️
+        Yetenek, savaşta süper güç olarak kullanılır — hasar vererek doldurulur.
+        ⚔️
       </p>
     </GameSheet>
   );
@@ -649,7 +678,11 @@ function ProfileSheet({
   onEdit: () => void;
 }) {
   return (
-    <GameSheet title={`👤 ${username}`} subtitle="Vaelos Kimliği" onClose={onClose}>
+    <GameSheet
+      title={`👤 ${username}`}
+      subtitle="Vaelos Kimliği"
+      onClose={onClose}
+    >
       <div className="mt-5 flex items-center gap-5">
         <div className="relative shrink-0">
           <AvatarPreview config={config} className="block h-32 w-auto" />
@@ -665,7 +698,8 @@ function ProfileSheet({
             </p>
           )}
           <p className="flex items-center gap-2 font-extrabold">
-            <span className="text-lg">{CURRENCY_EMOJI}</span> {formatCoins(coins)} SP
+            <span className="text-lg">{CURRENCY_EMOJI}</span>{" "}
+            {formatCoins(coins)} SP
           </p>
           <p className="flex items-center gap-2 font-extrabold">
             <span className="text-lg">🎒</span> {items.length} ürün
@@ -705,7 +739,9 @@ function StallsSheet({
             <span className="text-2xl">{v.emoji}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-extrabold">{v.short}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{v.name}</p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {v.name}
+              </p>
             </div>
             <Button
               size="sm"
@@ -844,13 +880,15 @@ export default function World() {
   const svgRef = useRef<SVGSVGElement>(null);
   const worldGroupRef = useRef<SVGGElement>(null);
   const playerSvgRef = useRef<SVGSVGElement>(null);
-    const playerWorldGroupRef = useRef<SVGGElement>(null);
+  const playerWorldGroupRef = useRef<SVGGElement>(null);
   const playerRef = useRef<SVGGElement>(null);
   const spriteRef = useRef<SVGGElement>(null);
   const avatarSvgCache = useRef<SVGSVGElement | null>(null);
   const remoteSpriteCache = useRef(new Map<string, SVGGElement>());
   const remotePoseCache = useRef(new Map<string, SVGSVGElement>());
-  const remotePlayerSelectRef = useRef<((entry: PresenceEntry<WorldPresence>) => void) | null>(null);
+  const remotePlayerSelectRef = useRef<
+    ((entry: PresenceEntry<WorldPresence>) => void) | null
+  >(null);
 
   const posRef = useRef({ x: SPAWN.x, y: SPAWN.y });
   const facingRef = useRef(1);
@@ -876,7 +914,10 @@ export default function World() {
   const [stallsOpen, setStallsOpen] = useState(false);
   const [vipOpen, setVipOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
-  const [targetMarker, setTargetMarker] = useState<{ x: number; y: number } | null>(null);
+  const [targetMarker, setTargetMarker] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
   const waypointsRef = useRef<{ x: number; y: number }[]>([]);
@@ -887,42 +928,47 @@ export default function World() {
   // Cache querySelector results for bots to avoid per-frame DOM traversal.
   const botSpriteCache = useRef(new Map<string, SVGGElement>());
   const botPoseCache = useRef(new Map<string, SVGSVGElement>());
-  const botsRef = useRef(
-    [
-      ...BOT_DEFS.map((def) => ({
-        def,
-        pos: { x: def.x, y: def.y },
-        facing: 1,
-        vy: 0,
-        phase: 0,
-        moving: false,
-        path: BOT_PATHS.get(def.id)!,
-        offset: ((djb2(def.id) % 997) / 997) * 40,
-      })),
-      // Vendor NPCs — static shopkeepers at their stalls
-      ...VENDORS.map((v) => ({
-        def: {
-          id: v.id,
-          name: v.short,
-          color: v.color,
-          speed: 0,
-          x: v.x,
-          y: v.y,
-          config: { skin: "#ffd1a3", hair: "short", hairColor: "#3d2f2a", shirt: v.color, pants: "#3d3040", shoes: "#2a2020" } as AvatarConfig,
-          equipped: [] as string[],
-          ability: "isik" as AbilityId,
-          isVendor: true,
-        },
-        pos: { x: v.x, y: v.y },
-        facing: 1,
-        vy: 0,
-        phase: 0,
-        moving: false,
-        path: { pts: [], wait: [], walk: [], total: 0 } as BotPath,
-        offset: 0,
-      })),
-    ],
-  );
+  const botsRef = useRef([
+    ...BOT_DEFS.map((def) => ({
+      def,
+      pos: { x: def.x, y: def.y },
+      facing: 1,
+      vy: 0,
+      phase: 0,
+      moving: false,
+      path: BOT_PATHS.get(def.id)!,
+      offset: ((djb2(def.id) % 997) / 997) * 40,
+    })),
+    // Vendor NPCs — static shopkeepers at their stalls
+    ...VENDORS.map((v) => ({
+      def: {
+        id: v.id,
+        name: v.short,
+        color: v.color,
+        speed: 0,
+        x: v.x,
+        y: v.y,
+        config: {
+          skin: "#ffd1a3",
+          hair: "short",
+          hairColor: "#3d2f2a",
+          shirt: v.color,
+          pants: "#3d3040",
+          shoes: "#2a2020",
+        } as AvatarConfig,
+        equipped: [] as string[],
+        ability: "isik" as AbilityId,
+        isVendor: true,
+      },
+      pos: { x: v.x, y: v.y },
+      facing: 1,
+      vy: 0,
+      phase: 0,
+      moving: false,
+      path: { pts: [], wait: [], walk: [], total: 0 } as BotPath,
+      offset: 0,
+    })),
+  ]);
   const [botBubbles, setBotBubbles] = useState<Record<string, string | null>>(
     {},
   );
@@ -930,7 +976,7 @@ export default function World() {
   const [viewing, setViewing] = useState<string | null>(null);
   const viewedBot =
     viewing !== null && viewing !== "me"
-      ? BOT_DEFS.find((b) => b.id === viewing) ?? null
+      ? (BOT_DEFS.find((b) => b.id === viewing) ?? null)
       : null;
   // Ability shop + duel invites + active battle.
   const [abilitiesOpen, setAbilitiesOpen] = useState(false);
@@ -994,7 +1040,10 @@ export default function World() {
     (profile?.lastDailyClaim ?? 0) > Date.now() - DAILY_BONUS_MS;
   // Speech bubble width adapts to the message and the sender's name.
   const bubbleW = bubble
-    ? Math.min(190, Math.max(150, bubble.length * 7 + 26, username.length * 7.5 + 28))
+    ? Math.min(
+        190,
+        Math.max(150, bubble.length * 7 + 26, username.length * 7.5 + 28),
+      )
     : 0;
 
   // Online street — publish my position and watch other real players.
@@ -1004,9 +1053,7 @@ export default function World() {
   const activeBattleId = pvpBattle?.battleId ?? pvpChallenge?.battleId ?? null;
   const battleDoc = useQuery(
     api.battles.getBattle,
-    activeBattleId
-      ? { battleId: activeBattleId as Id<"battles"> }
-      : "skip",
+    activeBattleId ? { battleId: activeBattleId as Id<"battles"> } : "skip",
   );
   // Shared server clock: bots are driven by (local time + offset) so every
   // device walks them at the same phase, even when phone clocks differ.
@@ -1029,7 +1076,10 @@ export default function World() {
     vip: isVip,
   });
   const othersRef = useRef<PresenceEntry<WorldPresence>[]>([]);
-  const { others: liveOthers } = usePresenceOthers<WorldPresence>("world", sessionId);
+  const { others: liveOthers } = usePresenceOthers<WorldPresence>(
+    "world",
+    sessionId,
+  );
   othersRef.current = liveOthers;
   const remoteRefs = useRef(new Map<string, SVGGElement>());
   const remoteStatesRef = useRef(new Map<string, RemoteState>());
@@ -1169,421 +1219,485 @@ export default function World() {
 
     const loop = (now: number) => {
       try {
-      const dt = Math.min((now - last) / 1000, 0.05);
-      last = now;
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
 
-      // While a duel arena (bot or PvP) is open the street player freezes.
-      const inBattle = battleRef.current !== null || pvpBattleRef.current !== null;
-      const keys = keysRef.current;
-      let vx = 0;
-      let vy = 0;
-      // `moving` and `pos` are also read by the sprite/camera code below.
-      let moving = false;
-      const pos = posRef.current;
-      if (!inBattle) {
-      if (keys.has("ArrowLeft") || keys.has("KeyA")) vx -= 1;
-      if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
-      if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
-      if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
-      // Clamp to 4 cardinal directions only — no diagonal movement.
-      if (vx !== 0 && vy !== 0) {
-        if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
-        else vx = 0;
-      }
-      // Cancel auto-walk when the player takes over with the keyboard.
-      if (keysRef.current.size > 0 && targetRef.current) {
-        targetRef.current = null;
-        waypointsRef.current = [];
-        waypointIdxRef.current = 0;
-        setTargetMarker(null);
-      }
-      // Auto-walk: follow A* waypoints, advancing along the path.
-      const wp = waypointsRef.current;
-      if (wp.length > 0 && targetRef.current) {
-        const p = posRef.current;
-        // Advance waypoint index when close enough.
-        let wi = waypointIdxRef.current;
-        if (wi < wp.length) {
-          const w = wp[wi];
-          const wd = Math.hypot(w.x - p.x, w.y - p.y);
-          if (wd < 18) wi++;
-          waypointIdxRef.current = wi;
-        }
-        if (wi >= wp.length) {
-          // Reached the final destination.
-          targetRef.current = null;
-          waypointsRef.current = [];
-          waypointIdxRef.current = 0;
-          setTargetMarker(null);
-        } else {
-          // Move toward current waypoint.
-          const w = wp[wi];
-          const dx = w.x - p.x;
-          const dy = w.y - p.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist > 1) {
-            // Clamp to dominant cardinal axis — no diagonal movement.
-            if (Math.abs(dx) >= Math.abs(dy)) {
-              vx = dx > 0 ? 1 : -1;
-              vy = 0;
-            } else {
-              vx = 0;
-              vy = dy > 0 ? 1 : -1;
-            }
+        // While a duel arena (bot or PvP) is open the street player freezes.
+        const inBattle =
+          battleRef.current !== null || pvpBattleRef.current !== null;
+        const keys = keysRef.current;
+        let vx = 0;
+        let vy = 0;
+        // `moving` and `pos` are also read by the sprite/camera code below.
+        let moving = false;
+        const pos = posRef.current;
+        if (!inBattle) {
+          if (keys.has("ArrowLeft") || keys.has("KeyA")) vx -= 1;
+          if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
+          if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
+          if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
+          // Clamp to 4 cardinal directions only — no diagonal movement.
+          if (vx !== 0 && vy !== 0) {
+            if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
+            else vx = 0;
           }
-          // Failsafe: if stuck for 3 seconds, cancel.
-          const movedSince = Math.hypot(
-            p.x - stuckRef.current.x,
-            p.y - stuckRef.current.y,
-          );
-          if (movedSince > 2) {
-            stuckRef.current = { x: p.x, y: p.y, since: now };
-          } else if (now - stuckRef.current.since > 3000) {
+          // Cancel auto-walk when the player takes over with the keyboard.
+          if (keysRef.current.size > 0 && targetRef.current) {
             targetRef.current = null;
             waypointsRef.current = [];
             waypointIdxRef.current = 0;
             setTargetMarker(null);
           }
-        }
-      }
-      const len = Math.hypot(vx, vy);
-      moving = len > 0.05;
-      movingRef.current = moving;
-      if (len > 1) {
-        vx /= len;
-        vy /= len;
-      }
-
-      if (moving) {
-        phase += dt * 10;
-        const stepX = vx * PLAYER_SPEED * dt;
-        const stepY = vy * PLAYER_SPEED * dt;
-
-        // ── 1. Try moving on both axes ──
-        let px = Math.min(Math.max(pos.x + stepX, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
-        let py = Math.min(Math.max(pos.y + stepY, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-        let hitX = false;
-        let hitY = false;
-        for (const r of OBSTACLES) {
-          if (circleHitsRect(px, py, PLAYER_RADIUS, r)) { hitX = true; hitY = true; break; }
-        }
-
-        // ── 2. If blocked, try sliding: X only, then Y only ──
-        if (hitX) {
-          const tryX = Math.min(Math.max(pos.x + stepX, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
-          const tryY = pos.y;
-          let blockedX = false;
-          for (const r of OBSTACLES) {
-            if (circleHitsRect(tryX, tryY, PLAYER_RADIUS, r)) { blockedX = true; break; }
-          }
-          if (!blockedX && inWalkable(tryX, tryY)) {
-            px = tryX; py = tryY; hitX = false; hitY = false;
-          } else {
-            const tryX2 = pos.x;
-            const tryY2 = Math.min(Math.max(pos.y + stepY, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-            let blockedY = false;
-            for (const r of OBSTACLES) {
-              if (circleHitsRect(tryX2, tryY2, PLAYER_RADIUS, r)) { blockedY = true; break; }
+          // Auto-walk: follow A* waypoints, advancing along the path.
+          const wp = waypointsRef.current;
+          if (wp.length > 0 && targetRef.current) {
+            const p = posRef.current;
+            // Advance waypoint index when close enough.
+            let wi = waypointIdxRef.current;
+            if (wi < wp.length) {
+              const w = wp[wi];
+              const wd = Math.hypot(w.x - p.x, w.y - p.y);
+              if (wd < 18) wi++;
+              waypointIdxRef.current = wi;
             }
-            if (!blockedY && inWalkable(tryX2, tryY2)) {
-              px = tryX2; py = tryY2; hitX = false; hitY = false;
+            if (wi >= wp.length) {
+              // Reached the final destination.
+              targetRef.current = null;
+              waypointsRef.current = [];
+              waypointIdxRef.current = 0;
+              setTargetMarker(null);
             } else {
-              px = pos.x; py = pos.y;
+              // Move toward current waypoint.
+              const w = wp[wi];
+              const dx = w.x - p.x;
+              const dy = w.y - p.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist > 1) {
+                // Clamp to dominant cardinal axis — no diagonal movement.
+                if (Math.abs(dx) >= Math.abs(dy)) {
+                  vx = dx > 0 ? 1 : -1;
+                  vy = 0;
+                } else {
+                  vx = 0;
+                  vy = dy > 0 ? 1 : -1;
+                }
+              }
+              // Failsafe: if stuck for 3 seconds, cancel.
+              const movedSince = Math.hypot(
+                p.x - stuckRef.current.x,
+                p.y - stuckRef.current.y,
+              );
+              if (movedSince > 2) {
+                stuckRef.current = { x: p.x, y: p.y, since: now };
+              } else if (now - stuckRef.current.since > 3000) {
+                targetRef.current = null;
+                waypointsRef.current = [];
+                waypointIdxRef.current = 0;
+                setTargetMarker(null);
+              }
+            }
+          }
+          const len = Math.hypot(vx, vy);
+          moving = len > 0.05;
+          movingRef.current = moving;
+          if (len > 1) {
+            vx /= len;
+            vy /= len;
+          }
+
+          if (moving) {
+            phase += dt * 10;
+            const stepX = vx * PLAYER_SPEED * dt;
+            const stepY = vy * PLAYER_SPEED * dt;
+
+            // ── 1. Try moving on both axes ──
+            let px = Math.min(
+              Math.max(pos.x + stepX, WORLD_BOUNDS.minX),
+              WORLD_BOUNDS.maxX,
+            );
+            let py = Math.min(
+              Math.max(pos.y + stepY, WORLD_BOUNDS.minY),
+              WORLD_BOUNDS.maxY,
+            );
+            let hitX = false;
+            let hitY = false;
+            for (const r of OBSTACLES) {
+              if (circleHitsRect(px, py, PLAYER_RADIUS, r)) {
+                hitX = true;
+                hitY = true;
+                break;
+              }
+            }
+
+            // ── 2. If blocked, try sliding: X only, then Y only ──
+            if (hitX) {
+              const tryX = Math.min(
+                Math.max(pos.x + stepX, WORLD_BOUNDS.minX),
+                WORLD_BOUNDS.maxX,
+              );
+              const tryY = pos.y;
+              let blockedX = false;
+              for (const r of OBSTACLES) {
+                if (circleHitsRect(tryX, tryY, PLAYER_RADIUS, r)) {
+                  blockedX = true;
+                  break;
+                }
+              }
+              if (!blockedX && inWalkable(tryX, tryY)) {
+                px = tryX;
+                py = tryY;
+                hitX = false;
+                hitY = false;
+              } else {
+                const tryX2 = pos.x;
+                const tryY2 = Math.min(
+                  Math.max(pos.y + stepY, WORLD_BOUNDS.minY),
+                  WORLD_BOUNDS.maxY,
+                );
+                let blockedY = false;
+                for (const r of OBSTACLES) {
+                  if (circleHitsRect(tryX2, tryY2, PLAYER_RADIUS, r)) {
+                    blockedY = true;
+                    break;
+                  }
+                }
+                if (!blockedY && inWalkable(tryX2, tryY2)) {
+                  px = tryX2;
+                  py = tryY2;
+                  hitX = false;
+                  hitY = false;
+                } else {
+                  px = pos.x;
+                  py = pos.y;
+                }
+              }
+            }
+            if (!inWalkable(px, py)) {
+              px = pos.x;
+              py = pos.y;
+            }
+
+            // ── 3. Character separation: push apart if overlapping ──
+            const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
+            // Check against bots/vendors
+            for (const bot of botsRef.current) {
+              const bx = bot.pos.x;
+              const by = bot.pos.y;
+              const dx = px - bx;
+              const dy = py - by;
+              const dist = Math.hypot(dx, dy);
+              if (dist < CHAR_MIN_DIST && dist > 0.1) {
+                const push = (CHAR_MIN_DIST - dist) / 2;
+                px += (dx / dist) * push;
+                py += (dy / dist) * push;
+              }
+            }
+            // Check against remote players
+            for (const remote of othersRef.current) {
+              const d = remote.data;
+              if (!d || typeof d.x !== "number" || typeof d.y !== "number")
+                continue;
+              const st = remoteStatesRef.current.get(remote.sessionId);
+              const rx = st ? st.x : d.x;
+              const ry = st ? st.y : d.y;
+              const dx = px - rx;
+              const dy = py - ry;
+              const dist = Math.hypot(dx, dy);
+              if (dist < CHAR_MIN_DIST && dist > 0.1) {
+                const push = (CHAR_MIN_DIST - dist) / 2;
+                px += (dx / dist) * push;
+                py += (dy / dist) * push;
+              }
+            }
+            // Clamp back to world bounds after separation
+            px = Math.min(Math.max(px, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
+            py = Math.min(Math.max(py, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
+
+            pos.x = px;
+            pos.y = py;
+            // Update facing from horizontal movement direction. When moving
+            // purely vertically, preserve the last horizontal facing so the
+            // character doesn't snap to an arbitrary direction.
+            if (Math.abs(vx) > 0.1) facingRef.current = vx > 0 ? 1 : -1;
+            vyRef.current = vy;
+          } else {
+            // Reset vertical direction when stopped so sprite returns to normal.
+            vyRef.current = 0;
+          }
+
+          // Share my position with the street — throttled while walking, plus a
+          // final "stopped" update so nobody sees you gliding forever.
+          const prof = profileRef.current;
+          if (!inBattle && moving) {
+            if (now - lastPublishRef.current > 150) {
+              lastPublishRef.current = now;
+              publish({
+                ...prof,
+                x: pos.x,
+                y: pos.y,
+                facing: facingRef.current,
+                vy: vyRef.current,
+                moving: true,
+              });
+            }
+            lastPubMovingRef.current = true;
+          } else if (lastPubMovingRef.current) {
+            lastPubMovingRef.current = false;
+            lastPublishRef.current = 0;
+            publish({
+              ...prof,
+              x: pos.x,
+              y: pos.y,
+              facing: facingRef.current,
+              vy: 0,
+              moving: false,
+            });
+          }
+        }
+
+        // Sprite: bob + limb swing while walking, body faces the walking
+        // direction — SNAPPED flip (no lerp through zero!) + smooth
+        // vertical scale for perspective.
+        spriteRef.current?.classList.toggle("walking", moving);
+        // Directional avatar pose: idle (front), walk-up (back), walk-down (front), walk-side (side).
+        const avatarSvg =
+          avatarSvgCache.current ??
+          (spriteRef.current?.querySelector(
+            "svg[data-pose]",
+          ) as SVGSVGElement | null);
+        if (avatarSvg && !avatarSvgCache.current)
+          avatarSvgCache.current = avatarSvg;
+        if (avatarSvg) {
+          if (!moving) avatarSvg.dataset.pose = "idle";
+          else if (vyRef.current < 0) avatarSvg.dataset.pose = "walk-up";
+          else if (vyRef.current > 0) avatarSvg.dataset.pose = "walk-down";
+          else avatarSvg.dataset.pose = "walk-side";
+        }
+        const bob = moving ? Math.sin(phase) * 5 : 0;
+        // FLIP: snap instantly — lerping through 0 makes the sprite
+        // disappear for ~150ms, which looks like teleporting.
+        const flip = facingRef.current < 0 ? -1 : 1;
+        // VERTICAL SCALE: lerp smoothly — never crosses zero.
+        const targetVScale = moving ? 1 + vyRef.current * 0.12 : 1;
+        const prevVScale = spriteRef.current?.dataset.vscale
+          ? Number(spriteRef.current.dataset.vscale)
+          : 1;
+        const newVScale =
+          prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 12);
+        // Build transform string — only write to DOM if it actually changed.
+        const scaleY = newVScale;
+        let newTransform: string;
+        if (flip === 1 && Math.abs(scaleY - 1) < 0.005) {
+          newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)})`;
+        } else if (Math.abs(scaleY - 1) < 0.005) {
+          newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${flip} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
+        } else {
+          newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${flip} ${scaleY.toFixed(3)}) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
+        }
+        if (
+          spriteRef.current &&
+          spriteRef.current.dataset.vscale !== String(newVScale)
+        ) {
+          spriteRef.current.dataset.flip = String(flip);
+          spriteRef.current.dataset.vscale = String(newVScale);
+        }
+        if (spriteRef.current) {
+          spriteRef.current.setAttribute("transform", newTransform);
+        }
+        if (playerRef.current) {
+          const px = pos.x.toFixed(1);
+          const py = pos.y.toFixed(1);
+          const curTransform = playerRef.current.getAttribute("transform");
+          const newTransform = `translate(${px} ${py})`;
+          if (curTransform !== newTransform) {
+            playerRef.current.setAttribute("transform", newTransform);
+          }
+        }
+
+        // Follow camera — the world always fills the screen (cover, no
+        // letterboxing): portrait phones show the full street height and pan
+        // sideways after the player; wide screens show the full width and pan
+        // vertically. While walking the camera tracks the player; when idle it
+        // stays put so the scroll arrows can explore the rest of the street.
+        const view = viewRef.current;
+        if (view.vw > 0) {
+          const maxX = Math.max(WORLD_W - view.vw, 0);
+          const maxY = Math.max(WORLD_H - view.vh, 0);
+          const followX = Math.min(Math.max(pos.x - view.vw / 2, 0), maxX);
+          const followY = Math.min(Math.max(pos.y - view.vh / 2, 0), maxY);
+          const prev = camRef.current;
+          let camX = prev.x >= 0 ? prev.x : followX;
+          let camY = prev.y >= 0 ? prev.y : followY;
+          if (moving || keysRef.current.size > 0 || targetRef.current) {
+            // Walking (keys or tap-to-walk) → follow the player.
+            camX = followX;
+            camY = followY;
+          }
+          if (
+            Math.abs(camX - prev.x) > 0.01 ||
+            Math.abs(camY - prev.y) > 0.01
+          ) {
+            camRef.current = { x: camX, y: camY };
+            // Sync both SVG viewBoxes
+            const vb = `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`;
+            playerSvgRef.current?.setAttribute("viewBox", vb);
+            svgRef.current?.setAttribute("viewBox", vb);
+          }
+        }
+
+        // Autonomous bots — a deterministic time-based loop, so every phone
+        // sees the exact same bots at the exact same spots (no local
+        // randomness, no drift between devices).
+        const botScratch = { x: 0, y: 0, moving: false, facing: 1 };
+        for (const bot of botsRef.current) {
+          // Skip vendors (static shopkeepers with no movement path)
+          if (!bot.path || bot.path.pts.length === 0) continue;
+          const botEl0 = botRefs.current.get(bot.def.id);
+          if (botEl0) botEl0.style.display = "";
+          // The challenged bot teleports to the arena while fighting.
+          if (battleRef.current?.opponent.id === bot.def.id) {
+            if (botEl0) botEl0.style.display = "none";
+            continue;
+          }
+          const wallT =
+            (Date.now() + serverOffsetRef.current) / 1000 + bot.offset;
+          const t =
+            ((wallT % bot.path.total) + bot.path.total) % bot.path.total;
+          botPosAt(bot.path, t, botScratch);
+          bot.pos.x = botScratch.x;
+          bot.pos.y = botScratch.y;
+          bot.moving = botScratch.moving;
+          if (botScratch.moving) bot.facing = botScratch.facing;
+          bot.phase = botScratch.moving ? t * 8 : 0;
+          // Track bot's vertical movement direction from path segment.
+          if (botScratch.moving && bot.path) {
+            const n2 = bot.path.pts.length;
+            const seg2 = Math.floor((t / bot.path.total) * n2) % n2;
+            const pa = bot.path.pts[seg2];
+            const pb = bot.path.pts[(seg2 + 1) % n2];
+            const dy2 = pb.y - pa.y;
+            bot.vy = Math.abs(dy2) > 1 ? Math.sign(dy2) : 0;
+          } else {
+            bot.vy = 0;
+          }
+          // Apply to the DOM imperatively — no React re-render per frame.
+          const botEl = botRefs.current.get(bot.def.id);
+          if (botEl) {
+            const botT = `translate(${bot.pos.x.toFixed(1)} ${bot.pos.y.toFixed(1)})`;
+            if (botEl.getAttribute("transform") !== botT)
+              botEl.setAttribute("transform", botT);
+            const sprite =
+              botSpriteCache.current.get(bot.def.id) ??
+              (botEl.querySelector(".bot-sprite") as SVGGElement | null);
+            if (sprite && !botSpriteCache.current.has(bot.def.id))
+              botSpriteCache.current.set(bot.def.id, sprite);
+            if (sprite) {
+              sprite.classList.toggle("walking", bot.moving);
+              const botSvg =
+                botPoseCache.current.get(bot.def.id) ??
+                (sprite.querySelector(
+                  "svg[data-pose]",
+                ) as SVGSVGElement | null);
+              if (botSvg && !botPoseCache.current.has(bot.def.id))
+                botPoseCache.current.set(bot.def.id, botSvg);
+              if (botSvg) {
+                if (!bot.moving) botSvg.dataset.pose = "idle";
+                else if (bot.vy < 0) botSvg.dataset.pose = "walk-up";
+                else if (bot.vy > 0) botSvg.dataset.pose = "walk-down";
+                else botSvg.dataset.pose = "walk-side";
+              }
+              const botFlip = bot.facing < 0 ? -1 : 1;
+              const botVy = bot.vy ?? 0;
+              const targetBotVS = bot.moving ? 1 + botVy * 0.12 : 1;
+              const prevBotVS = sprite.dataset.vscale
+                ? Number(sprite.dataset.vscale)
+                : 1;
+              const newBotVS =
+                prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 12);
+              const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
+              const botSpriteT = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${botFlip} ${newBotVS.toFixed(3)}) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
+              if (sprite.getAttribute("transform") !== botSpriteT) {
+                sprite.dataset.flip = String(botFlip);
+                sprite.dataset.vscale = String(newBotVS);
+                sprite.setAttribute("transform", botSpriteT);
+              }
             }
           }
         }
-        if (!inWalkable(px, py)) { px = pos.x; py = pos.y; }
 
-        // ── 3. Character separation: push apart if overlapping ──
-        const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
-        // Check against bots/vendors
-        for (const bot of botsRef.current) {
-          const bx = bot.pos.x;
-          const by = bot.pos.y;
-          const dx = px - bx;
-          const dy = py - by;
-          const dist = Math.hypot(dx, dy);
-          if (dist < CHAR_MIN_DIST && dist > 0.1) {
-            const push = (CHAR_MIN_DIST - dist) / 2;
-            px += (dx / dist) * push;
-            py += (dy / dist) * push;
-          }
-        }
-        // Check against remote players
+        // Other real players — glide their sprites toward the shared positions.
         for (const remote of othersRef.current) {
           const d = remote.data;
-          if (!d || typeof d.x !== "number" || typeof d.y !== "number") continue;
-          const st = remoteStatesRef.current.get(remote.sessionId);
-          const rx = st ? st.x : d.x;
-          const ry = st ? st.y : d.y;
-          const dx = px - rx;
-          const dy = py - ry;
-          const dist = Math.hypot(dx, dy);
-          if (dist < CHAR_MIN_DIST && dist > 0.1) {
-            const push = (CHAR_MIN_DIST - dist) / 2;
-            px += (dx / dist) * push;
-            py += (dy / dist) * push;
+          const el = remoteRefs.current.get(remote.sessionId);
+          if (
+            !d ||
+            typeof d.x !== "number" ||
+            typeof d.y !== "number" ||
+            !d.config ||
+            !el
+          ) {
+            continue;
           }
-        }
-        // Clamp back to world bounds after separation
-        px = Math.min(Math.max(px, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
-        py = Math.min(Math.max(py, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-
-        pos.x = px;
-        pos.y = py;
-        // Update facing from horizontal movement direction. When moving
-        // purely vertically, preserve the last horizontal facing so the
-        // character doesn't snap to an arbitrary direction.
-        if (Math.abs(vx) > 0.1) facingRef.current = vx > 0 ? 1 : -1;
-        vyRef.current = vy;
-      } else {
-        // Reset vertical direction when stopped so sprite returns to normal.
-        vyRef.current = 0;
-      }
-
-      // Share my position with the street — throttled while walking, plus a
-      // final "stopped" update so nobody sees you gliding forever.
-      const prof = profileRef.current;
-      if (!inBattle && moving) {
-        if (now - lastPublishRef.current > 150) {
-          lastPublishRef.current = now;
-          publish({
-            ...prof,
-            x: pos.x,
-            y: pos.y,
-            facing: facingRef.current,
-            vy: vyRef.current,
-            moving: true,
-          });
-        }
-        lastPubMovingRef.current = true;
-      } else if (lastPubMovingRef.current) {
-        lastPubMovingRef.current = false;
-        lastPublishRef.current = 0;
-        publish({
-          ...prof,
-            x: pos.x,
-            y: pos.y,
-            facing: facingRef.current,
-            vy: 0,
-            moving: false,
-        });
-      }
-      }
-
-      // Sprite: bob + limb swing while walking, body faces the walking
-      // direction — SNAPPED flip (no lerp through zero!) + smooth
-      // vertical scale for perspective.
-      spriteRef.current?.classList.toggle("walking", moving);
-      // Directional avatar pose: idle (front), walk-up (back), walk-down (front), walk-side (side).
-      const avatarSvg = avatarSvgCache.current ?? (spriteRef.current?.querySelector("svg[data-pose]") as SVGSVGElement | null);
-      if (avatarSvg && !avatarSvgCache.current) avatarSvgCache.current = avatarSvg;
-      if (avatarSvg) {
-        if (!moving) avatarSvg.dataset.pose = "idle";
-        else if (vyRef.current < 0) avatarSvg.dataset.pose = "walk-up";
-        else if (vyRef.current > 0) avatarSvg.dataset.pose = "walk-down";
-        else avatarSvg.dataset.pose = "walk-side";
-      }
-      const bob = moving ? Math.sin(phase) * 5 : 0;
-      // FLIP: snap instantly — lerping through 0 makes the sprite
-      // disappear for ~150ms, which looks like teleporting.
-      const flip = facingRef.current < 0 ? -1 : 1;
-      // VERTICAL SCALE: lerp smoothly — never crosses zero.
-      const targetVScale = moving ? (1 + vyRef.current * 0.12) : 1;
-      const prevVScale = spriteRef.current?.dataset.vscale ? Number(spriteRef.current.dataset.vscale) : 1;
-      const newVScale = prevVScale + (targetVScale - prevVScale) * Math.min(1, dt * 12);
-      // Build transform string — only write to DOM if it actually changed.
-      const scaleY = newVScale;
-      let newTransform: string;
-      if (flip === 1 && Math.abs(scaleY - 1) < 0.005) {
-        newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)})`;
-      } else if (Math.abs(scaleY - 1) < 0.005) {
-        newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${flip} 1) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
-      } else {
-        newTransform = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${flip} ${scaleY.toFixed(3)}) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
-      }
-      if (spriteRef.current && spriteRef.current.dataset.vscale !== String(newVScale)) {
-        spriteRef.current.dataset.flip = String(flip);
-        spriteRef.current.dataset.vscale = String(newVScale);
-      }
-      if (spriteRef.current) {
-        spriteRef.current.setAttribute(
-          "transform",
-          newTransform,
-        );
-      }
-      if (playerRef.current) {
-        const px = pos.x.toFixed(1);
-        const py = pos.y.toFixed(1);
-        const curTransform = playerRef.current.getAttribute("transform");
-        const newTransform = `translate(${px} ${py})`;
-        if (curTransform !== newTransform) {
-          playerRef.current.setAttribute("transform", newTransform);
-        }
-      }
-
-      // Follow camera — the world always fills the screen (cover, no
-      // letterboxing): portrait phones show the full street height and pan
-      // sideways after the player; wide screens show the full width and pan
-      // vertically. While walking the camera tracks the player; when idle it
-      // stays put so the scroll arrows can explore the rest of the street.
-      const view = viewRef.current;
-      if (view.vw > 0) {
-        const maxX = Math.max(WORLD_W - view.vw, 0);
-        const maxY = Math.max(WORLD_H - view.vh, 0);
-        const followX = Math.min(Math.max(pos.x - view.vw / 2, 0), maxX);
-        const followY = Math.min(Math.max(pos.y - view.vh / 2, 0), maxY);
-        const prev = camRef.current;
-        let camX = prev.x >= 0 ? prev.x : followX;
-        let camY = prev.y >= 0 ? prev.y : followY;
-        if (moving || keysRef.current.size > 0 || targetRef.current) {
-          // Walking (keys or tap-to-walk) → follow the player.
-          camX = followX;
-          camY = followY;
-        }
-        if (Math.abs(camX - prev.x) > 0.01 || Math.abs(camY - prev.y) > 0.01) {
-          camRef.current = { x: camX, y: camY };
-          // Sync both SVG viewBoxes
-          const vb = `${camX.toFixed(2)} ${camY.toFixed(2)} ${view.vw.toFixed(2)} ${view.vh.toFixed(2)}`;
-          playerSvgRef.current?.setAttribute("viewBox", vb);
-          svgRef.current?.setAttribute("viewBox", vb);
-        }
-      }
-
-      // Autonomous bots — a deterministic time-based loop, so every phone
-      // sees the exact same bots at the exact same spots (no local
-      // randomness, no drift between devices).
-      const botScratch = { x: 0, y: 0, moving: false, facing: 1 };
-      for (const bot of botsRef.current) {
-        // Skip vendors (static shopkeepers with no movement path)
-        if (!bot.path || bot.path.pts.length === 0) continue;
-        const botEl0 = botRefs.current.get(bot.def.id);
-        if (botEl0) botEl0.style.display = "";
-        // The challenged bot teleports to the arena while fighting.
-        if (battleRef.current?.opponent.id === bot.def.id) {
-          if (botEl0) botEl0.style.display = "none";
-          continue;
-        }
-        const wallT =
-          (Date.now() + serverOffsetRef.current) / 1000 + bot.offset;
-        const t = ((wallT % bot.path.total) + bot.path.total) % bot.path.total;
-        botPosAt(bot.path, t, botScratch);
-        bot.pos.x = botScratch.x;
-        bot.pos.y = botScratch.y;
-        bot.moving = botScratch.moving;
-        if (botScratch.moving) bot.facing = botScratch.facing;
-        bot.phase = botScratch.moving ? t * 8 : 0;
-        // Track bot's vertical movement direction from path segment.
-        if (botScratch.moving && bot.path) {
-          const n2 = bot.path.pts.length;
-          const seg2 = Math.floor((t / bot.path.total) * n2) % n2;
-          const pa = bot.path.pts[seg2];
-          const pb = bot.path.pts[(seg2 + 1) % n2];
-          const dy2 = pb.y - pa.y;
-          bot.vy = Math.abs(dy2) > 1 ? Math.sign(dy2) : 0;
-        } else {
-          bot.vy = 0;
-        }
-        // Apply to the DOM imperatively — no React re-render per frame.
-        const botEl = botRefs.current.get(bot.def.id);
-        if (botEl) {
-          const botT = `translate(${bot.pos.x.toFixed(1)} ${bot.pos.y.toFixed(1)})`;
-          if (botEl.getAttribute("transform") !== botT) botEl.setAttribute("transform", botT);
-          const sprite = botSpriteCache.current.get(bot.def.id) ?? botEl.querySelector(".bot-sprite") as SVGGElement | null;
-          if (sprite && !botSpriteCache.current.has(bot.def.id)) botSpriteCache.current.set(bot.def.id, sprite);
+          let st = remoteStatesRef.current.get(remote.sessionId);
+          if (!st) {
+            st = {
+              x: d.x,
+              y: d.y,
+              facing: typeof d.facing === "number" ? d.facing : 1,
+              vy: 0,
+              moving: !!d.moving,
+              phase: 0,
+            };
+            remoteStatesRef.current.set(remote.sessionId, st);
+          }
+          const k = Math.min(1, dt * 9);
+          st.x += (d.x - st.x) * k;
+          st.y += (d.y - st.y) * k;
+          if (Math.abs(d.x - st.x) > 1.5) st.facing = d.x >= st.x ? 1 : -1;
+          st.vy = typeof d.vy === "number" ? d.vy : 0;
+          st.moving = !!d.moving;
+          if (st.moving) st.phase += dt * 10;
+          el.setAttribute("transform", `translate(${st.x} ${st.y})`);
+          const sprite =
+            remoteSpriteCache.current.get(remote.sessionId) ??
+            (el.querySelector(".remote-sprite") as SVGGElement | null);
+          if (sprite && !remoteSpriteCache.current.has(remote.sessionId))
+            remoteSpriteCache.current.set(remote.sessionId, sprite);
           if (sprite) {
-            sprite.classList.toggle("walking", bot.moving);
-            const botSvg = botPoseCache.current.get(bot.def.id) ?? sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
-            if (botSvg && !botPoseCache.current.has(bot.def.id)) botPoseCache.current.set(bot.def.id, botSvg);
-            if (botSvg) {
-              if (!bot.moving) botSvg.dataset.pose = "idle";
-              else if (bot.vy < 0) botSvg.dataset.pose = "walk-up";
-              else if (bot.vy > 0) botSvg.dataset.pose = "walk-down";
-              else botSvg.dataset.pose = "walk-side";
+            sprite.classList.toggle("walking", st.moving);
+            // Directional avatar pose for remote players.
+            const rSvg =
+              remotePoseCache.current.get(remote.sessionId) ??
+              (sprite.querySelector("svg[data-pose]") as SVGSVGElement | null);
+            if (rSvg && !remotePoseCache.current.has(remote.sessionId))
+              remotePoseCache.current.set(remote.sessionId, rSvg);
+            if (rSvg) {
+              if (!st.moving) rSvg.dataset.pose = "idle";
+              else if (st.vy < 0) rSvg.dataset.pose = "walk-up";
+              else if (st.vy > 0) rSvg.dataset.pose = "walk-down";
+              else rSvg.dataset.pose = "walk-side";
             }
-            const botFlip = bot.facing < 0 ? -1 : 1;
-            const botVy = bot.vy ?? 0;
-            const targetBotVS = bot.moving ? (1 + botVy * 0.12) : 1;
-            const prevBotVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
-            const newBotVS = prevBotVS + (targetBotVS - prevBotVS) * Math.min(1, dt * 12);
-            const bob = bot.moving ? Math.sin(bot.phase) * 5 : 0;
-            const botSpriteT = `translate(0 ${(bob - PLAYER_H).toFixed(1)}) translate(${PLAYER_W / 2} ${PLAYER_H / 2}) scale(${botFlip} ${newBotVS.toFixed(3)}) translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`;
-            if (sprite.getAttribute("transform") !== botSpriteT) {
-              sprite.dataset.flip = String(botFlip);
-              sprite.dataset.vscale = String(newBotVS);
-              sprite.setAttribute("transform", botSpriteT);
-            }
+            const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
+            // Full-body facing: horizontal flip + vertical perspective.
+            const rFlip = st.facing < 0 ? -1 : 1;
+            const targetRVS = st.moving ? 1 + st.vy * 0.12 : 1;
+            const prevRVS = sprite.dataset.vscale
+              ? Number(sprite.dataset.vscale)
+              : 1;
+            const newRVS =
+              prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 16);
+            sprite.dataset.flip = String(rFlip);
+            sprite.dataset.vscale = String(newRVS);
+            // Scale around sprite center — no teleport.
+            sprite.setAttribute(
+              "transform",
+              `translate(0 ${bob - PLAYER_H})` +
+                ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
+                ` scale(${rFlip} ${newRVS.toFixed(3)})` +
+                ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
+            );
           }
         }
-      }
-
-      // Other real players — glide their sprites toward the shared positions.
-      for (const remote of othersRef.current) {
-        const d = remote.data;
-        const el = remoteRefs.current.get(remote.sessionId);
-        if (
-          !d ||
-          typeof d.x !== "number" ||
-          typeof d.y !== "number" ||
-          !d.config ||
-          !el
-        ) {
-          continue;
-        }
-        let st = remoteStatesRef.current.get(remote.sessionId);
-        if (!st) {
-          st = {
-            x: d.x,
-            y: d.y,
-            facing: typeof d.facing === "number" ? d.facing : 1,
-            vy: 0,
-            moving: !!d.moving,
-            phase: 0,
-          };
-          remoteStatesRef.current.set(remote.sessionId, st);
-        }
-        const k = Math.min(1, dt * 9);
-        st.x += (d.x - st.x) * k;
-        st.y += (d.y - st.y) * k;
-        if (Math.abs(d.x - st.x) > 1.5) st.facing = d.x >= st.x ? 1 : -1;
-        st.vy = typeof d.vy === "number" ? d.vy : 0;
-        st.moving = !!d.moving;
-        if (st.moving) st.phase += dt * 10;
-        el.setAttribute("transform", `translate(${st.x} ${st.y})`);
-        const sprite = remoteSpriteCache.current.get(remote.sessionId) ?? el.querySelector(
-          ".remote-sprite",
-        ) as SVGGElement | null;
-        if (sprite && !remoteSpriteCache.current.has(remote.sessionId)) remoteSpriteCache.current.set(remote.sessionId, sprite);
-        if (sprite) {
-          sprite.classList.toggle("walking", st.moving);
-          // Directional avatar pose for remote players.
-          const rSvg = remotePoseCache.current.get(remote.sessionId) ?? sprite.querySelector("svg[data-pose]") as SVGSVGElement | null;
-          if (rSvg && !remotePoseCache.current.has(remote.sessionId)) remotePoseCache.current.set(remote.sessionId, rSvg);
-          if (rSvg) {
-            if (!st.moving) rSvg.dataset.pose = "idle";
-            else if (st.vy < 0) rSvg.dataset.pose = "walk-up";
-            else if (st.vy > 0) rSvg.dataset.pose = "walk-down";
-            else rSvg.dataset.pose = "walk-side";
-          }
-          const bob = st.moving ? Math.sin(st.phase) * 5 : 0;
-          // Full-body facing: horizontal flip + vertical perspective.
-          const rFlip = st.facing < 0 ? -1 : 1;
-          const targetRVS = st.moving ? (1 + st.vy * 0.12) : 1;
-          const prevRVS = sprite.dataset.vscale ? Number(sprite.dataset.vscale) : 1;
-          const newRVS = prevRVS + (targetRVS - prevRVS) * Math.min(1, dt * 16);
-          sprite.dataset.flip = String(rFlip);
-          sprite.dataset.vscale = String(newRVS);
-          // Scale around sprite center — no teleport.
-          sprite.setAttribute(
-            "transform",
-            `translate(0 ${bob - PLAYER_H})` +
-            ` translate(${PLAYER_W / 2} ${PLAYER_H / 2})` +
-            ` scale(${rFlip} ${newRVS.toFixed(3)})` +
-            ` translate(${-PLAYER_W / 2} ${-PLAYER_H / 2})`,
-          );
-        }
-      }
-
       } catch (err) {
         // A single bad frame must never kill the game loop.
         console.error("Oyun döngüsü hatası:", err);
@@ -1691,40 +1805,43 @@ export default function World() {
         from: "Sistem",
         text: `${bot.name} savaşa davet edildi… ⚔️`,
       });
-      window.setTimeout(() => {
-        if (Math.random() < 0.25) {
-          playSound("decline");
-          setInvite({ botId: bot.id, status: "rejected" });
-          appendMessage({
-            id: `local-${nextIdRef.current++}`,
-            from: bot.name,
-            text: "Şu an savaşamıyorum, kusura bakma! 🙏",
-            color: bot.color,
-          });
-          window.setTimeout(() => setInvite(null), 2600);
-        } else {
-          playSound("accept");
-          setInvite({ botId: bot.id, status: "accepted" });
-          appendMessage({
-            id: `local-${nextIdRef.current++}`,
-            from: bot.name,
-            text: "Kabul! Hadi savaş alanına! ⚔️🔥",
-            color: bot.color,
-          });
-          window.setTimeout(() => {
-            playSound("vs");
-            setBattle({
-              opponent: bot,
-              opponentLevel: bot.level,
-              playerAbility: equippedAbility,
-              opponentAbility: bot.ability,
+      window.setTimeout(
+        () => {
+          if (Math.random() < 0.25) {
+            playSound("decline");
+            setInvite({ botId: bot.id, status: "rejected" });
+            appendMessage({
+              id: `local-${nextIdRef.current++}`,
+              from: bot.name,
+              text: "Şu an savaşamıyorum, kusura bakma! 🙏",
+              color: bot.color,
             });
-            setInvite(null);
-            setViewing(null);
-            setAbilitiesOpen(false);
-          }, 1000);
-        }
-      }, 1400 + Math.random() * 1200);
+            window.setTimeout(() => setInvite(null), 2600);
+          } else {
+            playSound("accept");
+            setInvite({ botId: bot.id, status: "accepted" });
+            appendMessage({
+              id: `local-${nextIdRef.current++}`,
+              from: bot.name,
+              text: "Kabul! Hadi savaş alanına! ⚔️🔥",
+              color: bot.color,
+            });
+            window.setTimeout(() => {
+              playSound("vs");
+              setBattle({
+                opponent: bot,
+                opponentLevel: bot.level,
+                playerAbility: equippedAbility,
+                opponentAbility: bot.ability,
+              });
+              setInvite(null);
+              setViewing(null);
+              setAbilitiesOpen(false);
+            }, 1000);
+          }
+        },
+        1400 + Math.random() * 1200,
+      );
     },
     [invite, battle, appendMessage, equippedAbility],
   );
@@ -1843,7 +1960,10 @@ export default function World() {
     const inv = pvpInvite;
     if (!inv) return;
     try {
-      await declineBattle({ battleId: inv.battleId as Id<"battles">, sessionId });
+      await declineBattle({
+        battleId: inv.battleId as Id<"battles">,
+        sessionId,
+      });
     } catch (error) {
       console.error("PvP reddetme hatası:", error);
     }
@@ -1923,9 +2043,7 @@ export default function World() {
           `${def?.emoji ?? ""} ${def?.name ?? "Yetenek"} kuşanıldı!`,
         );
       } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Kuşanılamadı.",
-        );
+        toast.error(error instanceof Error ? error.message : "Kuşanılamadı.");
       }
     },
     [equipAbility],
@@ -1969,35 +2087,38 @@ export default function World() {
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
-      timer = setTimeout(() => {
-        if (Math.random() < 0.55 && BOT_DEFS.length > 0) {
-          // A bot says something — a chat line + a brief speech bubble.
-          const bot = BOT_DEFS[Math.floor(Math.random() * BOT_DEFS.length)];
-          const text =
-            BOT_PHRASES[Math.floor(Math.random() * BOT_PHRASES.length)];
-          appendMessage({
-            id: nextIdRef.current++,
-            from: bot.name,
-            text,
-            color: bot.color,
-          });
-          setBotBubbles((prev) => ({ ...prev, [bot.id]: text }));
-          setTimeout(() => {
-            setBotBubbles((prev) => ({ ...prev, [bot.id]: null }));
-          }, 4000);
-        } else {
-          const vendor = VENDORS[Math.floor(Math.random() * VENDORS.length)];
-          const pool = VENDOR_PHRASES[vendor.id];
-          const text = pool[Math.floor(Math.random() * pool.length)];
-          appendMessage({
-            id: nextIdRef.current++,
-            from: vendor.short,
-            text,
-            color: vendor.color,
-          });
-        }
-        schedule();
-      }, 9000 + Math.random() * 7000);
+      timer = setTimeout(
+        () => {
+          if (Math.random() < 0.55 && BOT_DEFS.length > 0) {
+            // A bot says something — a chat line + a brief speech bubble.
+            const bot = BOT_DEFS[Math.floor(Math.random() * BOT_DEFS.length)];
+            const text =
+              BOT_PHRASES[Math.floor(Math.random() * BOT_PHRASES.length)];
+            appendMessage({
+              id: nextIdRef.current++,
+              from: bot.name,
+              text,
+              color: bot.color,
+            });
+            setBotBubbles((prev) => ({ ...prev, [bot.id]: text }));
+            setTimeout(() => {
+              setBotBubbles((prev) => ({ ...prev, [bot.id]: null }));
+            }, 4000);
+          } else {
+            const vendor = VENDORS[Math.floor(Math.random() * VENDORS.length)];
+            const pool = VENDOR_PHRASES[vendor.id];
+            const text = pool[Math.floor(Math.random() * pool.length)];
+            appendMessage({
+              id: nextIdRef.current++,
+              from: vendor.short,
+              text,
+              color: vendor.color,
+            });
+          }
+          schedule();
+        },
+        9000 + Math.random() * 7000,
+      );
     };
     schedule();
     return () => {
@@ -2128,7 +2249,9 @@ export default function World() {
 
       // Check bots/vendors — vendors get a tighter hit area
       for (const bot of botsRef.current) {
-        const isV = "isVendor" in bot.def && !!(bot.def as { isVendor?: boolean }).isVendor;
+        const isV =
+          "isVendor" in bot.def &&
+          !!(bot.def as { isVendor?: boolean }).isVendor;
         checkChar(
           bot.def.id,
           bot.pos.x,
@@ -2151,7 +2274,10 @@ export default function World() {
       if (closestId) {
         // Unified system: check if this is a vendor NPC
         const clickedBot = botsRef.current.find((b) => b.def.id === closestId);
-        const isVendor = clickedBot && "isVendor" in clickedBot.def && (clickedBot.def as { isVendor?: boolean }).isVendor;
+        const isVendor =
+          clickedBot &&
+          "isVendor" in clickedBot.def &&
+          (clickedBot.def as { isVendor?: boolean }).isVendor;
         if (isVendor) {
           const vendorDef = VENDORS.find((v) => v.id === closestId);
           if (vendorDef) {
@@ -2253,313 +2379,326 @@ export default function World() {
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
-                <GameEngine3D
-          playerPosRef={posRef}
-          playerConfig={config}
-          playerEquipped={equipped}
-          facingRef={facingRef}
-          botsRef={botsRef}
-          moveTarget={targetMarker}
-          isMobile={isMobile}
-          glbTest={glbTestParam}
-          presenceSessionId={sessionId}
-        />
+          <GameEngine3D
+            playerPosRef={posRef}
+            playerConfig={config}
+            playerEquipped={equipped}
+            facingRef={facingRef}
+            botsRef={botsRef}
+            moveTarget={targetMarker}
+            isMobile={isMobile}
+            glbTest={glbTestParam}
+            presenceSessionId={sessionId}
+          />
 
-        {/* character profile card — tapping a character opens it here */}
-        <AnimatePresence>
-          {viewing !== null &&
-            (viewing === "me" ? (
-              <CharacterCard
-                key="me"
-                name={username}
-                subtitle={`Vaelos Caddesi sakini · Level ${level}`}
-                badge={
-                  <>
-                    <span className="flex shrink-0 items-center rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">
-                      ✦ LV {level}
+          {/* character profile card — tapping a character opens it here */}
+          <AnimatePresence>
+            {viewing !== null &&
+              (viewing === "me" ? (
+                <CharacterCard
+                  key="me"
+                  name={username}
+                  subtitle={`Vaelos Caddesi sakini · Level ${level}`}
+                  badge={
+                    <>
+                      <span className="flex shrink-0 items-center rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">
+                        ✦ LV {level}
+                      </span>
+                      {isVip ? (
+                        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
+                          👑 VIP
+                        </span>
+                      ) : null}
+                    </>
+                  }
+                  avatar={
+                    <GlbProfileAvatar
+                      equipped={equipped}
+                      className="block size-24"
+                    />
+                  }
+                  stats={
+                    <>
+                      <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                        {CURRENCY_EMOJI} {formatCoins(coins)} SP
+                      </span>
+                      <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
+                        🎒 {items.length} ürün
+                      </span>
+                      <span className="rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-extrabold text-violet-700">
+                        ⚔️ {battleWins} galibiyet · Level {level}
+                      </span>
+                    </>
+                  }
+                  action={
+                    <Button
+                      size="sm"
+                      className="w-full rounded-full"
+                      onClick={() => navigate("/studio")}
+                    >
+                      Stüdyo'da düzenle
+                    </Button>
+                  }
+                  onClose={() => setViewing(null)}
+                />
+              ) : viewedBot ? (
+                <CharacterCard
+                  key={viewedBot.id}
+                  name={viewedBot.name}
+                  subtitle={`Vaelos Caddesi sakini · Level ${viewedBot.level}`}
+                  badge={
+                    <span className="animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">
+                      ✦ LV {viewedBot.level}
                     </span>
-                    {isVip ? (
+                  }
+                  avatar={
+                    <GlbProfileAvatar
+                      equipped={viewedBot.equipped}
+                      className="block size-24"
+                    />
+                  }
+                  stats={
+                    <>
+                      <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
+                        🎒 {viewedBot.equipped.length} ürün
+                      </span>
+                      <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
+                        {abilityOf(viewedBot.ability).emoji}{" "}
+                        {abilityOf(viewedBot.ability).name}
+                      </span>
+                    </>
+                  }
+                  action={
+                    invite?.botId === viewedBot.id &&
+                    invite.status === "waiting" ? (
+                      <Button
+                        size="sm"
+                        disabled
+                        className="w-full rounded-full"
+                      >
+                        Davet bekleniyor…
+                      </Button>
+                    ) : invite?.botId === viewedBot.id &&
+                      invite.status === "rejected" ? (
+                      <p className="rounded-full bg-red-500/10 px-3 py-2 text-center text-xs font-extrabold text-red-600">
+                        Savaşı reddetti 😔
+                      </p>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
+                        onClick={() => handleInvite(viewedBot)}
+                      >
+                        <Swords className="size-4" /> Savaşa Davet Et
+                      </Button>
+                    )
+                  }
+                  onClose={() => setViewing(null)}
+                />
+              ) : viewedRemote ? (
+                <CharacterCard
+                  key={viewedRemote.sessionId}
+                  name={viewedRemote.data?.name ?? "Oyuncu"}
+                  subtitle="Vaelos Caddesi sakini"
+                  badge={
+                    viewedRemote.data?.vip ? (
                       <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
                         👑 VIP
                       </span>
-                    ) : null}
-                  </>
-                }
-                avatar={
-                  <GlbProfileAvatar
-                    equipped={equipped}
-                    className="block size-24"
-                  />
-                }
-                stats={
-                  <>
-                    <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
-                      {CURRENCY_EMOJI} {formatCoins(coins)} SP
-                    </span>
-                    <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
-                      🎒 {items.length} ürün
-                    </span>
-                    <span className="rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-extrabold text-violet-700">
-                      ⚔️ {battleWins} galibiyet · Level {level}
-                    </span>
-                  </>
-                }
-                action={
-                  <Button
-                    size="sm"
-                    className="w-full rounded-full"
-                    onClick={() => navigate("/studio")}
-                  >
-                    Stüdyo'da düzenle
-                  </Button>
-                }
-                onClose={() => setViewing(null)}
-              />
-            ) : viewedBot ? (
-              <CharacterCard
-                key={viewedBot.id}
-                name={viewedBot.name}
-                subtitle={`Vaelos Caddesi sakini · Level ${viewedBot.level}`}
-                badge={<span className="animate-pulse rounded-full bg-gradient-to-r from-violet-600 via-fuchsia-500 to-amber-400 px-2 py-0.5 text-[10px] font-black text-white shadow-md">✦ LV {viewedBot.level}</span>}
-                avatar={
-                  <GlbProfileAvatar
-                    equipped={viewedBot.equipped}
-                    className="block size-24"
-                  />
-                }
-                stats={
-                  <>
-                    <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-extrabold text-sky-700">
-                      🎒 {viewedBot.equipped.length} ürün
-                    </span>
+                    ) : null
+                  }
+                  avatar={
+                    <GlbProfileAvatar
+                      equipped={viewedRemote.data?.equipped ?? []}
+                      className="block size-24"
+                    />
+                  }
+                  stats={
                     <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
-                      {abilityOf(viewedBot.ability).emoji}{" "}
-                      {abilityOf(viewedBot.ability).name}
+                      {
+                        abilityOf(viewedRemote.data?.ability ?? DEFAULT_ABILITY)
+                          .emoji
+                      }{" "}
+                      {
+                        abilityOf(viewedRemote.data?.ability ?? DEFAULT_ABILITY)
+                          .name
+                      }
                     </span>
-                  </>
-                }
-                action={
-                  invite?.botId === viewedBot.id &&
-                  invite.status === "waiting" ? (
-                    <Button size="sm" disabled className="w-full rounded-full">
-                      Davet bekleniyor…
-                    </Button>
-                  ) : invite?.botId === viewedBot.id &&
-                    invite.status === "rejected" ? (
-                    <p className="rounded-full bg-red-500/10 px-3 py-2 text-center text-xs font-extrabold text-red-600">
-                      Savaşı reddetti 😔
-                    </p>
-                  ) : (
+                  }
+                  action={
                     <Button
                       size="sm"
                       className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
-                      onClick={() => handleInvite(viewedBot)}
+                      onClick={() => handleChallengeRemote(viewedRemote)}
                     >
                       <Swords className="size-4" /> Savaşa Davet Et
                     </Button>
-                  )
-                }
-                onClose={() => setViewing(null)}
-              />
-            ) : viewedRemote ? (
-              <CharacterCard
-                key={viewedRemote.sessionId}
-                name={viewedRemote.data?.name ?? "Oyuncu"}
-                subtitle="Vaelos Caddesi sakini"
-                badge={
-                  viewedRemote.data?.vip ? (
-                    <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
-                      👑 VIP
-                    </span>
-                  ) : null
-                }
-                avatar={
-                  <GlbProfileAvatar
-                    equipped={viewedRemote.data?.equipped ?? []}
-                    className="block size-24"
-                  />
-                }
-                stats={
-                  <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
-                    {abilityOf(viewedRemote.data?.ability ?? DEFAULT_ABILITY)
-                      .emoji}{" "}
-                    {abilityOf(viewedRemote.data?.ability ?? DEFAULT_ABILITY)
-                      .name}
-                  </span>
-                }
-                action={
-                  <Button
-                    size="sm"
-                    className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
-                    onClick={() => handleChallengeRemote(viewedRemote)}
-                  >
-                    <Swords className="size-4" /> Savaşa Davet Et
-                  </Button>
-                }
-                onClose={() => setViewing(null)}
-              />
-            ) : null)}
-        </AnimatePresence>
+                  }
+                  onClose={() => setViewing(null)}
+                />
+              ) : null)}
+          </AnimatePresence>
 
-        {/* PvP duel invite — another player challenges you to a live fight */}
-        <AnimatePresence>
-          {pvpInvite && !battle && !pvpBattle && !pvpChallenge && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-            >
+          {/* PvP duel invite — another player challenges you to a live fight */}
+          <AnimatePresence>
+            {pvpInvite && !battle && !pvpBattle && !pvpChallenge && (
               <motion.div
-                initial={{ scale: 0.85, y: 24, opacity: 0 }}
-                animate={{ scale: 1, y: 0, opacity: 1 }}
-                exit={{ scale: 0.9, y: 12, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 320, damping: 26 }}
-                className="w-full max-w-sm rounded-3xl border-2 border-white/70 bg-[#fffaf0] p-6 text-center shadow-2xl"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
               >
-                <div className="mx-auto flex w-fit items-center justify-center gap-4">
-                  <div className="relative shrink-0">
-                    <AvatarPreview
-                      config={pvpInvite.challenger.config}
-                      className="block h-20 w-auto"
-                    />
-                    <EquippedItems
-                      equipped={pvpInvite.challenger.equipped}
-                      className="pointer-events-none absolute inset-0 h-20 w-auto"
-                    />
+                <motion.div
+                  initial={{ scale: 0.85, y: 24, opacity: 0 }}
+                  animate={{ scale: 1, y: 0, opacity: 1 }}
+                  exit={{ scale: 0.9, y: 12, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 26 }}
+                  className="w-full max-w-sm rounded-3xl border-2 border-white/70 bg-[#fffaf0] p-6 text-center shadow-2xl"
+                >
+                  <div className="mx-auto flex w-fit items-center justify-center gap-4">
+                    <div className="relative shrink-0">
+                      <AvatarPreview
+                        config={pvpInvite.challenger.config}
+                        className="block h-20 w-auto"
+                      />
+                      <EquippedItems
+                        equipped={pvpInvite.challenger.equipped}
+                        className="pointer-events-none absolute inset-0 h-20 w-auto"
+                      />
+                    </div>
+                    <Swords className="size-9 animate-bounce text-orange-500" />
                   </div>
-                  <Swords className="size-9 animate-bounce text-orange-500" />
-                </div>
-                <h2 className="mt-4 text-lg font-extrabold text-[#2b2320]">
-                  {pvpInvite.challenger.name} seni savaşa davet ediyor!
-                </h2>
-                <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                  Gerçek bir oyuncuya karşı canlı düello ⚔️
-                </p>
-                <div className="mt-5 flex gap-3">
-                  <Button
-                    size="lg"
-                    className="flex-1 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow hover:from-rose-400 hover:to-orange-400"
-                    onClick={handleAcceptInvite}
+                  <h2 className="mt-4 text-lg font-extrabold text-[#2b2320]">
+                    {pvpInvite.challenger.name} seni savaşa davet ediyor!
+                  </h2>
+                  <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                    Gerçek bir oyuncuya karşı canlı düello ⚔️
+                  </p>
+                  <div className="mt-5 flex gap-3">
+                    <Button
+                      size="lg"
+                      className="flex-1 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow hover:from-rose-400 hover:to-orange-400"
+                      onClick={handleAcceptInvite}
+                    >
+                      <Swords className="size-4" /> Kabul Et
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="flex-1 rounded-full"
+                      onClick={handleDeclineInvite}
+                    >
+                      Reddet
+                    </Button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* PvP challenge sent — waiting for the opponent to answer */}
+          <AnimatePresence>
+            {pvpChallenge && (
+              <motion.div
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-4"
+              >
+                <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border-2 border-white/70 bg-[#fffaf0] px-4 py-2.5 shadow-xl">
+                  <span className="size-3 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+                  <p className="text-xs font-extrabold text-[#2b2320]">
+                    {pvpChallenge.opponentName} cevap veriyor…
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await cancelBattle({
+                          battleId: pvpChallenge.battleId as Id<"battles">,
+                          sessionId,
+                        });
+                      } catch (error) {
+                        console.error("Davet iptal hatası:", error);
+                      }
+                      setPvpChallenge(null);
+                    }}
+                    className="flex size-7 items-center justify-center rounded-full bg-[#3d2f2a]/10 text-[#3d2f2a] transition-colors hover:bg-[#3d2f2a]/20"
+                    aria-label="Daveti iptal et"
                   >
-                    <Swords className="size-4" /> Kabul Et
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="flex-1 rounded-full"
-                    onClick={handleDeclineInvite}
-                  >
-                    Reddet
-                  </Button>
+                    <X className="size-4" />
+                  </button>
                 </div>
               </motion.div>
-            </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* duel arena — full-screen overlay while fighting */}
+          {battle && (
+            <BattleScene
+              playerName={username}
+              playerConfig={config}
+              playerEquipped={equipped}
+              playerAbility={battle.playerAbility}
+              opponentName={battle.opponent.name}
+              opponentConfig={battle.opponent.config}
+              opponentEquipped={battle.opponent.equipped}
+              opponentAbility={battle.opponentAbility}
+              opponentLevel={battle.opponentLevel}
+              onExit={endBattle}
+            />
           )}
-        </AnimatePresence>
 
-        {/* PvP challenge sent — waiting for the opponent to answer */}
-        <AnimatePresence>
-          {pvpChallenge && (
-            <motion.div
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-4"
-            >
-              <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border-2 border-white/70 bg-[#fffaf0] px-4 py-2.5 shadow-xl">
-                <span className="size-3 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
-                <p className="text-xs font-extrabold text-[#2b2320]">
-                  {pvpChallenge.opponentName} cevap veriyor…
-                </p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      await cancelBattle({
-                        battleId: pvpChallenge.battleId as Id<"battles">,
-                        sessionId,
-                      });
-                    } catch (error) {
-                      console.error("Davet iptal hatası:", error);
-                    }
-                    setPvpChallenge(null);
-                  }}
-                  className="flex size-7 items-center justify-center rounded-full bg-[#3d2f2a]/10 text-[#3d2f2a] transition-colors hover:bg-[#3d2f2a]/20"
-                  aria-label="Daveti iptal et"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* duel arena — full-screen overlay while fighting */}
-        {battle && (
-          <BattleScene
-            playerName={username}
-            playerConfig={config}
-            playerEquipped={equipped}
-            playerAbility={battle.playerAbility}
-            opponentName={battle.opponent.name}
-            opponentConfig={battle.opponent.config}
-            opponentEquipped={battle.opponent.equipped}
-            opponentAbility={battle.opponentAbility}
-            opponentLevel={battle.opponentLevel}
-            onExit={endBattle}
-          />
-        )}
-
-        {/* PvP duel arena — two real phones, live via the battles doc + room */}
-        {pvpBattle && battleDoc?.opponent && battleDoc.status !== "waiting" && (
-          <PvpBattleScene
-            battleId={pvpBattle.battleId}
-            mySessionId={sessionId}
-            playerName={
-              pvpBattle.role === "challenger"
-                ? battleDoc.challenger.name
-                : battleDoc.opponent.name
-            }
-            playerConfig={
-              pvpBattle.role === "challenger"
-                ? battleDoc.challenger.config
-                : battleDoc.opponent.config
-            }
-            playerEquipped={
-              pvpBattle.role === "challenger"
-                ? battleDoc.challenger.equipped
-                : battleDoc.opponent.equipped
-            }
-            playerAbility={
-              pvpBattle.role === "challenger"
-                ? battleDoc.challenger.ability
-                : battleDoc.opponent.ability
-            }
-            opponentName={
-              pvpBattle.role === "challenger"
-                ? battleDoc.opponent.name
-                : battleDoc.challenger.name
-            }
-            opponentConfig={
-              pvpBattle.role === "challenger"
-                ? battleDoc.opponent.config
-                : battleDoc.challenger.config
-            }
-            opponentEquipped={
-              pvpBattle.role === "challenger"
-                ? battleDoc.opponent.equipped
-                : battleDoc.challenger.equipped
-            }
-            opponentAbility={
-              pvpBattle.role === "challenger"
-                ? battleDoc.opponent.ability
-                : battleDoc.challenger.ability
-            }
-            onExit={endPvpBattle}
-          />
-        )}
-
+          {/* PvP duel arena — two real phones, live via the battles doc + room */}
+          {pvpBattle &&
+            battleDoc?.opponent &&
+            battleDoc.status !== "waiting" && (
+              <PvpBattleScene
+                battleId={pvpBattle.battleId}
+                mySessionId={sessionId}
+                playerName={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.challenger.name
+                    : battleDoc.opponent.name
+                }
+                playerConfig={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.challenger.config
+                    : battleDoc.opponent.config
+                }
+                playerEquipped={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.challenger.equipped
+                    : battleDoc.opponent.equipped
+                }
+                playerAbility={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.challenger.ability
+                    : battleDoc.opponent.ability
+                }
+                opponentName={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.opponent.name
+                    : battleDoc.challenger.name
+                }
+                opponentConfig={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.opponent.config
+                    : battleDoc.challenger.config
+                }
+                opponentEquipped={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.opponent.equipped
+                    : battleDoc.challenger.equipped
+                }
+                opponentAbility={
+                  pvpBattle.role === "challenger"
+                    ? battleDoc.opponent.ability
+                    : battleDoc.challenger.ability
+                }
+                onExit={endPvpBattle}
+              />
+            )}
         </main>
 
         {/* bottom control bar — Vaelos style: all buttons centered in one
@@ -2568,42 +2707,77 @@ export default function World() {
         <div className="shrink-0 border-t-4 border-[#3d2f2a]/15 bg-[#f3e0bd] pb-[max(env(safe-area-inset-bottom),0.5rem)]">
           <div className="flex min-w-0 items-center overflow-x-auto px-2 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <div className="mx-auto flex w-max items-center gap-1 sm:gap-2.5">
-              <BarBtn tone="sky" icon={Smartphone} label="Stüdyo" onClick={() => { playSound("click"); navigate("/studio"); }} />
+              <BarBtn
+                tone="sky"
+                icon={Smartphone}
+                label="Stüdyo"
+                onClick={() => {
+                  playSound("click");
+                  navigate("/studio");
+                }}
+              />
               <BarBtn
                 tone="sky"
                 icon={UserRound}
                 label="Profilim"
-                onClick={() => { playSound("click"); setProfileOpen(true); }}
+                onClick={() => {
+                  playSound("click");
+                  setProfileOpen(true);
+                }}
               />
-              <BarBtn tone="sky" icon={Backpack} label="Çanta" badge={items.length} onClick={() => { playSound("click"); setBagOpen(true); }} />
+              <BarBtn
+                tone="sky"
+                icon={Backpack}
+                label="Çanta"
+                badge={items.length}
+                onClick={() => {
+                  playSound("click");
+                  setBagOpen(true);
+                }}
+              />
               <BarBtn
                 tone="sky"
                 icon={Footprints}
                 label="Tezgâhlar"
-                onClick={() => { playSound("click"); setStallsOpen(true); }}
+                onClick={() => {
+                  playSound("click");
+                  setStallsOpen(true);
+                }}
               />
-              <span
-                className="h-8 w-px shrink-0 bg-[#3d2f2a]/15"
-                aria-hidden
+              <span className="h-8 w-px shrink-0 bg-[#3d2f2a]/15" aria-hidden />
+              <BarBtn
+                tone="purple"
+                icon={MessageCircle}
+                label="Sohbet"
+                badge={unread}
+                onClick={openChat}
               />
-              <BarBtn tone="purple" icon={MessageCircle} label="Sohbet" badge={unread} onClick={openChat} />
               <BarBtn
                 tone="purple"
                 icon={Puzzle}
                 label="Yakında"
-                onClick={() => { playSound("click"); toast.info("Bu özellik yakında geliyor! 🔧"); }}
+                onClick={() => {
+                  playSound("click");
+                  toast.info("Bu özellik yakında geliyor! 🔧");
+                }}
               />
               <BarBtn
                 tone="purple"
                 icon={Wand2}
                 label="Yetenekler"
-                onClick={() => { playSound("click"); setAbilitiesOpen(true); }}
+                onClick={() => {
+                  playSound("click");
+                  setAbilitiesOpen(true);
+                }}
               />
               <BarBtn
                 tone="purple"
                 icon={Flower2}
                 label="Yakında"
-                onClick={() => { playSound("click"); toast.info("Bu özellik yakında geliyor! 🌸"); }}
+                onClick={() => {
+                  playSound("click");
+                  toast.info("Bu özellik yakında geliyor! 🌸");
+                }}
               />
             </div>
           </div>
@@ -2727,8 +2901,8 @@ export default function World() {
               Hesabın oyundan yasaklandı
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Yönetici tarafından engellendin. Vaelos Caddesi'ne girişin şu
-              an kapalı — detay için yöneticiye başvurabilirsin.
+              Yönetici tarafından engellendin. Vaelos Caddesi'ne girişin şu an
+              kapalı — detay için yöneticiye başvurabilirsin.
             </p>
             <Button
               className="mt-5 w-full rounded-full"
@@ -2762,7 +2936,10 @@ export default function World() {
 
       {/* Visual Debug — always-visible DEV button + conditional panel */}
       <button
-        onPointerDown={(e) => { e.stopPropagation(); setDebugOpen(true); }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          setDebugOpen(true);
+        }}
         onClick={() => setDebugOpen(true)}
         className="fixed bottom-4 right-4 z-[99999] flex size-11 items-center justify-center rounded-full border border-white/20 bg-black/70 text-sm font-bold text-white shadow-lg backdrop-blur-sm active:scale-95"
         style={{ WebkitTapHighlightColor: "transparent" }}

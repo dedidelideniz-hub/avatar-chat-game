@@ -63,6 +63,7 @@ import {
   aimState,
   aimedHit,
   facingDir,
+  resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
@@ -924,9 +925,14 @@ export default function PvpBattleScene({
           p.samuraiUltT -= dt;
           if (!p.samuraiUltHit && p.samuraiUltT < 0.31) {
             p.samuraiUltHit = true;
-            // Yarık kılıcın yere indiği noktadan başlar ve karakterin BAKTIĞI
-            // yöne doğru en fazla MAX_RANGE ilerler (eskiden rakibin konumuna).
-            const dir = facingDir(p);
+            // Yarık kılıcın yere indiği noktadan başlar ve en fazla MAX_RANGE
+            // ilerler. Yön: menzil çemberi içinde rakip varsa KİLİTLENİR (ulti
+            // ona gider, çapraz hedef kaçmaz); yoksa bakış yönü.
+            const locked = resolveAim(p, b, 0, 0, {
+              canLock: true,
+              preferLock: true,
+            });
+            const dir = locked.locked ? locked : facingDir(p);
             // Hasar yalnızca hat menzil içinde ve yönündeyse işler.
             const hit = aimedHit(p, dir, b, { rangePx: MAX_RANGE_PX });
             const crack = emitUltCrack(p, dir.x, dir.y, skillHost, {

@@ -124,6 +124,10 @@ const schema = defineSchema(
       equipped: v.optional(v.array(v.string())), // product ids currently worn
       lastDailyClaim: v.optional(v.number()), // epoch ms of last gift-box claim
       bubbleColor: v.optional(v.string()), // selected speech-bubble color id
+      // Karakter rengi TEK SEFER seçilir (VIP üyeler serbestçe değiştirir).
+      // İlk renk seçimi yazılınca true olur; sunucu tarafında da zorlanır
+      // (bkz. profiles.saveProfile).
+      colorChosen: v.optional(v.boolean()),
       vipUntil: v.optional(v.number()), // epoch ms the VIP membership expires
       banned: v.optional(v.boolean()), // admin ban — blocks access to the game
       abilities: v.optional(v.array(v.string())), // owned battle supers

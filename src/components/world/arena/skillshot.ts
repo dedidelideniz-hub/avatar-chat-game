@@ -97,29 +97,37 @@ export function inRange(
  *   nişan geçerli sayılır ve yön tamamen oyuncunun gösterdiğidir.
  * @param canLock false ise (ör. düşman çalıda gizliyken) otomatik kilit yok.
  * @param rangePx otomatik kilidin geçerli olduğu menzil.
+ * @param preferLock YETENEK modu: menzil çemberinin İÇİNDE düşman varsa nişan
+ *   her durumda ona kilitlenir — parmak hangi yöne çekilirse çekilsin ("her
+ *   türlü otomatik aim"). Kraliyet Savaşçısı ultisi ve tüm süper yetenekler
+ *   bu modu kullanır; düz vuruş kullanmaz (orada elle nişan önceliklidir).
  */
 export function resolveAim(
   caster: { x: number; y: number; facing: number; vy: number },
   enemy: { x: number; y: number } | null,
   aimDx = 0,
   aimDy = 0,
-  opts: { canLock?: boolean; rangePx?: number } = {},
+  opts: { canLock?: boolean; rangePx?: number; preferLock?: boolean } = {},
 ): AimDir {
+  const rangePx = opts.rangePx ?? MAX_RANGE_PX;
+  const lockable =
+    enemy !== null &&
+    (opts.canLock ?? true) &&
+    distPx(caster, enemy) <= rangePx;
+  const lockDir = (): AimDir => {
+    const dx = enemy!.x - caster.x;
+    const dy = enemy!.y - caster.y;
+    const d = Math.hypot(dx, dy) || 1;
+    return { x: dx / d, y: dy / d, locked: true };
+  };
+  // 0) YETENEK: çember içinde düşman varsa nişan ona kilitlenir (elle nişanı
+  //    da bastırır) — Wild Rift tarzı "menzil içindeyse otomatik aim".
+  if (lockable && opts.preferLock) return lockDir();
   const mag = Math.hypot(aimDx, aimDy);
   if (mag > 0.15) {
     return { x: aimDx / mag, y: aimDy / mag, locked: false };
   }
-  const rangePx = opts.rangePx ?? MAX_RANGE_PX;
-  if (
-    enemy &&
-    (opts.canLock ?? true) &&
-    distPx(caster, enemy) <= rangePx
-  ) {
-    const dx = enemy.x - caster.x;
-    const dy = enemy.y - caster.y;
-    const d = Math.hypot(dx, dy) || 1;
-    return { x: dx / d, y: dy / d, locked: true };
-  }
+  if (lockable) return lockDir();
   // Menzil dışında kilit yok: karakterin baktığı yöne, tam menzile atış.
   return facingDir(caster);
 }

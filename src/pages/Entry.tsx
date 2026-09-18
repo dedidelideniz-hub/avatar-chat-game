@@ -4,7 +4,12 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { CHARACTER_COLORS, characterColorLabel } from "@/lib/avatar";
-import { membershipInfo, rankFromLevel, WINS_PER_LEVEL, winsToNextLevel } from "@/lib/levels";
+import {
+  membershipInfo,
+  rankFromLevel,
+  WINS_PER_LEVEL,
+  winsToNextLevel,
+} from "@/lib/levels";
 import { useProgress } from "@react-three/drei";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -119,6 +124,9 @@ export default function Entry() {
 
   const rank = rankFromLevel(profile?.level ?? 1);
   const isVip = profile?.vip ?? false;
+  // 👑 RENK HAKKI: karakter rengi TEK SEFER seçilir; yalnızca VIP üyeler
+  // serbestçe değiştirir. Sunucu tarafında da zorlanır (profiles.saveProfile).
+  const colorLocked = (profile?.colorChosen ?? false) && !isVip;
   const membership = membershipInfo(
     profile?.vip ?? false,
     profile?.vipUntil ?? undefined,
@@ -144,12 +152,14 @@ export default function Entry() {
     if (!profile) return;
     setEntering(true);
     try {
-      if (color !== profile.avatar.shirt) {
+      if (!colorLocked && color !== profile.avatar.shirt) {
         await saveProfile({
           username: profile.username,
           avatar: { ...profile.avatar, shirt: color },
         });
-        toast.success(`Karakter rengi "${characterColorLabel(color)}" kaydedildi.`);
+        toast.success(
+          `Karakter rengi "${characterColorLabel(color)}" kaydedildi.`,
+        );
       }
     } catch (error) {
       console.error("Renk kaydedilemedi:", error);
@@ -378,13 +388,12 @@ export default function Entry() {
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <Palette className="size-4 text-amber-300" />
-              <p className="text-sm font-black tracking-wide">
-                Karakter Rengi
-              </p>
+              <p className="text-sm font-black tracking-wide">Karakter Rengi</p>
             </div>
             <p className="mt-1 text-[11px] font-semibold leading-5 text-white/45">
               Girişte yalnızca rengini seç — saç, yüz ve kıyafet detaylarını
-              istediğin zaman Stüdyo'dan ayarlayabilirsin.
+              istediğin zaman Stüdyo'dan ayarlayabilirsin. Renk yalnızca ANA
+              KARAKTERİ boyar: botlar ve rakipler kendi renkleriyle savaşır.
             </p>
 
             <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-6">
@@ -405,20 +414,25 @@ export default function Entry() {
                         );
                         return;
                       }
+                      // Renk hakkı kullanıldıysa palet kilitlidir.
+                      if (colorLocked && c.hex !== color) {
+                        toast.info(
+                          "🎨 Rengini bir kez seçtin — değiştirmek için 👑 VIP üyelik gerekiyor.",
+                        );
+                        return;
+                      }
                       setColor(c.hex);
                     }}
                     aria-label={c.label}
                     aria-pressed={selected}
-                    title={
-                      locked ? `${c.label} — VIP üyeliğe özel` : c.label
-                    }
+                    title={locked ? `${c.label} — VIP üyeliğe özel` : c.label}
                     className={`group relative aspect-square w-full overflow-hidden rounded-2xl border transition-transform active:scale-95 ${
                       selected
                         ? "border-white/80 ring-2 ring-amber-300 ring-offset-2 ring-offset-[#0a0f1c]"
                         : locked
                           ? "border-amber-300/40"
                           : "border-white/15 hover:border-white/40"
-                    } ${locked ? "opacity-60" : ""}`}
+                    } ${locked ? "opacity-60" : colorLocked ? "opacity-70" : ""}`}
                     style={
                       premium
                         ? {
@@ -451,9 +465,22 @@ export default function Entry() {
               })}
             </div>
 
+            {colorLocked ? (
+              <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-amber-100">
+                <Lock className="mt-0.5 size-3 shrink-0" />
+                Renk hakkını kullandın! Karakter rengi tek sefer seçilir —
+                değiştirmek için 👑 VIP üyelik gerekiyor.
+              </p>
+            ) : (
+              <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
+                ⚠️ Renk hakkın <strong>tek seferlik</strong>: seçtiğin renk
+                kalıcı olur (VIP üyeler serbestçe değiştirir).
+              </p>
+            )}
+
             <p className="mt-2 text-[10px] font-bold leading-4 text-amber-200/70">
-              👑 VIP renkleri parlar ve yarı saydam boyanır — VIP alınca
-              çantana düşer.
+              👑 VIP renkleri parlar ve yarı saydam boyanır — VIP alınca çantana
+              düşer.
             </p>
 
             <p className="mt-3 flex items-center justify-between text-[11px] font-bold text-white/50">

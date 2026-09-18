@@ -7,7 +7,9 @@
 // üretimdeki arenanın ta kendisidir; "orijinaline aktarma" adımı gerekmez.
 //
 // Ne ayarlanabilir:
-//   · oyuncu/bot karakter RENGİ (girişteki paletin aynısı, VIP renkleri dahil),
+//   · ANA KARAKTERİN rengi (girişteki paletin aynısı, VIP renkleri dahil).
+//     Renk hakkı bağlı hesaplarda TEK SEFER kullanılır (VIP hariç) — üretimle
+//     aynı kural (bkz. convex/profiles.saveProfile).
 //   · karakter SKİNİ (zırh/GLB görünümleri),
 //   · iki tarafın YETENEĞİ ve botun zorluk seviyesi (1–10),
 //   · "Yeniden başlat" ile aynı ayarlarla temiz bir maç.
@@ -18,10 +20,16 @@
 // istersen tek satır — bkz. `src/main.tsx`.
 import BattleScene from "@/components/world/BattleScene";
 import { Button } from "@/components/ui/button";
-import { CHARACTER_COLORS, DEFAULT_AVATAR } from "@/lib/avatar";
+import {
+  CHARACTER_COLORS,
+  DEFAULT_AVATAR,
+  opponentColorFor,
+} from "@/lib/avatar";
+import { api } from "@/convex/_generated/api";
 import { ABILITIES, DEFAULT_ABILITY, type AbilityId } from "@/lib/shop";
-import { RotateCcw, Swords } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useQuery } from "convex/react";
+import { Swords } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
 
@@ -33,14 +41,10 @@ const SKINS: { id: string; label: string }[] = [
   { id: "skin-sevalye", label: "Şövalye" },
 ];
 
-/** VIP'e özel premium renkler hariç (botlar normal paletten seçer). */
-const BOT_COLORS = CHARACTER_COLORS.filter((c) => !c.vip);
-
 interface FightSetup {
   playerColor: string;
   playerSkin: string;
   playerAbility: AbilityId;
-  botColor: string;
   botAbility: AbilityId;
   level: number;
   /** Aynı ayarlarla yeni maç: `key` değişir, arena sıfırdan kurulur. */
@@ -51,7 +55,6 @@ const DEFAULT_SETUP: FightSetup = {
   playerColor: CHARACTER_COLORS[5].hex, // Mavi
   playerSkin: "",
   playerAbility: DEFAULT_ABILITY,
-  botColor: BOT_COLORS[0].hex, // Kızıl
   botAbility: DEFAULT_ABILITY,
   level: 5,
   seed: 0,
@@ -62,10 +65,13 @@ function ColorRow({
   value,
   onChange,
   title,
+  locked = false,
 }: {
   value: string;
   onChange: (hex: string) => void;
   title: string;
+  /** Renk hakkı kullanıldı (VIP hariç): palet seçilemez. */
+  locked?: boolean;
 }) {
   return (
     <div>
@@ -80,13 +86,22 @@ function ColorRow({
             <button
               key={c.id}
               type="button"
-              title={c.vip ? `${c.label} (VIP premium)` : c.label}
-              onClick={() => onChange(c.hex)}
+              title={
+                locked
+                  ? `${c.label} — renk hakkın kullanıldı`
+                  : c.vip
+                    ? `${c.label} (VIP premium)`
+                    : c.label
+              }
+              onClick={() => {
+                if (locked && c.hex !== value) return;
+                onChange(c.hex);
+              }}
               className={`relative size-8 rounded-lg border transition-transform active:scale-95 ${
                 active
                   ? "border-white ring-2 ring-[#22d3ee]"
                   : "border-white/20 hover:border-white/50"
-              }`}
+              } ${locked ? "cursor-not-allowed opacity-60" : ""}`}
               style={{ backgroundColor: c.hex }}
             >
               {c.vip && (
@@ -168,6 +183,28 @@ export default function ArenaTest() {
     [],
   );
 
+  // Üretimle AYNI kurallar burada da geçerli:
+  //   · renk yalnızca ANA karakteri boyar — bot kendi rengini giyer,
+  //   · bağlı hesapta renk hakkı TEK SEFERdir (VIP hariç).
+  // Girişsiz (anonim) testte kilit yoktur: alan serbestçe denenir.
+  const profile = useQuery(api.profiles.getMyProfile);
+  const colorLocked =
+    (profile?.colorChosen ?? false) && !(profile?.vip ?? false);
+  /** Botun KENDİ rengi: oyuncunun renginden bağımsız, seviyeye göre sabit. */
+  const botColor = opponentColorFor(
+    `test-bot:${setup.level}`,
+    setup.playerColor,
+  );
+  // Bağlı hesabın rengini bir kez yükle (oyuncunun seçimini ezmesin).
+  const colorInit = useRef(false);
+  useEffect(() => {
+    if (colorInit.current || !profile) return;
+    colorInit.current = true;
+    if (CHARACTER_COLORS.some((c) => c.hex === profile.avatar.shirt)) {
+      patch({ playerColor: profile.avatar.shirt });
+    }
+  }, [profile, patch]);
+
   // ── maç modu: arena tam ekran, üzerine HİÇBİR panel binmez ──
   // (Test kontrolleri kasıtlı olarak maç sırasında görünmez: HUD'un,
   //  joystick'in ve gölge/bloom katmanının gerçek görünümü bozulmasın.)
@@ -180,7 +217,7 @@ export default function ArenaTest() {
         playerEquipped={setup.playerSkin ? [setup.playerSkin] : []}
         playerAbility={setup.playerAbility}
         opponentName={`Bot · Sv. ${setup.level}`}
-        opponentConfig={{ ...DEFAULT_AVATAR, shirt: setup.botColor }}
+        opponentConfig={{ ...DEFAULT_AVATAR, shirt: botColor }}
         opponentEquipped={[]}
         opponentAbility={setup.botAbility}
         opponentLevel={setup.level}
@@ -228,7 +265,14 @@ export default function ArenaTest() {
               title="Karakter rengi"
               value={setup.playerColor}
               onChange={(hex) => patch({ playerColor: hex })}
+              locked={colorLocked}
             />
+            {colorLocked && (
+              <p className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[11px] font-bold leading-4 text-amber-100">
+                🔒 Renk hakkını kullandın — karakter rengi tek sefer seçilir.
+                Değiştirmek için 👑 VIP üyelik gerekiyor.
+              </p>
+            )}
             <div>
               <div className="mb-2 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
                 Görünüm (skin)
@@ -257,28 +301,17 @@ export default function ArenaTest() {
           </Panel>
 
           <Panel title="BOT (DÜŞMAN)" accent="#fda4af">
-            <ColorRow
-              title="Bot rengi"
-              value={setup.botColor}
-              onChange={(hex) => patch({ botColor: hex })}
-            />
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="rounded-lg"
-                onClick={() =>
-                  patch({
-                    botColor:
-                      BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)]
-                        .hex,
-                  })
-                }
-              >
-                <RotateCcw className="mr-1 size-3.5" /> Rastgele renk
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                Oyun içi botlar da paletten rastgele renk alır.
+            {/* Botun rengi SEÇİLEMEZ: renk yalnızca ana karaktere aittir.
+                Bot kendi rengini giyer (seviyeye göre sabit) ve oyuncunun
+                rengini asla almaz. */}
+            <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+              <span
+                className="size-5 shrink-0 rounded-md border border-white/25"
+                style={{ backgroundColor: botColor }}
+              />
+              <span className="text-[11px] font-bold leading-4 text-muted-foreground">
+                Bot kendi rengini giyer — oyuncunun seçtiği renk yalnızca ana
+                karakteri boyar.
               </span>
             </div>
             <AbilityRow

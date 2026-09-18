@@ -105,7 +105,13 @@ export function abilityAimInput(): { dx: number; dy: number } {
   };
 }
 
-/** Nişanı menzil kuralıyla çözer (nişan > menzil içi kilit > bakış yönü). */
+/**
+ * Nişanı menzil kuralıyla çözer. YETENEKLER için kural: **menzil çemberi
+ * içinde düşman varsa nişan her durumda ona kilitlenir** (`preferLock`) — bu
+ * hem süper yetenekler hem de Kraliyet Savaşçısı ultisi için geçerlidir
+ * (`castUltimate` de bu fonksiyonu çağırır). Çember içinde düşman yoksa sıra:
+ * elle nişan > gövdenin baktığı yön.
+ */
 export function planAim(
   caster: BattleFighter,
   enemy: BattleFighter,
@@ -114,6 +120,7 @@ export function planAim(
 ): AimDir {
   return resolveAim(caster, enemy, input.dx, input.dy, {
     canLock: host.canLock(enemy, caster),
+    preferLock: true,
   });
 }
 

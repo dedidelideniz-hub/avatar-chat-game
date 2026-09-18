@@ -4,6 +4,7 @@ import { HairThumb } from "@/components/avatar/AvatarPreview";
 import { Canvas } from "@react-three/fiber";
 import { GlbCharacterPortrait } from "@/engine/GlbAvatar3D";
 import {
+  characterColorLabel,
   DEFAULT_AVATAR,
   HAIR_STYLE_LABELS,
   HAIR_STYLES,
@@ -19,7 +20,15 @@ import { api } from "@/convex/_generated/api";
 import { useAuth } from "@/hooks/use-auth";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
-import { Check, Gamepad2, LogOut, Shuffle, Sparkles, UserRound } from "lucide-react";
+import {
+  Check,
+  Gamepad2,
+  Lock,
+  LogOut,
+  Shuffle,
+  Sparkles,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -116,6 +125,11 @@ export default function Studio() {
 
   const hasProfile = profile !== null && profile !== undefined;
   const loading = profile === undefined;
+  // 👑 RENK HAKKI: karakter rengi TEK SEFER seçilir (VIP üyeler serbestçe
+  // değiştirir). Kilitliyken renk paleti yerine bilgi kartı görünür; sunucu
+  // tarafı da aynı kuralı zorlar (profiles.saveProfile).
+  const colorLocked =
+    (profile?.colorChosen ?? false) && !(profile?.vip ?? false);
 
   const handleSave = async () => {
     const trimmed = username.trim();
@@ -128,7 +142,13 @@ export default function Studio() {
     setUsernameError(null);
     setIsSaving(true);
     try {
-      await saveProfile({ username: trimmed, avatar: config });
+      // Renk hakkı kilitliyse kayıt HER ZAMAN kayıtlı rengi taşır: saç/yüz/
+      // kıyafet düzenlemeleri kaydedilebilsin, sunucu renk değişikliği diye
+      // reddetmesin.
+      const avatar = colorLocked
+        ? { ...config, shirt: profile?.avatar.shirt ?? config.shirt }
+        : config;
+      await saveProfile({ username: trimmed, avatar });
       toast.success(
         hasProfile ? "Avatarın güncellendi! ✨" : "Avatarın oluşturuldu! 🎉",
       );
@@ -138,7 +158,9 @@ export default function Studio() {
     } catch (error) {
       console.error("Profil kaydedilemedi:", error);
       toast.error(
-        error instanceof Error ? error.message : "Profil kaydedilemedi. Tekrar dene.",
+        error instanceof Error
+          ? error.message
+          : "Profil kaydedilemedi. Tekrar dene.",
       );
     } finally {
       setIsSaving(false);
@@ -154,7 +176,11 @@ export default function Studio() {
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <button type="button" onClick={() => navigate("/")} aria-label="Ana sayfa">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            aria-label="Ana sayfa"
+          >
             <GameLogo />
           </button>
           <div className="flex items-center gap-3">
@@ -333,15 +359,29 @@ export default function Studio() {
                 label="Saç Rengi"
                 values={HAIR_COLORS}
                 selected={config.hairColor}
-                onSelect={(hairColor) => setConfig((c) => ({ ...c, hairColor }))}
+                onSelect={(hairColor) =>
+                  setConfig((c) => ({ ...c, hairColor }))
+                }
               />
 
-              <SwatchRow
-                label="Üst (Kıyafet)"
-                values={SHIRT_COLORS}
-                selected={config.shirt}
-                onSelect={(shirt) => setConfig((c) => ({ ...c, shirt }))}
-              />
+              {colorLocked ? (
+                <div className="flex items-start gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-100">
+                  <Lock className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    Üst renk kilitli:{" "}
+                    <strong>{characterColorLabel(config.shirt)}</strong>.
+                    Karakter rengi tek sefer seçilir — değiştirmek için 👑 VIP
+                    üyelik gerekiyor.
+                  </span>
+                </div>
+              ) : (
+                <SwatchRow
+                  label="Üst (Kıyafet)"
+                  values={SHIRT_COLORS}
+                  selected={config.shirt}
+                  onSelect={(shirt) => setConfig((c) => ({ ...c, shirt }))}
+                />
+              )}
 
               <SwatchRow
                 label="Alt (Pantolon)"
@@ -373,7 +413,13 @@ export default function Studio() {
                   type="button"
                   variant="outline"
                   className="flex-1 rounded-full"
-                  onClick={() => setConfig(randomAvatar())}
+                  onClick={() =>
+                    setConfig((c) => {
+                      const next = randomAvatar();
+                      // Kilitliyken renk korunur (rastgele seçim rengi bozmaz).
+                      return colorLocked ? { ...next, shirt: c.shirt } : next;
+                    })
+                  }
                   disabled={isSaving}
                 >
                   <Shuffle className="size-4" />
@@ -393,14 +439,17 @@ export default function Studio() {
                   ) : (
                     <>
                       <Check className="size-4" />
-                      {hasProfile ? "Değişiklikleri Kaydet" : "Avatarımı Oluştur"}
+                      {hasProfile
+                        ? "Değişiklikleri Kaydet"
+                        : "Avatarımı Oluştur"}
                     </>
                   )}
                 </Button>
               </div>
               <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                 <Sparkles className="size-3.5 text-primary" />
-                Profilin sanal dünyadaki görünümünü belirler — istediğin zaman değiştirebilirsin.
+                Profilin sanal dünyadaki görünümünü belirler — istediğin zaman
+                değiştirebilirsin.
               </p>
             </div>
           </div>

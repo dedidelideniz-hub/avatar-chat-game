@@ -31,6 +31,7 @@ import {
   aimState,
   aimedHit,
   facingDir,
+  resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
 import { hitsRockCollision } from "@/components/world/BattleMapModel";
@@ -82,7 +83,7 @@ export { BattleJoystick };
 // yüklenemezse savaş HUD'sız kalmaz. CSS, MOBA arayüzü varken bu şeridi
 // gizler (bkz. index.css → .battle-hud-top + .moba-chrome kuralı).
 import { HudClock, HudFighter } from "@/components/world/BattleTopHud";
-import type { AvatarConfig } from "@/lib/avatar";
+import { withOwnColor, type AvatarConfig } from "@/lib/avatar";
 import { abilityOf, type AbilityDef } from "@/lib/shop";
 import {
   playSound,
@@ -401,7 +402,15 @@ export default function BattleScene({
   const bot = useRef<BattleFighter>(
     newFighter(
       opponentName,
-      opponentConfig,
+      // RAKİBİN KENDİ RENGİ: girişte seçilen renk yalnızca ANA KARAKTERİ
+      // boyar; bot asla oyuncunun rengini giymez. Rengi rastlantıyla birebir
+      // aynı olursa adına/seviyesine göre KARARLI bir palet rengine geçer
+      // (her maçta aynı renk), yani "başka karakterin rengi değişmez".
+      withOwnColor(
+        opponentConfig,
+        `${opponentName}:${opponentLevel}`,
+        playerConfig.shirt,
+      ),
       opponentEquipped,
       opponentAbility,
       1300,
@@ -975,9 +984,16 @@ export default function BattleScene({
         if (!p.samuraiUltHit && progress > 0.62) {
           p.samuraiUltHit = true;
           // Yarık, kılıcın YERE İNDİĞİ noktadan (karakterin önünden) başlar
-          // ve karakterin BAKTIĞI yöne doğru en fazla MAX_RANGE ilerler.
-          // (Eskiden düşmanın konumuna, yani haritanın öbür ucuna uzuyordu.)
-          const dir = facingDir(p);
+          // ve en fazla MAX_RANGE ilerler. Yön kuralı: MENZİL ÇEMBERİ İÇİNDE
+          // düşman varsa ulti ONA GİDER (kilitli tam yön — çapraz hedef kaçmaz).
+          // Çember içinde düşman yoksa karakterin baktığı yöne gider.
+          // (facingDir gövde dönüşünü 4 yöne yuvarlar; kilitli hedefte tam
+          // vektör kullanılır, yoksa çaprazdaki düşman ıskalanır.)
+          const locked = resolveAim(p, b, 0, 0, {
+            canLock: !isHiddenFrom(b, p),
+            preferLock: true,
+          });
+          const dir = locked.locked ? locked : facingDir(p);
           const crack = emitUltCrack(p, dir.x, dir.y, skillHost, {
             smokeCount: 4,
             smokeGrow: 80,
