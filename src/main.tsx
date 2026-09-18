@@ -1,4 +1,4 @@
-import '@vly-ai/integrations';
+import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
@@ -42,6 +42,10 @@ const Studio = lazyRetry(() => import("./pages/Studio.tsx"));
 const World = lazyRetry(() => import("./pages/World.tsx"));
 const Admin = lazyRetry(() => import("./pages/Admin.tsx"));
 const NotFound = lazyRetry(() => import("./pages/NotFound.tsx"));
+// Savaş alanı test laboratuvarı: aynı `<BattleScene>` bileşenini doğrudan
+// çalıştırır (menüde listelenmez, giriş gerektirmez). Üretimde kapatmak
+// isterseniz rotayı silin ya da koşulu `import.meta.env.DEV &&` yapın.
+const ArenaTest = lazyRetry(() => import("./pages/ArenaTest.tsx"));
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -116,8 +120,6 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 document.documentElement.setAttribute("lang", "tr");
 document.documentElement.setAttribute("translate", "no");
 
-
-
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -140,7 +142,6 @@ function RouteSyncer() {
 
   return null;
 }
-
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -186,6 +187,9 @@ createRoot(document.getElementById("root")!).render(
               />
               {/* Standalone admin panel (own admin/admin login) */}
               <Route path="/admin" element={<Admin />} />
+              {/* Arena testi: cadde/giriş/duel akışını atlayıp savaş alanını
+                  doğrudan açar (renk, skin, yetenek, bot seviyesi seçilebilir). */}
+              <Route path="/test" element={<ArenaTest />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
