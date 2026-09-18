@@ -72,6 +72,9 @@ import {
   makeNameTex,
 } from "./arena/headUi";
 import { ProceduralBody } from "./arena/ProceduralBody";
+// 🤖 Otomatik QA katmanı (gezen test botu + sahne teşhisi + FPS bölgeleri).
+// Yalnızca oyuncunun rig'inden, SAHNE KÖKÜNDE render edilir (dünya uzayı).
+import { QaScene } from "./qa/QaScene";
 import { SlashTrail } from "./arena/SlashTrail";
 import {
   ARENA_D,
@@ -1156,6 +1159,8 @@ function FighterRig({
       {/* Skillshot nişan göstergesi: zeminde menzil çemberi + yön oku.
           Yalnızca oyuncunun rig'inde çizilir (düşmanın menzili görünmez). */}
       {isPlayer && <SkillshotIndicator fighter={fighter} other={other} />}
+      {/* QA: test botu ve teşhis taraması — oyun mantığına hiç dokunmaz. */}
+      {isPlayer && <QaScene player={fighter} />}
       {/* spinning "this is you" ring under the player's feet */}
       {isPlayer && (
         <>

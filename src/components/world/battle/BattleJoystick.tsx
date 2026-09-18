@@ -12,6 +12,9 @@ import {
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
 import { MobaArenaChrome } from "@/components/world/moba/MobaHud";
+// 🧪 Otomatik QA paneli (test botu + teşhis + FPS). Bu katman iki arenada da
+// takılı olduğu için panel buradan render edilir.
+import { QaPanel } from "@/components/world/qa/QaPanel";
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 
@@ -113,6 +116,7 @@ export function BattleJoystick({
           rakip kartı arena üzerine buradan bindirilir. Sahne store kaydını
           yapar; kayıt yoksa hiçbir şey render edilmez (eski HUD yedek kalır). */}
       <MobaArenaChrome storeKey={stickRef} />
+      <QaPanel />
       <div
         ref={baseRef}
         className="battle-joystick battle-hud-stick pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
