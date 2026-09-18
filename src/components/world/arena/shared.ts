@@ -33,6 +33,25 @@ export const CZ = ARENA_D / 2; // z = +y/S so the map is NOT mirrored (up = up)
  */
 export const HUD = 1.1;
 
+/** Dövüşçü GÖVDE ölçeği kazancı (arena).
+ *
+ *  Arenadaki her görünüm (varsayılan / Samuray / Kraliyet Savaşçısı / Şövalye,
+ *  oyuncu-bot-rakip) `FIGHTER_MODEL_H × RIG_ROOT_SCALE` = 0.72 birimlik ortak
+ *  boya normalize edilir; bu sabit o ortak boyun üstüne uygulanır.
+ *
+ *  NEDEN 2.05: projenin ölçek kuralı 1 birim ≈ 1 metre ve cadde tarafındaki
+ *  karakterler `PLAYER_3D_HEIGHT = 1.92` birime normalize ediliyor. Arena
+ *  haritası da aynı ölçekte (34×22 birim) ve dövüşçü çarpışma yarıçapı
+ *  `FIGHTER_R = 22px = 0.44 birim` — yani ~1.8-2.0 birimlik bir gövdenin omuz
+ *  genişliği. Eski 0.72 birimlik gövde hem haritadaki heykellerin yanında hem
+ *  de cadde karakterine kıyasla "karınca" gibi kalıyordu. 1.5 × 2.05 × 0.48 =
+ *  1.48 birim: menzil çemberi (4 birim) hâlâ ~2.7 gövde boyu.
+ *
+ *  Gövdeyi kullanan TÜM görsel katmanlar bu sabitle ölçeklenir (kemik
+ *  bağlantıları, göğüs hizası efektleri, baş-üstü HUD yükseltisi, şampiyon
+ *  aurası/ışığı, ayak halkaları, namlu çıkışı, yedek prosedürel gövde). */
+export const BODY_SCALE_GAIN = 2.05;
+
 /**
  * KARAKTERE göre ölçeklenen efektlerin tabanı (mermi gövdesi, büyü halkaları,
  * alev dilleri, namlu şimşeği).
@@ -57,16 +76,18 @@ export const HEAD_UI_SCALE = 1;
  *   · `fwd`  — nişan yönünde öne kayma (gövde yarıçapının dışına taşar),
  *   · `side` — kullanılan el tarafına yanal kayma,
  *   · `up`   — yerden yükseklik; hem namlu şimşeği hem merminin uçuş
- *              yüksekliğidir. Gövde artık `BODY_SCALE_GAIN` ile büyüdüğü için
- *              (Arena3D) karakter 0.94 birim, el ≈ 0.60 birim: 0.66 "elden
+ *              yüksekliğidir. Gövde `BODY_SCALE_GAIN` ile büyüdüğü için
+ *              (Arena3D) karakter 1.48 birim, el ≈ 0.82 birim: 0.85 "elden
  *              çıkıyor" hissini verirken mermiyi zemin engebelerinin de
  *              üzerinde tutar.
  * Değerler `S` ile çarpılarak oyun px'ine çevrilir (sim px uzayında çalışır).
+ * (Yalnızca GÖRSEL çıkış noktasıdır: isabet kontrolü iki boyutlu x/y üzerinden
+ * yapılır, hasar/menzil bu değerden etkilenmez.)
  */
 export const MUZZLE = {
-  fwd: 0.34,
-  side: 0.16,
-  up: 0.66,
+  fwd: 0.42,
+  side: 0.2,
+  up: 0.85,
 } as const;
 
 export interface BattleProj {

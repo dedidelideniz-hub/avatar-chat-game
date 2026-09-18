@@ -64,6 +64,10 @@ const WIDE_TO = 1.8;
 // barları / hasar yazısı / kimlik halkası ekranda ESKİSİ GİBİ görünür.
 const FOV_P = 46; // izometrik MOBA lensi (istenen 45–50° FOV bandı)
 const FOV_L = 44; // yatayda aynı aile: basık görüntü oluşmaz
+// Dövüşçü gövdesi `Arena3D → BODY_SCALE_GAIN` ile büyüdü (0.72 → 1.48 birim,
+// yani 2×) ve artık kadrajı kendisi dolduruyor; bu yüzden takip mesafesi
+// ESKİ değerine alındı — harita bağlamı (lane + yan arazi) korunur, karakter
+// görünen yüksekliğin ~%22'si olur. 4 birimlik menzil çemberi %61'de kalır.
 const DIST_P = 7.8; // görünen yükseklik ≈ 2·7.8·tan23° ≈ 6.6 birim
 const DIST_L = 8.3; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·8.3·tan22° ≈ 6.7)
 const EL_P = 0.855; // ~49° izometrik MOBA açısı (istenen 45–50°)
@@ -84,7 +88,7 @@ const LOOK_L = 0.8;
 // hizasına değil üst gövdesine kilitlenir. Odak, karakter ölçeğiyle AYNI adımı
 // izler: dünya boyu 0.60 → 0.72 olduğu için hedef de 0.60 → 0.72 çıktı, yani
 // kamera merkezi karakterin hemen üstünde kalmaya devam eder.
-const LOOK_Y = 0.72;
+const LOOK_Y = 0.78;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,

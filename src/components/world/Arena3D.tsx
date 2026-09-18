@@ -80,6 +80,7 @@ import {
   ARENA_D,
   ARENA_W,
   BEAM_POOL,
+  BODY_SCALE_GAIN,
   BURST_POOL,
   CRACK_POOL,
   CX,
@@ -374,6 +375,8 @@ export interface BattleFighter {
     scale: number;
     /** Kazançla birlikte dünya cinsinden gövde yüksekliği (birim). */
     worldH: number;
+    /** Modelin kutu tabanını zemine oturtan kayma (rig birimi). */
+    groundOffset: number;
     skin: boolean;
   };
 }
@@ -437,8 +440,18 @@ const FIGHTER_MODEL_H = 1.5;
  *  karakter arenada yerdeki taşlara/çalıluğa kıyasla belirgin ve okunur durur
  *  (ölçüldü: gövde 0.72 dünya birimiydi, harita 34×22 — karakter fazla ufak
  *  kalıyordu). Baş-üstü can barı aynı adımı `HEAD_UI_LIFT` ile izler, böylece
- *  bar büyüyen gövdenin kafasına gömülmez. */
-const BODY_SCALE_GAIN = 1.3;
+ *  bar büyüyen gövdenin kafasına gömülmez.
+ *
+ *  ÖLÇÜ (neden 2.05): projenin kendi ölçek kuralı 1 birim ≈ 1 metre ve cadde
+ *  tarafındaki karakterler `PLAYER_3D_HEIGHT = 1.92` birime normalize edilir.
+ *  Arena haritası da aynı ölçekte (34×22 birim) ve dövüşçü çarpışma yarıçapı
+ *  `FIGHTER_R = 22px = 0.44 birim` — yani 1.8-2.0 birimlik bir gövdenin omuz
+ *  genişliği. Eskiden gövde 0.72 birime normalize ediliyordu: karakter hem
+ *  cadde karakterinin yarısı hem de haritadaki heykellerin yanında "karınca"
+ *  gibi kalıyordu. 1.5 × 2.05 × 0.48 = 1.48 birim → heykellerle aynı dil,
+ *  menzil çemberi (4 birim) hâlâ ~2.7 gövde boyu. */
+/* Gövde ölçeği kazancı `./arena/shared` modülündedir (arena geneli tek kaynak:
+ * aynı sabiti ArenaCamera, yedek prosedürel gövde ve efekt katmanları okur). */
 
 /** Gövde büyürken baş-üstü HUD'ın yukarı kayması (dünya birimi).
  *  İsim etiketi 1.05, can barı 0.86 yükseklikte durur; kazanç kadar yukarı
@@ -449,6 +462,24 @@ const HEAD_UI_LIFT = (BODY_SCALE_GAIN - 1) * 1.05;
  *  yükseklikten çıkar; gövde kazancıyla birlikte ölçeklenir ki efektler
  *  büyüyen gövdenin göğsünde kalsın (0.85 × kazanç). */
 const CHEST_Y = 0.85 * BODY_SCALE_GAIN;
+
+/** Şampiyon aurası (hâle) gövde merkezine göre ölçek ve taban opaklık.
+ *
+ *  Karakterin kendi renginde nefes alan yumuşak bir ışık hâlesi: uzaktan da
+ *  "şampiyon" gibi okunur ve bloom'u besler. Oyuncununki daha belirgindir
+ *  (kendi karakterini anında ayırt et). Tamamen görseldir — hasar/menzil/ağ
+ *  mantığına dokunmaz, `depthWrite` kapalı olduğu için hiçbir şeyi örtmez. */
+const AURA_SIZE = 1.8 * BODY_SCALE_GAIN;
+const AURA_OPACITY_PLAYER = 0.17;
+const AURA_OPACITY_ENEMY = 0.11;
+
+/** Şampiyon ışığı: karakterin göğsünden yayılan kendi renginde küçük bir
+ *  nokta ışığı. Arenanın lav/gece atmosferinde gövdeyi ve altındaki zemini
+ *  canlı tutar — "gösterişli şampiyon" hissinin asıl kaynağı budur.
+ *  Mesafe/şiddet ölçülü tutulur: zemin yanmaz, yalnızca karakter çevresi
+ *  aydınlanır. (Tek kare maliyeti: 2 nokta ışık.) */
+const HERO_LIGHT_INTENSITY = 1.1;
+const HERO_LIGHT_DISTANCE = 3.2;
 
 /** QA tarayıcısı için işaret: dövüşçü rig'i harita geometrisi DEĞİLDİR.
  *  Kemikli (skinned) gövde/zırh parçalarının bounding box'ı bind-pose'dur ve
@@ -517,19 +548,26 @@ function GlbFighterBodyCore({
   // de bu kutuya dahildir; ölçüm yalnızca YÜKSEKLİĞİ kullandığı için silahın
   // yana/yukarı taşması gövdeyi küçültmez (kuantize modellerde `Box3`
   // iskeletli tepe noktaları dahil ölçülür — gerçek üç.js davranışı).
-  const normScale = useMemo(() => {
+  const bodyFit = useMemo(() => {
     scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(scene);
     const boxH = Math.max(box.max.y - box.min.y, 0.0001);
     const scale = (FIGHTER_MODEL_H * BODY_SCALE_GAIN) / boxH;
+    // Ölçek grup KÖKENİNE (ayak hizası) uygulanır, ama bazı skinlerin iskeleti
+    // kökende ORTALANMIŞ (ör. Samuray: kutu y −0.91..0.92). Öyle bir model
+    // ölçeklenince bacakları zeminin altında kalıyor ve karakter ekranda YARIM
+    // boy görünüyordu — "skinler ufak" şikâyetinin yarısı buydu. Kutu tabanı
+    // y = 0'a çekilir, yani karakter her zaman ayakları yerde durur.
+    const groundOffset = -box.min.y * scale;
     // QA teşhisi: gövde ölçümü panelde `[BODY]` satırı olarak görünür.
     fighter.current.bodyMetrics = {
       boxH,
       scale,
+      groundOffset,
       worldH: FIGHTER_MODEL_H * BODY_SCALE_GAIN * RIG_ROOT_SCALE,
       skin: skinUrl !== null,
     };
-    return scale;
+    return { scale, groundOffset };
   }, [scene, skinUrl, fighter]);
 
   useEffect(() => {
@@ -701,9 +739,28 @@ function GlbFighterBodyCore({
   });
 
   return (
-    <group ref={groupRef} scale={normScale}>
-      <primitive object={clone} />
-    </group>
+    <>
+      {/* Şampiyon ışığı: karakterin kendi renginde küçük bir nokta ışığı.
+          Lav/gece atmosferinde gövdeyi ve ayak çevresindeki zemini canlı
+          tutar — "gösterişli şampiyon" hissinin asıl kaynağı budur. Mesafe
+          ve şiddet ölçülüdür: zemin yanmaz, yalnızca karakter çevresi ışır;
+          `decay = 2` sayesinde kenar yumuşak söner. Işık rig uzayındadır
+          (gövde ölçeğinden bağımsız), yani her görünümde aynı durur. */}
+      <pointLight
+        position={[0, CHEST_Y * 0.9, 0]}
+        color={fighter.current.config?.shirt ?? "#ffffff"}
+        intensity={HERO_LIGHT_INTENSITY}
+        distance={HERO_LIGHT_DISTANCE}
+        decay={2}
+      />
+      <group
+        ref={groupRef}
+        scale={bodyFit.scale}
+        position={[0, bodyFit.groundOffset, 0]}
+      >
+        <primitive object={clone} />
+      </group>
+    </>
   );
 }
 
@@ -774,6 +831,9 @@ function FighterRig({
   // (Hit Particle System'in "parlama" katmanı; bloom'u da besler).
   const sparkFlash = useRef<THREE.Sprite>(null);
   const sparkFlashTex = useMemo(makeGlowTexture, []);
+  // Şampiyon aurası: gövdenin çevresinde kendi renginde nefes alan hâle (tek
+  // sprite; kare maliyeti bir opaklık güncellemesi).
+  const aura = useRef<THREE.Sprite>(null);
   // Kıvılcım başına bir kez tohumlanan yön/hız/ölçü (yukarıdaki blokta yazılır).
   const sparkData = useRef(
     Array.from({ length: HIT_SPARKS }, () => ({
@@ -918,6 +978,12 @@ function FighterRig({
     // gövde büyürken bar kafaya gömülmez, hep hemen üstünde kalır.
     if (barGroup.current)
       barGroup.current.position.set(f.x / S, HEAD_UI_LIFT, f.y / S);
+    // ── Şampiyon aurası: yavaş bir nabız (nefes) — tamamen görsel. ──
+    if (aura.current) {
+      const pulse = 0.72 + 0.28 * Math.sin(performance.now() / 620);
+      const base = isPlayer ? AURA_OPACITY_PLAYER : AURA_OPACITY_ENEMY;
+      (aura.current.material as THREE.SpriteMaterial).opacity = base * pulse;
+    }
     // spinning identity ring under the player's feet — dashed ring + orbit
     // dot turning around them, with a soft pulsing glow disc
     if (isPlayer && ringSpin.current) {
@@ -1203,11 +1269,33 @@ function FighterRig({
             </Suspense>
           </GlbModelBoundary>
         </group>
+        {/* Şampiyon aurası: gövdenin çevresinde kendi renginde nefes alan
+          yumuşak hâle. Karakter uzaktan da "şampiyon" gibi okunur ve bloom'u
+          besler; opaklığı aşağıdaki kare döngüsünde nabız gibi inip çıkar. */}
+        <sprite
+          ref={aura}
+          position={[0, CHEST_Y * 0.82, 0]}
+          scale={[AURA_SIZE, AURA_SIZE, 1]}
+          renderOrder={2}
+        >
+          <spriteMaterial
+            map={sparkFlashTex}
+            color={c.shirt}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            toneMapped={false}
+          />
+        </sprite>
         {/* Takım rengi halkası: dövüşçünün (oyuncunun seçtiği) karakter rengi
           ayakların altında okunur — hem yakından hem uzaktan kim hangi
-          renkte olduğu belli olur. */}
+          renkte olduğu belli olur. Yarıçap gövde kazancıyla ölçeklenir, yoksa
+          büyüyen karakter halkanın dışına taşar. */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-          <ringGeometry args={[0.42, 0.56, 32]} />
+          <ringGeometry
+            args={[0.42 * BODY_SCALE_GAIN, 0.56 * BODY_SCALE_GAIN, 32]}
+          />
           <meshBasicMaterial
             color={c.shirt}
             transparent

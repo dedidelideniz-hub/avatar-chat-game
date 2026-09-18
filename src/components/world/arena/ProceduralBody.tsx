@@ -11,7 +11,11 @@ import { RoundedBox } from "@react-three/drei";
 import type { MutableRefObject } from "react";
 import type * as THREE from "three";
 import type { AvatarConfig } from "@/lib/avatar";
+import { BODY_SCALE_GAIN } from "./shared";
 
+/** Yedek/prosedürel gövde GLB karakteriyle AYNI boyda çizilir (aynı
+ *  `BODY_SCALE_GAIN`): yoksa model akışı sırasında — ya da GLB hiç
+ *  yüklenemediğinde — karakter bir anda yarı boya düşerdi. */
 export function ProceduralBody({
   c,
   bob,
@@ -28,7 +32,7 @@ export function ProceduralBody({
   armR: MutableRefObject<THREE.Group | null>;
 }) {
   return (
-    <group ref={bob}>
+    <group ref={bob} scale={BODY_SCALE_GAIN}>
       {/* legs + shoes */}
       <group ref={legL} position={[0, 0.5, 0.1]}>
         <RoundedBox

@@ -462,7 +462,8 @@ export function QaScene({
         "BODY",
         `${bm.skin ? "tam gövde skini" : "varsayılan görünüm"}: sınır kutusu ` +
           `${bm.boxH.toFixed(2)} | uygulanan ölçek ${bm.scale.toFixed(3)} | ` +
-          `dünya gövde yüksekliği ${bm.worldH.toFixed(2)} birim`,
+          `dünya gövde yüksekliği ${bm.worldH.toFixed(2)} birim | ` +
+          `zemine oturtma ${bm.groundOffset >= 0 ? "+" : ""}${bm.groundOffset.toFixed(2)}`,
       );
     }
 
