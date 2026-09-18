@@ -16,8 +16,10 @@
 // bağlanır: bu modül yalnızca kuralı ve görseli yönetir, hasarın nasıl
 // uygulandığını bilmez.
 import {
+  AIM_TURN_HOLD_BASIC,
   ATK_CD,
   BUSH_REVEAL_MS,
+  faceAimYaw,
   isSamuraiFighter,
   startAttackAnim,
   type BattleFighter,
@@ -156,6 +158,10 @@ export function planBasicAttack(
   });
   const end = rangePoint(caster, aim);
   caster.facing = end.x >= caster.x ? 1 : -1;
+  // 🎯 ATIŞ YÖNÜNE DÖNÜŞ: düz vuruşta gövde çözülen nişan yönüne döner
+  // (elle nişan > menzil içi otomatik kilit > bakış yönü). Kilit, vuruş
+  // animasyonu kadar açık kalır: yürürken ateş etsen de gövde hedefte kalır.
+  faceAimYaw(caster, aim.x, aim.y, AIM_TURN_HOLD_BASIC);
   // Düz vuruş animasyonu: kısa köklenme (windup) + kesilebilir bitiş.
   startAttackAnim(caster);
   // Ateş etmek (çalıdan bile) karakteri bir an görünür kılar.
@@ -229,6 +235,10 @@ export function castSuper(
   const dir =
     aim ??
     resolveAim(caster, enemy, 0, 0, { canLock: host.canLock(enemy, caster) });
+  // 🎯 Yetenek nişanına dönüş: kilit, karakter dururken de yürürken de
+  // gövdeyi atış/hedef yönüne çevirir (şifa gibi kendine kullanılan
+  // yeteneklerde de sadece bakışı bozmaz — yön zaten bakıştan gelir).
+  faceAimYaw(caster, dir.x, dir.y);
   caster.superCharge = 0;
   // Kılıç izi (SlashTrail) için görsel tetik: 1 → 0 sayacı rig'de iner.
   // Oyun mantığına etkisi yoktur; yalnızca "yetenek kullanıldı" anını çizer.
@@ -295,6 +305,9 @@ export function castUltimate(
   caster.samuraiUltHit = false;
   caster.facing = aim.x >= 0 ? 1 : -1;
   caster.vy = Math.abs(aim.y) > 0.5 ? (aim.y > 0 ? 1 : -1) : 0;
+  // 🎯 Ulti boyunca gövde tam hedef açısına kilitlenir: facing/vy 4 yöne
+  // yuvarlandığı için çaprazdaki hedefe kılıç savrulması düzelir.
+  faceAimYaw(caster, aim.x, aim.y, 0.82);
   host.sound("super", { volume: 1, rate: 0.72 });
   host.vfx.ring(caster.x, caster.y, 90, "#fbbf24", 0.55);
   host.vfx.smoke(caster.x, caster.y, 5, 100);

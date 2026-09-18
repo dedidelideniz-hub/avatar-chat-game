@@ -25,8 +25,10 @@ import {
   SAMURAI_ULTIMATE_DAMAGE,
   startAttackAnim,
   stepAttackAnim,
+  faceAimYaw,
   stepHitStun,
   supportsWebGL,
+  tickAimYaw,
   type BattleFighter,
   type BattleFx,
   type BattleProj,
@@ -188,6 +190,11 @@ interface PvpPayload {
   /** Düz vuruş animasyonunun kalan süresi (saniye) — rakip ekranında da
    *  vuruş pozu ve cancel penceresi aynı okunsun diye yayınlanır. */
   atkAnimT?: number;
+  /** 🎯 Ateş/yetenek yönü (radyan, `atan2(dx, dy)`). Rakip ekranında da gövde
+   *  atış yönüne dönsün diye yayınlanır. */
+  aimYaw?: number;
+  /** Yön kilidinin kalan süresi (saniye) — snapshot geldikçe tazelenir. */
+  aimYawT?: number;
   ts: number;
 }
 
@@ -358,6 +365,8 @@ export default function PvpBattleScene({
     phase: 0,
     stun: 0,
     atkAnimT: 0,
+    aimYaw: 0,
+    aimYawT: 0,
   });
   const lastRemoteAt = useRef(0);
   const remoteConnected = useRef(false);
@@ -639,6 +648,8 @@ export default function PvpBattleScene({
       phase: d.phase,
       stun: typeof d.stun === "number" ? d.stun : 0,
       atkAnimT: typeof d.atkAnimT === "number" ? d.atkAnimT : 0,
+      aimYaw: typeof d.aimYaw === "number" ? d.aimYaw : 0,
+      aimYawT: typeof d.aimYawT === "number" ? d.aimYawT : 0,
     };
     // Bush stealth: mirror the opponent's reveal deadline. It travels as a
     // wall-clock timestamp so both phones agree even though
@@ -933,6 +944,10 @@ export default function PvpBattleScene({
               preferLock: true,
             });
             const dir = locked.locked ? locked : facingDir(p);
+            // 🎯 Kılıç yere indiği anda gövde yarığın TAM yönüne kilitlenir
+            // (hedef kaçmış olsa bile kılıç nereye iniyorsa gövde oraya
+            // bakar; facing/vy 4 yönlü olduğu için çapraz kaçıyordu).
+            faceAimYaw(p, dir.x, dir.y, 0.4);
             // Hasar yalnızca hat menzil içinde ve yönündeyse işler.
             const hit = aimedHit(p, dir, b, { rangePx: MAX_RANGE_PX });
             const crack = emitUltCrack(p, dir.x, dir.y, skillHost, {
@@ -963,6 +978,14 @@ export default function PvpBattleScene({
       b.facing = t.facing;
       b.vy = t.vy;
       b.moving = t.moving;
+      // 🎯 Rakip ateş ettiğinde/yetenek kullandığında gövdesi hedefe dönsün:
+      // karşı telefondan yayınlanan yön kilidi buraya aynalanır (yerelde her
+      // kare azalır, snapshot geldikçe tazelenir).
+      tickAimYaw(b, dt);
+      if (t.aimYawT > 0) {
+        b.aimYaw = t.aimYaw;
+        b.aimYawT = Math.max(b.aimYawT ?? 0, t.aimYawT);
+      }
       // Rakibin samuray-kılıç ultisi animasyonu burada akar.
       if (b.samuraiUltT > 0) b.samuraiUltT -= dt;
       if (t.moving) b.phase += dt * 10;
@@ -1014,6 +1037,8 @@ export default function PvpBattleScene({
       }
 
       tickCooldown(p, dt);
+      // 🎯 Atış/yetenek yönü kilidi zamanla bırakılır (bkz. faceAimYaw).
+      tickAimYaw(p, dt);
 
       // Zemindeki nişan göstergesi düz vuruş nişanını paylaşılan durumdan okur.
       aimState.basic = aimRef.current.active;
@@ -1255,6 +1280,9 @@ export default function PvpBattleScene({
             stun: p.hitStunT,
             // Rakip ekranında da vuruş pozu / cancel penceresi okunsun.
             atkAnimT: p.atkAnimT,
+            // 🎯 Ateş/yetenek yönü: rakip ekranında da gövde attığı yöne döner.
+            aimYaw: p.aimYaw ?? 0,
+            aimYawT: p.aimYawT ?? 0,
             projs: ownProjs.current.map((pr) => ({ ...pr })),
             events: pendingEvents.current.map((e) => ({ ...e })),
             // Bush stealth: remaining reveal time as a wall-clock deadline.

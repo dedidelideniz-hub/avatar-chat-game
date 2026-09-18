@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 // tüm three.js öğe ağacını yeniden kurmasın (bkz. Arena3DView.tsx).
 import { Arena3DView as Arena3D } from "@/components/world/Arena3DView";
 import {
+  AIM_TURN_HOLD_BASIC,
   ATK_CD,
   BUSH_REVEAL_MS,
   applyHitReaction,
+  faceAimYaw,
   isHiddenFrom,
   isSamuraiFighter,
   SAMURAI_ULTIMATE_DAMAGE,
@@ -18,6 +20,7 @@ import {
   stepAttackAnim,
   stepHitStun,
   supportsWebGL,
+  tickAimYaw,
   tickAttackAnim,
   type BattleFighter,
   type BattleFx,
@@ -909,6 +912,10 @@ export default function BattleScene({
       // Bekleme süreleri (cooldown) SkillComponent'te yönetilir.
       tickCooldown(p, dt);
       tickCooldown(b, dt);
+      // 🎯 Atış/yetenek yönü kilidi: süre burada iner; süre bitince gövde
+      // tekrar hareket yönüne göre döner.
+      tickAimYaw(p, dt);
+      tickAimYaw(b, dt);
       // Botun vuruş pozu zamanla söner (botlar köklenmez).
       tickAttackAnim(b, dt);
 
@@ -1197,6 +1204,10 @@ export default function BattleScene({
         b.atkCd = botFireInterval(b.level);
         // Botun da vuruş pozu görünsün — botlar köklenmez (run-and-gun).
         startAttackAnim(b);
+        // 🎯 Bot da ateş ettiği yöne döner (oyuncuyla aynı kural; bot tüm
+        // dövüş boyunca hareket ettiği için kilit olmadan hep yürüyüş yönüne
+        // bakıyordu).
+        faceAimYaw(b, dx, dy, AIM_TURN_HOLD_BASIC);
         // Aim jitter shrinks with level — low levels genuinely miss.
         const err = (Math.random() - 0.5) * 2 * botAimError(b.level);
         spawnProj(
@@ -1240,6 +1251,9 @@ export default function BattleScene({
           b.facing = Math.cos(ang) >= 0 ? 1 : -1;
           b.vy =
             Math.abs(Math.sin(ang)) > 0.5 ? (Math.sin(ang) > 0 ? 1 : -1) : 0;
+          // 🎯 Tam açı kilidi: 4 yönlü facing/vy çaprazdaki oyuncuyu
+          // kaçırıyordu, ulti artık hedefe tam döner.
+          faceAimYaw(b, Math.cos(ang), Math.sin(ang), 0.82);
         }
       }
       if (b.samuraiUltT > 0) {

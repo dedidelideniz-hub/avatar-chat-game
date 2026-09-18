@@ -41,10 +41,7 @@ import {
   sampleGroundCrack,
   updateGroundCrack,
 } from "@/engine/GroundCrack";
-import {
-  hasCharacterSkin,
-  resolveSkinUrl,
-} from "@/engine/EquipmentRegistry";
+import { hasCharacterSkin, resolveSkinUrl } from "@/engine/EquipmentRegistry";
 import {
   RIG_ROOT_SCALE,
   measureStrideRatio,
@@ -144,6 +141,44 @@ export const ATK_CD = 0.85;
 export const ATK_WINDUP = 0.1;
 export const ATK_RECOVER = 0.24;
 export const ATK_ANIM = ATK_WINDUP + ATK_RECOVER;
+
+/* 🎯 ATIŞ YÖNÜNE DÖNÜŞ (rotation lock)
+ *
+ * Ateş ettiğinde/düz vuruş yaptığında ya da yetenek kullandığında karakter
+ * gövdesini HEDEFİN bulunduğu yöne döndürür. Kilit kısa süre açık kalır
+ * (düz vuruş animasyonu kadar, yeteneklerde bir tık daha uzun) ve kilit
+ * boyunca hareket yönü dönüşü bastırılır: karakter yürürken de attığı yere
+ * bakar — kiting / stutter-step'te gövde hedeften kopmaz.
+ *
+ * Yön arenanın kendi uzayındadır (dx sağ +, dy aşağı +) ve yaw = atan2(dx, dy)
+ * ile Three.js dönüşüne çevrilir (yaw 0 → +Z, +PI/2 → +X).
+ */
+/** Yetenek (süper/ulti) sonrası yön kilidinin süresi (saniye). */
+export const AIM_TURN_HOLD = 0.55;
+/** Düz vuruşta kilit daha kısa: animasyon (windup+recovery) bitince bırakılır. */
+export const AIM_TURN_HOLD_BASIC = 0.34;
+
+/**
+ * Gövdeyi verilen yöne kilitler (ateş/yetenek anında çağrılır).
+ * Yön sıfıra çok yakınsa (nişan yok) hiçbir şey yapılmaz: karakter mevcut
+ * dönüşünü korur.
+ */
+export function faceAimYaw(
+  f: BattleFighter,
+  dx: number,
+  dy: number,
+  hold: number = AIM_TURN_HOLD,
+): void {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+  if (Math.hypot(dx, dy) < 1e-3) return;
+  f.aimYaw = Math.atan2(dx, dy);
+  f.aimYawT = Math.max(f.aimYawT ?? 0, hold);
+}
+
+/** Yön kilidini zamanlar (0'da durur) — her sim adımında bir kez çağrılır. */
+export function tickAimYaw(f: BattleFighter, dt: number): void {
+  if ((f.aimYawT ?? 0) > 0) f.aimYawT = Math.max(0, (f.aimYawT ?? 0) - dt);
+}
 
 /** Kraliyet Savaşçısı ikinci ultiyi (iki elli kılıç yere vuruş) kullanır:
  *  elinde zaten kraliyet kılıcı olduğu için ulti tam olarak o skine bağlı. */
@@ -313,6 +348,14 @@ export interface BattleFighter {
   kbVX: number;
   kbVY: number;
   vy: number; // vertical movement direction: -1 up, 0 idle, +1 down
+  /**
+   * 🎯 Ateş/yetenek anında gövdenin döndüğü yön (radyan, arena uzayı:
+   * `yaw = atan2(dx, dy)`). `SkillComponent` yazar (faceAimYaw) ve
+   * `aimYawT > 0` olduğu sürece gövde, hareket yönü yerine bu yöne bakar.
+   */
+  aimYaw?: number;
+  /** Yön kilidinin kalan süresi (saniye). 0 → kilit yok. */
+  aimYawT?: number;
   /** Bot strafe direction after firing (1 or -1). Only used by the AI. */
   strafeDir?: number;
   /** Bot only: how long (seconds) the bot has been barely moving while trying to move. */
@@ -804,8 +847,15 @@ function FighterRig({
     // ayarlar. (Hareketsizken yaw modelTurn'a kilitli olduğu için kılıç
     // hedeften bağımsız bir yöne savruluyordu.)
     const ulting = f.samuraiUltT > 0;
+    // 🎯 ATIŞ/YETENEK YÖNÜ: kilit aktifken gövde hedefe döner — hem hareket
+    // ederken hem dururken, hem de ulti sırasında (kilit tam açıyı taşır;
+    // facing/vy 4 yöne yuvarlandığı için çapraz hedef ıskalanıyordu).
+    const aimYaw = f.aimYaw;
+    const aimLocked = (f.aimYawT ?? 0) > 0 && typeof aimYaw === "number";
     let targetYaw: number;
-    if (ulting) {
+    if (aimLocked) {
+      targetYaw = (aimYaw as number) + modelTurn;
+    } else if (ulting) {
       targetYaw =
         ((f.vy ?? 0) !== 0
           ? f.vy < 0
@@ -824,8 +874,9 @@ function FighterRig({
     // Keskin dönüş (rotateTowards): üstel yumuşatma yerine sabit açısal hız.
     // Üstel yaklaşımda karakter yön değiştirirken geniş bir kavis çizip
     // sürükleniyordu; şimdi sınırlı adımla tek karede hedefe oturuyor
-    // (16 rad/sn ≈ 917°/sn → 180° dönüş ~0.2 sn).
-    const maxTurn = (ulting ? 26 : 16) * dt;
+    // (16 rad/sn ≈ 917°/sn → 180° dönüş ~0.2 sn). Atış kilidinde dönüş daha
+    // da hızlıdır: mermi çıkarken gövde çoktan hedefe bakıyor olmalı.
+    const maxTurn = (ulting || aimLocked ? 26 : 16) * dt;
     root.current.rotation.y += Math.max(-maxTurn, Math.min(maxTurn, yawDiff));
     if (barGroup.current) barGroup.current.position.set(f.x / S, 0, f.y / S);
     // spinning identity ring under the player's feet — dashed ring + orbit
