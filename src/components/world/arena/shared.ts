@@ -177,9 +177,11 @@ export const COLD_FLAME = {
 };
 
 /** Ana merminin (soğuk alev oku) VFX ölçüleri — tek yerden ayar için.
- *  NOT: Değerler HUD (=2) ile çarpılarak dünyaya uygulanır. Karakter gövdesi
- *  1.5 birim olduğundan mermi kasıtlı olarak karakterin çok altında tutulur;
- *  büyütmek/ küçültmek için yalnızca bu tabloyu değiştirmek yeterlidir. */
+ *  NOT: Değerler `CHAR_HUD` (=2) ile çarpılarak dünyaya uygulanır: mermi
+ *  KARAKTERE göre ölçeklenir, kamera yakınlığından bağımsızdır (ekran ölçeği
+ *  olan `HUD` değişse bile mutlak boyu korunur). Karakter gövdesi ~0.7 birim
+ *  olduğundan mermi kasıtlı olarak karakterden küçük tutulur; büyütmek /
+ *  küçültmek için yalnızca bu tabloyu değiştirmek yeterlidir. */
 export const BOLT_VFX = {
   core: 0.055, // çekirdek yarıçapı (× HUD) → ~0.11 birim
   glow: 0.08, // iç ışıma yarıçapı

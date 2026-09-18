@@ -16,10 +16,10 @@
 //      world→screen x/y are scaled differently).
 //   2. Aspect ratio — `camera.aspect` is always set from the real drawing
 //      buffer, so geometry keeps its proportions on every device.
-//   3. İzometrik lens — kamera artık tam MOBA açısında: 45–50° elevation,
-//      35–40° dikey FOV (portrait 40°, landscape 36°) ve yükseltilmiş bir
-//      konum (sin(el)·dist ≈ 13 / 9.3 birim). Uzun lens + yüksek kamera
-//      "basık piramit" görüntüsünü bitirir: arazi ve karakterler doğal
+//   3. İzometrik lens — kamera tam MOBA açısında: 46–49° elevation, 44–46°
+//      dikey FOV ve oyuncunun hemen üstünde duran YAKIN bir takip konumu
+//      (sin(el)·dist ≈ 5.9 / 6.0 birim). Geniş ama yakın lens + izometrik
+//      pitch "basık piramit" görüntüsünü bitirir: arazi ve karakterler doğal
 //      oranlarında okunur, derinlik kısalması (foreshortening) azalır.
 //   4. Atmosphere — the void around the island is closed by a soft night-
 //      violet background (0x1a1a2e) plus an environment haze: a FogExp2
@@ -62,7 +62,7 @@ const WIDE_TO = 1.8;
 //   · dövüşün çevresi (lane + yan arazi) kadrajda kalıyor.
 // Dünya HUD'u aynı oranda küçültüldü (bkz. arena/shared → HUD), yani can
 // barları / hasar yazısı / kimlik halkası ekranda ESKİSİ GİBİ görünür.
-const FOV_P = 46; // izometrik MOBA lensi (istenen 45–50° aralığı)
+const FOV_P = 46; // izometrik MOBA lensi (istenen 45–50° FOV bandı)
 const FOV_L = 44; // yatayda aynı aile: basık görüntü oluşmaz
 const DIST_P = 7.8; // görünen yükseklik ≈ 2·7.8·tan23° ≈ 6.6 birim
 const DIST_L = 8.3; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·8.3·tan22° ≈ 6.7)

@@ -224,7 +224,9 @@ export function QaScene({
           }
         }
         // Efekt/ışık mesh'leri (Basic) kasten atlanır: dokusuz düz renk normaldir.
-        if (!(mat as THREE.Material).isMeshStandardMaterial) continue;
+        // (Runtime'da materyal Basic de olabildiği için bu bayrak gerçek
+        //  nesneden okunur; tip tarafında MeshStandardMaterial görünür.)
+        if (!mat.isMeshStandardMaterial) continue;
         const c = mat.color;
         if (!c) continue;
         const max = Math.max(c.r, c.g, c.b);
