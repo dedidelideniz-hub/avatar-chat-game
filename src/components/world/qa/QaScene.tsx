@@ -84,6 +84,21 @@ const BOUNDS_MARGIN = 2;
 
 const blocked = (x: number, y: number, r: number) => hitsRockCollision(x, y, r);
 
+/**
+ * Bulgu etiketi. Harita GLB'sinde çoğu yaprak mesh adsızdır ("(isimsiz)") ve
+ * rapor bu yüzden hangi objeden bahsedildiğini söyleyemiyordu. İsmin yanına
+ * üst zincir eklenir: `(isimsiz) ← Group_3/PGD_M_20BaseRedPart_01` gibi.
+ * Etiket deterministik olduğu için `qaLog` yine aynı bulguyu tek satırda toplar.
+ */
+function meshLabel(mesh: THREE.Mesh): string {
+  const name = mesh.name || "(isimsiz)";
+  const trail: string[] = [];
+  for (let p = mesh.parent, i = 0; p && i < 2; p = p.parent, i++) {
+    trail.push(p.name || "(isimsiz)");
+  }
+  return trail.length ? `${name} ← ${trail.join("/")}` : name;
+}
+
 interface ScanState {
   queue: THREE.Mesh[];
   index: number;
@@ -178,14 +193,23 @@ export function QaScene({
     const list: THREE.Mesh[] = [];
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.visible) return;
-      // QA'nın kendi görselleri ve efekt havuzları taranmaz.
+      if (!mesh.isMesh) return;
+      // QA'nın kendi görselleri taranmaz.
       if (/^qa-/.test(mesh.name || "")) return;
-      // Dövüşçü rig'i harita geometrisi DEĞİLDİR (bkz. dosya başı notu):
-      // kemikli (skinned) gövde/zırh parçaları bind-pose bbox'ı ve karakteri
-      // takip eden dünya konumu yüzünden yanlış "sınır ihlali" üretir, siyah
-      // kalan göz/kaş dokusu da kasıtlıdır. İşaret `Arena3D`'deki rig kökünde.
+      // Görünürlük ve dışlama ZİNCİRDE aranır — yalnızca mesh'in kendi
+      // bayrağına bakmak yetmiyor:
+      //   · Efekt havuzları çoğu zaman GRUP üzerinden gizlenir
+      //     (`group.visible = false`) ama çocuk mesh'in kendi `visible`
+      //     bayrağı true kalır. Havuzun dibinde, dünyada (0,0)'da bekleyen bu
+      //     parçalar (ör. yer yarığı havuzunun koyu taş parçası) haritada
+      //     "kaplamasız simsiyah yüzey" gibi raporlanıyordu — oysa sahne onları
+      //     hiç çizmiyor.
+      //   · Dövüşçü rig'i harita geometrisi DEĞİLDİR (bkz. dosya başı notu):
+      //     kemikli gövde/zırh parçaları bind-pose bbox'ı ve karakteri takip eden
+      //     dünya konumu yüzünden yanlış "sınır ihlali" üretir, siyah kalan
+      //     göz/kaş dokusu da kasıtlıdır. İşaret `Arena3D`'deki rig kökünde.
       for (let p: THREE.Object3D | null = mesh; p; p = p.parent) {
+        if (!p.visible) return;
         if (p.userData?.qaIgnore) return;
       }
       list.push(mesh);
@@ -207,7 +231,7 @@ export function QaScene({
     for (let i = s.index; i < end; i++) {
       const mesh = s.queue[i];
       const geo = mesh.geometry as THREE.BufferGeometry | undefined;
-      const name = mesh.name || "(isimsiz)";
+      const name = meshLabel(mesh);
       const wp = new THREE.Vector3();
       mesh.getWorldPosition(wp);
       const px = wp.x * S;
@@ -303,15 +327,17 @@ export function QaScene({
           qaLog(
             "warn",
             "TEXTURE",
-            `${name}: kaplamasız beyaz yüzey (material.map yok)`,
+            `${name}: kaplamasız beyaz yüzey (material.map yok, renk #${c.getHexString()})`,
             px,
             py,
           );
         } else if (!map && max < 0.05) {
+          // Renk hex olarak (sRGB) yazılır: koyu deri/kumaş gibi kasıtlı
+          // yüzeyler ile gerçekten bozuk (0,0,0) yüzeyler böylece ayrılır.
           qaLog(
             "info",
             "DARK",
-            `${name}: dokusuz simsiyah yüzey (kasıtlı olabilir)`,
+            `${name}: dokusuz simsiyah yüzey (renk #${c.getHexString()}, kasıtlı olabilir)`,
             px,
             py,
           );
@@ -338,7 +364,7 @@ export function QaScene({
             qaLog(
               "info",
               "BOUNDS",
-              `${name}: görünür geometri harita sınırının dışına taşıyor`,
+              `${name}: geometri 34×22'lik harita kutusunun dışına taşıyor (elmas yerleşim + çevre arazisi, normal)`,
               px,
               py,
             );
