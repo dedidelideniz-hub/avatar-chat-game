@@ -26,6 +26,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ArenaPostFx } from "./ArenaPostFx";
 import { DECOR_SCALE, scaleMapDecor } from "./mapDecorScale";
+// 🌊 Akan su: zaman sürücüsü. Su materyalinin eşlenmesi çizilen klonun içinde
+// (BattleMapModel) yapılır — harita glTF'inde su materyali bir arazi mesh'iyle
+// paylaşıldığı için yerinde mutasyon o araziyi de dalgalandırırdı.
+import { WaterFlow } from "./waterFlow";
 import {
   makeStoneTexture,
   repairUntexturedStructureMaterials,
@@ -1154,7 +1158,8 @@ export function MapPalette() {
     });
   }, [scene]);
 
-  return null;
+  // Akış sürücüsü: paylaşılan zaman uniform'unu ilerletir (tek useFrame).
+  return <WaterFlow />;
 }
 
 /**
