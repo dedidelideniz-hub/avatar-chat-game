@@ -84,15 +84,16 @@ const LOOK: Record<SwingKind, SwingLook> = {
     tilt: 0.2,
     intensity: 1.2,
   },
-  // Yakın dövüş: kısa menzilli, altın çelik çapraz kesiş (aşamaya göre aynalı).
+  // Yakın dövüş: kısa menzilli, altın çelik ÇAPRAZ kesme (aşamaya göre aynalı,
+  // kalın ve parlak — “kılıç geçti” okunması bu genişlikten gelir).
   melee: {
     color: "#fcd34d",
     hot: "#ffffff",
-    arc: 3.0,
-    radius: 0.78,
-    width: 0.3,
-    tilt: 0.34,
-    intensity: 1.1,
+    arc: 3.2,
+    radius: 0.9,
+    width: 0.46,
+    tilt: 0.5,
+    intensity: 1.4,
   },
 };
 
@@ -315,9 +316,14 @@ export function SlashTrail({
       u.uTilt.value = look.tilt * (s.stage === 1 ? 1 : -1);
     }
     // İzin yüksekliği salınım boyunca hafifçe alçalır: kılıç yayı gövdede
-    // yukarıdan aşağı süpürüyormuş gibi okunur.
+    // yukarıdan aşağı süpürüyormuş gibi okunur. MELEE'de bu iniş belirgin
+    // şekilde büyütülür: yay baş üstünden başlar, kalça hizasında biter →
+    // çapraz kesme.
+    const sweepK = Math.min(1, s.sweep);
     g.position.y =
-      ORIGIN_Y - 0.06 * Math.min(1, s.sweep) + 0.02 * Math.sin(time * 9);
+      s.kind === "melee"
+        ? ORIGIN_Y + 0.42 - 0.86 * sweepK + 0.02 * Math.sin(time * 11)
+        : ORIGIN_Y - 0.06 * sweepK + 0.02 * Math.sin(time * 9);
   });
 
   return (

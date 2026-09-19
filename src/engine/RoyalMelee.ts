@@ -24,10 +24,11 @@ import {
 
 /* ───────────────────────── ölçek ve zamanlama ───────────────────── */
 
-/** Toplam süre (sn) — iki çapraz kesiş (sol/sağ). */
-export const MELEE_DUR = 0.6;
+/** Toplam süre (sn) — iki çapraz kesiş (sol/sağ). Kesişin okunması için
+ *  yeterince uzun: hazırlık → hızlı darbe → toparlanma. */
+export const MELEE_DUR = 0.72;
 /** Rakip yakınsa süre uzar: üstüne atlama + bitirici iniş (3. vuruş). */
-export const MELEE_LUNGE_DUR = 0.84;
+export const MELEE_LUNGE_DUR = 0.95;
 /** Yeniden kullanma bekleme süresi (sn). */
 export const MELEE_CD = 0.42;
 /** Kesme menzili (px) — MAX_RANGE'in (200) içinde kısa yakın dövüş. */
@@ -39,6 +40,9 @@ export const MELEE_LEAP_MIN_PX = 58;
 /** Atlama hızı (px/sn) — dövüşçü fiziğiyle (çarpışma kontrollü) sürülür.
  *  ~0.18 sn'lik pencerede ~160 px yol: menzil içindeki rakibin üstüne varır. */
 export const MELEE_LEAP_SPEED = 900;
+/** Her kesme fazındaki küçük ÖNE ADIM hızı (px/sn). Karakter yerinde
+ *  savurmaz: her darbe biraz yakınlaşır (yakın dövüşçü hissi). */
+export const MELEE_STEP_SPEED = 420;
 /** Atlama penceresi (genel ilerleme 0..1). Bitirici aşama 0.67'de başlar ve
  *  vuruşu 0.84'te iner; atlama tam o aralıkta yürür ki karakter darbeden hemen
  *  önce rakibin üstüne varmış olsun. */
@@ -102,15 +106,17 @@ const MELEE_DIP = 0.22;
 interface MeleeKey {
   /** Kolun yatay açısı (derece): 0 = öne, + → karakterin SOLUNA. */
   h: number;
-  /** Dikey bileşen (yukarı +). */
+  /** Dikey bileşen (yukarı +, aşağı −). Kesişin “çapraz” okunmasını sağlar. */
   lift: number;
   /** Omurga öne eğilmesi. */
   lean: number;
-  /** Kalça/gövde burulması (yan, işaretli). */
-  twist: number;
-  /** Gövde hamlesi. */
+  /** Gövde/omurganın EKSENEL burulması (radyan, dünya Y ekseni).
+   *  Bir kılıç savurmasını “el sallama”dan ayıran asıl katman budur:
+   *  hazırlıkta gövde geriye/yanadır, darbede hedefe doğru döner. */
+  yaw: number;
+  /** Gövde hamlesi (adım atma). */
   lunge: number;
-  /** Gövde alçalması. */
+  /** Gövde alçalması (çömelme). */
   dip: number;
 }
 
@@ -118,37 +124,42 @@ const K = (
   h: number,
   lift: number,
   lean = 0,
-  twist = 0,
+  yaw = 0,
   lunge = 0,
   dip = 0,
-): MeleeKey => ({ h, lift, lean, twist, lunge, dip });
+): MeleeKey => ({ h, lift, lean, yaw, lunge, dip });
 
 /**
  * Aşama anahtar kareleri: [rest, anticipation, strike, follow-through].
- * Ardışık aşamaların "follow" u bir sonrakinin "rest"ine eşit seçildi —
- * combo boyunca kol geri sıfırlanmadan akıcı biçimde diğer yana geçer.
+ *
+ * Kesişler DÜZ YATAY değil ÇAPRAZDIR (yukarıdan aşağı) — MOBA kamerasında
+ * yatay savurma neredeyse görünmez, çapraz iniş ise net bir “kesme” okunur.
+ * Ardışık aşamaların "follow" u bir sonrakinin "rest"ine eşit seçildi:
+ * combo boyunca kol geri sıfırlanmadan diğer yana akar.
  */
 const STAGE_KEYS: readonly (readonly MeleeKey[])[] = [
-  // 0 — sağdan sola çapraz kesiş
+  // 0 — SAĞDAN SOLA çapraz kesme (kılıç baş üstü-sağdan sol alta iner).
+  //     Gövde ÖNCE SAĞA kurulur (−yaw), sonra sola dönerek kılıcı sürer.
   [
-    K(-112, 0.4, -0.06, 0.34, -0.12, 0.02),
-    K(-140, 0.62, -0.16, 0.52, -0.22, 0.05),
-    K(74, -0.12, 0.34, -0.34, 0.32, -0.05),
-    K(126, -0.3, 0.18, -0.44, 0.12, 0),
+    K(-95, 0.35, -0.08, -0.15, -0.12, 0.02),
+    K(-128, 1.05, -0.2, -0.72, -0.26, 0.07),
+    K(66, -0.62, 0.44, 0.52, 0.44, -0.1),
+    K(120, -0.9, 0.26, 0.66, 0.16, -0.02),
   ],
-  // 1 — soldan sağa çapraz kesiş (ayna)
+  // 1 — SOLDAN SAĞA çapraz kesme (ayna)
   [
-    K(126, -0.3, 0.18, -0.44, 0.12, 0),
-    K(148, 0.58, -0.12, -0.52, -0.18, 0.05),
-    K(-74, -0.12, 0.34, 0.34, 0.32, -0.05),
-    K(-130, -0.3, 0.18, 0.46, 0.12, 0),
+    K(120, -0.9, 0.26, 0.66, 0.16, -0.02),
+    K(132, 1.0, -0.18, 0.74, -0.22, 0.07),
+    K(-66, -0.62, 0.44, -0.52, 0.44, -0.1),
+    K(-128, -0.95, 0.26, -0.68, 0.16, -0.02),
   ],
-  // 2 — bitirici: tepeden çapraz iniş (üstüne atlayıp kesme)
+  // 2 — BİTİRİCİ: tepeden yere çapraz iniş (üstüne atlayıp biçme).
+  //     Kılıç sağ omuzdan havalanır, gövde sağa kurulur, sonra öne-sola patlar.
   [
-    K(-130, -0.3, 0.18, 0.46, 0.12, 0),
-    K(-48, 1.05, -0.32, 0.54, -0.32, 0.18),
-    K(28, -0.88, 0.5, -0.32, 0.64, -0.22),
-    K(42, -0.96, 0.32, -0.36, 0.24, -0.08),
+    K(-128, -0.95, 0.26, -0.68, 0.16, -0.02),
+    K(-20, 1.3, -0.36, -0.58, -0.34, 0.22),
+    K(20, -1.05, 0.6, 0.34, 0.68, -0.28),
+    K(34, -1.1, 0.36, 0.4, 0.24, -0.1),
   ],
 ];
 
@@ -233,8 +244,37 @@ export function computeMeleeBody(
   return {
     lunge: blend(b.from.lunge, b.to.lunge) * MELEE_LUNGE,
     dip: blend(b.from.dip, b.to.dip) * MELEE_DIP,
-    twist: blend(b.from.twist, b.to.twist),
+    // Kök (kalça) burulması = omurga burulmasının %60'ı: gövde hedefe
+    // gerçekten döner. Kemikler bu tabanın ÜSTÜNE hedeflenir.
+    twist: blend(b.from.yaw, b.to.yaw) * 0.6,
   };
+}
+
+/* ─────────────────────── eksenel (yaw) kemik dönüşü ─────────────── */
+
+const _parentQ = new THREE.Quaternion();
+const _yawQ = new THREE.Quaternion();
+
+/**
+ * Bone'u DÜNYA Y ekseni etrafında `angle` kadar burkar. `aimBone` bir kemiğin
+ * eksenini hedefe çevirir; gövde BURULMASI ise eksen yönünü değiştirmeyen bir
+ * dönüştür. Kalça/omurga burulmasını bu sağlar — kılıç savurmasının “gövdeyle
+ * girme” hissi buna bağlıdır.
+ */
+function twistBoneYaw(
+  bone: THREE.Object3D | null,
+  angle: number,
+  weight = 1,
+): void {
+  if (!bone || !bone.parent || weight <= 0.002) return;
+  if (Math.abs(angle * weight) < 1e-4) return;
+  bone.updateWorldMatrix(true, false);
+  const parent = bone.parent;
+  parent.getWorldQuaternion(_parentQ);
+  const parentInv = _parentQ.clone().invert();
+  _yawQ.setFromAxisAngle(UP, angle * weight);
+  bone.quaternion.premultiply(parentInv.multiply(_yawQ).multiply(_parentQ));
+  bone.updateWorldMatrix(true, false);
 }
 
 /* ──────────────────────────── kemik pozu ─────────────────────────── */
@@ -282,7 +322,10 @@ export function applyMeleePose(opts: MeleePoseOptions): void {
   const h = blend(b.from.h, b.to.h);
   const lift = blend(b.from.lift, b.to.lift);
   const lean = blend(b.from.lean, b.to.lean);
-  const twist = blend(b.from.twist, b.to.twist);
+  const yaw = blend(b.from.yaw, b.to.yaw);
+  // Hazırlık fazında mı, darbeden sonra mı? (dirsek kırılması ve sol kol
+  // karşı savurması bu fazla şekillenir.)
+  const winding = b.local < PH_STRIKE;
 
   const fwd = royalSlamForward(rig, facing);
   const side = meleeSide(rig, fwd);
@@ -298,43 +341,51 @@ export function applyMeleePose(opts: MeleePoseOptions): void {
 
   // Bıçak, koldan dışa uzanır ve kesişte aşağı doğru çalar. Bitirici inişte
   // çok daha dik (tepeden yere) — "yeri yaran" bitişi besler.
-  const bladeDown = b.stage >= 2 ? 0.92 : 0.34;
+  const bladeDown = b.stage >= 2 ? 0.95 : 0.45;
   const bladeDir = armDir.clone().addScaledVector(DOWN, bladeDown).normalize();
 
-  // 1) Gövde önce: omurga (öne eğilme + burulma) ve baş. Omurga dönünce
-  //    kolların dünya yönü de değiştiği için kollar EN SON hedeflenir.
+  // 1) GÖVDE ÖNCE: omurga eksenel burulması (kalça zaten kök burulmasıyla
+  //    döndü) + öne eğilme + baş. Burulma, kolların dünya yönünü değiştirdiği
+  //    için kollar EN SON hedeflenir.
+  twistBoneYaw(rig.spine, yaw * 0.55, weight * 0.9);
   aimBone(
     rig.spine,
     rig,
-    UP.clone()
-      .addScaledVector(fwd, lean)
-      .addScaledVector(side, twist * 0.5)
-      .normalize(),
-    weight * 0.85,
+    UP.clone().addScaledVector(fwd, lean).normalize(),
+    weight * 0.6,
   );
+  // Baş gövdeyle birlikte döner ama hedefe nişan almış kalır.
+  twistBoneYaw(rig.head, yaw * 0.2, weight);
   aimBone(
     rig.head,
     rig,
     UP.clone()
-      .addScaledVector(fwd, lean * 0.3 + 0.05)
+      .addScaledVector(fwd, lean * 0.25 + 0.05)
       .normalize(),
     weight * 0.5,
   );
 
-  // 2) Sağ kol kılıcı savurur; köprücük kemiği kısmen takip eder.
-  aimBone(rig.rightShoulder, rig, armDir, weight * 0.3);
+  // 2) SAĞ KOL: kılıcı taşır. Köprücük kemiği (clavicle) omuzla birlikte
+  //    açılır → kol gövdeden kopuk durmaz. Hazırlıkta dirsek kırılır, darbede
+  //    kol tam uzanır (kesme anı).
+  aimBone(rig.rightShoulder, rig, armDir, weight * 0.45);
   aimBone(rig.rightUpper, rig, armDir, weight);
-  aimBone(rig.rightFore, rig, armDir, weight * 0.9);
+  const foreDir = armDir
+    .clone()
+    .addScaledVector(DOWN, winding ? 0.28 : 0.06)
+    .normalize();
+  aimBone(rig.rightFore, rig, foreDir, weight * 0.95);
   if (bladeAxis) aimBone(rig.rightHand, rig, bladeDir, weight, bladeAxis);
 
-  // 3) Sol kol denge için ters yöne açılır (tek elle savurma okunsun).
+  // 3) SOL KOL: kesişe KARŞI savrulur (denge) — gövde burulmasıyla birlikte
+  //    gerçek bir iki kollu savurma ritmi oluşur.
   const offDir = fwd
     .clone()
-    .multiplyScalar(0.3)
-    .addScaledVector(side, -Math.sin(hRad) * 0.85)
-    .addScaledVector(DOWN, 0.5)
+    .multiplyScalar(0.24)
+    .addScaledVector(side, -Math.sin(hRad) * 0.95)
+    .addScaledVector(UP, -0.3 * lift - 0.12)
     .normalize();
-  aimBone(rig.leftShoulder, rig, offDir, weight * 0.25);
-  aimBone(rig.leftUpper, rig, offDir, weight * 0.7);
-  aimBone(rig.leftFore, rig, offDir, weight * 0.55);
+  aimBone(rig.leftShoulder, rig, offDir, weight * 0.3);
+  aimBone(rig.leftUpper, rig, offDir, weight * 0.75);
+  aimBone(rig.leftFore, rig, offDir, weight * 0.6);
 }

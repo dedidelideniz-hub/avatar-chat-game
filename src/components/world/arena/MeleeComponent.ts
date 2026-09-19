@@ -23,8 +23,11 @@ import {
   MELEE_LEAP_TO,
   MELEE_LUNGE_RANGE_PX,
   MELEE_RANGE_PX,
+  MELEE_STEP_SPEED,
   meleeDuration,
   meleeStageCount,
+  meleeStageOf,
+  meleeStageWindow,
   meleeStrikeArc,
   meleeStrikeDamage,
   meleeStrikeProgress,
@@ -118,31 +121,67 @@ function currentDir(f: BattleFighter): AimDir {
   return { x: Math.sin(yaw), y: Math.cos(yaw), locked: false };
 }
 
-/** Vuruş anının görsel patlaması (iki arena da aynı efekti görür). */
+/**
+ * Vuruş anının görsel patlaması (iki arena da aynı efekti görür).
+ *
+ * “Kesme”nin okunması için üç katman birlikte çalışır:
+ *  1. KESME ŞERİDİ — hedefin gövdesini boyunca çapraz uzanan iki parlak kılıç
+ *     izi (`beam`). Aşamaya göre eğim aynalanır; bitirici daha uzun ve dik.
+ *  2. KIVILCIM — hasar noktasında darbe parlaması + kıvılcım pufu.
+ *  3. SAVURMA HALKASI — saldıranın ayağında kısa yay halkası (gövde kilitlenip
+ *     savurduğu için “ağırlık” hissi).
+ */
 function emitMeleeStrikeFx(
   vfx: VfxBus,
   caster: BattleFighter,
   enemy: BattleFighter,
+  dir: AimDir,
   stage: number,
   hit: boolean,
 ): void {
   const finish = stage >= 2;
-  vfx.burst(
-    enemy.x,
-    enemy.y - 40,
-    finish ? 105 : 72,
-    finish ? "#fbbf24" : "#e2e8f0",
-    0.3,
+  // Vuruş ıskaladıysa iz rakibin üstünde DEĞİL, bıçağın havada bittiği
+  // noktada çizilir (yanlış "kesildi" izlenimi olmasın).
+  const x = hit ? enemy.x : caster.x + dir.x * MELEE_RANGE_PX * 0.72;
+  const y = (hit ? enemy.y : caster.y + dir.y * MELEE_RANGE_PX * 0.72) - 46;
+
+  // Kesme şeridi ekseni: salınım yönüne DİK, aşamaya göre ± eğimli.
+  const tilt = stage === 1 ? 1 : -1;
+  const axRaw = -dir.y * 0.74 + dir.x * 0.5 * tilt;
+  const ayRaw = dir.x * 0.74 + dir.y * 0.5 * tilt;
+  const an = Math.hypot(axRaw, ayRaw) || 1;
+  const ax = axRaw / an;
+  const ay = ayRaw / an;
+  const half = finish ? 120 : 92;
+  // 1) Ana kesme izi (bıçağın geçtiği hat).
+  vfx.beam(
+    x + ax * half,
+    y + ay * half,
+    x - ax * half,
+    y - ay * half,
+    finish ? 0.24 : 0.18,
   );
-  vfx.smoke(enemy.x, enemy.y - 12, finish ? 5 : 3, finish ? 90 : 55);
-  if (hit) vfx.coldFlameImpact(enemy.x, enemy.y - 40, finish ? 74 : 52);
-  vfx.flash(finish ? 0.4 : 0.18);
+  // 2) Hafif geride/paralel ikinci şerit → çift kenarlı “biçme” görüntüsü.
+  const offX = dir.x * (finish ? 34 : 22);
+  const offY = dir.y * (finish ? 34 : 22) + 18;
+  vfx.beam(
+    x + ax * half * 0.72 + offX,
+    y + ay * half * 0.72 + offY,
+    x - ax * half * 0.5 + offX,
+    y - ay * half * 0.5 + offY,
+    0.15,
+  );
+
+  vfx.burst(x, y, finish ? 118 : 78, finish ? "#fbbf24" : "#f8fafc", 0.32);
+  vfx.smoke(x, y + 34, finish ? 5 : 3, finish ? 95 : 58);
+  if (hit) vfx.coldFlameImpact(x, y, finish ? 78 : 54);
+  vfx.flash(finish ? 0.42 : 0.2);
   vfx.ring(
     caster.x,
     caster.y - 28,
-    finish ? 84 : 58,
+    finish ? 92 : 64,
     finish ? "#fbbf24" : "#fde68a",
-    0.26,
+    0.28,
   );
 }
 
@@ -188,6 +227,30 @@ export function stepMelee(
         (dy / d) * MELEE_LEAP_SPEED * dt,
         dt,
       );
+      // Havalanma tozu: atlayışın “yerden kesilme” hissini verir.
+      opts.vfx.smoke(caster.x, caster.y - 16, 1, 34);
+    }
+  }
+
+  // ── ÖNE ADIM (step-in): her kesme fazında kısa bir yakınlaşma ──
+  // Karakter yerinde durup kılıç sallamaz; her darbe biraz yaklaşır. Bitirici
+  // aşamasının yürüyüşünü zaten atlama üstlendiği için orada devre dışı.
+  const stepStage = meleeStageOf(caster.meleeLeap, progress);
+  const stepFinish = caster.meleeLeap && stepStage >= 2;
+  if (!stepFinish) {
+    const sw = meleeStageWindow(caster.meleeLeap, stepStage);
+    const sl = (progress - sw.start) / Math.max(1e-6, sw.end - sw.start);
+    if (sl >= 0.3 && sl <= 0.6) {
+      const gap = Math.hypot(enemy.x - caster.x, enemy.y - caster.y);
+      if (gap > MELEE_RANGE_PX * 0.45) {
+        const dir = currentDir(caster);
+        opts.leapMove(
+          caster,
+          dir.x * MELEE_STEP_SPEED * dt,
+          dir.y * MELEE_STEP_SPEED * dt,
+          dt,
+        );
+      }
     }
   }
 
@@ -211,7 +274,7 @@ export function stepMelee(
       rangePx: MELEE_RANGE_PX + (stage >= 2 ? 30 : 0),
       halfAngle: meleeStrikeArc(stage),
     });
-    emitMeleeStrikeFx(opts.vfx, caster, enemy, stage, hit);
+    emitMeleeStrikeFx(opts.vfx, caster, enemy, dir, stage, hit);
     strikes.push({ stage, dmg: meleeStrikeDamage(stage), hit });
   }
   return strikes;
