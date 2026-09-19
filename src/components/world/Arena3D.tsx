@@ -27,6 +27,12 @@ import {
   useRoyalWarriorEffects,
 } from "@/engine/RoyalWarriorEffects";
 import {
+  applyBattleStance,
+  findBattleStance,
+  publishStanceDrop,
+  stanceDropRig,
+} from "@/engine/BattleStance";
+import {
   ROYAL_ULT_LOCK,
   applyRoyalSlamBody,
   applyRoyalSlamPose,
@@ -479,6 +485,42 @@ const AURA_SIZE = 1.8 * BODY_SCALE_GAIN;
 const AURA_OPACITY_PLAYER = 0.17;
 const AURA_OPACITY_ENEMY = 0.11;
 
+/* ------------------------------------------------------------------ */
+/* SAVAŞ DURUŞU (battle stance) ve VARSAYILAN BAKIŞ                    */
+/*                                                                    */
+/* 1) DURUŞ: MOBA karakterleri dururken dimdik durmaz — hafif öne eğik, */
+/*    dizleri bükülmüş ve ağırlığı bir ayaktan diğerine akan "hazır"     */
+/*    bir duruş sergiler. Kemik bazlı poz ÖLÇÜLEREK elendi: kemik       */
+/*    adları model başına değişiyor (character.glb'de `FootL/FootR`      */
+/*    gövde köküne bağlı, `skin-samuray`da beklenen adlar hiç yok),     */
+/*    yani `LowerLeg` döndürmek ayağı gövdeden koparırdı. Bu yüzden      */
+/*    duruş GÖVDE SARGISINA (bodyWrap) uygulanır: (a) ayak hattından     */
+/*    dönen hafif öne eğilme, (b) dikey alçalma (dizler bükülmüş gibi), */
+/*    (c) yavaş ağırlık salınımı — hareket başlarken yumuşakça kapanır. */
+const STANCE_LEAN = 0.085; // rad (~4.9°) — öne eğilme
+const STANCE_CROUCH = 0.035; // dikey sıkıştırma (~%3.5) — çömelmiş diz
+const STANCE_SWAY = 0.03; // rad (~1.7°) — gövde eğimi (yan)
+const STANCE_YAW = 0.022; // rad (~1.3°) — nefesle birlikte hafif gövde dönüşü
+const STANCE_SHIFT = 0.016; // birim — bir ayaktan diğerine ağırlık kayması
+
+/* 2) VARSAYILAN BAKIŞ: yaw 0 = +z = KAMERAYA DÖNÜK olduğu için karakter */
+/*    dururken ön yüzünü gösteriyordu. Varsayılan yön artık ekranda        */
+/*    yukarı = -z = koridor/kuzey yönü: oyuncu, MOBA'larda olduğu gibi    */
+/*    karakterin arkasını/omzunu görür. Hareket veya yetenek anında gövde */
+/*    anında gerçek yönüne döner (restYaw zaten her atış/yürüyüşte         */
+/*    güncellenir). Ayar düğmesi: MOBA'da beklenen koridor yönü `PI`,     */
+/*    klasik MOBA kamera düzenindeki çapraz koridor ise `PI / 4`.          */
+const DEFAULT_REST_YAW = Math.PI;
+
+/* 3) KEMİK KATMANI: yukarıdaki gövde sargısı katmanı her modele uygulanır,
+ *    ama asıl "savaşa hazır" izlenimi iskeletten gelir — dizler bükülür,
+ *    gövde öne alınır, eller öne hazırlanır. Eksenler ve işaretler her
+ *    iskelet için ÖLÇÜLEREK bulunur (bkz. engine/BattleStance), bu yüzden
+ *    dört farklı rig'de (karakter/Samuray/Şövalye/Kraliyet) de doğru çalışır.
+ *    Model kökü uzayında "ileri" yön: varsayılan +z, Kraliyet Savaşçısı -z. */
+const FORWARD_POS_Z = new THREE.Vector3(0, 0, 1);
+const FORWARD_NEG_Z = new THREE.Vector3(0, 0, -1);
+
 /** Şampiyon ışığı: karakterin göğsünden yayılan kendi renginde küçük bir
  *  nokta ışığı. Arenanın lav/gece atmosferinde gövdeyi ve altındaki zemini
  *  canlı tutar — "gösterişli şampiyon" hissinin asıl kaynağı budur.
@@ -535,6 +577,23 @@ function GlbFighterBodyCore({
   // Kraliyet Savaşçısı: elindeki kılıçla iki elli yere vurma pozu.
   const royalSlammer = isSamuraiFighter(fighter.current);
   const slamRig = useMemo(() => findRoyalSlamRig(clone), [clone]);
+  // Savaş duruşu (kemik katmanı): dururken dizleri büker, gövdeyi öne alır ve
+  // elleri hazır tutar. Kraliyet Savaşçısı'nın modeli ters baktığı için ölçüm
+  // "ileri" ekseni ona göre verilir (bkz. `modelTurn`).
+  const royalForward = fighter.current.equipped.some(
+    (item) => item === "skin-savasci-glb",
+  );
+  const stanceRig = useMemo(
+    () =>
+      findBattleStance(
+        clone,
+        slamRig,
+        royalForward ? FORWARD_NEG_Z : FORWARD_POS_Z,
+      ),
+    [clone, slamRig, royalForward],
+  );
+  /** Duruş katsayısı: 1 = hareketsiz savaş duruşu, 0 = hareket/ulti. */
+  const stanceK = useRef(1);
   const slamBladeAxis = useRef<THREE.Vector3 | null>(null);
   const wasUlt = useRef(false);
   // Kraliyet zırhı/kılıcı + kılıç kalibrasyonu bu hook içinde bağlanır.
@@ -744,6 +803,25 @@ function GlbFighterBodyCore({
     currentClip.current = next;
   });
 
+  // ── SAVAŞ DURUŞU (kemik katmanı) ────────────────────────────────────
+  // Animasyon klipi (idle/walk) kemikleri yazdıktan SONRA çalışır; aynı
+  // premultiply yöntemi (bkz. RoyalSlam.aimBone) sayesinde klibin ÜSTÜNE
+  // biner, klibi kesmez. Ulti kemikleri kendisi sürdüğü için duruş o sırada
+  // kapanır, maç başında ise katsayı 1'den başlar (duruş hep açık).
+  useFrame((_, dt) => {
+    const f = fighter.current;
+    const target = f.moving || f.samuraiUltT > 0 ? 0 : 1;
+    stanceK.current += (target - stanceK.current) * Math.min(1, dt * 6);
+    applyBattleStance(stanceRig, stanceK.current);
+  });
+
+  // Ölçülen alçalma miktarı gövde katmanına aktarılır (kimlik: dövüşçü ref'i).
+  // Ölçüm model-kökü biriminde; gövde katmanı `bodyWrap` (ölçek 1) olduğu için
+  // aradaki tek ölçek modelin kendi ölçeğidir (bodyFit.scale).
+  useEffect(() => {
+    publishStanceDrop(fighter, stanceRig.drop * bodyFit.scale);
+  }, [fighter, stanceRig, bodyFit.scale]);
+
   return (
     <>
       {/* Şampiyon ışığı: karakterin kendi renginde küçük bir nokta ışığı.
@@ -820,6 +898,13 @@ function FighterRig({
   const bushState = useRef(false);
   const root = useRef<THREE.Group>(null);
   const bob = useRef<THREE.Group>(null);
+  // Duruş katsayısı (1 = hareketsiz savaş duruşu, 0 = hareket). Geçiş
+  // yumuşatılır ki durup kalkarken gövde sıçramasın.
+  const stanceK = useRef(1);
+  // Kemikler gövde bileşeninde (GlbFighterBodyCore) döndürülür; buradaki rig
+  // yalnızca o bileşenin ÖLÇTÜĞÜ alçalma miktarını taşır: dizler bükülünce
+  // ayaklar havada kalmasın diye gövde tam o kadar indirilir.
+  const stanceRig = useMemo(() => stanceDropRig(fighter), [fighter]);
 
   const armL = useRef<THREE.Group>(null);
   const armR = useRef<THREE.Group>(null);
@@ -969,11 +1054,17 @@ function FighterRig({
     let dirYaw: number;
     if (aimLocked) dirYaw = aimYaw as number;
     else if (f.moving) dirYaw = moveYaw;
-    else dirYaw = f.restYaw ?? 0;
+    else dirYaw = f.restYaw ?? DEFAULT_REST_YAW;
     // Kalıcı bakış: atış/yetenek anında nişan açısı, yürürken hareket yönü.
     if (aimLocked) f.restYaw = aimYaw as number;
     else if (f.moving) f.restYaw = moveYaw;
     const targetYaw = dirYaw + modelTurn;
+    // Maçın İLK karesi: gövde varsayılan bakış yönünde doğar (kameraya dönük
+    // doğup sonra 180° dönme görüntüsü oluşmasın).
+    if (f.restYaw === undefined) {
+      f.restYaw = dirYaw;
+      root.current.rotation.y = targetYaw;
+    }
     let yawDiff = targetYaw - root.current.rotation.y;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
@@ -1086,6 +1177,28 @@ function FighterRig({
         amp > 0
           ? Math.abs(Math.sin(t)) * 0.09
           : Math.sin(performance.now() / 420) * 0.018;
+    }
+    // ── SAVAŞ DURUŞU (battle stance) ──────────────────────────────────
+    // Duran karakter dimdik değil, savaşa hazır durur: hafif öne eğik,
+    // dizleri bükülmüş gibi alçalmış ve ağırlığı bir ayaktan diğerine
+    // akan. Hareket/yetenek anında katsayı 0'a çekilir (yürüyüş animasyonu
+    // devralır), durunca yumuşakça geri gelir.
+    // Ulti (Kraliyet yere vuruş pozu) kemikleri kendisi sürdüğü için duruş
+    // katmanı o sırada kapanır.
+    const stanceTarget = f.moving || f.samuraiUltT > 0 ? 0 : 1;
+    stanceK.current += (stanceTarget - stanceK.current) * Math.min(1, dt * 6);
+    if (bodyWrap.current) {
+      const k = stanceK.current;
+      const stanceT = performance.now();
+      const slow = Math.sin(stanceT / 1400);
+      bodyWrap.current.rotation.x = STANCE_LEAN * k;
+      bodyWrap.current.rotation.z = STANCE_SWAY * k * slow;
+      bodyWrap.current.rotation.y = STANCE_YAW * k * Math.sin(stanceT / 900);
+      bodyWrap.current.scale.set(1, 1 - STANCE_CROUCH * k, 1);
+      bodyWrap.current.position.x = STANCE_SHIFT * k * slow;
+      // Kemik katmanı: diz bükme + gövde öne + kollar hazır. Ölçülen `drop`
+      // kadar gövde indirilir → çömelme görünür ama ayaklar yerden kesilmez.
+      bodyWrap.current.position.y = -applyBattleStance(stanceRig, k);
     }
     // ── White flash: düşman hasar aldığı an model kaplaması 0.1s beyaza
     // döner, sonra orijinal kaplamasına geri döner (emissive overlay). ──

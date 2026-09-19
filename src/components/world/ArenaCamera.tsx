@@ -73,8 +73,14 @@ const FOV_L = 44; // yatayda aynı aile: basık görüntü oluşmaz
 // görünen yüksekliğin ~%22'si olur. 4 birimlik menzil çemberi %61'de kalır.
 const DIST_P = 7.8; // görünen yükseklik ≈ 2·7.8·tan23° ≈ 6.6 birim
 const DIST_L = 8.3; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·8.3·tan22° ≈ 6.7)
-const EL_P = 0.855; // ~49° izometrik MOBA açısı (istenen 45–50°)
-const EL_L = 0.81; // ~46° — yatayda da aynı izometrik pitch (top-down değil)
+// PITCH YÜKSELTİLDİ (49° / 46° → 56.7° / 55.3°): kamera "çökük" okunuyordu,
+// karakter öne doğru yatık duruyor ve ön yüzü fazla görünüyordu. MOBA
+// kamerası tepeden daha dik bakar (Wild Rift ~55°); pitch yükselince zemin ve
+// karakter üstten okunur, derinlik kısalması azalır. Takip mesafesi ve FOV
+// bilinçli olarak korundu: kamera yalnızca daha yukarıdan bakar (dikey
+// çerçeveleme aynı kalır, karakter ekranda eskisi kadar büyüktür).
+const EL_P = 0.99; // ~56.7° — dikey mod
+const EL_L = 0.965; // ~55.3° — yatayda aynı dik izometrik aile
 // Harita kenar payı: kamera hedefi bu kadar içeride kalsın. Yakın kamerada
 // görünür yarı-yükseklik ≈ 3.3 birim olduğu için pay da yükseltildi —
 // böylece harita kenarında ekranın boşluğa taşması engellenir.
