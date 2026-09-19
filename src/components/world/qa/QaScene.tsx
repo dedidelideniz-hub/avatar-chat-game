@@ -135,6 +135,17 @@ function logCollisionDiag(): void {
         `(üs odası ve çıkışları dövüşçü genişliğinde kalsın diye)`,
     );
   }
+  // ÜS GEÇİT PAYI: üs çevresinde engel kenarları tıraşlanır; kapılar
+  // dövüşçünün rahat geçeceği genişliğe çıkar (ölçüm: en dar geçit 20-28 px
+  // → 92-96 px, dövüşçü çapı 44 px).
+  if (d.baseRelaxed > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.baseRelaxed} engel hücresi üs çevresinde tıraşlandı (geçit payı): ` +
+        `üs kapıları dövüşçünün rahat sığacağı genişliğe açıldı`,
+    );
+  }
   // Güvenlik vanası: koruma yine de bir üs çıkışını tıkamışsa geri alınan
   // hücreler. 0 ise koruma üsleri kapatmamış demektir (istenen durum).
   if (d.baseSealCleared > 0) {

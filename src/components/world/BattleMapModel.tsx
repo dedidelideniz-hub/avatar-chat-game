@@ -142,6 +142,8 @@ let protectedRestoredCells = 0;
 let baseSealClearedCells = 0;
 /** Üs bölgesi muafiyetiyle korumadan çıkarılan hücre (yalnız teşhis). */
 let baseProtectionClearedCells = 0;
+/** Üs çevresinde geçit payı için tıraşlanan engel hücresi (yalnız teşhis). */
+let baseRelaxedCells = 0;
 /** Son kurulumdaki koruma maskesi (yalnız teşhis: "bu mesh korunuyor muydu?"). */
 let lastProtectionMask: Uint8Array | null = null;
 /** Üs çıkış kontrolü: hedef, arena merkezine bu yarıçaptan (px) yakın
@@ -190,7 +192,27 @@ const PROTECT_ERODE_PASSES = 1;
  * geçerli olur, üs hem yürünebilir kalır hem de çıkışları açılır. Arena
  * ortasındaki, ormandaki ve koridorlardaki kule/duvar/kaya koruması devam eder.
  */
-const BASE_PROTECT_FREE_R = 340;
+const BASE_PROTECT_FREE_R = 420;
+/**
+ * ÜS GEÇİT PAYI (base clearance margin).
+ *
+ * ÖLÇÜM (gerçek ızgara, dövüşçü çapı 44 px): üs çıkışlarında geçitler
+ * yer yer 20-28 px'e iniyordu — karakter "geçiyor ama zor geçiyor" (fizik
+ * gövdeyi 44 px kabul eder, ince yarıklarda ise yalnızca tam orta hattan
+ * geçilebiliyor). Dar boğazlar korumadan DEĞİL, rasterize edilmiş üs
+ * mimarisinden geliyordu (koruma yarıçapını 340→560 px yapmak ölçümde hiçbir
+ * şeyi değiştirmedi).
+ *
+ * Bu yüzden üslerin çevresinde engel kenarları ayrıca tıraşlanır: her tur,
+ * komşusunda boşluk olan engel hücresini kaldırır (2 px/tur/kenar). Böylece
+ * üs kapıları dövüşçünün rahat geçeceği genişliğe açılır; haritanın geri
+ * kalanındaki kule/duvar/kaya ölçüleri değişmez.
+ *
+ * ÖLÇÜM (üs çıkış geçidi genişliği, en dar nokta): 0 tur = 20-28 px,
+ * 3 tur = 52-56 px, **4 tur = 92-96 px** (dövüşçü çapı 44 px), 6 tur = 102 px.
+ * 4 turdan sonra kazanç doyuma giriyor; bu yüzden 4 seçildi.
+ */
+const BASE_CLEAR_ERODE_PASSES = 4;
 
 /**
  * GRID KURUCUSU SÖZLÜĞÜ (tek kaynak).
@@ -273,6 +295,8 @@ export function collisionDiagnostics(): {
   baseSealCleared: number;
   /** Üs bölgesi muafiyetiyle korumadan çıkarılan hücre sayısı. */
   baseProtectFree: number;
+  /** Üs çevresinde geçit payı için tıraşlanan engel hücresi sayısı. */
+  baseRelaxed: number;
   /** Engel sayıldığı hâlde merkezi blokeli OLMAYAN mesh'ler — gerçek bulgu.
    *  Ad + konum + yükseklik verilir ki tek taramada teşhis edilebilsin. */
   misses: {
@@ -393,6 +417,7 @@ export function collisionDiagnostics(): {
     protectedRestored: protectedRestoredCells,
     baseSealCleared: baseSealClearedCells,
     baseProtectFree: baseProtectionClearedCells,
+    baseRelaxed: baseRelaxedCells,
     misses,
   };
 }
@@ -793,6 +818,60 @@ function restoreProtectedObstacles(
  * gölge/dekor projeksiyonu düşmez.
  */
 /**
+ * ÜS GEÇİT PAYI — üs çevresindeki engel kenarlarını tıraşlar.
+ *
+ * Yalnız `radius` içindeki engel hücreleri etkilenir; her tur komşusunda
+ * boşluk bulunan engel hücresi kaldırılır (kenar başına 2 px). Amaç: üs
+ * kapılarında 20-28 px'e inen geçitleri dövüşçünün rahatça sığacağı
+ * genişliğe çıkarmak (bkz. BASE_CLEAR_ERODE_PASSES ölçüm notu).
+ */
+function erodeObstaclesNearBases(g: RockGrid, radius: number, passes: number) {
+  const { cols, rows, cell, blocked } = g;
+  let cleared = 0;
+  for (let p = 0; p < passes; p++) {
+    const removals: number[] = [];
+    for (const [bx, by] of BASE_CENTERS) {
+      const minCol = Math.max(0, Math.floor((bx - radius) / cell));
+      const maxCol = Math.min(cols - 1, Math.floor((bx + radius) / cell));
+      const minRow = Math.max(0, Math.floor((by - radius) / cell));
+      const maxRow = Math.min(rows - 1, Math.floor((by + radius) / cell));
+      for (let row = minRow; row <= maxRow; row++) {
+        const rowOff = row * cols;
+        const dy = (row + 0.5) * cell - by;
+        for (let col = minCol; col <= maxCol; col++) {
+          const index = rowOff + col;
+          if (!blocked[index]) continue;
+          const dx = (col + 0.5) * cell - bx;
+          if (dx * dx + dy * dy > radius * radius) continue;
+          let edge = false;
+          for (let dr = -1; dr <= 1 && !edge; dr++) {
+            const r = row + dr;
+            if (r < 0 || r >= rows) {
+              edge = true;
+              break;
+            }
+            const off = r * cols;
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const c = col + dc;
+              if (c < 0 || c >= cols || !blocked[off + c]) {
+                edge = true;
+                break;
+              }
+            }
+          }
+          if (edge) removals.push(index);
+        }
+      }
+    }
+    if (removals.length === 0) break;
+    for (const index of removals) blocked[index] = 0;
+    cleared += removals.length;
+  }
+  baseRelaxedCells = cleared;
+}
+
+/**
  * ÜS BÖLGESİ MUAFİYETİ — koruma hücrelerini üslerin çevresinden siler.
  *
  * Üs mimarisi (BasePart parçaları + `PVP_M_PGD19Tower` kuleleri) birbirine
@@ -829,6 +908,8 @@ function clearProtectionNearBases(mask: Uint8Array, g: RockGrid) {
     }
   }
   baseProtectionClearedCells = cleared;
+  // Üs kapılarına pay ver: engel kenarları üs çevresinde tıraşlanır.
+  erodeObstaclesNearBases(g, BASE_PROTECT_FREE_R, BASE_CLEAR_ERODE_PASSES);
 }
 
 function buildTallObstacleMask(g: RockGrid): Uint8Array | null {
