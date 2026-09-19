@@ -148,7 +148,14 @@ export function planBasicAttack(
   aimX?: number,
   aimY?: number,
 ): BasicAttackPlan | null {
-  if (!permitted || caster.hp <= 0 || caster.dashT > 0 || caster.atkCd > 0)
+  // Yakın dövüş salınımı sırasında karakter köklenmiştir: düz vuruş yok.
+  if (
+    !permitted ||
+    caster.hp <= 0 ||
+    caster.dashT > 0 ||
+    caster.meleeT > 0 ||
+    caster.atkCd > 0
+  )
     return null;
   caster.atkCd = ATK_CD;
   // Skillshot hedefi: nişan varsa tam o yön; yoksa yalnızca MENZİL İÇİNDEKİ
@@ -294,7 +301,9 @@ export function castUltimate(
     caster.hp <= 0 ||
     !isSamuraiFighter(caster) ||
     caster.samuraiCharge < 1 ||
-    caster.samuraiUltT > 0
+    caster.samuraiUltT > 0 ||
+    // Yakın dövüşle çakışmasın: kılıç aynı anda iki pozu süremez.
+    caster.meleeT > 0
   )
     return null;
   const aim = planAim(caster, enemy, host);

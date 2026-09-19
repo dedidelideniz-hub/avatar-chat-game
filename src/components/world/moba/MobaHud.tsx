@@ -51,6 +51,8 @@ import {
   Zap,
 } from "lucide-react";
 import type { BattleFighter } from "@/components/world/Arena3D";
+// Yakın dövüş (melee) yuvasının bekleme halkası aynı sabitten ölçeklenir.
+import { MELEE_CD } from "@/engine/RoyalMelee";
 import { cn } from "@/lib/utils";
 // Cam (glassmorphism) katmanı: index.css'in sonundaki HUD bloklarını bu dosya
 // günceller (index.css düzenleme aracının pencere sınırının dışında kalıyor).
@@ -134,12 +136,21 @@ export interface MobaHudMeta {
   exit: () => void;
 }
 
+/** Sahnenin yetenek barı yuvalarının çağırdığı eylemler. */
+export interface MobaHudActions {
+  super: () => void;
+  samuraiSuper: () => void;
+  melee: () => void;
+}
+
 export interface MobaHudStore {
   player: MutableRefObject<BattleFighter>;
   bot: MutableRefObject<BattleFighter>;
   live: MutableRefObject<MobaHudLive>;
   /** İki tarafın isabet skoru (üst şeritteki MOBA skor tablosu). */
   score: MutableRefObject<{ p: number; o: number }>;
+  /** Yuvaların bağlandığı sahne eylemleri (yalnız yakın dövüş yuvası için). */
+  actions?: MutableRefObject<MobaHudActions>;
   meta: MobaHudMeta;
 }
 
@@ -227,54 +238,61 @@ export interface MobaBurstHandle {
 }
 
 /** Uçuş yörüngeleri CSS'te (`.moba-floater--0…4`) tanımlıdır. */
-const FLOATERS = [{ left: 34 }, { left: 44 }, { left: 54 }, { left: 62 }, { left: 26 }];
+const FLOATERS = [
+  { left: 34 },
+  { left: 44 },
+  { left: 54 },
+  { left: 62 },
+  { left: 26 },
+];
 
-export const MobaEmoteBurst = forwardRef<MobaBurstHandle>(function MobaEmoteBurst(
-  _props,
-  ref,
-) {
-  const [floaters, setFloaters] = useState<
-    { id: number; icon: MobaBurstIcon; i: number }[]
-  >([]);
-  const [banner, setBanner] = useState<{ id: number; text: string } | null>(null);
-  const seq = useRef(0);
+export const MobaEmoteBurst = forwardRef<MobaBurstHandle>(
+  function MobaEmoteBurst(_props, ref) {
+    const [floaters, setFloaters] = useState<
+      { id: number; icon: MobaBurstIcon; i: number }[]
+    >([]);
+    const [banner, setBanner] = useState<{ id: number; text: string } | null>(
+      null,
+    );
+    const seq = useRef(0);
 
-  useImperativeHandle(ref, () => ({
-    burst(icon: MobaBurstIcon, label?: string) {
-      const id = ++seq.current;
-      const i = id % FLOATERS.length;
-      setFloaters((prev) => [...prev.slice(-5), { id, icon, i }]);
-      window.setTimeout(() => {
-        setFloaters((prev) => prev.filter((f) => f.id !== id));
-      }, 1300);
-      if (label) {
-        setBanner({ id, text: label });
+    useImperativeHandle(ref, () => ({
+      burst(icon: MobaBurstIcon, label?: string) {
+        const id = ++seq.current;
+        const i = id % FLOATERS.length;
+        setFloaters((prev) => [...prev.slice(-5), { id, icon, i }]);
         window.setTimeout(() => {
-          setBanner((prev) => (prev && prev.id === id ? null : prev));
-        }, 1400);
-      }
-    },
-  }));
+          setFloaters((prev) => prev.filter((f) => f.id !== id));
+        }, 1300);
+        if (label) {
+          setBanner({ id, text: label });
+          window.setTimeout(() => {
+            setBanner((prev) => (prev && prev.id === id ? null : prev));
+          }, 1400);
+        }
+      },
+    }));
 
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {floaters.map((f) => (
-        <span
-          key={f.id}
-          className={`moba-floater moba-floater--${f.i}`}
-          style={{ left: `${FLOATERS[f.i].left}%` }}
-        >
-          {BURST_ICONS[f.icon]}
-        </span>
-      ))}
-      {banner && (
-        <div className="moba-banner-wrap absolute inset-x-0 top-[38%] flex justify-center">
-          <span className="moba-banner">{banner.text}</span>
-        </div>
-      )}
-    </div>
-  );
-});
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {floaters.map((f) => (
+          <span
+            key={f.id}
+            className={`moba-floater moba-floater--${f.i}`}
+            style={{ left: `${FLOATERS[f.i].left}%` }}
+          >
+            {BURST_ICONS[f.icon]}
+          </span>
+        ))}
+        {banner && (
+          <div className="moba-banner-wrap absolute inset-x-0 top-[38%] flex justify-center">
+            <span className="moba-banner">{banner.text}</span>
+          </div>
+        )}
+      </div>
+    );
+  },
+);
 
 /* ------------------------------------------------------------------ */
 /* Minimap                                                             */
@@ -347,8 +365,22 @@ function MobaArenaMap({
           opacity={0.9}
         />
         {/* üsler */}
-        <rect x={6.4} y={0.4} width={3.2} height={3.2} rx={0.5} fill="#ff5a4a" />
-        <rect x={24.4} y={18.4} width={3.2} height={3.2} rx={0.5} fill="#38c8ff" />
+        <rect
+          x={6.4}
+          y={0.4}
+          width={3.2}
+          height={3.2}
+          rx={0.5}
+          fill="#ff5a4a"
+        />
+        <rect
+          x={24.4}
+          y={18.4}
+          width={3.2}
+          height={3.2}
+          rx={0.5}
+          fill="#38c8ff"
+        />
         {/* düşman işareti */}
         <circle
           ref={enemy}
@@ -522,8 +554,10 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const basicRing = useRef<SVGCircleElement>(null);
   const superRing = useRef<SVGCircleElement>(null);
   const ultRing = useRef<SVGCircleElement>(null);
+  const meleeRing = useRef<SVGCircleElement>(null);
   const superSlot = useRef<HTMLDivElement>(null);
   const ultSlot = useRef<HTMLDivElement>(null);
+  const meleeSlot = useRef<HTMLButtonElement>(null);
   const vitalsHp = useRef<HTMLSpanElement>(null);
   const vitalsXp = useRef<HTMLSpanElement>(null);
   const vitalsNum = useRef<HTMLSpanElement>(null);
@@ -562,8 +596,14 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       writeRing(basicRing.current, 1 - Math.max(0, p.atkCd) / meta.atkCd);
       writeRing(superRing.current, l.pc);
       writeRing(ultRing.current, l.sc);
+      // ⚔️ Yakın dövüş: bekleme halkası doğrudan dövüşçü ref'inden okunur
+      // (kare başına yeni state yok, sahne React çizimi yapmaz). Salınım
+      // sürerken de kapalı kalır, yani animasyon bitmeden tekrar basılamaz.
+      const meleeWait = Math.max(0, p.meleeCd, p.meleeT);
+      writeRing(meleeRing.current, 1 - Math.min(1, meleeWait / MELEE_CD));
       toggleClass(superSlot.current, "moba-slot--glow", l.pc >= 1);
       toggleClass(ultSlot.current, "moba-slot--glow", l.sc >= 1);
+      toggleClass(meleeSlot.current, "moba-slot--glow", meleeWait <= 0);
 
       writeWidth(vitalsHp.current, pct);
       writeWidth(vitalsXp.current, l.pc);
@@ -618,7 +658,10 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="moba-items hidden shrink-0 items-center gap-1 sm:flex">
             {ITEM_CHIPS.map((chip, i) => (
-              <span key={i} className={cn("moba-item bg-gradient-to-br", chip.tone)}>
+              <span
+                key={i}
+                className={cn("moba-item bg-gradient-to-br", chip.tone)}
+              >
                 {chip.icon}
               </span>
             ))}
@@ -688,10 +731,16 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
             </span>
           )}
           <div className="flex shrink-0 items-center gap-1">
-            <span ref={allyHp} className="moba-hpnum hidden font-extrabold tabular-nums sm:inline">
+            <span
+              ref={allyHp}
+              className="moba-hpnum hidden font-extrabold tabular-nums sm:inline"
+            >
               100%
             </span>
-            <span ref={enemyHp} className="moba-hpnum hidden font-extrabold tabular-nums sm:inline">
+            <span
+              ref={enemyHp}
+              className="moba-hpnum hidden font-extrabold tabular-nums sm:inline"
+            >
               100%
             </span>
             <button
@@ -755,6 +804,49 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       <div className="moba-abilitybar absolute bottom-2 left-1/2 flex -translate-x-1/2 items-end gap-2">
         <span className="moba-level-badge">{meta.playerLevel}</span>
         <div className="flex items-end gap-1.5">
+          {/* Kraliyet Savaşçısı: YAKIN DÖVÜŞ yuvası (tek tık → sol/sağ
+              çapraz kesişler, rakip yakınsa üstüne atlayan bitirici). */}
+          {samurai && (
+            <button
+              ref={meleeSlot}
+              type="button"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                store.actions?.current.melee();
+              }}
+              title="Yakın dövüş (kılıç saldırısı)"
+              aria-label="Yakın dövüş kılıç saldırısı"
+              className="moba-slot moba-slot--melee pointer-events-auto"
+            >
+              <svg viewBox="0 0 36 36" className="moba-slot-ring">
+                <circle
+                  cx={18}
+                  cy={18}
+                  r={RING_R}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.14)"
+                  strokeWidth={2.6}
+                />
+                <circle
+                  ref={meleeRing}
+                  cx={18}
+                  cy={18}
+                  r={RING_R}
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth={2.6}
+                  strokeLinecap="round"
+                  strokeDasharray={RING_C}
+                  strokeDashoffset={0}
+                  transform="rotate(-90 18 18)"
+                />
+              </svg>
+              <span className="moba-slot-icon">
+                <Swords size={22} strokeWidth={2.3} />
+              </span>
+            </button>
+          )}
           <div className="moba-slot" title="Düz vuruş">
             <svg viewBox="0 0 36 36" className="moba-slot-ring">
               <circle
@@ -843,7 +935,10 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           )}
         </div>
         <div className="moba-vitals flex flex-col gap-1">
-          <span ref={vitalsNum} className="moba-vitals-num font-extrabold tabular-nums">
+          <span
+            ref={vitalsNum}
+            className="moba-vitals-num font-extrabold tabular-nums"
+          >
             {meta.maxHp}/{meta.maxHp}
           </span>
           <span className="moba-vitals-bar">

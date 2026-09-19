@@ -17,8 +17,9 @@
 //
 // Tetikleyiciler (öncelik sırası):
 //   1) ulti salınımı  → `samuraiUltT` (geniş, turuncu yay)
-//   2) yetenek atışı  → `castFxT` (SkillComponent yazar, 1 → 0 iner)
-//   3) düz vuruş      → `atkAnimT` (vuruş animasyonunun kendi saati)
+//   2) yakın dövüş    → `meleeT` (sol/sağ çapraz kesiş; aşamaya göre aynalı)
+//   3) yetenek atışı  → `castFxT` (SkillComponent yazar, 1 → 0 iner)
+//   4) düz vuruş      → `atkAnimT` (vuruş animasyonunun kendi saati)
 // Salınım bitince yay kısa bir süre daha ilerleyip (uSweep > 1) tamamen
 // söner, yani animasyon iptal edilse bile iz aniden kaybolmaz.
 import { useFrame } from "@react-three/fiber";
@@ -28,10 +29,12 @@ import * as THREE from "three";
 // Yalnızca tip: Arena3D bu modülü çizer, modül Arena3D'yi çalışma zamanında
 // içe aktarmaz (döngüsel bağımlılık olmaz).
 import type { BattleFighter } from "@/components/world/Arena3D";
+// Melee salınımının süresi/aşaması tek kaynaktan (motor) okunur.
+import { meleeDuration, meleeStageOf } from "@/engine/RoyalMelee";
 
 /* ------------------------------- palet ---------------------------------- */
 
-type SwingKind = "basic" | "super" | "ult";
+type SwingKind = "basic" | "super" | "ult" | "melee";
 
 interface SwingLook {
   /** Bandın kenar rengi (yetenek kimliği). */
@@ -80,6 +83,16 @@ const LOOK: Record<SwingKind, SwingLook> = {
     width: 0.34,
     tilt: 0.2,
     intensity: 1.2,
+  },
+  // Yakın dövüş: kısa menzilli, altın çelik çapraz kesiş (aşamaya göre aynalı).
+  melee: {
+    color: "#fcd34d",
+    hot: "#ffffff",
+    arc: 3.0,
+    radius: 0.78,
+    width: 0.3,
+    tilt: 0.34,
+    intensity: 1.1,
   },
 };
 
@@ -208,7 +221,10 @@ export function SlashTrail({
     active: false,
     fade: 0,
     kind: "basic" as SwingKind,
+    /** Melee aşaması: yayın eğimi aşamaya göre aynalanır (sol/sağ kesiş). */
+    stage: 0,
   });
+  const prevMelee = useRef(0);
 
   useEffect(
     () => () => {
@@ -227,16 +243,25 @@ export function SlashTrail({
     let kind: SwingKind = "basic";
 
     const ultOn = f.samuraiUltT > 0;
+    const meleeOn = f.meleeT > 0;
     const castFx = f.castFxT ?? 0;
     if (ultOn && prevUlt.current <= 0) s.fade = 0; // yeni salınım: kuyruğu sıfırla
+    if (meleeOn && prevMelee.current <= 0) s.fade = 0;
     if (castFx > 0 && prevCast.current <= 0) s.fade = 0;
     prevUlt.current = ultOn ? 1 : 0;
+    prevMelee.current = meleeOn ? 1 : 0;
     prevCast.current = castFx > 0 ? 1 : 0;
 
     if (ultOn) {
       // Ulti: salınımın kendisi `samuraiUltT` sayacıyla ilerliyor.
       progress = Math.min(1, Math.max(0, 1 - f.samuraiUltT / ULT_FX_TIME));
       kind = "ult";
+    } else if (meleeOn) {
+      // Yakın dövüş: sayaç `meleeT`; aşama yayın eğimini aynalar.
+      const dur = meleeDuration(f.meleeLeap);
+      progress = Math.min(1, Math.max(0, 1 - f.meleeT / dur));
+      s.stage = meleeStageOf(f.meleeLeap, progress);
+      kind = "melee";
     } else if (castFx > 0) {
       // Yetenek: castFxT 1 → 0 iner; sayaç burada (tek sahibi) azalır.
       f.castFxT = Math.max(0, castFx - dt / CAST_FX_TIME);
@@ -283,6 +308,11 @@ export function SlashTrail({
       u.uRadius.value = look.radius;
       u.uWidth.value = look.width;
       u.uTilt.value = look.tilt;
+    }
+    // Melee: sağdan sola (aşama 0) ve soldan sağa (aşama 1) kesişler aynalı
+    // görünsün — yayın dikey eğimi aşamaya göre çevrilir.
+    if (s.kind === "melee") {
+      u.uTilt.value = look.tilt * (s.stage === 1 ? 1 : -1);
     }
     // İzin yüksekliği salınım boyunca hafifçe alçalır: kılıç yayı gövdede
     // yukarıdan aşağı süpürüyormuş gibi okunur.

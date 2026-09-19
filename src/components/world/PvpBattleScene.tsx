@@ -54,6 +54,12 @@ import {
   tickCooldown,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
+// ⚔️ MeleeComponent — Kraliyet Savaşçısı yakın dövüşü (3. yetenek).
+import {
+  startMelee,
+  stepMelee,
+  tickMelee,
+} from "@/components/world/arena/MeleeComponent";
 // ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
 // 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
@@ -68,6 +74,8 @@ import {
   resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
+// Melee salınımının süresi (uzak oyuncunun animasyonu aynı saatle aksın).
+import { meleeDuration } from "@/engine/RoyalMelee";
 import { BattleJoystick, BattleLoading } from "@/components/world/BattleScene";
 // MOBA savaş arayüzü köprüsü (üst şerit, minimap, yetenek barı, rakip
 // kartı). HUD bu sahnede de ref'lerden beslenir; render joystick katmanında.
@@ -163,7 +171,17 @@ type PvpEvent =
       dmg: number;
       hit: boolean;
     }
-  | { id: string; type: "samuraiStart"; facing: number; vy: number };
+  | { id: string; type: "samuraiStart"; facing: number; vy: number }
+  // ⚔️ Yakın dövüş: başlangıç (rakip ekranında da animasyon oynasın) ve
+  // her vuruşun hasarı (atıcı tarafı belirler, hedef uygular).
+  | {
+      id: string;
+      type: "meleeStart";
+      facing: number;
+      vy: number;
+      leap: boolean;
+    }
+  | { id: string; type: "meleeHit"; dmg: number; hit: boolean };
 
 /** What one phone publishes about its fighter every ~100 ms. */
 interface PvpPayload {
@@ -190,6 +208,12 @@ interface PvpPayload {
   /** Düz vuruş animasyonunun kalan süresi (saniye) — rakip ekranında da
    *  vuruş pozu ve cancel penceresi aynı okunsun diye yayınlanır. */
   atkAnimT?: number;
+  /** ⚔️ Yakın dövüş salınımının kalan süresi (saniye) + atlama/aşama durumu.
+   *  Snapshot tazeler; aşama/atla bilgisi animasyonun doğru pozda akmasını
+   *  sağlar (başlangıç olayı zaten gönderilir). */
+  meleeT?: number;
+  meleeCd?: number;
+  meleeLeap?: boolean;
   /** 🎯 Ateş/yetenek yönü (radyan, `atan2(dx, dy)`). Rakip ekranında da gövde
    *  atış yönüne dönsün diye yayınlanır. */
   aimYaw?: number;
@@ -227,6 +251,11 @@ function newFighter(
     samuraiCharge: 0,
     samuraiUltT: 0,
     samuraiUltHit: false,
+    // Yakın dövüş (Kraliyet Savaşçısı 3. yetenek).
+    meleeT: 0,
+    meleeCd: 0,
+    meleeLeap: false,
+    meleeStrikes: 0,
     dashT: 0,
     dashVX: 0,
     dashVY: 0,
@@ -365,6 +394,8 @@ export default function PvpBattleScene({
     phase: 0,
     stun: 0,
     atkAnimT: 0,
+    meleeT: 0,
+    meleeLeap: false,
     aimYaw: 0,
     aimYawT: 0,
   });
@@ -453,6 +484,7 @@ export default function PvpBattleScene({
     attack: () => {},
     super: () => {},
     samuraiSuper: () => {},
+    melee: () => {},
     click: (_x: number, _y: number) => {},
   });
 
@@ -493,6 +525,8 @@ export default function PvpBattleScene({
         bot,
         live: mobaLiveRef,
         score: scoreRef,
+        // MOBA yetenek barı: yakın dövüş yuvası sahnenin eylemini çağırır.
+        actions: actionsRef,
         meta: {
           playerName,
           opponentName,
@@ -606,6 +640,25 @@ export default function PvpBattleScene({
         vfx.crack(ev.x1, ev.y1, ev.x2, ev.y2);
         if (ev.hit) damageMe(ev.dmg);
         break;
+      case "meleeStart":
+        // Rakip yakın dövüşe başladı: kendi ekranımızda da aynı salınım
+        // (sol/sağ kesiş + atlama) oynar. Süre animasyonla aynı kaynaktan.
+        b.meleeLeap = ev.leap;
+        b.meleeStrikes = 0;
+        b.samuraiUltT = 0;
+        b.meleeT = meleeDuration(ev.leap);
+        b.facing = ev.facing;
+        b.vy = ev.vy;
+        break;
+      case "meleeHit":
+        // Rakibin kesişi: vuruş efekti + hasar (atıcı tarafı belirledi).
+        if (ev.hit) {
+          vfx.coldFlameImpact(b.x, b.y - 40, 56);
+          vfx.burst(b.x, b.y - 40, 90, "#fbbf24", 0.3);
+          vfx.flash(0.25);
+          damageMe(ev.dmg);
+        }
+        break;
     }
   };
 
@@ -648,6 +701,8 @@ export default function PvpBattleScene({
       phase: d.phase,
       stun: typeof d.stun === "number" ? d.stun : 0,
       atkAnimT: typeof d.atkAnimT === "number" ? d.atkAnimT : 0,
+      meleeT: typeof d.meleeT === "number" ? d.meleeT : 0,
+      meleeLeap: !!d.meleeLeap,
       aimYaw: typeof d.aimYaw === "number" ? d.aimYaw : 0,
       aimYawT: typeof d.aimYawT === "number" ? d.aimYawT : 0,
     };
@@ -806,6 +861,20 @@ export default function PvpBattleScene({
     castUltimate(player.current, bot.current, skillHost);
   };
 
+  /** ⚔️ Yakın dövüş: kural MeleeComponent'te, vuruşlar karşı cihaza olay
+   *  olarak gider (atıcı hasarı belirler, hedef uygular). */
+  const useMelee = () => {
+    const plan = startMelee(player.current, bot.current, skillHost, true, 0, 0);
+    if (!plan) return;
+    player.current.revealUntil = performance.now() + BUSH_REVEAL_MS;
+    pushEvent({
+      type: "meleeStart",
+      facing: player.current.facing,
+      vy: player.current.vy,
+      leap: plan.leap,
+    });
+  };
+
   const tryAttack = useCallback((aimX?: number, aimY?: number) => {
     const p = player.current;
     // Düz vuruş planı (cooldown + menzil nişanı + animasyon) SkillComponent'te.
@@ -829,6 +898,7 @@ export default function PvpBattleScene({
       resultRef.current ||
       p.hp <= 0 ||
       p.dashT > 0 ||
+      p.meleeT > 0 ||
       p.superCharge < 1
     )
       return;
@@ -919,6 +989,7 @@ export default function PvpBattleScene({
       attack: tryAttack,
       super: trySuper,
       samuraiSuper: useSamuraiSuper,
+      melee: useMelee,
       // Savaş alanında tıklayarak gitme kapalı: tek hareket girdisi joystick.
       click: (_x: number, _y: number) => {},
     };
@@ -999,6 +1070,10 @@ export default function PvpBattleScene({
       // Rakibin düz vuruş animasyonu (kendi telefonundan yayınlanır) —
       // proxy'de süre kendiliğinden azalır, snapshot onu tazeler.
       b.atkAnimT = Math.max(b.atkAnimT - dt, t.atkAnimT);
+      // Rakibin yakın dövüş salınımı aynı desenle akar (meleeStart olayı
+      // başlatır, snapshot tazeler; atlama bilgisi pozu besler).
+      b.meleeT = Math.max(b.meleeT - dt, t.meleeT);
+      b.meleeLeap = t.meleeLeap;
       if (t.hp < b.hp - 1) {
         // enemy took a hit on their phone — reflect it here
         const diff = Math.round(b.hp - t.hp);
@@ -1040,6 +1115,8 @@ export default function PvpBattleScene({
       }
 
       tickCooldown(p, dt);
+      // Yakın dövüş bekleme süresi (melee) MeleeComponent'te yönetilir.
+      tickMelee(p, dt);
       // 🎯 Atış/yetenek yönü kilidi zamanla bırakılır (bkz. faceAimYaw).
       tickAimYaw(p, dt);
 
@@ -1100,8 +1177,35 @@ export default function PvpBattleScene({
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
       // kaybeder; savrulma hareketi burada (çarpışma kontrollü) uygulanır. ──
       const pStunned = stepHitStun(p, dt, moveFighter);
+      if (pStunned && p.meleeT > 0) {
+        // Sarsılma salınımı böler: yakın dövüş iptal edilir.
+        p.meleeT = 0;
+        p.meleeStrikes = 0;
+      }
       if (pStunned) {
         // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
+      } else if (p.meleeT > 0) {
+        // ⚔️ Yakın dövüş: sol/sağ kesişler + (rakip yakınsa) üstüne atlama.
+        // Vuruşlar karşı cihaza olay olarak gider; hasar orada uygulanır.
+        const strikes = stepMelee(p, b, dt, {
+          leapMove: (f, dx, dy, dts) => moveFighter(f, dx, dy, dts),
+          vfx,
+        });
+        if (strikes) {
+          for (const s of strikes) {
+            pushEvent({ type: "meleeHit", dmg: s.dmg, hit: s.hit });
+            if (s.hit) {
+              floatText(b.x, b.y - 8, `-${s.dmg}`, "#fbbf24");
+              hitRemote(s.dmg);
+              playSound(s.stage >= 2 ? "explode" : "hit", {
+                volume: s.stage >= 2 ? 0.5 : 0.8,
+                rate: s.stage >= 2 ? 0.9 : 1.35,
+              });
+            } else {
+              playSound("thud", { volume: 0.3, rate: 1.5 });
+            }
+          }
+        }
       } else if (p.dashT > 0) {
         stepDash(p, dt, ground);
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < DASH_HIT_R) {
@@ -1283,6 +1387,10 @@ export default function PvpBattleScene({
             stun: p.hitStunT,
             // Rakip ekranında da vuruş pozu / cancel penceresi okunsun.
             atkAnimT: p.atkAnimT,
+            // ⚔️ Yakın dövüş salınımı: rakip ekranında da aynı animasyon.
+            meleeT: Math.max(0, p.meleeT),
+            meleeCd: Math.max(0, p.meleeCd),
+            meleeLeap: p.meleeLeap,
             // 🎯 Ateş/yetenek yönü: rakip ekranında da gövde attığı yöne döner.
             aimYaw: p.aimYaw ?? 0,
             aimYawT: p.aimYawT ?? 0,

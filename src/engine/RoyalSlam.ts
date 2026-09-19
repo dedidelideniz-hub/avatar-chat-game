@@ -112,16 +112,29 @@ export function findRoyalSlamRig(clone: THREE.Object3D): RoyalSlamRig {
     const isFinger = /thumb|index|middle|ring|pinky/.test(n);
     if (!rig.leftFore && n.includes("leftforearm")) rig.leftFore = obj;
     if (!rig.rightFore && n.includes("rightforearm")) rig.rightFore = obj;
-    if (!rig.leftUpper && n.includes("leftarm") && !n.includes("forearm") && !n.includes("shoulder"))
+    if (
+      !rig.leftUpper &&
+      n.includes("leftarm") &&
+      !n.includes("forearm") &&
+      !n.includes("shoulder")
+    )
       rig.leftUpper = obj;
-    if (!rig.rightUpper && n.includes("rightarm") && !n.includes("forearm") && !n.includes("shoulder"))
+    if (
+      !rig.rightUpper &&
+      n.includes("rightarm") &&
+      !n.includes("forearm") &&
+      !n.includes("shoulder")
+    )
       rig.rightUpper = obj;
     if (!rig.leftShoulder && n.includes("leftshoulder")) rig.leftShoulder = obj;
-    if (!rig.rightShoulder && n.includes("rightshoulder")) rig.rightShoulder = obj;
-    if (!rig.rightHand && n.includes("righthand") && !isFinger) rig.rightHand = obj;
+    if (!rig.rightShoulder && n.includes("rightshoulder"))
+      rig.rightShoulder = obj;
+    if (!rig.rightHand && n.includes("righthand") && !isFinger)
+      rig.rightHand = obj;
     // Geçiş sırası yukarı doğru → son eşleşme en üst omurga (Spine2).
     if (n.includes("spine")) rig.spine = obj;
-    if (!rig.head && n.includes("head") && !/headtop|headend/.test(n)) rig.head = obj;
+    if (!rig.head && n.includes("head") && !/headtop|headend/.test(n))
+      rig.head = obj;
   });
   for (const bone of [
     rig.leftUpper,
@@ -197,7 +210,7 @@ const _identity = new THREE.Quaternion();
  * bone-lokal (dinlenme pozundan ölçülmüş, ya da verilen override — ör. kılıç
  * bıçağı ekseni), hedef ise DÜNYA uzayında. `weight` 0..1 yumuşak geçiş.
  */
-function aimBone(
+export function aimBone(
   bone: THREE.Object3D | null,
   rig: RoyalSlamRig,
   targetWorld: THREE.Vector3,
@@ -233,7 +246,10 @@ const easeOut = (t: number) => 1 - Math.pow(1 - clamp01(t), 3);
  * Karakterin GERÇEK baktığı yön (dünya uzayı) — omuz çizgisinden türetilir,
  * yani rig yaw/mirror farklarından bağımsızdır. Sol omuz − sağ omuz × up.
  */
-export function royalSlamForward(rig: RoyalSlamRig, facing: number): THREE.Vector3 {
+export function royalSlamForward(
+  rig: RoyalSlamRig,
+  facing: number,
+): THREE.Vector3 {
   const ls = rig.leftShoulder;
   const rs = rig.rightShoulder;
   if (ls && rs) {
@@ -255,7 +271,11 @@ export function royalSlamForward(rig: RoyalSlamRig, facing: number): THREE.Vecto
  * `base` ekseninden `plane` yönüne, `deg` derece dönmüş birim yön.
  * Kolları/bıçağı AÇIYLA sürmenin çekirdeği: ara açılar gerçek yayı izler.
  */
-function dirFromAngle(base: THREE.Vector3, plane: THREE.Vector3, deg: number): THREE.Vector3 {
+export function dirFromAngle(
+  base: THREE.Vector3,
+  plane: THREE.Vector3,
+  deg: number,
+): THREE.Vector3 {
   const r = (deg * Math.PI) / 180;
   return base
     .clone()
@@ -285,7 +305,12 @@ interface SlamKey {
   body: RoyalSlamBody;
 }
 
-const KEY_REST: SlamKey = { arm: 10, blade: 0, lean: 0, body: { lunge: 0, dip: 0, twist: 0 } };
+const KEY_REST: SlamKey = {
+  arm: 10,
+  blade: 0,
+  lean: 0,
+  body: { lunge: 0, dip: 0, twist: 0 },
+};
 const KEY_WIND: SlamKey = {
   arm: 212,
   blade: -72,
@@ -316,7 +341,12 @@ function slamPhase(u: number): SlamPhase {
   if (u < PH_WIND) {
     // Anticipation: sakin başlar, sonunda hızlanır (yay kurma hissi).
     const k = clamp01(u / PH_WIND);
-    return { from: KEY_REST, to: KEY_WIND, t: k * k * (3 - 2 * k) * 0.55 + k * 0.45, weight };
+    return {
+      from: KEY_REST,
+      to: KEY_WIND,
+      t: k * k * (3 - 2 * k) * 0.55 + k * 0.45,
+      weight,
+    };
   }
   if (u < PH_STRIKE) {
     // Strike: çok hızlı, darbeye doğru yavaşlar (impact ease-out).
@@ -400,7 +430,9 @@ export interface RoyalSlamOptions {
  * İki elli kılıç yere vuruş pozunu uygular. Dönüş: uygulanan body offset'i
  * (FighterRig sporunun konum/rotasyonuna yazılır), uygulanmadıysa null.
  */
-export function applyRoyalSlamPose(opts: RoyalSlamOptions): RoyalSlamBody | null {
+export function applyRoyalSlamPose(
+  opts: RoyalSlamOptions,
+): RoyalSlamBody | null {
   const { rig, bladeAxis, progress, facing, active } = opts;
   if (!active) return null;
   const u = clamp01(progress);
@@ -431,11 +463,18 @@ export function applyRoyalSlamPose(opts: RoyalSlamOptions): RoyalSlamBody | null
 
   // 1) Gövde önce: omurga + baş. Omurga dönünce kolların dünya yönü de
   //    değiştiği için kollar EN SON hedeflenir.
-  aimBone(rig.spine, rig, UP.clone().addScaledVector(fwd, lean).normalize(), weight * 0.85);
+  aimBone(
+    rig.spine,
+    rig,
+    UP.clone().addScaledVector(fwd, lean).normalize(),
+    weight * 0.85,
+  );
   aimBone(
     rig.head,
     rig,
-    UP.clone().addScaledVector(fwd, lean * 0.25 + 0.06).normalize(),
+    UP.clone()
+      .addScaledVector(fwd, lean * 0.25 + 0.06)
+      .normalize(),
     weight * 0.5,
   );
 

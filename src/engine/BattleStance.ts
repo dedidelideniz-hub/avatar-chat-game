@@ -54,6 +54,12 @@ export interface BattleStanceRig {
   targets: StanceTarget[];
   /** Duruş uygulanınca gövdenin indirilmesi gereken miktar (model birimi). */
   drop: number;
+  /**
+   * Ulti / yakın dövüş (melee) gibi kemikleri KENDİSİ süren bir katman
+   * çalışırken duruş kapanır. Bu bayrak her kare savaş sahnesinde yazılır
+   * (kemikler ve gövde çömelmesi aynı kaynaktan beslensin diye).
+   */
+  suppressed?: boolean;
 }
 
 function boneChildren(bone: THREE.Object3D): THREE.Object3D[] {
@@ -291,7 +297,7 @@ export function applyBattleStance(
   rig: BattleStanceRig | null,
   k: number,
 ): number {
-  if (!rig || k <= 0.001) return 0;
+  if (!rig || k <= 0.001 || rig.suppressed) return 0;
   for (const target of rig.targets) {
     target.bone.quaternion.premultiply(
       scratchQ.setFromAxisAngle(target.axis, target.angle * k),

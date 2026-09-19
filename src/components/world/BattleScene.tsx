@@ -61,6 +61,13 @@ import {
   tickSamuraiPassive,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
+// ⚔️ MeleeComponent — Kraliyet Savaşçısı yakın dövüşü (3. yetenek):
+// kısa menzil, sol/sağ çapraz kesişler ve rakibin üstüne atlayan bitirici.
+import {
+  startMelee,
+  stepMelee,
+  tickMelee,
+} from "@/components/world/arena/MeleeComponent";
 // ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
 // 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
@@ -168,6 +175,11 @@ function newFighter(
     samuraiCharge: 0,
     samuraiUltT: 0,
     samuraiUltHit: false,
+    // Yakın dövüş (Kraliyet Savaşçısı 3. yetenek): başta hazır.
+    meleeT: 0,
+    meleeCd: 0,
+    meleeLeap: false,
+    meleeStrikes: 0,
     dashT: 0,
     dashVX: 0,
     dashVY: 0,
@@ -475,6 +487,7 @@ export default function BattleScene({
     attack: () => {},
     super: () => {},
     samuraiSuper: () => {},
+    melee: () => {},
     click: (_x: number, _y: number) => {},
   });
 
@@ -516,6 +529,9 @@ export default function BattleScene({
         bot,
         live: mobaLiveRef,
         score: scoreRef,
+        // MOBA yetenek barı artık TIKLANABİLİR: yuvalar sahnenin action
+        // ref'ini çağırır (özellikle yakın dövüş yuvası).
+        actions: actionsRef,
         meta: {
           playerName,
           opponentName,
@@ -798,6 +814,17 @@ export default function BattleScene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ⚔️ Yakın dövüş: rakip MELEE_LUNGE_RANGE içindeyse otomatik kilitlenip
+  // üstüne atlanır; değilse bakılan yöne sol/sağ çapraz kesiş savrulur.
+  const tryMelee = useCallback(() => {
+    if (!startedRef.current || resultRef.current) return;
+    const plan = startMelee(player.current, bot.current, skillHost, true, 0, 0);
+    if (!plan) return;
+    // Yakın dövüş de karakteri bir an görünür kılar (çalıdan bile).
+    player.current.revealUntil = performance.now() + BUSH_REVEAL_MS;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const trySuper = useCallback(() => {
     const p = player.current;
     const b = bot.current;
@@ -806,6 +833,7 @@ export default function BattleScene({
       resultRef.current ||
       p.hp <= 0 ||
       p.dashT > 0 ||
+      p.meleeT > 0 ||
       p.superCharge < 1
     )
       return;
@@ -886,6 +914,7 @@ export default function BattleScene({
       attack: tryAttack,
       super: trySuper,
       samuraiSuper: trySamuraiSuper,
+      melee: tryMelee,
       // Savaş alanında tıklayarak gitme kapalı: tek hareket girdisi joystick
       // (masaüstünde de joystick fare ile sürüklenir). Arenaya yapılan
       // dokunuş artık yürüme hedefi oluşturmuyor.
@@ -912,6 +941,9 @@ export default function BattleScene({
       // Bekleme süreleri (cooldown) SkillComponent'te yönetilir.
       tickCooldown(p, dt);
       tickCooldown(b, dt);
+      // Yakın dövüş bekleme süresi (melee) MeleeComponent'te yönetilir.
+      tickMelee(p, dt);
+      tickMelee(b, dt);
       // 🎯 Atış/yetenek yönü kilidi: süre burada iner; süre bitince gövde
       // tekrar hareket yönüne göre döner.
       tickAimYaw(p, dt);
@@ -985,6 +1017,11 @@ export default function BattleScene({
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
       // kaybeder; savrulma hareketi burada (çarpışma kontrollü) uygulanır. ──
       const pStunned = stepHitStun(p, dt, moveFighter);
+      if (pStunned && p.meleeT > 0) {
+        // Sarsılma salınımı böler: yakın dövüş iptal edilir.
+        p.meleeT = 0;
+        p.meleeStrikes = 0;
+      }
       if (p.samuraiUltT > 0) {
         p.samuraiUltT -= dt;
         const progress = 1 - Math.max(0, p.samuraiUltT) / 0.82;
@@ -1016,6 +1053,23 @@ export default function BattleScene({
         p.phase += dt * 5;
       } else if (pStunned) {
         // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
+      } else if (p.meleeT > 0) {
+        // ⚔️ Yakın dövüş: sol/sağ çapraz kesişler + (rakip yakınsa) üstüne
+        // atlama. Salınım karakteri kökler; atlama çarpışma kontrollü yürür
+        // (duvardan geçmez). Vuruş eşikleri MeleeComponent'te tek kaynakta.
+        const strikes = stepMelee(p, b, dt, {
+          leapMove: (f, dx, dy, dts) => moveFighter(f, dx, dy, dts),
+          vfx,
+        });
+        if (strikes) {
+          for (const s of strikes) {
+            if (s.hit) damageEnemy(p, b, s.dmg);
+            playSound(s.stage >= 2 ? "explode" : "hit", {
+              volume: s.stage >= 2 ? 0.5 : 0.7,
+              rate: s.stage >= 2 ? 0.9 : 1.35,
+            });
+          }
+        }
       } else if (p.dashT > 0) {
         stepDash(p, dt, ground);
         if (!p.dashHit && Math.hypot(b.x - p.x, b.y - p.y) < DASH_HIT_R) {

@@ -244,3 +244,41 @@
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M3 18 4.6 8l4.4 3.6L12 5l3 6.6L19.4 8 21 18z'/%3E%3Cpath d='M4.5 21h15'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   YAKIN DÖVÜŞ (MELEE) YUVASI — Kraliyet Savaşçısı 3. yetenek.
+
+   Yetenek barındaki yuvalar dekoratiftir (pointer-events kapalı); melee
+   yuvası ise TIKLANABİLİR: buton olarak çizilir ve dokunuşu sahnenin
+   `actions.melee()` eylemine bağlar. Altın cam tonu, hazır olduğunda
+   daha güçlü parlar.
+   ══════════════════════════════════════════════════════════════════ */
+button.moba-slot--melee.moba-slot--melee {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  background: radial-gradient(
+    circle at 35% 25%,
+    rgb(120 71 15 / 0.78),
+    rgb(24 14 5 / 0.82)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgb(253 224 71 / 0.5),
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 0 10px rgb(251 191 36 / 0.26);
+}
+button.moba-slot--melee.moba-slot--melee:active {
+  transform: scale(0.9);
+}
+button.moba-slot--melee.moba-slot--melee.moba-slot--glow {
+  box-shadow:
+    inset 0 0 0 1px rgb(254 240 138 / 0.92),
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 0 16px rgb(251 191 36 / 0.6);
+}
+button.moba-slot--melee .moba-slot-icon {
+  color: #fde68a;
+}

@@ -42,6 +42,13 @@ import {
   findRoyalSlamRig,
   measureBladeAxis,
 } from "@/engine/RoyalSlam";
+// ⚔️ Kraliyet Savaşçısı yakın dövüşü (3. yetenek): sol/sağ çapraz kesiş +
+// hamleli bitirici. Kemik katmanı RoyalSlam ile aynı ölçülmüş eksenleri kullanır.
+import {
+  applyMeleePose,
+  computeMeleeBody,
+  meleeDuration,
+} from "@/engine/RoyalMelee";
 import {
   buildGroundCrack,
   sampleGroundCrack,
@@ -342,6 +349,15 @@ export interface BattleFighter {
   /** Yere iki elle kılıç vurma animasyonunun kalan süresi. */
   samuraiUltT: number;
   samuraiUltHit: boolean;
+  /** ⚔️ Yakın dövüş (melee) salınımının kalan süresi (sn). 0 = hazır.
+   *  Yalnızca Kraliyet Savaşçısı kullanır; süre boyunca karakter köklenir. */
+  meleeT: number;
+  /** Melee yeniden kullanma bekleme süresi (sn). */
+  meleeCd: number;
+  /** Bu salınımda üstüne atlama (bitirici) var mı? */
+  meleeLeap: boolean;
+  /** Salınım başında verilmiş olan vuruş sayısı (0 → 2/3). */
+  meleeStrikes: number;
   dashT: number;
   dashVX: number;
   dashVY: number;
@@ -762,8 +778,18 @@ function GlbFighterBodyCore({
     const slamProgress = slamActive
       ? 1 - Math.max(0, f.samuraiUltT) / ROYAL_ULT_LOCK
       : 0;
+    // ⚔️ Yakın dövüş (melee): sol/sağ kesiş + hamleli bitirici. Ulti ile
+    // çakışmaz (sim ikisini birlikte başlatmaz); süre `meleeT` ile akar.
+    const meleeActive = royalSlammer && f.meleeT > 0;
+    const meleeProgress = meleeActive
+      ? 1 - Math.max(0, f.meleeT) / meleeDuration(f.meleeLeap)
+      : 0;
+    // Ulti/melee kemikleri kendisi sürerken duruş katmanı kapanır (duruş
+    // kemiklerini melee koluyla çakıştırmasın diye). Duruş useFrame'i bu
+    // kareden SONRA çalıştığı için bayrak burada yazılır.
+    stanceRig.suppressed = slamActive || meleeActive;
     const g = groupRef.current;
-    if (slamActive && g) {
+    if ((slamActive || meleeActive) && g) {
       // Kılıç bıçağının el-lokal ekseni bir kez ölçülür (rig'e sabit yok).
       if (!slamBladeAxis.current && slamRig.rightHand) {
         const sword = findHandSword(slamRig.rightHand);
@@ -774,20 +800,33 @@ function GlbFighterBodyCore({
       // Gövde ağırlığı (hamle / çömelme / kalça burulması) EN ÖNCE
       // uygulanır: kol ve omurga hedefleri dünya uzayında hesaplandığı
       // için poz bu duruşun üstüne biner (yapıştırılmış gibi durmaz).
-      const body = computeRoyalSlamBody(slamProgress);
+      const body = slamActive
+        ? computeRoyalSlamBody(slamProgress)
+        : computeMeleeBody(meleeProgress, f.meleeLeap);
       if (body) applyRoyalSlamBody(g, slamRig, body, f.facing);
-      applyRoyalSlamPose({
-        rig: slamRig,
-        bladeAxis: slamBladeAxis.current,
-        progress: slamProgress,
-        facing: f.facing,
-        active: true,
-      });
+      if (slamActive) {
+        applyRoyalSlamPose({
+          rig: slamRig,
+          bladeAxis: slamBladeAxis.current,
+          progress: slamProgress,
+          facing: f.facing,
+          active: true,
+        });
+      } else {
+        applyMeleePose({
+          rig: slamRig,
+          bladeAxis: slamBladeAxis.current,
+          progress: meleeProgress,
+          leap: f.meleeLeap,
+          facing: f.facing,
+          active: true,
+        });
+      }
     } else if (wasUlt.current && g) {
-      // Ulti bitti → gövdeyi dinlenme duruşuna döndür.
+      // Ulti/melee bitti → gövdeyi dinlenme duruşuna döndür.
       clearRoyalSlamBody(g);
     }
-    wasUlt.current = slamActive;
+    wasUlt.current = slamActive || meleeActive;
     if (next === currentClip.current) return;
     const from =
       actions[
@@ -810,7 +849,7 @@ function GlbFighterBodyCore({
   // kapanır, maç başında ise katsayı 1'den başlar (duruş hep açık).
   useFrame((_, dt) => {
     const f = fighter.current;
-    const target = f.moving || f.samuraiUltT > 0 ? 0 : 1;
+    const target = f.moving || f.samuraiUltT > 0 || f.meleeT > 0 ? 0 : 1;
     stanceK.current += (target - stanceK.current) * Math.min(1, dt * 6);
     applyBattleStance(stanceRig, stanceK.current);
   });
