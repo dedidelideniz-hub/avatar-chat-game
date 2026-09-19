@@ -140,6 +140,8 @@ let protectedObstacleMeshes = 0;
 let protectedRestoredCells = 0;
 /** Güvenlik vanası: üssü kapatmasın diye geri alınan koruma hücresi. */
 let baseSealClearedCells = 0;
+/** Üs bölgesi muafiyetiyle korumadan çıkarılan hücre (yalnız teşhis). */
+let baseProtectionClearedCells = 0;
 /** Son kurulumdaki koruma maskesi (yalnız teşhis: "bu mesh korunuyor muydu?"). */
 let lastProtectionMask: Uint8Array | null = null;
 /** Üs çıkış kontrolü: hedef, arena merkezine bu yarıçaptan (px) yakın
@@ -175,6 +177,20 @@ export const PROTECT_MIN_OBSTACLE_H = 0.45;
 /** Korunan maskenin KENDİ erozyonu: çevresi bir hücre çekilir, koridor
  *  ferahlığı korunur ama kütle asla tamamen silinemez. */
 const PROTECT_ERODE_PASSES = 1;
+/**
+ * ÜS BÖLGESİ MUAFİYET YARIÇAPI (px).
+ *
+ * ÖLÇÜM (gerçek ızgara, koruma açık/kapalı karşılaştırması): koruma açıkken
+ * kırmızı üsten yalnız 2 yön 400 px'den uzağa açılıyordu (700 · 700), koruma
+ * kapalıyken 5 yön açıktı (448 · 452 · 642 · 700 · 700). Yani üs çevresindeki
+ * kule gövdeleri geri konunca üs odasındaki geçitler dövüşçü genişliğinin
+ * (2 × 22 px) altına iniyor ve karakter kapıdan sığmıyordu.
+ *
+ * Bu yarıçap içinde koruma UYGULANMAZ: morfolojik geçit ferahlatma kuralları
+ * geçerli olur, üs hem yürünebilir kalır hem de çıkışları açılır. Arena
+ * ortasındaki, ormandaki ve koridorlardaki kule/duvar/kaya koruması devam eder.
+ */
+const BASE_PROTECT_FREE_R = 340;
 
 /**
  * GRID KURUCUSU SÖZLÜĞÜ (tek kaynak).
@@ -245,6 +261,9 @@ export function collisionDiagnostics(): {
   /** Diz altı prop (duvar olmayan, < PROTECT_MIN_OBSTACLE_H): dövüşçüyü
    *  durdurması beklenmez, üzerinden geçilir. */
   steppable: number;
+  /** Üs bölgesindeki (koruma muafiyeti içindeki) yapılar — geçirgen olmaları
+   *  tasarım gereğidir, "geçilir" diye uyarı üretmezler. */
+  baseAreaDecor: number;
   /** Korunan (kule/duvar/büyük kaya) mesh sayısı ve hücre sayısı. */
   protectedMeshes: number;
   protectedCells: number;
@@ -252,6 +271,8 @@ export function collisionDiagnostics(): {
   protectedRestored: number;
   /** Güvenlik vanasının, üssü kapatmasın diye geri aldığı koruma hücresi. */
   baseSealCleared: number;
+  /** Üs bölgesi muafiyetiyle korumadan çıkarılan hücre sayısı. */
+  baseProtectFree: number;
   /** Engel sayıldığı hâlde merkezi blokeli OLMAYAN mesh'ler — gerçek bulgu.
    *  Ad + konum + yükseklik verilir ki tek taramada teşhis edilebilsin. */
   misses: {
@@ -278,6 +299,7 @@ export function collisionDiagnostics(): {
   let expectedPass = 0;
   let excludedByDesign = 0;
   let steppable = 0;
+  let baseAreaDecor = 0;
   const misses: {
     label: string;
     x: number;
@@ -319,6 +341,20 @@ export function collisionDiagnostics(): {
       steppable += 1;
       return;
     }
+    // 2b) ÜS BÖLGESİ: üs odası ve çıkışları ferah kalsın diye koruma orada
+    //     BİLİNÇLİ olarak uygulanmaz (bkz. BASE_PROTECT_FREE_R). Üs
+    //     mimarisinin süs kuleleri bu yüzden geçirgendir — hata değil, tasarım.
+    const gxProbe = center.x * PX;
+    const gyProbe = center.z * PX;
+    if (
+      BASE_CENTERS.some(
+        ([bx, by]) =>
+          Math.hypot(gxProbe - bx, gyProbe - by) <= BASE_PROTECT_FREE_R,
+      )
+    ) {
+      baseAreaDecor += 1;
+      return;
+    }
     // 3) GERÇEK ÖLÇÜM: dövüşçü boyundaki kütle (kule/duvar/büyük kaya).
     probes += 1;
     if (hitsRockCollision(center.x * PX, center.z * PX, PROBE_RADIUS)) {
@@ -351,10 +387,12 @@ export function collisionDiagnostics(): {
     expectedPass,
     excludedByDesign,
     steppable,
+    baseAreaDecor,
     protectedMeshes: protectedObstacleMeshes,
     protectedCells: protectedObstacleCells,
     protectedRestored: protectedRestoredCells,
     baseSealCleared: baseSealClearedCells,
+    baseProtectFree: baseProtectionClearedCells,
     misses,
   };
 }
@@ -754,6 +792,45 @@ function restoreProtectedObstacles(
  * AYNI kurallarla rasterize edilir. Yalnızca görünür kütle engellenir; yola
  * gölge/dekor projeksiyonu düşmez.
  */
+/**
+ * ÜS BÖLGESİ MUAFİYETİ — koruma hücrelerini üslerin çevresinden siler.
+ *
+ * Üs mimarisi (BasePart parçaları + `PVP_M_PGD19Tower` kuleleri) birbirine
+ * çok yakın duruyor; kuleler korunduğunda aralarındaki gerçek geçit dövüşçü
+ * genişliğinin altına iniyordu (bkz. BASE_PROTECT_FREE_R ölçüm notu). Üs
+ * alanının LoL/Wild Rift'teki gibi ferah yürünebilmesi için bu yarıçapta
+ * koruma kaldırılır; haritanın geri kalanında koruma aynen sürer.
+ */
+function clearProtectionNearBases(mask: Uint8Array, g: RockGrid) {
+  const { cols, rows, cell } = g;
+  let cleared = 0;
+  for (const [bx, by] of BASE_CENTERS) {
+    const minCol = Math.max(0, Math.floor((bx - BASE_PROTECT_FREE_R) / cell));
+    const maxCol = Math.min(
+      cols - 1,
+      Math.floor((bx + BASE_PROTECT_FREE_R) / cell),
+    );
+    const minRow = Math.max(0, Math.floor((by - BASE_PROTECT_FREE_R) / cell));
+    const maxRow = Math.min(
+      rows - 1,
+      Math.floor((by + BASE_PROTECT_FREE_R) / cell),
+    );
+    for (let row = minRow; row <= maxRow; row++) {
+      const rowOff = row * cols;
+      const dy = (row + 0.5) * cell - by;
+      for (let col = minCol; col <= maxCol; col++) {
+        const index = rowOff + col;
+        if (!mask[index]) continue;
+        const dx = (col + 0.5) * cell - bx;
+        if (Math.hypot(dx, dy) > BASE_PROTECT_FREE_R) continue;
+        mask[index] = 0;
+        cleared += 1;
+      }
+    }
+  }
+  baseProtectionClearedCells = cleared;
+}
+
 function buildTallObstacleMask(g: RockGrid): Uint8Array | null {
   const root = rockCollision.root;
   protectedObstacleMeshes = 0;
@@ -858,6 +935,9 @@ function buildTallObstacleMask(g: RockGrid): Uint8Array | null {
       if (meshBoundary[i]) mask[i] = 1;
     }
   });
+  // ÜS MUAFİYETİ: koruma, üs odası ve çıkışlarında uygulanmaz (ölçümle
+  // doğrulandı: korununca üs çıkışları dövüşçü genişliğinin altına iniyordu).
+  clearProtectionNearBases(mask, g);
   let cells = 0;
   for (let i = 0; i < mask.length; i++) if (mask[i]) cells += 1;
   if (meshes === 0 || cells === 0) return null;

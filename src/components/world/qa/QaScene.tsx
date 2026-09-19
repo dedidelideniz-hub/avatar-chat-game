@@ -124,14 +124,35 @@ function logCollisionDiag(): void {
         `${d.protectedCells} hücre maskelendi, ${d.protectedRestored} hücre kırpma sonrası geri kondu`,
     );
   }
-  // Güvenlik vanası: koruma bir üs çıkışını tıkamışsa geri alınan hücreler.
-  // 0 ise koruma üsleri kapatmamış demektir (istenen durum).
+  // ÜS MUAFİYETİ: üs odası ve çıkışları ferah kalsın diye koruma, üslerin
+  // çevresinde uygulanmaz. Ölçüm: koruma açıkken üs çıkışları dövüşçü
+  // genişliğinin altına iniyordu (kırmızı üste 5 açık yön → 2).
+  if (d.baseProtectFree > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.baseProtectFree} hücre üs bölgesinde korumadan muaf tutuldu ` +
+        `(üs odası ve çıkışları dövüşçü genişliğinde kalsın diye)`,
+    );
+  }
+  // Güvenlik vanası: koruma yine de bir üs çıkışını tıkamışsa geri alınan
+  // hücreler. 0 ise koruma üsleri kapatmamış demektir (istenen durum).
   if (d.baseSealCleared > 0) {
     qaLog(
       "warn",
       "COLLISION",
       `${d.baseSealCleared} koruma hücresi geri alındı: bir üs çıkışı tıkanmıştı ` +
         `(karakter üssünde kilitli kalmasın diye gevşetildi)`,
+    );
+  }
+  // Üs bölgesindeki yapılar (BasePart + üs kuleleri): geçirgen olmaları
+  // tasarım gereğidir, "engel sayıldı ama geçilir" uyarısı üretmezler.
+  if (d.baseAreaDecor > 0) {
+    qaLog(
+      "info",
+      "COLLISION",
+      `${d.baseAreaDecor} üs bölgesi yapısı (BasePart/kule) — üs muafiyeti gereği ` +
+        `engel sayılmaz, karakter aralarından geçer`,
     );
   }
   // Yükseklik kapısının altındaki prop'lar engel SAYILMAZ (yerde yatan yama,
