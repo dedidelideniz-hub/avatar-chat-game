@@ -72,6 +72,9 @@ export interface VfxBus {
   crack(x1: number, y1: number, x2: number, y2: number, ttl?: number): void;
   /** Ateş Topu patlaması (soğuk alev büyüsü). */
   coldFlame(x: number, y: number, damageR: number): void;
+  /** KAN FIŞKIRMASI: bıçak gövdeye girdiğinde kısa, koyu kırmızı püskürme
+   *  (yakın dövüş bitiricisinin okunurluğu buna bağlı). */
+  blood(x: number, y: number, size?: number): void;
   /** Mermi çarpması: ince büyü halkası + kıvılcım pufları. */
   coldFlameImpact(x: number, y: number, size?: number): void;
   /** Ağır vuruştan sonra ekranı ışıtan bloom patlaması. */
@@ -120,6 +123,25 @@ export function createVfxBus(sink: (fx: BattleFx) => void): VfxBus {
     coldFlame: (x, y, damageR) => {
       pushColdFlameFx(sink, x, y, damageR);
       pulseBloom(0.7);
+    },
+    blood: (x, y, size = 74) => {
+      // "smoke" türü RENK taşır (3D katman sprite rengini doğrudan fx.color'dan
+      // yazar); kan bu yüzden smoke fx'leriyle koyu kırmızı püskürtme olarak
+      // çizilir. Ömür kısa + büyüme küçük → dar, hızlı bir fışkırma okunur.
+      const colors = ["#7f1d1d", "#b91c1c", "#ef4444", "#991b1b"];
+      for (let i = 0; i < 8; i++) {
+        const life = 0.28 + Math.random() * 0.34;
+        sink({
+          kind: "smoke",
+          x: x + (Math.random() - 0.5) * size,
+          y: y + (Math.random() - 0.5) * size * 0.8,
+          ttl: life,
+          maxTtl: life,
+          grow: size * (0.45 + Math.random() * 0.6),
+          color: colors[i % colors.length],
+        });
+      }
+      pulseBloom(0.32);
     },
     coldFlameImpact: (x, y, size = 56) => {
       pushColdFlameImpact(sink, x, y, size);

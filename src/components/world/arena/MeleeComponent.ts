@@ -145,6 +145,29 @@ function emitMeleeStrikeFx(
   const x = hit ? enemy.x : caster.x + dir.x * MELEE_RANGE_PX * 0.72;
   const y = (hit ? enemy.y : caster.y + dir.y * MELEE_RANGE_PX * 0.72) - 46;
 
+  if (finish) {
+    // ── İMPALE (bitirici): bıçak gövdeye GİRER ──
+    // 1) İleri saplama şeridi: bıçağın içeri sürüldüğü hat.
+    vfx.beam(
+      x - dir.x * 64,
+      y + 6 - dir.y * 64,
+      x + dir.x * 34,
+      y + 6 + dir.y * 34,
+      0.16,
+    );
+    // 2) KAN FIŞKIRMASI — vuruş isabetliyse rakibin gövdesinden.
+    if (hit) {
+      vfx.blood(x, y + 30, 98);
+      vfx.blood(x - dir.x * 26, y + 8, 70);
+    }
+    vfx.burst(x, y, 122, "#fbbf24", 0.34);
+    vfx.smoke(x, y + 40, 5, 95);
+    if (hit) vfx.coldFlameImpact(x, y, 82);
+    vfx.flash(0.44);
+    vfx.ring(caster.x, caster.y - 28, 96, "#fbbf24", 0.3);
+    return;
+  }
+
   // Kesme şeridi ekseni: salınım yönüne DİK, aşamaya göre ± eğimli.
   const tilt = stage === 1 ? 1 : -1;
   const axRaw = -dir.y * 0.74 + dir.x * 0.5 * tilt;
@@ -152,18 +175,12 @@ function emitMeleeStrikeFx(
   const an = Math.hypot(axRaw, ayRaw) || 1;
   const ax = axRaw / an;
   const ay = ayRaw / an;
-  const half = finish ? 120 : 92;
+  const half = 92;
   // 1) Ana kesme izi (bıçağın geçtiği hat).
-  vfx.beam(
-    x + ax * half,
-    y + ay * half,
-    x - ax * half,
-    y - ay * half,
-    finish ? 0.24 : 0.18,
-  );
+  vfx.beam(x + ax * half, y + ay * half, x - ax * half, y - ay * half, 0.18);
   // 2) Hafif geride/paralel ikinci şerit → çift kenarlı “biçme” görüntüsü.
-  const offX = dir.x * (finish ? 34 : 22);
-  const offY = dir.y * (finish ? 34 : 22) + 18;
+  const offX = dir.x * 22;
+  const offY = dir.y * 22 + 18;
   vfx.beam(
     x + ax * half * 0.72 + offX,
     y + ay * half * 0.72 + offY,
@@ -172,17 +189,15 @@ function emitMeleeStrikeFx(
     0.15,
   );
 
-  vfx.burst(x, y, finish ? 118 : 78, finish ? "#fbbf24" : "#f8fafc", 0.32);
-  vfx.smoke(x, y + 34, finish ? 5 : 3, finish ? 95 : 58);
-  if (hit) vfx.coldFlameImpact(x, y, finish ? 78 : 54);
-  vfx.flash(finish ? 0.42 : 0.2);
-  vfx.ring(
-    caster.x,
-    caster.y - 28,
-    finish ? 92 : 64,
-    finish ? "#fbbf24" : "#fde68a",
-    0.28,
-  );
+  vfx.burst(x, y, 78, "#f8fafc", 0.32);
+  vfx.smoke(x, y + 34, 3, 58);
+  if (hit) {
+    vfx.coldFlameImpact(x, y, 54);
+    // Kesiş de kan bırakır (daha hafif).
+    vfx.blood(x, y + 26, 58);
+  }
+  vfx.flash(0.2);
+  vfx.ring(caster.x, caster.y - 28, 64, "#fde68a", 0.28);
 }
 
 /**
@@ -227,8 +242,8 @@ export function stepMelee(
         (dy / d) * MELEE_LEAP_SPEED * dt,
         dt,
       );
-      // Havalanma tozu: atlayışın “yerden kesilme” hissini verir.
-      opts.vfx.smoke(caster.x, caster.y - 16, 1, 34);
+      // Kayma/hop tozu: karakter yerden kesilip üstüne süzülüyormuş gibi.
+      opts.vfx.smoke(caster.x - (dx / d) * 12, caster.y - 14, 2, 40);
     }
   }
 

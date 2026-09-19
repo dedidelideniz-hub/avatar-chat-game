@@ -99,9 +99,10 @@ export function meleeDuration(leap: boolean): number {
 
 /* ───────────────────────────── gövde ağırlığı ───────────────────── */
 
-/** Gövde hamlesi/alçalması (dünya birimi oranı — RoyalSlam ile aynı dil). */
-const MELEE_LUNGE = 0.2;
-const MELEE_DIP = 0.22;
+/** Gövde hamlesi/alçalması (dünya birimi oranı — RoyalSlam ile aynı dil).
+ *  DIP, bitiricinin “hop”unu (çömel → havalan → sapla) okunur kılar. */
+const MELEE_LUNGE = 0.24;
+const MELEE_DIP = 0.4;
 
 interface MeleeKey {
   /** Kolun yatay açısı (derece): 0 = öne, + → karakterin SOLUNA. */
@@ -153,13 +154,16 @@ const STAGE_KEYS: readonly (readonly MeleeKey[])[] = [
     K(-66, -0.62, 0.44, -0.52, 0.44, -0.1),
     K(-128, -0.95, 0.26, -0.68, 0.16, -0.02),
   ],
-  // 2 — BİTİRİCİ: tepeden yere çapraz iniş (üstüne atlayıp biçme).
-  //     Kılıç sağ omuzdan havalanır, gövde sağa kurulur, sonra öne-sola patlar.
+  // 2 — BİTİRİCİ: İMPALE. Rakip yakınsa karakter KAYARAK üstüne girer, kılıç
+  //     geriye- kalçaya çekilir, iki elle öne bastırılıp rakibin gövdesine
+  //     SOKULUR (kan fışkırır). Bıçak bu aşamada yataydır (bladeDown ≈ 0).
   [
     K(-128, -0.95, 0.26, -0.68, 0.16, -0.02),
-    K(-20, 1.3, -0.36, -0.58, -0.34, 0.22),
-    K(20, -1.05, 0.6, 0.34, 0.68, -0.28),
-    K(34, -1.1, 0.36, 0.4, 0.24, -0.1),
+    // Hazırlık: kılıç geriye/ kalçaya çekilir, gövde sağa kurulup yüklenir.
+    K(-34, 0.28, -0.34, -0.5, -0.4, 0.16),
+    // İMPALE: gövde öne kapanır, iki kol kılıcı rakibin içine sürer.
+    K(6, -0.08, 0.52, 0.18, 0.95, -0.18),
+    K(8, -0.12, 0.34, 0.1, 0.5, -0.06),
   ],
 ];
 
@@ -339,9 +343,11 @@ export function applyMeleePose(opts: MeleePoseOptions): void {
     .addScaledVector(UP, lift)
     .normalize();
 
-  // Bıçak, koldan dışa uzanır ve kesişte aşağı doğru çalar. Bitirici inişte
-  // çok daha dik (tepeden yere) — "yeri yaran" bitişi besler.
-  const bladeDown = b.stage >= 2 ? 0.95 : 0.45;
+  // Bıçak, koldan dışa uzanır. Çapraz kesişlerde aşağı doğru çalar; BİTİRİCİ
+  // İMPALEDE ise neredeyse yatay kalır (bıçak rakibin gövdesine GİRER,
+  // tepeden inmez) — bu yüzden bladeDown orada çok küçüktür.
+  const thrust = b.stage >= 2;
+  const bladeDown = thrust ? 0.08 : 0.45;
   const bladeDir = armDir.clone().addScaledVector(DOWN, bladeDown).normalize();
 
   // 1) GÖVDE ÖNCE: omurga eksenel burulması (kalça zaten kök burulmasıyla
@@ -377,15 +383,24 @@ export function applyMeleePose(opts: MeleePoseOptions): void {
   aimBone(rig.rightFore, rig, foreDir, weight * 0.95);
   if (bladeAxis) aimBone(rig.rightHand, rig, bladeDir, weight, bladeAxis);
 
-  // 3) SOL KOL: kesişe KARŞI savrulur (denge) — gövde burulmasıyla birlikte
-  //    gerçek bir iki kollu savurma ritmi oluşur.
-  const offDir = fwd
-    .clone()
-    .multiplyScalar(0.24)
-    .addScaledVector(side, -Math.sin(hRad) * 0.95)
-    .addScaledVector(UP, -0.3 * lift - 0.12)
-    .normalize();
-  aimBone(rig.leftShoulder, rig, offDir, weight * 0.3);
-  aimBone(rig.leftUpper, rig, offDir, weight * 0.75);
-  aimBone(rig.leftFore, rig, offDir, weight * 0.6);
+  // 3) SOL KOL: kılıcı İKİ ELİYLE kavrar (sol el sapın üstüne gelir). Sol
+  //    kol, sağ elin dünya konumuna (sap) doğru yönlendirilir; böylece
+  //    gövdeyle bastırıp sürme (iki elli pres) okunur.
+  if (rig.rightHand) rig.rightHand.updateWorldMatrix(true, false);
+  const hilt = rig.rightHand
+    ? rig.rightHand.getWorldPosition(new THREE.Vector3())
+    : null;
+  if (rig.leftUpper) {
+    const shoulder = rig.leftUpper.getWorldPosition(new THREE.Vector3());
+    const handDir = hilt
+      ? hilt.clone().sub(shoulder).normalize().lerp(armDir, 0.18).normalize()
+      : armDir.clone();
+    aimBone(rig.leftShoulder, rig, handDir, weight * 0.35);
+    aimBone(rig.leftUpper, rig, handDir, weight * 0.95);
+    if (rig.leftFore) {
+      const elbow = rig.leftFore.getWorldPosition(new THREE.Vector3());
+      const foreDir2 = hilt ? hilt.clone().sub(elbow).normalize() : handDir;
+      aimBone(rig.leftFore, rig, foreDir2, weight);
+    }
+  }
 }
