@@ -1,64 +1,72 @@
-// ⚔️ SwordArcTrail — Kraliyet Savaşçısı'nın yakın dövüşü için KILIÇ SAVURMA
-// İZİ (sword slash arc trail).
+// ⚔️ SwordArcTrail — Kraliyet Savaşçısı'nın yakın dövüşü için KILIÇ İZİ
+// (ribbon trail / arc mesh).
 //
-// NEDEN VAR: vuruş efektleri eskiden kural katmanında düz "beam" şeritleri
-// olarak çiziliyordu — kılıçtan bağımsız, ekrana fırlayan düz sarı bantlar
-// gibi okunuyordu. Bu katman izi doğrudan KEMİK katmanının ölçtüğü kılıç
-// ucundan üretir:
+// KURAL: iz, kural katmanının anahtar tablosundan türetilir — `RoyalMelee`nin
+// pozu AYNI `STAGE_KEYS` açılarını kullandığı için kılıç ile iz asla ayrışmaz.
 //
-//   · KAVİS (crescent): kılıç ucu her karede örneklenir; son `LIFE` (0.15 sn)
-//     boyunca toplanan noktalar bir şerit (ribbon) olur. Noktalar kılıcın
-//     gerçekten çizdiği rotadır — düz bir kutu/çizgi değil, savurmanın kavisi.
-//   · SİLAHA BAĞLI: iz haritada ilerleyen bir mermi değildir; kılıç nereye
-//     giderse iz oraya doğar ve kuyruğundan (en eski örnekten) başlayarak
-//     0.15 sn içinde silinir.
-//   · ADDİTİF + SAYDAM: transparent, AdditiveBlending, opacity 0.8. İç kenar
-//     sıcak beyaz, dış kenar mavi; hem kuyruk hem dış kenar vertex alpha ile
-//     saydamlaşır → tek renk bant değil, dışa doğru sönümlenen ışık dalgası.
+//   · KAVİSLİ (hilal/muz): kılıç ucu her karede kol açısından hesaplanır; son
+//     `LIFE` (0.1 sn) boyunca toplanan noktalar bir şerit olur. Kolu süren açı
+//     bir aşamada ~190° döndüğü için şerit ZORUNLU olarak kavisli çıkar — düz
+//     bir çizgi hiçbir karede oluşamaz (eski düz şerit/beam yolu kaldırıldı).
+//   · KILIÇ UCUNA BAĞLI: iz haritada sabit kalmaz, ileri fırlamaz. Örnekler
+//     salınımın o anki kol açısından üretilir; yeni örnek gelmeyi bıraktığı an
+//     (salınım bitti) iz kuyruğundan başlayarak 0.1 sn içinde silinir.
+//   · ÖLÇEK: yarıçap karakterin kılıç boyuyla sınırlı — `MAX_RADIUS` (1.5 birim)
+//     asla aşılmaz; şerit bu yarıçapın çevresinde, ortada kalın, uçlarda sıfıra
+//     inen incelikte durur (uçlara doğru incelip kaybolur).
+//   · SAYDAMLIK: transparent + `THREE.AdditiveBlending`, `opacity: 0.8`.
+//     İç kenar sıcak beyaz, dış kenar mavi; hem kuyruk hem dış kenar vertex
+//     alpha ile sönümlenir → içten dışa parlayan yumuşak ışık dalgası.
 //
-// DÜNYA UZAYINDA çizilir (sahne köküne eklenir): tepe noktaları mutlak
+// Dünya uzayında çizilir (sahne köküne eklenir): tepe noktaları mutlak
 // koordinatlarda üretildiği için dövüşçünün rig ölçek/dönüş zincirine bağlı
-// kalmaz; bir kare gecikmeli matris tersine çevirme gibi kırılgan hileler
-// gerekmez.
-//
-// Çıpa iki kaynaktan gelir (öncelik sırası):
-//   1) `RoyalMelee`nin her karede yazdığı kılıç ucu (`meleeFxX/Y/H`) — asıl
-//      kaynak; iz, kılıcın gerçekten geçtiği yerden geçer.
-//   2) Çıpa bayatsa/yoksa: gövdenin baktığı yön × bıçağın erişimi (göğüs
-//      hizası). İz yine kılıcın olduğu hatta kalır, ekrana fırlamaz.
+// kalmaz; bir kare gecikmeli matris tersine çevirme hileleri gerekmez.
 import { useFrame, useThree } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { BattleFighter } from "@/components/world/Arena3D";
+import { meleeArmAngle, meleeDuration } from "@/engine/RoyalMelee";
 import { S } from "./shared";
 
 /* ------------------------------ sabitler -------------------------------- */
 
-/** İzin toplam ömrü (sn): kılıç ucunun son 0.15 sn'lik rotası çizilir. */
-const LIFE = 0.15;
-/** Örnek tamponu: 0.15 sn @ ~170 fps üst sınırı. */
-const MAX_SAMPLES = 26;
-/** Şeridin iç kenarı: uçtan geriye (kılıcın gövdeye bakan yarısı). */
-const ARC_INNER = 0.6;
-/** Şeridin dışa taşan parlaması (ucun ötesi). */
-const ARC_OUTER = 0.12;
-/** İç kenarın uca göre alçalması (kabza el hizasında kalır). */
-const ARC_DROP = 0.28;
-/** Çıpa tazelik sınırı (ms) — kemik katmanı her karede yazar (~16 ms). */
-const ANCHOR_MAX_AGE_MS = 120;
-/** Yedek erişim (dünya birimi): bıçak 0.85 + omuzun öne uzanması ~0.5. */
-const FALLBACK_REACH = 1.35;
+/** İzin toplam ömrü (sn): yalnız sallanma anı görünür, sonra silinir. */
+const LIFE = 0.1;
+/** Örnek tamponu: 0.1 sn @ ~200 fps üst sınırı. */
+const MAX_SAMPLES = 20;
 /**
- * Çıpa emniyet sınırı (dünya birimi): ölçüm bozuksa (beklenmeyen iskelet,
- * yanlış rig ölçeği) iz haritanın başka yerine düşmesin — yedeğe dönülür.
+ * Kılıç erişimi (dünya birimi): bıçak uzunluğu (0.85) + avuç/omuzun öne
+ * uzanması. Şerit bu yarıçapın çevresine oturur.
  */
-const MAX_REACH = 3.5;
-/** Yedek yükseklik: göğüs hizası (dünya birimi). */
-const FALLBACK_HEIGHT = 0.95;
-/** İç kenar rengi (sıcak beyaz) ve dış kenar rengi (mavi). */
+const BLADE_REACH = 1.2;
+/** Şeridin MAKSİMUM yarıçapı (spec): karakterin kılıç boyu 1.5 birim. */
+const MAX_RADIUS = 1.5;
+/** Ortadaki yarım kalınlık; uçlara doğru sıfıra iner (ince + sivri uçlar). */
+const ARC_HALF_WIDTH = 0.3;
+/**
+ * Örnekleme AÇIYA bağlıdır: yeni örnek yalnız kol en az bu kadar döndüğünde
+ * alınır. Ölçüm (bkz. `.scratch/arc.mjs`): kare başına örneklemede kolun
+ * durduğu fazlarda (follow-through) noktalar aynı yere yığılıyor ve şerit
+ * KISA DÜZ BİR ÇİZGİ gibi görünüyordu. Açı adımıyla her dilim gerçek bir yay
+ * parçası olur; kol durunca yeni örnek gelmez, iz 0.1 sn'de söner.
+ */
+const MIN_ANGLE_STEP = 7;
+/** İz yüksekliği: göğüs hizası (dünya birimi) + pozun dikey bileşeni. */
+const BASE_Y = 0.95;
+/** İç kenarın uca göre alçalması (kabza el hizasında kalır). */
+const INNER_DROP = 0.26;
+/** İç kenar (sıcak beyaz) ve dış kenar (mavi) rengi. */
 const HOT = new THREE.Color("#eaf7ff");
 const COOL = new THREE.Color("#4aa8ff");
+
+/** En kısa açı farkı (−180…180) — kol açısı ±180 sınırını aşabildiği için. */
+function angleDelta(a: number, b: number): number {
+  let d = a - b;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
 
 export function SwordArcTrail({
   fighter,
@@ -77,14 +85,11 @@ export function SwordArcTrail({
     colorAttr.setUsage(THREE.DynamicDrawUsage);
     geometry.setAttribute("position", positionAttr);
     geometry.setAttribute("color", colorAttr);
-    // Örnek başına bir şerit dilimi (inner/outer çifti) — indeksler sabit.
+    // Her örnek bir şerit dilimi (iç/dış çifti) — indeksler sabit.
     const indices: number[] = [];
     for (let i = 0; i < MAX_SAMPLES - 1; i++) {
       const a = i * 2;
-      const b = a + 1;
-      const c = a + 2;
-      const d = a + 3;
-      indices.push(a, b, c, b, d, c);
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
     }
     geometry.setIndex(indices);
     geometry.setDrawRange(0, 0);
@@ -116,10 +121,12 @@ export function SwordArcTrail({
     };
   }, [scene, built]);
 
-  /** Kılıç ucu örnekleri (dünya birimi) — ring tampon, kare başına tahsis yok. */
+  /** Kılıç ucu örnekleri (dünya birimi) — kare başına tahsis yok. */
   const ring = useRef({
     x: new Float32Array(MAX_SAMPLES),
     z: new Float32Array(MAX_SAMPLES),
+    y: new Float32Array(MAX_SAMPLES),
+    /** Örneğin kol açısı (derece) — açı adımı denetimi için. */
     h: new Float32Array(MAX_SAMPLES),
     t: new Float64Array(MAX_SAMPLES),
     count: 0,
@@ -131,49 +138,52 @@ export function SwordArcTrail({
     const r = ring.current;
     const { geometry, mesh, positionAttr, colorAttr } = built;
 
-    // ── 1) Yeni örnek: yalnız salınım sürerken ──────────────────────────
+    // ── 1) Yeni örnek: kılıç ucu, POZUN anahtar açısından ───────────────
     if (f.meleeT > 0) {
-      const tx = f.meleeFxX;
-      const ty = f.meleeFxY;
-      const th = f.meleeFxH;
-      const tt = f.meleeFxT;
-      let wx: number;
-      let wz: number;
-      let wh: number;
-      const anchorFresh =
-        typeof tx === "number" &&
-        typeof ty === "number" &&
-        typeof tt === "number" &&
-        now - tt <= ANCHOR_MAX_AGE_MS;
-      const anchorNear =
-        anchorFresh &&
-        Math.hypot(tx / S - f.x / S, ty / S - f.y / S) <= MAX_REACH;
-      if (anchorNear) {
-        // Ölçülmüş kılıç ucu (asıl kaynak).
-        wx = (tx as number) / S;
-        wz = (ty as number) / S;
-        wh = typeof th === "number" ? th : FALLBACK_HEIGHT;
-      } else {
-        // Yedek: gövdenin baktığı yön × bıçağın erişimi.
+      const progress = 1 - Math.max(0, f.meleeT) / meleeDuration(f.meleeLeap);
+      const arm = meleeArmAngle(progress, f.meleeLeap);
+      if (arm.weight > 0.02) {
+        // Gövdenin baktığı yön (arena px uzayı, modelTurn dahil: görsel ileri).
         const yaw = f.aimYaw ?? f.restYaw ?? 0;
-        wx = f.x / S + Math.sin(yaw) * FALLBACK_REACH;
-        wz = f.y / S + Math.cos(yaw) * FALLBACK_REACH;
-        wh = FALLBACK_HEIGHT;
+        const fx = Math.sin(yaw);
+        const fz = Math.cos(yaw);
+        // Yaw'a dik yan eksen (kolun yatay açısı bu eksende ölçülür).
+        const sx = fz;
+        const sz = -fx;
+        const hr = (arm.h * Math.PI) / 180;
+        let ux = fx * Math.cos(hr) + sx * Math.sin(hr);
+        let uz = fz * Math.cos(hr) + sz * Math.sin(hr);
+        const un = Math.hypot(ux, uz) || 1;
+        ux /= un;
+        uz /= un;
+        // Uç: gövde merkezinden kol yönünde bıçak erişimi kadar.
+        const px = f.x + ux * BLADE_REACH * S;
+        const py = f.y + uz * BLADE_REACH * S;
+        const hy = BASE_Y + arm.lift * 0.5 - arm.lean * 0.3;
+        // Yalnız kol anlamlı döndüyse örnek al (duruk fazda düz çizgi olmasın).
+        const last = r.count - 1;
+        const turned =
+          r.count === 0 ||
+          Math.abs(angleDelta(arm.h, r.h[last])) >= MIN_ANGLE_STEP;
+        if (turned) {
+          if (r.count < MAX_SAMPLES) {
+            r.count += 1;
+          } else {
+            // Tampon doldu: en eski örneği düşür (kopya maliyeti yok).
+            r.x.copyWithin(0, 1);
+            r.z.copyWithin(0, 1);
+            r.y.copyWithin(0, 1);
+            r.h.copyWithin(0, 1);
+            r.t.copyWithin(0, 1);
+          }
+          const i = r.count - 1;
+          r.x[i] = px / S;
+          r.z[i] = py / S;
+          r.y[i] = hy;
+          r.h[i] = arm.h;
+          r.t[i] = now;
+        }
       }
-      if (r.count < MAX_SAMPLES) {
-        r.count += 1;
-      } else {
-        // Tampon doldu: en eskiyi düşür (kopya maliyeti önemsiz, 26 örnek).
-        r.x.copyWithin(0, 1);
-        r.z.copyWithin(0, 1);
-        r.h.copyWithin(0, 1);
-        r.t.copyWithin(0, 1);
-      }
-      const i = r.count - 1;
-      r.x[i] = wx;
-      r.z[i] = wz;
-      r.h[i] = wh;
-      r.t[i] = now;
     }
 
     // ── 2) Ömrü dolanları düşür (kuyruk = en eski örnek) ────────────────
@@ -183,6 +193,7 @@ export function SwordArcTrail({
       if (live !== i) {
         r.x[live] = r.x[i];
         r.z[live] = r.z[i];
+        r.y[live] = r.y[i];
         r.h[live] = r.h[i];
         r.t[live] = r.t[i];
       }
@@ -197,41 +208,38 @@ export function SwordArcTrail({
     }
     mesh.visible = true;
 
-    // ── 3) Şerit: kılıç ucunun rotası boyunca inner/outer çiftleri ──────
+    // ── 3) Şerit: kılıç ucunun çizdiği kavis ────────────────────────────
     const cx = f.x / S;
     const cz = f.y / S;
     const pos = positionAttr.array as Float32Array;
     const col = colorAttr.array as Float32Array;
+    const span = Math.max(1, live - 1);
     for (let i = 0; i < live; i++) {
       const px = r.x[i];
       const pz = r.z[i];
-      const ph = r.h[i];
-      // Radyal yön: gövde merkezinden uca. Bıçak bu yönde uzanır, bu yüzden
-      // şerit savurmanın kavisini takip eden bir hilal olur.
+      const py = r.y[i];
+      // Radyal yön: gövde merkezinden uca. Kılıç bu yönde uzanır.
       let dx = px - cx;
       let dz = pz - cz;
-      const dl = Math.hypot(dx, dz) || 1;
-      dx /= dl;
-      dz /= dl;
-      const inX = px - dx * ARC_INNER;
-      const inZ = pz - dz * ARC_INNER;
-      const outX = px + dx * ARC_OUTER;
-      const outZ = pz + dz * ARC_OUTER;
-
+      const radius = Math.min(MAX_RADIUS, Math.hypot(dx, dz) || BLADE_REACH);
+      dx = dx / (Math.hypot(dx, dz) || 1);
+      dz = dz / (Math.hypot(dx, dz) || 1);
+      // İNCELME: ortada kalın, iki uçta sıfıra iner (sivri hilal uçları).
+      const shape = Math.sin(Math.PI * (i / span));
+      const inner = Math.max(0.2, radius - ARC_HALF_WIDTH * shape);
+      const outer = Math.min(MAX_RADIUS, radius + ARC_HALF_WIDTH * 0.5 * shape);
       // Yaş sönümü: yeni örnek parlak, kuyruk (en eski) tamamen saydam.
-      const fade = 1 - (now - r.t[i]) / (LIFE * 1000);
-      // Kuyruk yumuşaklığı: yaşlı örneklerin alfası karesel düşer.
-      const tailA = fade * fade;
-      // Uç (yeni örnek) daha parlak: bıçağın girdiği an okunur.
-      const lead = 0.55 + 0.45 * fade;
+      const age = (now - r.t[i]) / (LIFE * 1000);
+      const tailA = (1 - age) * (1 - age);
+      const lead = 0.55 + 0.45 * (1 - age);
 
       const pi = i * 6;
-      pos[pi] = inX;
-      pos[pi + 1] = Math.max(0.25, ph - ARC_DROP);
-      pos[pi + 2] = inZ;
-      pos[pi + 3] = outX;
-      pos[pi + 4] = ph + ARC_OUTER * 0.5;
-      pos[pi + 5] = outZ;
+      pos[pi] = cx + dx * inner;
+      pos[pi + 1] = Math.max(0.22, py - INNER_DROP * shape);
+      pos[pi + 2] = cz + dz * inner;
+      pos[pi + 3] = cx + dx * outer;
+      pos[pi + 4] = py + 0.04;
+      pos[pi + 5] = cz + dz * outer;
 
       const ci = i * 8;
       // İç kenar: sıcak beyaz, yüksek alfa.
@@ -243,7 +251,7 @@ export function SwordArcTrail({
       col[ci + 4] = COOL.r;
       col[ci + 5] = COOL.g;
       col[ci + 6] = COOL.b;
-      col[ci + 7] = 0.34 * tailA * lead;
+      col[ci + 7] = 0.32 * tailA * lead;
     }
     positionAttr.needsUpdate = true;
     colorAttr.needsUpdate = true;

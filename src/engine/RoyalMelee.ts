@@ -322,9 +322,6 @@ export interface MeleeStrikeAnchor {
   /** Kılıç UCUNUN arena px karşılığı (x = dünya X × 50). */
   meleeFxX?: number;
   meleeFxY?: number;
-  /** Kılıç ucunun DÜNYA yüksekliği (birim) — iz şeridi kılıcın dikey
-   *  kavisine oturur (göğüsten kalçaya inen çapraz kesiş). */
-  meleeFxH?: number;
   /** Çıpanın yazıldığı an (`performance.now()`). */
   meleeFxT?: number;
 }
@@ -353,7 +350,6 @@ function writeStrikeAnchor(
   (findHandSword(hand) ?? hand).getWorldPosition(_grip);
   host.meleeFxX = (_grip.x + bladeDir.x * SWORD_TARGET_WORLD_LEN) * PX_PER_UNIT;
   host.meleeFxY = (_grip.z + bladeDir.z * SWORD_TARGET_WORLD_LEN) * PX_PER_UNIT;
-  host.meleeFxH = _grip.y + bladeDir.y * SWORD_TARGET_WORLD_LEN;
   host.meleeFxT = performance.now();
 }
 
@@ -369,6 +365,33 @@ export interface MeleePoseOptions {
   active: boolean;
   /** Vuruş çıpasının yazılacağı dövüşçü (bkz. `MeleeStrikeAnchor`). */
   anchor?: MeleeStrikeAnchor | null;
+}
+
+/**
+ * Salınım ilerlemesinin KOL AÇISI — iz katmanı kılıcın çizdiği kavisi buradan
+ * türetir.
+ *
+ * Değerler `applyMeleePose` ile AYNI anahtar tablosundan (`STAGE_KEYS`) ve aynı
+ * ara değerleme eğrilerinden gelir; yani iz ile kılıç asla ayrışmaz: kol nereye
+ * gidiyorsa izin örnekleri de oradan geçer.
+ *
+ *  · `h`      kolun yatay açısı (derece, 0 = öne, + karakterin SOLUNA)
+ *  · `lift`   dikey bileşen (yukarı +, aşağı −)
+ *  · `lean`   omurga öne eğilmesi (izin yüksekliğini etkiler)
+ *  · `weight` katman ağırlığı (salınımın giriş/çıkışında 0'a iner)
+ */
+export function meleeArmAngle(
+  progress: number,
+  leap: boolean,
+): { h: number; lift: number; lean: number; weight: number } {
+  const b = meleeBlend(progress, leap);
+  const at = (a: number, c: number) => a + (c - a) * b.t;
+  return {
+    h: at(b.from.h, b.to.h),
+    lift: at(b.from.lift, b.to.lift),
+    lean: at(b.from.lean, b.to.lean),
+    weight: b.weight,
+  };
 }
 
 /**
