@@ -358,6 +358,13 @@ export interface BattleFighter {
   meleeLeap: boolean;
   /** Salınım başında verilmiş olan vuruş sayısı (0 → 2/3). */
   meleeStrikes: number;
+  /** ⚔️ Vuruş efektlerinin çıpası: kılıç UCUNUN arena px konumu. Kemik
+   *  katmanı (`RoyalMelee`) her karede yazar; sim katmanı efektleri buraya
+   *  koyar, böylece efekt kılıcın indiği noktadan çıkar. */
+  meleeFxX?: number;
+  meleeFxY?: number;
+  /** Çıpanın yazıldığı an (`performance.now()`) — bayat değer kullanılmaz. */
+  meleeFxT?: number;
   dashT: number;
   dashVX: number;
   dashVY: number;
@@ -820,6 +827,9 @@ function GlbFighterBodyCore({
           leap: f.meleeLeap,
           facing: f.facing,
           active: true,
+          // Vuruş çıpası dövüşçünün kendisine yazılır: sim katmanı efektleri
+          // kılıç ucunun gerçekten bulunduğu noktaya koyar.
+          anchor: f,
         });
       }
     } else if (wasUlt.current && g) {

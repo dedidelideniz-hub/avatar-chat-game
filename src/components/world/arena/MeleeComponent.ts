@@ -98,7 +98,7 @@ export function startMelee(
   caster.facing = dir.x >= 0 ? 1 : -1;
   // Salınım boyunca gövde hedefe kilitlenir: sol/sağ kesişler aynı hatta kalır.
   faceAimYaw(caster, dir.x, dir.y, caster.meleeT);
-  host.vfx.ring(caster.x, caster.y - 30, 66, "#fbbf24", 0.3);
+  host.vfx.ring(caster.x, caster.y, 66, "#fbbf24", 0.3);
   host.sound("dash", { volume: 0.5, rate: 1.25 });
   return { dir, leap };
 }
@@ -121,6 +121,61 @@ function currentDir(f: BattleFighter): AimDir {
   return { x: Math.sin(yaw), y: Math.cos(yaw), locked: false };
 }
 
+/* ─────────────── vuruş çıpası: efekt, kılıcın ucunda ─────────────── */
+
+/** Çıpa bayatlama sınırı (ms): kemik katmanı her karede yazar (~16 ms). */
+const ANCHOR_MAX_AGE_MS = 120;
+/**
+ * Yedek erişim (px) — çıpa ölçülemezse (ör. kemik katmanı bu karede yazmadı):
+ * kılıç 0.85 birim (42.5 px) + avuç/omuzun öne uzanması ~0.5 birim.
+ * Kural menzili (155) DEĞİL: yedek de kılıcın gerçekten ulaştığı yeri temsil
+ * eder, yoksa efekt yine kılıçtan kopar. SlashTrail yayının dış yarıçapı da
+ * aynı ölçekte (~0.9–1.1 birim) — iki katman aynı mesafeyi anlatır.
+ */
+const MELEE_BLADE_REACH_PX = 68;
+/**
+ * Çıpa emniyet sınırı (px): ölçüm bozuksa (yanlış rig ölçeği, beklenmeyen
+ * iskelet) efekt haritanın başka yerine düşmesin — yedeğe dönülür.
+ */
+const ANCHOR_MAX_REACH_PX = MELEE_RANGE_PX + 40;
+
+/**
+ * Efektin çıkacağı nokta = kılıcın indiği yer.
+ *
+ * 1. Kemik katmanının ölçtüğü kılıç ucu (taze ise) — asıl kaynak budur, çünkü
+ *    uç, savurmanın her aşamasında gerçekten nerede olduğunu bilir.
+ * 2. İsabet varsa ve hedef bıçaktan daha yakınsa uç hedefin ARKASINA düşeceği
+ *    için efekt hedefin gövdesinde kalır (impale/atlama sonrası temas).
+ * 3. Hiçbiri yoksa bıçağın erişebildiği nokta (bakış yönünde).
+ */
+function strikePoint(
+  caster: BattleFighter,
+  enemy: BattleFighter,
+  dir: AimDir,
+  hit: boolean,
+): { x: number; y: number } {
+  const d = Math.hypot(enemy.x - caster.x, enemy.y - caster.y);
+  const tx = caster.meleeFxX;
+  const ty = caster.meleeFxY;
+  const at = caster.meleeFxT;
+  if (
+    typeof tx === "number" &&
+    typeof ty === "number" &&
+    typeof at === "number" &&
+    performance.now() - at <= ANCHOR_MAX_AGE_MS
+  ) {
+    const tipD = Math.hypot(tx - caster.x, ty - caster.y);
+    if (tipD <= ANCHOR_MAX_REACH_PX) {
+      // İsabet varsa ve hedef bıçaktan yakınsa efekt hedefin GÖVDESİNDE kalır
+      // (uç, hedefin arkasına düşüp “havada kan” görüntüsü vermesin).
+      if (hit && d < tipD) return { x: enemy.x, y: enemy.y };
+      return { x: tx, y: ty };
+    }
+  }
+  const reach = hit ? Math.min(d, MELEE_BLADE_REACH_PX) : MELEE_BLADE_REACH_PX;
+  return { x: caster.x + dir.x * reach, y: caster.y + dir.y * reach };
+}
+
 /**
  * Vuruş anının görsel patlaması (iki arena da aynı efekti görür).
  *
@@ -140,31 +195,31 @@ function emitMeleeStrikeFx(
   hit: boolean,
 ): void {
   const finish = stage >= 2;
-  // Vuruş ıskaladıysa iz rakibin üstünde DEĞİL, bıçağın havada bittiği
-  // noktada çizilir (yanlış "kesildi" izlenimi olmasın).
-  const x = hit ? enemy.x : caster.x + dir.x * MELEE_RANGE_PX * 0.72;
-  const y = (hit ? enemy.y : caster.y + dir.y * MELEE_RANGE_PX * 0.72) - 46;
+  // Çıpa KILIÇ UCUDUR: efekt, kılıcın indiği yerden çıkar (elle verilen
+  // yükseklik/kaydırma ofseti yok — onlar efekti kılıçtan koparıyordu).
+  const { x, y } = strikePoint(caster, enemy, dir, hit);
 
   if (finish) {
     // ── İMPALE (bitirici): bıçak gövdeye GİRER ──
-    // 1) İleri saplama şeridi: bıçağın içeri sürüldüğü hat.
+    // 1) İleri saplama şeridi: bıçağın içeri sürüldüğü hat (uçtan geriye).
     vfx.beam(
       x - dir.x * 64,
-      y + 6 - dir.y * 64,
+      y - dir.y * 64,
       x + dir.x * 34,
-      y + 6 + dir.y * 34,
+      y + dir.y * 34,
       0.16,
     );
-    // 2) KAN FIŞKIRMASI — vuruş isabetliyse rakibin gövdesinden.
+    // 2) KAN FIŞKIRMASI — çıpanın bulunduğu gövdeden (impalede bıçağın içinde
+    //    olduğu nokta). İkinci dalga bir adım geride: fışkırma derinliği.
     if (hit) {
-      vfx.blood(x, y + 30, 98);
-      vfx.blood(x - dir.x * 26, y + 8, 70);
+      vfx.blood(x, y, 98);
+      vfx.blood(x - dir.x * 26, y - dir.y * 26, 70);
     }
     vfx.burst(x, y, 122, "#fbbf24", 0.34);
-    vfx.smoke(x, y + 40, 5, 95);
+    vfx.smoke(x, y, 5, 95);
     if (hit) vfx.coldFlameImpact(x, y, 82);
     vfx.flash(0.44);
-    vfx.ring(caster.x, caster.y - 28, 96, "#fbbf24", 0.3);
+    vfx.ring(caster.x, caster.y, 96, "#fbbf24", 0.3);
     return;
   }
 
@@ -180,7 +235,7 @@ function emitMeleeStrikeFx(
   vfx.beam(x + ax * half, y + ay * half, x - ax * half, y - ay * half, 0.18);
   // 2) Hafif geride/paralel ikinci şerit → çift kenarlı “biçme” görüntüsü.
   const offX = dir.x * 22;
-  const offY = dir.y * 22 + 18;
+  const offY = dir.y * 22;
   vfx.beam(
     x + ax * half * 0.72 + offX,
     y + ay * half * 0.72 + offY,
@@ -190,14 +245,14 @@ function emitMeleeStrikeFx(
   );
 
   vfx.burst(x, y, 78, "#f8fafc", 0.32);
-  vfx.smoke(x, y + 34, 3, 58);
+  vfx.smoke(x, y, 3, 58);
   if (hit) {
     vfx.coldFlameImpact(x, y, 54);
-    // Kesiş de kan bırakır (daha hafif).
-    vfx.blood(x, y + 26, 58);
+    // Kesiş de kan bırakır (daha hafif) — çıpanın kendisinden.
+    vfx.blood(x, y, 58);
   }
   vfx.flash(0.2);
-  vfx.ring(caster.x, caster.y - 28, 64, "#fde68a", 0.28);
+  vfx.ring(caster.x, caster.y, 64, "#fde68a", 0.28);
 }
 
 /**
@@ -243,7 +298,8 @@ export function stepMelee(
         dt,
       );
       // Kayma/hop tozu: karakter yerden kesilip üstüne süzülüyormuş gibi.
-      opts.vfx.smoke(caster.x - (dx / d) * 12, caster.y - 14, 2, 40);
+      // İz, hareket yönünün TERSİNE düşer (kuzeye sabitlenmiş ofset yok).
+      opts.vfx.smoke(caster.x - (dx / d) * 14, caster.y - (dy / d) * 14, 2, 40);
     }
   }
 

@@ -1,6 +1,8 @@
 import * as THREE from "three";
+import { SWORD_TARGET_WORLD_LEN } from "./HandGrip";
 import {
   aimBone,
+  findHandSword,
   royalSlamForward,
   type RoyalSlamBody,
   type RoyalSlamRig,
@@ -299,6 +301,58 @@ function meleeSide(rig: RoyalSlamRig, fwd: THREE.Vector3): THREE.Vector3 {
   return new THREE.Vector3().crossVectors(UP, fwd).normalize();
 }
 
+/* ───────────────── vuruş çıpası (efekt ↔ kılıç ucu) ─────────────── */
+
+/** Dünya birimi → arena px (Arena3D `S = 50` ile aynı ölçek). */
+const PX_PER_UNIT = 50;
+
+/**
+ * Kemik katmanının her karede yazdığı VURUŞ ÇIPASI.
+ *
+ * NEDEN: vuruş efektleri (kesme şeridi, kıvılcım, kan) sim katmanında üretilir
+ * ama kılıcın nerede olduğunu yalnız KEMİK katmanı bilir. Eskiden efekt
+ * noktası elle verilen sabit ofsetlerle (`y − 46` gibi) hesaplanıyordu; bu da
+ * efekti kılıçtan koparıyordu (izlenim: “kılıç buraya vurdu, efekt başka yerde
+ * çıktı”). Artık uç nokta ÖLÇÜLÜP burada yayınlanır.
+ *
+ * `meleeFxT` tazelik damgasıdır: bayat değer (ör. salınım bitti) çıpa olarak
+ * kullanılmaz, sim tarafı kendi yedek noktasına düşer.
+ */
+export interface MeleeStrikeAnchor {
+  /** Kılıç UCUNUN arena px karşılığı (x = dünya X × 50). */
+  meleeFxX?: number;
+  meleeFxY?: number;
+  /** Çıpanın yazıldığı an (`performance.now()`). */
+  meleeFxT?: number;
+}
+
+/** Ölçüm tamponu (kare başına ayırma yok). */
+const _grip = new THREE.Vector3();
+
+/**
+ * Kılıç ucunun dünya konumunu arena px olarak `host`a yazar.
+ *
+ * Uç = sapın dünya konumu + ölçülmüş dünya bıçak uzunluğu (`SWORD_TARGET_
+ * WORLD_LEN`, 0.85 birim) × bıçağın GERÇEK dünya yönü. Yön `applyMeleePose`
+ * içinde hesaplanan `bladeDir`'dir — yani kemiklerin o karede gerçekten
+ * baktığı yön. Böylece efekt, kılıcın indiği karede tam ucunda belirir.
+ */
+function writeStrikeAnchor(
+  host: MeleeStrikeAnchor,
+  rig: RoyalSlamRig,
+  bladeDir: THREE.Vector3,
+): void {
+  const hand = rig.rightHand;
+  if (!hand) return;
+  hand.updateWorldMatrix(true, false);
+  // Sap (kılıç konteyneri) elde ölçülmüş noktada durur; bulunamazsa el
+  // eklemi kullanılır — aradaki fark ~0.1 birim (≈ 5 px), görünmez.
+  (findHandSword(hand) ?? hand).getWorldPosition(_grip);
+  host.meleeFxX = (_grip.x + bladeDir.x * SWORD_TARGET_WORLD_LEN) * PX_PER_UNIT;
+  host.meleeFxY = (_grip.z + bladeDir.z * SWORD_TARGET_WORLD_LEN) * PX_PER_UNIT;
+  host.meleeFxT = performance.now();
+}
+
 export interface MeleePoseOptions {
   rig: RoyalSlamRig;
   /** Ölçülmüş bıçak ekseni (el-lokal). Yoksa bilek hedeflenmez. */
@@ -309,6 +363,8 @@ export interface MeleePoseOptions {
   leap: boolean;
   facing: number;
   active: boolean;
+  /** Vuruş çıpasının yazılacağı dövüşçü (bkz. `MeleeStrikeAnchor`). */
+  anchor?: MeleeStrikeAnchor | null;
 }
 
 /**
@@ -403,4 +459,9 @@ export function applyMeleePose(opts: MeleePoseOptions): void {
       aimBone(rig.leftFore, rig, foreDir2, weight);
     }
   }
+
+  // 4) VURUŞ ÇIPASI: kemikler yerleştikten SONRA kılıç ucu ölçülür ve arena
+  //    px olarak yayınlanır. Sim katmanı vuruş efektlerini buraya koyar —
+  //    yani efekt, kılıcın gerçekten indiği noktadan çıkar.
+  if (opts.anchor) writeStrikeAnchor(opts.anchor, rig, bladeDir);
 }
