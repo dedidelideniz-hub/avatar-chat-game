@@ -1208,7 +1208,7 @@ arenanın görüşünü kapatmazlar. */
 .battle-hud-hint {
   position: absolute;
   right: 0;
-  bottom: calc(var(--hud-ult) + var(--hud-atk) * 1.1 + 10px);
+  bottom: calc(var(--hud-ult) + var(--hud-atk) * 1.1 + 24px);
   white-space: nowrap;
 }
 

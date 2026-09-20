@@ -11,7 +11,10 @@ import {
   LandscapeGate,
   useLandscapeGate,
 } from "@/components/world/LandscapeGate";
-import { MobaArenaChrome } from "@/components/world/moba/MobaHud";
+import {
+  MobaArenaChrome,
+  MobaMeleeAction,
+} from "@/components/world/moba/MobaHud";
 // 🧪 Otomatik QA paneli (test botu + teşhis + FPS). Bu katman iki arenada da
 // takılı olduğu için panel buradan render edilir.
 import { QaPanel } from "@/components/world/qa/QaPanel";
@@ -116,6 +119,11 @@ export function BattleJoystick({
           rakip kartı arena üzerine buradan bindirilir. Sahne store kaydını
           yapar; kayıt yoksa hiçbir şey render edilmez (eski HUD yedek kalır). */}
       <MobaArenaChrome storeKey={stickRef} />
+      {/* ⚔️ Yakın dövüş düğmesi (Kraliyet Savaşçısı'nın 3. yeteneği) sağ-alt
+          kümenin kavis noktasına ayrı bir katman olarak çizilir: sahne
+          dosyalarındaki küme JSX'i araç penceresinin dışında kalıyor.
+          Dokunuş yine sahnenin `actions.melee()` eylemine gider. */}
+      <MobaMeleeAction storeKey={stickRef} />
       <QaPanel />
       <div
         ref={baseRef}

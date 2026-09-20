@@ -541,6 +541,96 @@ export function MobaArenaChrome({ storeKey }: { storeKey: object }) {
   return <MobaChromeInner store={store} />;
 }
 
+/**
+ * ⚔️ YAKIN DÖVÜŞ EYLEM DÜĞMESİ — Kraliyet Savaşçısı'nın 3. yeteneği.
+ *
+ * Neden ayrı bir bindirme: sahne dosyalarının sağ-alt kontrol kümesinin JSX'i
+ * (BattleScene / PvpBattleScene) düzenleme aracının dosya penceresinin dışında
+ * kalıyor (aynı sınır `styles/moba-glass.css` başlığında yazılı). Bu yüzden
+ * düğme, kümenin kavis geometrisiyle AYNI noktaya mutlak konumlanan bağımsız
+ * bir katman olarak çizilir — dokunuş yine sahnenin kendi `actions.melee()`
+ * eylemine gider. Yani kuralın/menzilin/hasarın tek kaynağı değişmez:
+ * `arena/MeleeComponent` (sol/sağ kesişler + atlamalı bitirici).
+ *
+ * Görünürlük: yalnız Kraliyet Savaşçısı skini kuşanılı ve maç "fight"
+ * fazındayken. Bekleme halkası ve yüzde okuması kare döngüsünde doğrudan
+ * DOM'a yazılır (React yeniden çizimi yok — HUD'un genel deseni).
+ */
+export function MobaMeleeAction({ storeKey }: { storeKey: object }) {
+  const store = useMobaStore(storeKey);
+  const btn = useRef<HTMLButtonElement>(null);
+  const ring = useRef<SVGCircleElement>(null);
+  const pct = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!store) return;
+    let raf = 0;
+    const tick = () => {
+      const l = store.live.current;
+      const p = store.player.current;
+      const wait = Math.max(0, p.meleeCd, p.meleeT);
+      const ready = wait <= 0;
+      if (btn.current) {
+        // `hidden` React tarafında sabit tutulur: bu bileşen yeniden çizmez,
+        // bayrağı kare döngüsü yazar (React aynı değeri diff'te görmez).
+        btn.current.hidden = !(l.samurai && l.phase === "fight");
+        toggleClass(btn.current, "is-ready", ready);
+      }
+      const charge = 1 - Math.min(1, wait / MELEE_CD);
+      writeRing(ring.current, charge);
+      writeText(pct.current, ready ? "" : `${Math.round(charge * 100)}%`);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [store]);
+
+  if (!store) return null;
+  return (
+    <button
+      ref={btn}
+      type="button"
+      hidden
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        store.actions?.current.melee();
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+      aria-label="Yakın dövüş — kılıç saldırısı"
+      className="battle-hud-melee moba-melee-action pointer-events-auto"
+    >
+      <span className="moba-slot-icon moba-melee-face" aria-hidden>
+        <Swords size={24} strokeWidth={2.3} />
+      </span>
+      <span ref={pct} className="moba-melee-pct" />
+      <svg viewBox="0 0 36 36" className="moba-slot-ring">
+        <circle
+          cx={18}
+          cy={18}
+          r={RING_R}
+          fill="none"
+          stroke="rgba(255,255,255,0.16)"
+          strokeWidth={2.6}
+        />
+        <circle
+          ref={ring}
+          cx={18}
+          cy={18}
+          r={RING_R}
+          fill="none"
+          stroke="#fbbf24"
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeDasharray={RING_C}
+          strokeDashoffset={0}
+          transform="rotate(-90 18 18)"
+        />
+      </svg>
+    </button>
+  );
+}
+
 function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const { meta, live, score } = store;
   // ── HUD düğümleri (rAF döngüsü doğrudan bunlara yazar) ──
@@ -557,7 +647,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const meleeRing = useRef<SVGCircleElement>(null);
   const superSlot = useRef<HTMLDivElement>(null);
   const ultSlot = useRef<HTMLDivElement>(null);
-  const meleeSlot = useRef<HTMLButtonElement>(null);
+  const meleeSlot = useRef<HTMLDivElement>(null);
   const vitalsHp = useRef<HTMLSpanElement>(null);
   const vitalsXp = useRef<HTMLSpanElement>(null);
   const vitalsNum = useRef<HTMLSpanElement>(null);
@@ -804,20 +894,15 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       <div className="moba-abilitybar absolute bottom-2 left-1/2 flex -translate-x-1/2 items-end gap-2">
         <span className="moba-level-badge">{meta.playerLevel}</span>
         <div className="flex items-end gap-1.5">
-          {/* Kraliyet Savaşçısı: YAKIN DÖVÜŞ yuvası (tek tık → sol/sağ
-              çapraz kesişler, rakip yakınsa üstüne atlayan bitirici). */}
+          {/* Kraliyet Savaşçısı: YAKIN DÖVÜŞ yuvası — DURUM GÖSTERGESİ.
+              Asıl eylem düğmesi sağ-alt kümenin kavisindedir (bkz.
+              `MobaMeleeAction`); buradaki yuva yalnız bekleme halkasını okur,
+              yani aynı yetenek için ekranda iki düğme olmaz. */}
           {samurai && (
-            <button
+            <div
               ref={meleeSlot}
-              type="button"
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                store.actions?.current.melee();
-              }}
               title="Yakın dövüş (kılıç saldırısı)"
-              aria-label="Yakın dövüş kılıç saldırısı"
-              className="moba-slot moba-slot--melee pointer-events-auto"
+              className="moba-slot moba-slot--melee"
             >
               <svg viewBox="0 0 36 36" className="moba-slot-ring">
                 <circle
@@ -845,7 +930,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
               <span className="moba-slot-icon">
                 <Swords size={22} strokeWidth={2.3} />
               </span>
-            </button>
+            </div>
           )}
           <div className="moba-slot" title="Düz vuruş">
             <svg viewBox="0 0 36 36" className="moba-slot-ring">

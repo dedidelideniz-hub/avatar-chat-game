@@ -248,18 +248,12 @@
 /* ══════════════════════════════════════════════════════════════════
    YAKIN DÖVÜŞ (MELEE) YUVASI — Kraliyet Savaşçısı 3. yetenek.
 
-   Yetenek barındaki yuvalar dekoratiftir (pointer-events kapalı); melee
-   yuvası ise TIKLANABİLİR: buton olarak çizilir ve dokunuşu sahnenin
-   `actions.melee()` eylemine bağlar. Altın cam tonu, hazır olduğunda
-   daha güçlü parlar.
+   Yetenek barındaki yuvalar dekoratiftir (pointer-events kapalı) ve melee
+   yuvası da artık DURUM GÖSTERGESİDİR: altın cam tonu bekleme halkasını
+   okur. Yeteneğin eylem düğmesi sağ-alt kümenin kavisindedir — aşağıdaki
+   `.moba-melee-action` blokuna bak.
    ══════════════════════════════════════════════════════════════════ */
-button.moba-slot--melee.moba-slot--melee {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  touch-action: manipulation;
+.moba-slot--melee.moba-slot--melee {
   background: radial-gradient(
     circle at 35% 25%,
     rgb(120 71 15 / 0.78),
@@ -270,15 +264,125 @@ button.moba-slot--melee.moba-slot--melee {
     inset 0 1px 0 rgb(255 255 255 / 0.22),
     0 0 10px rgb(251 191 36 / 0.26);
 }
-button.moba-slot--melee.moba-slot--melee:active {
-  transform: scale(0.9);
-}
-button.moba-slot--melee.moba-slot--melee.moba-slot--glow {
+.moba-slot--melee.moba-slot--melee.moba-slot--glow {
   box-shadow:
     inset 0 0 0 1px rgb(254 240 138 / 0.92),
     inset 0 1px 0 rgb(255 255 255 / 0.3),
     0 0 16px rgb(251 191 36 / 0.6);
 }
-button.moba-slot--melee .moba-slot-icon {
+.moba-slot--melee .moba-slot-icon {
   color: #fde68a;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   YAKIN DÖVÜŞ EYLEM DÜĞMESİ — sağ-alt kümeye hizalı bağımsız katman.
+
+   Sahne dosyalarındaki kontrol kümesinin JSX'i düzenleme aracının dosya
+   penceresinin dışında kaldığı için düğme kendi katmanı olarak çizilir ve
+   kümenin kavis geometrisiyle AYNI noktaya konumlanır:
+
+     küme çapası  right max(50px, güvenli alan + 12px)
+                  bottom max(40px, güvenli alan + 12px)
+     ana saldırı  88px (yatay telefonda clamp(58px, 19vh, 80px))
+
+   Yani düğme Yetenek 1'in sol-üstünde, ultinin solunda durur: başparmağın
+   zaten çizdiği yayın devamı. Dokunuş sahnenin `actions.melee()` eylemine
+   gider (kural/menzil/hasar `arena/MeleeComponent`'te tek kaynak).
+   ══════════════════════════════════════════════════════════════════ */
+button.moba-melee-action.moba-melee-action {
+  position: absolute;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 62px;
+  height: 62px;
+  right: calc(max(50px, calc(env(safe-area-inset-right, 0px) + 12px)) + 88px);
+  bottom: calc(
+    max(40px, calc(env(safe-area-inset-bottom, 0px) + 12px)) + 116px
+  );
+  border: 1.5px solid rgb(255 255 255 / 0.4);
+  border-radius: 999px;
+  outline: 1px solid rgb(255 255 255 / 0.22);
+  outline-offset: 1px;
+  background: radial-gradient(
+    circle at 35% 25%,
+    rgb(43 59 92 / 0.72),
+    rgb(11 17 32 / 0.78)
+  );
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  /* Kümenin geri kalanı gibi varsayılan %45, basılınca %85. */
+  opacity: 0.45;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out,
+    box-shadow 0.12s ease-out;
+}
+button.moba-melee-action.moba-melee-action[hidden] {
+  display: none;
+}
+button.moba-melee-action.moba-melee-action:active {
+  opacity: 0.85;
+  transform: scale(0.92);
+  box-shadow: 0 0 24px rgb(251 191 36 / 0.7);
+}
+/* Hazır: altın cam yuva (ultinin diline yakın, bir kademe küçük). */
+button.moba-melee-action.moba-melee-action.is-ready {
+  background: radial-gradient(
+    circle at 35% 25%,
+    rgb(255 214 122 / 0.95),
+    rgb(180 92 8 / 0.95)
+  );
+  border-color: rgb(254 240 138 / 0.9);
+  outline-color: rgb(251 191 36 / 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 245 205 / 0.65),
+    0 0 16px rgb(251 191 36 / 0.5);
+}
+button.moba-melee-action .moba-melee-face {
+  color: #fff6e0;
+}
+button.moba-melee-action.is-ready .moba-melee-face {
+  color: #4a2403;
+}
+/* Beklemedeyken ikonu değil yüzdeyi oku (ultinin deseniyle aynı). */
+button.moba-melee-action .moba-melee-pct {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(10px, 1.7vh, 14px);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.85);
+}
+button.moba-melee-action:not(.is-ready) .moba-melee-face {
+  display: none;
+}
+button.moba-melee-action:not(.is-ready) .moba-melee-pct {
+  display: flex;
+}
+
+/* Yatay kısa ekran: küme küçülünce düğme de aynı oranda küçülür ve aynı
+   kavis noktasında kalır (katsayılar kümenin clamp'leriyle birebir). */
+@media (orientation: landscape) and (max-height: 560px) {
+  button.moba-melee-action.moba-melee-action {
+    width: clamp(43px, 13.8vh, 57px);
+    height: clamp(43px, 13.8vh, 57px);
+    right: calc(
+      max(50px, calc(env(safe-area-inset-right, 0px) + 12px)) +
+        clamp(58px, 19vh, 80px)
+    );
+    bottom: calc(
+      max(40px, calc(env(safe-area-inset-bottom, 0px) + 12px)) +
+        clamp(77px, 25.1vh, 106px)
+    );
+  }
 }

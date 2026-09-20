@@ -976,6 +976,9 @@ export default function PvpBattleScene({
         e.code === "ShiftRight"
       )
         actionsRef.current.super();
+      // F = yakın dövüş (Kraliyet Savaşçısı) — dokunmatik altın yuvanın
+      // klavye karşılığı; iki arenada da aynı.
+      if (e.code === "KeyF") actionsRef.current.melee();
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.code);

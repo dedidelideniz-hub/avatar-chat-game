@@ -901,6 +901,9 @@ export default function BattleScene({
         e.code === "ShiftRight"
       )
         actionsRef.current.super();
+      // F = yakın dövüş (Kraliyet Savaşçısı) — masaüstünde test/dövüş için
+      // dokunmatik kümedeki altın yuvanın klavye karşılığı.
+      if (e.code === "KeyF") actionsRef.current.melee();
     };
     const onKeyUp = (e: KeyboardEvent) => {
       keysRef.current.delete(e.code);
