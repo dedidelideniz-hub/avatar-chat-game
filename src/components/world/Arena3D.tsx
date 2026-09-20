@@ -363,6 +363,8 @@ export interface BattleFighter {
    *  koyar, böylece efekt kılıcın indiği noktadan çıkar. */
   meleeFxX?: number;
   meleeFxY?: number;
+  /** Ucun DÜNYA yüksekliği (birim) — iz şeridi kılıcın dikey kavisine oturur. */
+  meleeFxH?: number;
   /** Çıpanın yazıldığı an (`performance.now()`) — bayat değer kullanılmaz. */
   meleeFxT?: number;
   dashT: number;

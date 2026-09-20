@@ -179,13 +179,20 @@ function strikePoint(
 /**
  * Vuruş anının görsel patlaması (iki arena da aynı efekti görür).
  *
- * “Kesme”nin okunması için üç katman birlikte çalışır:
- *  1. KESME ŞERİDİ — hedefin gövdesini boyunca çapraz uzanan iki parlak kılıç
- *     izi (`beam`). Aşamaya göre eğim aynalanır; bitirici daha uzun ve dik.
- *  2. KIVILCIM — hasar noktasında darbe parlaması + kıvılcım pufu.
+ * “Kesme”nin okunması için katmanlar birlikte çalışır:
+ *  1. KILIÇ İZİ (kavis) — `arena/SwordArcTrail`: kılıç UCUNUN rotası örneklenip
+ *     hilal şerit olarak çizilir. Düz `beam` şeritleri KALDIRILDI: kılıçtan
+ *     bağımsız, ekrana fırlayan düz bantlar gibi okunuyorlardı.
+ *  2. KIVILCIM — vuruş noktasında darbe parlaması + kıvılcım pufu.
  *  3. SAVURMA HALKASI — saldıranın ayağında kısa yay halkası (gövde kilitlenip
  *     savurduğu için “ağırlık” hissi).
+ *
+ * Palet: iz katmanının mavi/beyaz ışık dalgasıyla aynı dil (soğuk ışık).
  */
+const MELEE_HOT = "#eaf7ff";
+const MELEE_COOL = "#4aa8ff";
+
+/** Vuruş anının görsel patlaması (iki arena da aynı efekti görür). */
 function emitMeleeStrikeFx(
   vfx: VfxBus,
   caster: BattleFighter,
@@ -201,58 +208,32 @@ function emitMeleeStrikeFx(
 
   if (finish) {
     // ── İMPALE (bitirici): bıçak gövdeye GİRER ──
-    // 1) İleri saplama şeridi: bıçağın içeri sürüldüğü hat (uçtan geriye).
-    vfx.beam(
-      x - dir.x * 64,
-      y - dir.y * 64,
-      x + dir.x * 34,
-      y + dir.y * 34,
-      0.16,
-    );
-    // 2) KAN FIŞKIRMASI — çıpanın bulunduğu gövdeden (impalede bıçağın içinde
-    //    olduğu nokta). İkinci dalga bir adım geride: fışkırma derinliği.
+    // İleri düz şerit YOK: bıçağın ileri sürülmesi ve kesme kavisi iz
+    // katmanında (kılıç ucunun rotasından) okunur. Burada darbe geri
+    // bildirimi kalır: kan + kıvılcım + parlama.
     if (hit) {
       vfx.blood(x, y, 98);
       vfx.blood(x - dir.x * 26, y - dir.y * 26, 70);
     }
-    vfx.burst(x, y, 122, "#fbbf24", 0.34);
+    vfx.burst(x, y, 96, MELEE_HOT, 0.32);
     vfx.smoke(x, y, 5, 95);
     if (hit) vfx.coldFlameImpact(x, y, 82);
-    vfx.flash(0.44);
-    vfx.ring(caster.x, caster.y, 96, "#fbbf24", 0.3);
+    vfx.flash(0.4);
+    vfx.ring(caster.x, caster.y, 96, MELEE_COOL, 0.3);
     return;
   }
 
-  // Kesme şeridi ekseni: salınım yönüne DİK, aşamaya göre ± eğimli.
-  const tilt = stage === 1 ? 1 : -1;
-  const axRaw = -dir.y * 0.74 + dir.x * 0.5 * tilt;
-  const ayRaw = dir.x * 0.74 + dir.y * 0.5 * tilt;
-  const an = Math.hypot(axRaw, ayRaw) || 1;
-  const ax = axRaw / an;
-  const ay = ayRaw / an;
-  const half = 92;
-  // 1) Ana kesme izi (bıçağın geçtiği hat).
-  vfx.beam(x + ax * half, y + ay * half, x - ax * half, y - ay * half, 0.18);
-  // 2) Hafif geride/paralel ikinci şerit → çift kenarlı “biçme” görüntüsü.
-  const offX = dir.x * 22;
-  const offY = dir.y * 22;
-  vfx.beam(
-    x + ax * half * 0.72 + offX,
-    y + ay * half * 0.72 + offY,
-    x - ax * half * 0.5 + offX,
-    y - ay * half * 0.5 + offY,
-    0.15,
-  );
-
-  vfx.burst(x, y, 78, "#f8fafc", 0.32);
+  // Çapraz kesiş: kavis iz katmanından gelir; burada yalnız vuruş kıvılcımı,
+  // hafif duman ve savurma halkası kalır.
+  vfx.burst(x, y, 66, MELEE_HOT, 0.3);
   vfx.smoke(x, y, 3, 58);
   if (hit) {
     vfx.coldFlameImpact(x, y, 54);
     // Kesiş de kan bırakır (daha hafif) — çıpanın kendisinden.
     vfx.blood(x, y, 58);
   }
-  vfx.flash(0.2);
-  vfx.ring(caster.x, caster.y, 64, "#fde68a", 0.28);
+  vfx.flash(0.18);
+  vfx.ring(caster.x, caster.y, 64, MELEE_COOL, 0.28);
 }
 
 /**

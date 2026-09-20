@@ -17,9 +17,13 @@
 //
 // Tetikleyiciler (öncelik sırası):
 //   1) ulti salınımı  → `samuraiUltT` (geniş, turuncu yay)
-//   2) yakın dövüş    → `meleeT` (sol/sağ çapraz kesiş; aşamaya göre aynalı)
-//   3) yetenek atışı  → `castFxT` (SkillComponent yazar, 1 → 0 iner)
-//   4) düz vuruş      → `atkAnimT` (vuruş animasyonunun kendi saati)
+//   2) yetenek atışı  → `castFxT` (SkillComponent yazar, 1 → 0 iner)
+//   3) düz vuruş      → `atkAnimT` (vuruş animasyonunun kendi saati)
+//
+// YAKIN DÖVÜŞ ARTIK BURADA DEĞİL: `meleeT` salınımının izi ayrı katmanda
+// (`SwordArcTrail`) çizilir. O katman, kılıç UCUNUN gerçekten çizdiği rotayı
+// örnekleyip hilal şeklinde bir şerit üretir (bkz. dosyanın başlığı); bu
+// yüzden yay, savurmanın kendisine bağlı kalır ve düz bir bant gibi okunmaz.
 // Salınım bitince yay kısa bir süre daha ilerleyip (uSweep > 1) tamamen
 // söner, yani animasyon iptal edilse bile iz aniden kaybolmaz.
 import { useFrame } from "@react-three/fiber";
@@ -29,12 +33,12 @@ import * as THREE from "three";
 // Yalnızca tip: Arena3D bu modülü çizer, modül Arena3D'yi çalışma zamanında
 // içe aktarmaz (döngüsel bağımlılık olmaz).
 import type { BattleFighter } from "@/components/world/Arena3D";
-// Melee salınımının süresi/aşaması tek kaynaktan (motor) okunur.
-import { meleeDuration, meleeStageOf } from "@/engine/RoyalMelee";
+// Yakın dövüş izi (kılıç ucunun rotası → hilal şerit).
+import { SwordArcTrail } from "./SwordArcTrail";
 
 /* ------------------------------- palet ---------------------------------- */
 
-type SwingKind = "basic" | "super" | "ult" | "melee";
+type SwingKind = "basic" | "super" | "ult";
 
 interface SwingLook {
   /** Bandın kenar rengi (yetenek kimliği). */
@@ -83,17 +87,6 @@ const LOOK: Record<SwingKind, SwingLook> = {
     width: 0.34,
     tilt: 0.2,
     intensity: 1.2,
-  },
-  // Yakın dövüş: kısa menzilli, altın çelik ÇAPRAZ kesme (aşamaya göre aynalı,
-  // kalın ve parlak — “kılıç geçti” okunması bu genişlikten gelir).
-  melee: {
-    color: "#fcd34d",
-    hot: "#ffffff",
-    arc: 3.2,
-    radius: 0.9,
-    width: 0.46,
-    tilt: 0.5,
-    intensity: 1.4,
   },
 };
 
@@ -222,10 +215,7 @@ export function SlashTrail({
     active: false,
     fade: 0,
     kind: "basic" as SwingKind,
-    /** Melee aşaması: yayın eğimi aşamaya göre aynalanır (sol/sağ kesiş). */
-    stage: 0,
   });
-  const prevMelee = useRef(0);
 
   useEffect(
     () => () => {
@@ -244,25 +234,16 @@ export function SlashTrail({
     let kind: SwingKind = "basic";
 
     const ultOn = f.samuraiUltT > 0;
-    const meleeOn = f.meleeT > 0;
     const castFx = f.castFxT ?? 0;
     if (ultOn && prevUlt.current <= 0) s.fade = 0; // yeni salınım: kuyruğu sıfırla
-    if (meleeOn && prevMelee.current <= 0) s.fade = 0;
     if (castFx > 0 && prevCast.current <= 0) s.fade = 0;
     prevUlt.current = ultOn ? 1 : 0;
-    prevMelee.current = meleeOn ? 1 : 0;
     prevCast.current = castFx > 0 ? 1 : 0;
 
     if (ultOn) {
       // Ulti: salınımın kendisi `samuraiUltT` sayacıyla ilerliyor.
       progress = Math.min(1, Math.max(0, 1 - f.samuraiUltT / ULT_FX_TIME));
       kind = "ult";
-    } else if (meleeOn) {
-      // Yakın dövüş: sayaç `meleeT`; aşama yayın eğimini aynalar.
-      const dur = meleeDuration(f.meleeLeap);
-      progress = Math.min(1, Math.max(0, 1 - f.meleeT / dur));
-      s.stage = meleeStageOf(f.meleeLeap, progress);
-      kind = "melee";
     } else if (castFx > 0) {
       // Yetenek: castFxT 1 → 0 iner; sayaç burada (tek sahibi) azalır.
       f.castFxT = Math.max(0, castFx - dt / CAST_FX_TIME);
@@ -310,33 +291,28 @@ export function SlashTrail({
       u.uWidth.value = look.width;
       u.uTilt.value = look.tilt;
     }
-    // Melee: sağdan sola (aşama 0) ve soldan sağa (aşama 1) kesişler aynalı
-    // görünsün — yayın dikey eğimi aşamaya göre çevrilir.
-    if (s.kind === "melee") {
-      u.uTilt.value = look.tilt * (s.stage === 1 ? 1 : -1);
-    }
     // İzin yüksekliği salınım boyunca hafifçe alçalır: kılıç yayı gövdede
-    // yukarıdan aşağı süpürüyormuş gibi okunur. MELEE'de bu iniş belirgin
-    // şekilde büyütülür: yay baş üstünden başlar, kalça hizasında biter →
-    // çapraz kesme.
+    // yukarıdan aşağı süpürüyormuş gibi okunur.
     const sweepK = Math.min(1, s.sweep);
-    g.position.y =
-      s.kind === "melee"
-        ? ORIGIN_Y + 0.42 - 0.86 * sweepK + 0.02 * Math.sin(time * 11)
-        : ORIGIN_Y - 0.06 * sweepK + 0.02 * Math.sin(time * 9);
+    g.position.y = ORIGIN_Y - 0.06 * sweepK + 0.02 * Math.sin(time * 9);
   });
 
   return (
-    <group
-      ref={group}
-      visible={false}
-      position={[0, ORIGIN_Y, 0]}
-      raycast={() => null}
-    >
-      <mesh material={material} raycast={() => null}>
-        {/* 48 dilim: yay pürüzsüz, bant kenarı tırtıksız. */}
-        <planeGeometry args={[1, 1, 48, 1]} />
-      </mesh>
-    </group>
+    <>
+      <group
+        ref={group}
+        visible={false}
+        position={[0, ORIGIN_Y, 0]}
+        raycast={() => null}
+      >
+        <mesh material={material} raycast={() => null}>
+          {/* 48 dilim: yay pürüzsüz, bant kenarı tırtıksız. */}
+          <planeGeometry args={[1, 1, 48, 1]} />
+        </mesh>
+      </group>
+      {/* ⚔️ Yakın dövüş izi: kılıç ucunun rotası boyunca hilal şerit
+          (dünya uzayında, additif, 0.15 sn). */}
+      <SwordArcTrail fighter={fighter} />
+    </>
   );
 }

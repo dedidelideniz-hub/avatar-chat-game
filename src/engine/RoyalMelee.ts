@@ -322,6 +322,9 @@ export interface MeleeStrikeAnchor {
   /** Kılıç UCUNUN arena px karşılığı (x = dünya X × 50). */
   meleeFxX?: number;
   meleeFxY?: number;
+  /** Kılıç ucunun DÜNYA yüksekliği (birim) — iz şeridi kılıcın dikey
+   *  kavisine oturur (göğüsten kalçaya inen çapraz kesiş). */
+  meleeFxH?: number;
   /** Çıpanın yazıldığı an (`performance.now()`). */
   meleeFxT?: number;
 }
@@ -350,6 +353,7 @@ function writeStrikeAnchor(
   (findHandSword(hand) ?? hand).getWorldPosition(_grip);
   host.meleeFxX = (_grip.x + bladeDir.x * SWORD_TARGET_WORLD_LEN) * PX_PER_UNIT;
   host.meleeFxY = (_grip.z + bladeDir.z * SWORD_TARGET_WORLD_LEN) * PX_PER_UNIT;
+  host.meleeFxH = _grip.y + bladeDir.y * SWORD_TARGET_WORLD_LEN;
   host.meleeFxT = performance.now();
 }
 
