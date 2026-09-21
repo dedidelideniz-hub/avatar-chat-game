@@ -22,8 +22,8 @@
 //      pitch "basık piramit" görüntüsünü bitirir: arazi ve karakterler doğal
 //      oranlarında okunur, derinlik kısalması (foreshortening) azalır.
 //   4. Atmosphere — the void around the island is closed by a soft night-
-//      violet background (0x1a1a2e) plus an environment haze: a FogExp2
-//      (0x262648) that is gentle in portrait (FOG_DENSITY_P) and dense in
+//      violet background (0x151a38) plus an environment haze: a FogExp2
+//      (0x2b3568) that is gentle in portrait (FOG_DENSITY_P) and dense in
 //      landscape (FOG_DENSITY_L), so the horizon melts into haze instead of
 //      showing black space. The fill lights are balanced so grass, lane and
 //      fighters read clearly WITHOUT flattening the scene: the flat ambient
@@ -102,10 +102,18 @@ const LOOK_Y = 0.78;
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,
 // isli mor-kızıl bir ufuk — arenanın lav atmosferiyle bütünleşir.
-const SKY = new THREE.Color("#1a1a2e"); // gökyüzü — gece moru (zifiri siyah değil)
-const FOG = new THREE.Color("#262648"); // ufuk = yumuşak çevre sisi
-const FOG_DENSITY_P = 0.008; // FogExp2 yoğunluğu — dikey mod
-const FOG_DENSITY_L = 0.02; // FogExp2 yoğunluğu — yatay mod
+//
+// ATMOSFER SİSİ (canlı palet): sis ve gökyüzü artık haritanın tema rengine
+// bağlandı — nötr gri-lacivert yerine DOYGUN indigo-mor bir ufuk. Sisin rengi
+// haritanın canlı yeşil/kahve zeminini "kirletmez" (gri bir peçe yerine
+// kendiyle uyumlu bir renk perdesi kalır) ve uzak köşelerde zemin ile
+// gökyüzü arasında renkli bir derinlik gradyanı oluşur. Yoğunluk yatayda bir
+// tık azaltıldı: sisin kapatmadığı mesafede canlı renkler okunur, ufukta ise
+// harita hâlâ boşluğa taşmaz.
+const SKY = new THREE.Color("#151a38"); // gökyüzü — doygun gece indigosu
+const FOG = new THREE.Color("#2b3568"); // ufuk = tema rengine bağlı yumuşak sis
+const FOG_DENSITY_P = 0.0095; // FogExp2 yoğunluğu — dikey mod
+const FOG_DENSITY_L = 0.0185; // FogExp2 yoğunluğu — yatay mod
 
 // --- YÖNLÜ IŞIK DENGESİ ---
 // Ana ışığın eski yönü (12, 16, 8) ışığı arenanın ön-sol köşesinden

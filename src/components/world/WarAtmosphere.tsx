@@ -14,6 +14,11 @@
 //     gölge bırakır (yalnızca `shadows` açık olan masaüstünde).
 // Bloom zinciri ArenaPostFx'ten gelir: kristaller, lane çizgileri, lav ve
 // yetenek efektleri etraflarına ışık saçar.
+//   • CANLI PALET — haritanın çimen/ağaç/patika/taş materyalleri doygunluğu
+//     artırılmış (high-saturation low-poly) tona çekilir; kristal/büyü/ışıklı
+//     objelere kendinden parlama (emissive 0.3) verilir (bkz. VIVID_*).
+//   • KRİTİK NOKTA IŞIKLARI — kuleler ve nehir yatağı renkli, yumuşak nokta
+//     ışıklarıyla çevresindeki zemini aydınlatır (bkz. CriticalPointLights).
 // Hiçbiri hareket/çarpışma sistemine girmez: her mesh
 // `raycast={() => null}` ile dokunma (tap) katmanını geçirir.
 //
@@ -22,7 +27,7 @@
 // haritanın fit dönüşümünden etkilenmez ve doğrudan arena uzayında durur.
 import { useFrame, useThree } from "@react-three/fiber";
 import { Environment, Lightformer, useGLTF } from "@react-three/drei";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ArenaPostFx } from "./ArenaPostFx";
 import { DECOR_SCALE, scaleMapDecor } from "./mapDecorScale";
@@ -39,7 +44,7 @@ import {
 export const MAP_URL = "/models/5v5_game_map.glb";
 
 const ARENA_W = 34;
-const ARENA_D = 22;
+const ARENA_D = 22; // arena kutusu (birim)
 
 /**
  * Deterministik rastgelelik (mulberry32). Parçacık/çakıl dağılımı render
@@ -186,6 +191,179 @@ function MagmaLights() {
           color="#ff6a1f"
           intensity={0.34}
           distance={6.5}
+          decay={2}
+        />
+      ))}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* KRİTİK NOKTA IŞIKLARI (dynamic point lighting)                      */
+/* ------------------------------------------------------------------ */
+/* Haritanın kritik noktalarını renkli, yumuşak nokta ışıklarıyla
+   aydınlatır: KULELER (kırmızı üs → sıcak turuncu, mavi üs → buz mavisi) ve
+   NEHİR YATAĞI (serin cyan). Böylece zeminde yol/nehir boyunca renkli ışık
+   havuzları okunur ve "her yere eşit dağılmış ışık" hissi kırılır.
+
+   NEDEN İSİMDEN BULUNUR (sabit koordinat tablosu değil): harita GLB'si
+   asenkron yüklenir ve mesh adları gerçek yerleşimi taşır (Station/Tower =
+   kule, River/Water = nehir). Sabit koordinatlar harita güncellendiğinde
+   duvarın veya boşluğun üstüne düşerdi; isimden bulma kendini düzeltir.
+
+   IŞIK BÜTÇESİ: en fazla 4 nokta (dokunmatikte 2). Her nokta ışığı kare
+   başına tüm ışık alan yüzeylere maliyet eklediği için sayı kasıtlı küçük
+   tutulur; şiddetler ArenaPostFx'in 0.5 tavanının altındadır ve `distance`
+   ile sınırlıdır (uzaktaki zemin gereksiz aydınlanmaz). */
+const CRITICAL_TOWER_RE = /(?:station|tower)/i;
+const CRITICAL_RIVER_RE = /(?:river|water|stream|lake|pond|creek|canal)/i;
+
+interface CriticalLight {
+  x: number;
+  y: number;
+  z: number;
+  color: string;
+  intensity: number;
+  distance: number;
+  kind: "tower" | "river";
+  /** Kümeleme için önem ölçüsü (kule: yükseklik, nehir: alan). */
+  weight: number;
+}
+
+/** Kule rengi: takım adı kırmızı ise sıcak, mavi ise buzlu. */
+function towerLightColor(semantic: string): string {
+  if (/red|orange|fire|magma/i.test(semantic)) return "#ff7a3c";
+  if (/blue|cyan|ice|frost/i.test(semantic)) return "#5ce1ff";
+  return "#a9b8ff";
+}
+
+/** Yakın adaylar tek ışıkta birleştirilir (aynı kulenin 5 parçası → 1 ışık). */
+function pickUniqueLights(list: CriticalLight[], radius = 5): CriticalLight[] {
+  const out: CriticalLight[] = [];
+  for (const candidate of [...list].sort((a, b) => b.weight - a.weight)) {
+    if (
+      out.some(
+        (kept) =>
+          Math.hypot(kept.x - candidate.x, kept.z - candidate.z) < radius,
+      )
+    )
+      continue;
+    out.push(candidate);
+  }
+  return out;
+}
+
+/** Sahnedeki kuleleri ve nehir yatağını bulup en fazla `max` nokta ışığı seçer. */
+function collectCriticalLights(
+  scene: THREE.Object3D,
+  max: number,
+): CriticalLight[] {
+  const box = new THREE.Box3();
+  const size = new THREE.Vector3();
+  const towers: CriticalLight[] = [];
+  const rivers: CriticalLight[] = [];
+
+  scene.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.visible || !mesh.geometry) return;
+    const names: string[] = [];
+    let node: THREE.Object3D | null = mesh;
+    for (let i = 0; node && i < 6; node = node.parent, i++) {
+      if (node.name) names.push(node.name);
+    }
+    const semantic = names.join("/");
+    const isTower = CRITICAL_TOWER_RE.test(semantic);
+    const isRiver = !isTower && CRITICAL_RIVER_RE.test(semantic);
+    if (!isTower && !isRiver) return;
+
+    box.setFromObject(mesh);
+    if (box.isEmpty()) return;
+    box.getSize(size);
+    // Zemin decal'i / kaide değil, gerçekten yükselen kule aranır.
+    if (isTower && size.y < 1) return;
+
+    const x = (box.min.x + box.max.x) / 2;
+    const z = (box.min.z + box.max.z) / 2;
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+
+    if (isTower) {
+      towers.push({
+        x,
+        // Işık kulenin gövde ortasına yakın durur: zemini ve kaideyi yalar.
+        y: Math.min(2.6, box.min.y + size.y * 0.5),
+        z,
+        color: towerLightColor(semantic),
+        intensity: 0.46,
+        distance: 9,
+        kind: "tower",
+        weight: size.y,
+      });
+    } else {
+      rivers.push({
+        x,
+        // Nehir yatağı ışığı su yüzeyinin hemen üstünde durur.
+        y: Math.max(0.32, box.min.y + 0.28),
+        z,
+        color: "#59d8ff",
+        intensity: 0.4,
+        distance: 7.5,
+        kind: "river",
+        weight: size.x * size.z,
+      });
+    }
+  });
+
+  const uniqueTowers = pickUniqueLights(towers);
+  const uniqueRivers = pickUniqueLights(rivers, 6);
+  // Yarım bütçe kulelere, kalanı nehre: 4 → 2 kule + 2 nehir, 2 → 1 + 1.
+  const towerQuota = Math.min(
+    uniqueTowers.length,
+    Math.max(1, Math.round(max / 2)),
+  );
+  return [
+    ...uniqueTowers.slice(0, towerQuota),
+    ...uniqueRivers.slice(0, Math.max(0, max - towerQuota)),
+  ];
+}
+
+function CriticalPointLights() {
+  const scene = useThree((s) => s.scene);
+  const coarse = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches,
+    [],
+  );
+  const [lights, setLights] = useState<CriticalLight[]>([]);
+  const done = useRef(false);
+  const tries = useRef(0);
+
+  useFrame(() => {
+    // Harita asenkron yüklendiği için birkaç kare boyunca denenir; bulununca
+    // arama tamamen durur (kare maliyeti ~0).
+    if (done.current || tries.current > 300) return;
+    tries.current += 1;
+    const found = collectCriticalLights(scene, coarse ? 2 : 4);
+    if (found.length === 0) return;
+    done.current = true;
+    setLights(found);
+    console.log(
+      `[vivid] kritik nokta ışıkları: ${found.length} nokta (` +
+        found.map((l) => l.kind).join(", ") +
+        ")",
+    );
+  });
+
+  return (
+    <>
+      {lights.map((light, i) => (
+        <pointLight
+          key={`critical-${i}`}
+          position={[light.x, light.y, light.z]}
+          color={light.color}
+          intensity={light.intensity}
+          distance={light.distance}
           decay={2}
         />
       ))}
@@ -535,6 +713,9 @@ function VolcanicKeyLight() {
         color="#49daff"
         intensity={0.12}
       />
+      {/* Kritik nokta ışıkları: kuleler + nehir yatağı (renkli nokta ışıkları
+          zemini kendi renkleriyle aydınlatır). */}
+      <CriticalPointLights />
     </>
   );
 }
@@ -736,7 +917,7 @@ function BattleSky() {
 }
 
 /** Zemin altı kor sızıntısı: haritanın çevresini saran sıcak parıltı. */
-function GroundHaze() {
+function GroundHaze() { // zemin altı kor sızıntısı
   const tex = useMemo(() => makeGlowTexture("rgba(255,110,40,1)"), []);
   const ref = useRef<THREE.Mesh>(null);
   useFrame(() => {
@@ -880,8 +1061,10 @@ const OBELISKS: { x: number; z: number; glow: string }[] = [
 function StoneStructures() {
   const stone = useMemo(
     () =>
+      // Doygunluk yükseltildi: nötr gri-mor kaya kütleleri "ışıksız beton"
+      // gibi okunuyordu; artık sıcak-kahve bir taş tonu (canlı paletle uyumlu).
       new THREE.MeshStandardMaterial({
-        color: "#3b3742",
+        color: "#574535",
         roughness: 0.86,
         metalness: 0.18,
         envMapIntensity: 0.7,
@@ -891,7 +1074,7 @@ function StoneStructures() {
   const obeliskMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#4a4452",
+        color: "#6a5560",
         roughness: 0.7,
         metalness: 0.3,
         envMapIntensity: 0.9,
@@ -1180,6 +1363,203 @@ function normalizeGroundMaterial(source: THREE.Material): THREE.Material {
   return material;
 }
 
+/* ------------------------------------------------------------------ */
+/* CANLI PALET (High-Saturation Low-Poly)                              */
+/* ------------------------------------------------------------------ */
+/* Haritanın kendi dokuları (çimen, ağaç kabuğu, toprak, taş) korunur ama iki
+   katmanla CANLI hâle getirilir:
+
+   1) DOYGUNLUK — materyalin fragment gölgelendiricisine, dokunun uygulandığı
+      noktadan hemen sonra küçük bir doygunluk/değer geçişi enjekte edilir:
+      rengin kendi parlaklığı etrafında doygunluk açılır (patikalarda değer
+      hafifçe kısılır → "koyu kahve patika"). Doku kaynağı, UV ve ışık
+      hesabı değişmez; yalnızca okunan albedo canlanır. Bu, düz renkli
+      (dokusuz) yüzeylerde ek olarak materyal renginin HSL doygunluğuyla da
+      desteklenir.
+   2) KENDİNDEN PARLAMA (emissive) — adı kristal/büyü/rün/lamba olan objeler
+      kendi renginde yumuşak bir ışıma alır (emissiveIntensity 0.3): bloom
+      eşiğinin altında kalır, yani "her yeri saran sis" oluşmaz ama kristaller
+      karanlıkta okunur.
+
+   Yalnızca GÖRSELDİR: fizik, çarpışma ızgarası, hasar ve menzil etkilenmez.
+   Su yüzeyleri hariç tutulur (kendi akan-su yamasını taşırlar), additif efekt
+   katmanlarına da dokunulmaz. */
+
+/** Doygunluğu açılan, haritanın kendi dokusuyla gelen materyal işareti. */
+const VIVID_MARK = "vaelosVivid";
+/** Kristal/büyü objelerinin kendinden parlama şiddeti (istenen: 0.3). */
+const VIVID_EMISSIVE = 0.3;
+
+/** Çim / ağaç / çalı — en canlı yeşil bandı. */
+const VIVID_FOLIAGE_RE =
+  /(grass|foliage|leaf|leaves|tree|bush|shrub|plant|fern|reed|mushroom|underbrush|groundcover|flower|vine|moss|canopy|stump|trunk)/i;
+/** Patika / yol / toprak — daha doygun ve daha KOYU kahve. */
+const VIVID_PATH_RE =
+  /(path|trail|road|lane|dirt|soil|track|walkway|crossing|bridge|sand|mud|plaza)/i;
+/** Taş / kaya / kule / duvar / üs — nötr griye düşmesin diye hafif doygunluk. */
+const VIVID_STONE_RE =
+  /(rock|boulder|cliff|stone|wall|tower|block|base|station|island|perimeter|ruin|pillar|arch|sculpture|monument|stair)/i;
+/** Kristal / büyü / ışıklı objeler — kendinden parlama alır. */
+const VIVID_GLOW_RE =
+  /(crystal|gem|rune|magic|arcane|portal|shrine|altar|energy|glow|lamp|lantern|neon|orb|prism|relic|beacon|torch|brazier|sigil|emblem)/i;
+
+interface VividTone {
+  /** Doygunluk çarpanı (1 = dokunun kendisi). */
+  sat: number;
+  /** Parlaklık çarpanı (< 1 patikaları koyulaştırır). */
+  val: number;
+  /** Kendinden parlama verilsin mi? */
+  emissive: boolean;
+}
+
+/** Adına göre canlı palet tonu. */
+function vividToneFor(semantic: string): VividTone {
+  if (VIVID_GLOW_RE.test(semantic)) return { sat: 1.3, val: 1.04, emissive: true };
+  if (VIVID_FOLIAGE_RE.test(semantic))
+    return { sat: 1.45, val: 1.06, emissive: false };
+  if (VIVID_PATH_RE.test(semantic)) return { sat: 1.3, val: 0.84, emissive: false };
+  if (VIVID_STONE_RE.test(semantic)) return { sat: 1.2, val: 0.98, emissive: false };
+  return { sat: 1.16, val: 1, emissive: false };
+}
+
+/**
+ * Dokunun ortalama rengi (8×8'e küçültüp okur). Kendinden parlama rengi,
+ * objenin gerçekte hangi renkse o renkte ışıması için kullanılır; doku
+ * okunamıyorsa (sıkıştırılmış/asenkron) `null` döner ve yedek palete düşülür.
+ */
+function averageTextureColor(texture: THREE.Texture): THREE.Color | null {
+  const image = texture?.image as (CanvasImageSource & { width?: number }) | null;
+  if (!image) return null;
+  try {
+    const size = 8;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(image, 0, 0, size, size);
+    const data = ctx.getImageData(0, 0, size, size).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+    }
+    const n = data.length / 4;
+    return new THREE.Color().setRGB(
+      r / n / 255,
+      g / n / 255,
+      b / n / 255,
+      THREE.SRGBColorSpace,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Kristal/büyü objesinin ışıma rengi: mümkünse objenin KENDİ rengi, sonra
+ * dokusunun ortalama rengi, en son ada uygun tema rengi. Renk her durumda
+ * biraz daha doygun ve orta parlaklığa çekilir ki ışıma "kirli gri" olmasın.
+ */
+function vividGlowColor(
+  std: THREE.MeshStandardMaterial,
+  semantic: string,
+): THREE.Color {
+  const hsl = { h: 0, s: 0, l: 0 };
+  const boost = (color: THREE.Color): THREE.Color => {
+    color.getHSL(hsl);
+    return new THREE.Color().setHSL(
+      hsl.h,
+      Math.min(1, hsl.s * 1.3 + 0.18),
+      Math.max(0.44, Math.min(0.7, hsl.l)),
+    );
+  };
+  const color = std.color as THREE.Color | undefined;
+  if (color) {
+    color.getHSL(hsl);
+    if (hsl.s > 0.07) return boost(color.clone());
+  }
+  const avg = std.map ? averageTextureColor(std.map as THREE.Texture) : null;
+  if (avg) return boost(avg);
+  if (/red|orange|fire|lava|ember|magma/i.test(semantic))
+    return new THREE.Color("#ff8a4a");
+  if (/blue|cyan|ice|frost|water/i.test(semantic))
+    return new THREE.Color("#6fe4ff");
+  if (/green|nature|life|forest/i.test(semantic))
+    return new THREE.Color("#8ef08a");
+  if (/purple|violet|void|shadow|dark/i.test(semantic))
+    return new THREE.Color("#b48cff");
+  return new THREE.Color("#8fe6ff");
+}
+
+/**
+ * Bir harita materyaline canlı palet tonunu uygular (materyal başına BİR kez;
+ * paylaşılan materyaller `converted` önbelleğiyle tek geçişte işlenir).
+ */
+function applyVividTone(material: THREE.Material, semantic: string): void {
+  if (material.userData?.[VIVID_MARK]) return;
+  // Additif efekt katmanları ve akan su kendi görsel dilini taşır.
+  if (material.blending === THREE.AdditiveBlending) return;
+  if (material.userData?.vaelosWater) return;
+
+  const tone = vividToneFor(semantic);
+  const std = material as THREE.MeshStandardMaterial;
+  material.userData = { ...material.userData, [VIVID_MARK]: true };
+
+  // (1) Düz renkli (dokusuz) yüzeylerde renk doğrudan HSL'de doyurulur.
+  const color = std.color as THREE.Color | undefined;
+  if (color) {
+    const hsl = { h: 0, s: 0, l: 0 };
+    color.getHSL(hsl);
+    if (hsl.s > 0.04) {
+      color.setHSL(
+        hsl.h,
+        Math.min(1, hsl.s * Math.min(tone.sat, 1.35)),
+        Math.min(1, hsl.l * (tone.val > 1 ? tone.val : 1) * (tone.val < 1 ? 0.94 : 1)),
+      );
+    }
+  }
+
+  // (2) Dokulu yüzeyler için doygunluk gölgelendiriciye enjekte edilir: doku,
+  //     UV ve ışık hesabı değişmez; yalnızca okunan albedo canlanır.
+  if (!std.onBeforeCompile) {
+    const sat = tone.sat.toFixed(3);
+    const val = tone.val.toFixed(3);
+    std.onBeforeCompile = (shader) => {
+      // `map_fragment` her ışık alan materyalde bulunur (meshbasic dâhil);
+      // bulunmazsa hiçbir şey yapılmaz — shader yaması güvenli kalır.
+      if (!shader.fragmentShader.includes("#include <map_fragment>")) return;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+        // CANLI PALET: dokunun kendi parlaklığı etrafında doygunluk açılır ve
+        // (patikalarda) değer kısılır — yüksek doygunluklu low-poly okunuşu.
+        float vividLum = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+        diffuseColor.rgb = clamp(
+          mix( vec3( vividLum ), diffuseColor.rgb, ${sat} ) * ${val},
+          0.0,
+          1.0
+        );`,
+      );
+    };
+    // Ton başına ayrı program: aynı parametreli başka bir materyal bu yamayı
+    // yanlışlıkla paylaşmasın.
+    std.customProgramCacheKey = () => `vaelos-vivid-${sat}-${val}`;
+    std.needsUpdate = true;
+  }
+
+  // (3) Kristal / büyü / ışıklı objeler: kendi renginde yumuşak kendinden
+  //     parlama. Yoğunluk 0.3'te kalır (bloom eşiğinin altı).
+  if (tone.emissive && std.emissive) {
+    std.emissive.copy(vividGlowColor(std, semantic));
+    std.emissiveIntensity = VIVID_EMISSIVE;
+    std.needsUpdate = true;
+  }
+}
+
 /**
  * Haritanın yüklediği GLB'yi (drei önbelleğinden, kopya indirmeden) alır ve
  * yalnızca o modelin materyallerini doğal zemin diline çeker. Haritanın KENDİ
@@ -1225,10 +1605,21 @@ export function MapPalette() {
       const list = Array.isArray(mesh.material)
         ? mesh.material
         : [mesh.material];
+      // İsim zinciri (mesh → kök): canlı palet tonu ve ışıma kararı bu
+      // semantik addan okunur (harita mesh adları İngilizce anahtar taşır).
+      const names: string[] = [];
+      let node: THREE.Object3D | null = mesh;
+      for (let i = 0; node && i < 8; node = node.parent, i++) {
+        if (node.name) names.push(node.name);
+      }
+      const semantic = names.join("/");
       list.forEach((entry, index) => {
         const cached = converted.get(entry);
         const out = cached ?? normalizeGroundMaterial(entry);
-        if (!cached) converted.set(entry, out);
+        if (!cached) {
+          converted.set(entry, out);
+          applyVividTone(out, semantic);
+        }
         list[index] = out;
       });
       mesh.material = Array.isArray(mesh.material) ? list : list[0];
