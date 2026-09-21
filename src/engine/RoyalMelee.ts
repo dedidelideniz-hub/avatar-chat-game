@@ -31,8 +31,15 @@ import {
 export const MELEE_DUR = 0.72;
 /** Rakip yakınsa süre uzar: üstüne atlama + bitirici iniş (3. vuruş). */
 export const MELEE_LUNGE_DUR = 0.95;
-/** Yeniden kullanma bekleme süresi (sn). */
-export const MELEE_CD = 0.42;
+/**
+ * Yeniden kullanma bekleme süresi (sn) — yakın dövüş de diğer yetenekler gibi
+ * "süre ile dolar, %100'de kullanılır" kuralına uyar (bkz. SkillComponent →
+ * şarj tablosu). Salınım bittiğinde halka hemen dolu görünmesin diye süre,
+ * en uzun salınımdan (üstüne atlamalı bitirici = `MELEE_LUNGE_DUR`) biraz
+ * uzundur. Eski 0.42 sn neredeyse anında doluyordu (halka hep dolu okunuyordu);
+ * yeni değer istenen "yavaş" dolumun karşılığıdır (~%40 hız).
+ */
+export const MELEE_CD = 1.05;
 /**
  * Kesme menzili (px). Kılıcın GERÇEK erişimine göre sınırlıdır: bıçak ucu
  * gövde merkezinden ~68 px (sap+kol), rakip yarıçapı ~22 px → kılıç ancak

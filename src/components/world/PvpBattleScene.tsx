@@ -46,12 +46,16 @@ import {
 } from "@/components/world/arena/MovementComponent";
 // ⚔️ SkillComponent — bekleme süreleri, MAX_RANGE nişanı ve atış tablosu.
 import {
+  SUPER_CHARGE_DEAL,
+  SUPER_CHARGE_TAKE,
   castSuper,
   castUltimate,
   emitUltCrack,
   planAim,
   planBasicAttack,
   tickCooldown,
+  tickSamuraiPassive,
+  tickSuperPassive,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
 // ⚔️ MeleeComponent — Kraliyet Savaşçısı yakın dövüşü (3. yetenek).
@@ -572,7 +576,7 @@ export default function PvpBattleScene({
     floatText(p.x, p.y - 8, `-${dmg}`, "#ff6b6b");
     playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
     playSound("hit", { volume: 0.35, rate: 1.5 });
-    p.superCharge = Math.min(1, p.superCharge + 0.12);
+    p.superCharge = Math.min(1, p.superCharge + SUPER_CHARGE_TAKE);
     const arenaEl = arenaRef.current;
     if (arenaEl) {
       arenaEl.classList.remove("battle-shake");
@@ -830,7 +834,7 @@ export default function PvpBattleScene({
       hitRemote(pr.dmg);
       player.current.superCharge = Math.min(
         1,
-        player.current.superCharge + 0.26,
+        player.current.superCharge + SUPER_CHARGE_DEAL,
       );
     }
   };
@@ -1014,7 +1018,9 @@ export default function PvpBattleScene({
       const b = bot.current;
       if (resultRef.current) return;
       if (isSamuraiFighter(p)) {
-        p.samuraiCharge = Math.min(1, p.samuraiCharge + dt * 0.16);
+        // ⚡ Kraliyet ultisi zamanla dolar (şarj tablosu — SkillComponent);
+        // bar ancak %100'de kullanılabilir.
+        tickSamuraiPassive(p, dt);
         if (p.samuraiUltT > 0) {
           p.samuraiUltT -= dt;
           if (!p.samuraiUltHit && p.samuraiUltT < 0.31) {
@@ -1127,6 +1133,9 @@ export default function PvpBattleScene({
       }
 
       tickCooldown(p, dt);
+      // ⚡ Zamanla dolan şarjlar (oyuncu): SÜPER yetenek de ulti gibi azar
+      // azar dolar; ana skil (düz vuruş) şarj değildir.
+      tickSuperPassive(p, dt);
       // Yakın dövüş bekleme süresi (melee) MeleeComponent'te yönetilir.
       tickMelee(p, dt);
       // 🎯 Atış/yetenek yönü kilidi zamanla bırakılır (bkz. faceAimYaw).
@@ -1229,7 +1238,7 @@ export default function PvpBattleScene({
           playSound("hit", { volume: 0.9, rate: 1.1 });
           player.current.superCharge = Math.min(
             1,
-            player.current.superCharge + 0.26,
+            player.current.superCharge + SUPER_CHARGE_DEAL,
           );
         }
         if (p.dashT <= 0) p.dashHit = false;
@@ -1279,7 +1288,7 @@ export default function PvpBattleScene({
             });
             player.current.superCharge = Math.min(
               1,
-              player.current.superCharge + 0.26,
+              player.current.superCharge + SUPER_CHARGE_DEAL,
             );
           }
           if (!pr.pierce) {

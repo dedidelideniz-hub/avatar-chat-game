@@ -3,7 +3,8 @@
 // Yetenek sisteminin TEK sahibi bu modüldür; iki arena (bot + PvP) da aynı
 // tabloyu kullanır:
 //
-//   · `tickCooldown` / `tickSamuraiPassive` — zamanlayıcılar.
+//   · `tickCooldown` / `tickSuperPassive` / `tickSamuraiPassive` — zamanlayıcılar
+//     ve ŞARJ TABLOSU (zamanla dolan yetenek şarjları).
 //   · `planBasicAttack` — düz vuruş: bekleme süresi, MAX_RANGE nişanı
 //     (nişan > menzil içi otomatik kilit > bakış yönü), gövde dönüşü, vuruş
 //     animasyonunun başlatılması ve çalıdan görünme.
@@ -82,19 +83,60 @@ export interface SkillHost {
 
 /* ------------------------------- zamanlayıcı ------------------------------ */
 
+/* ⚡ ŞARJ TABLOSU — "yavaş yavaş süre ile dolan" yetenekler
+ *
+ * KURAL (tek kaynak, iki arena da bunu okur):
+ *   · Düz vuruş (ana skil) şarj DEĞİLDİR: hızlı bir bekleme süresiyle
+ *     (`ATK_CD`) sınırlı kalır.
+ *   · Bunun dışındaki bütün yetenekler — SÜPER yetenek, Kraliyet ultisi ve
+ *     yakın dövüş — zamanla AZAR AZAR dolar ve ancak %100'de kullanılabilir.
+ *   · Dolum yavaştır: saniyede ~%6 (tam dolum ~17 sn). Vuruş başına kazanç da
+ *     aynı ölçekte tutulur, böylece şarj ne tek başına hasara ne de tek başına
+ *     zamana bağlı kalır — ikisi birlikte ilerler.
+ *
+ * Eski değerler (0.15–0.30/sn ve vuruş başına 0.26) barı birkaç saniyede
+ * dolduruyordu: yetenek normal atıştan farksız hale geliyordu. Tablo, eski
+ * hızın ~%40'ıdır (istenen "orta hız").
+ */
+/** SÜPER yeteneğin saniyedeki pasif dolum oranı (0..1). */
+export const SUPER_CHARGE_PS = 0.06;
+/** Kraliyet (samuray) ultisinin saniyedeki pasif dolum oranı (0..1). */
+export const ULT_CHARGE_PS = 0.064;
+/** Vuruş başına şarj kazancı: hasar veren taraf. */
+export const SUPER_CHARGE_DEAL = 0.104;
+export const ULT_CHARGE_DEAL = 0.104;
+/** Vuruş başına şarj kazancı: hasar alan taraf (denge için yarısı). */
+export const SUPER_CHARGE_TAKE = 0.048;
+export const ULT_CHARGE_TAKE = 0.048;
+
 /** Vuruş bekleme süresini ilerletir (süre bitince 0'da durur). */
 export function tickCooldown(f: BattleFighter, dt: number): void {
   f.atkCd = Math.max(0, f.atkCd - dt);
 }
 
-/** Samuray 2. ultisi zamanla da dolar (pasif şarj). */
+/**
+ * SÜPER yeteneğin şarjını zamanla doldurur (pasif dolum).
+ *
+ * `scale` yalnızca botun seviye farkını taşır (yüksek seviye biraz daha hızlı
+ * dolar) — oyuncu 1 ile çağırır. Bar dolduğunda durur: %100'ün üstü yoktur.
+ */
+export function tickSuperPassive(
+  f: BattleFighter,
+  dt: number,
+  scale = 1,
+): void {
+  if (f.superCharge >= 1) return;
+  f.superCharge = Math.min(1, f.superCharge + dt * SUPER_CHARGE_PS * scale);
+}
+
+/** Kraliyet (samuray) 2. ultisi zamanla dolar (pasif şarj; bkz. şarj tablosu). */
 export function tickSamuraiPassive(
   f: BattleFighter,
   dt: number,
-  rate = 0.16,
+  rate = ULT_CHARGE_PS,
 ): void {
-  if (isSamuraiFighter(f))
-    f.samuraiCharge = Math.min(1, f.samuraiCharge + dt * rate);
+  if (!isSamuraiFighter(f) || f.samuraiCharge >= 1) return;
+  f.samuraiCharge = Math.min(1, f.samuraiCharge + dt * rate);
 }
 
 /* ---------------------------------- nişan --------------------------------- */

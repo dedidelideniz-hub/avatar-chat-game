@@ -52,6 +52,10 @@ import {
 // ⚔️ SkillComponent — bekleme süreleri, MAX_RANGE nişan çözümü ve yetenek
 // atış tablosu (cooldown + menzil + atış tek modülde).
 import {
+  SUPER_CHARGE_DEAL,
+  SUPER_CHARGE_TAKE,
+  ULT_CHARGE_DEAL,
+  ULT_CHARGE_TAKE,
   castSuper,
   castUltimate,
   emitUltCrack,
@@ -59,6 +63,7 @@ import {
   planBasicAttack,
   tickCooldown,
   tickSamuraiPassive,
+  tickSuperPassive,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
 // ⚔️ MeleeComponent — Kraliyet Savaşçısı yakın dövüşü (3. yetenek):
@@ -707,13 +712,22 @@ export default function BattleScene({
       `-${dmg}`,
       target === player.current ? "#ff6b6b" : "#fbbf24",
     );
-    chargeGain(attacker, 0.26);
-    chargeGain(target, 0.12);
+    // ⚡ Şarj kazançları: şarj tablosunun (SkillComponent) vuruş başına
+    // değerleri — zamanla dolan pasif şarjla aynı ölçekte. Ana skil (düz
+    // vuruş) şarj kullanmaz; yalnız süper/ulti/melee zamanla dolar.
+    chargeGain(attacker, SUPER_CHARGE_DEAL);
+    chargeGain(target, SUPER_CHARGE_TAKE);
     if (isSamuraiFighter(attacker)) {
-      attacker.samuraiCharge = Math.min(1, attacker.samuraiCharge + 0.26);
+      attacker.samuraiCharge = Math.min(
+        1,
+        attacker.samuraiCharge + ULT_CHARGE_DEAL,
+      );
     }
     if (isSamuraiFighter(target)) {
-      target.samuraiCharge = Math.min(1, target.samuraiCharge + 0.12);
+      target.samuraiCharge = Math.min(
+        1,
+        target.samuraiCharge + ULT_CHARGE_TAKE,
+      );
     }
     // Distinct audio for getting hurt vs. dealing damage.
     if (target === player.current) {
@@ -1000,8 +1014,11 @@ export default function BattleScene({
           vy = joystickRef.current.y;
         }
       }
-      // Samuray 2. ultisi hasar vurmanın yanında zamanla da dolar (PvP
-      // arenasındaki ile aynı) — yoksa ult hiç erişilemiyor görünüyordu.
+      // ⚡ ZAMANLA DOLAN ŞARJLAR (oyuncu): SÜPER yetenek ve Kraliyet ultisi
+      // hasar vurmanın yanında zamanla da azar azar dolar; bar ancak %100'de
+      // kullanılabilir. Ana skil (düz vuruş) şarj değildir — kendi bekleme
+      // süresiyle (`ATK_CD`) çalışır.
+      tickSuperPassive(p, dt);
       tickSamuraiPassive(p, dt);
       // ── Düz vuruş animasyonu + cancel penceresi (kiting / hit-and-run) ──
       // Windup boyunca karakter köklenir; pencere açıldıktan sonra joystick'e
@@ -1289,15 +1306,13 @@ export default function BattleScene({
         }
       }
 
-      // Bot super: passively charges quickly over time (faster at higher
-      // levels) on top of the charge earned by dealing damage, and it fires
-      // the ult the instant the bar is full — no range gate, no waiting.
-      b.superCharge = Math.min(
-        1,
-        b.superCharge + dt * (0.15 + 0.15 * botLevelT(b.level)),
-      );
+      // Bot şarjı da oyuncuyla AYNI tablodan dolar (şarj tablosu —
+      // SkillComponent): yavaş pasif dolum + vuruş başına kazanç. Seviye
+      // farkı yalnızca dolumu biraz hızlandırır (yüksek seviye = biraz hızlı),
+      // yoksa bot yeteneği birkaç saniyede doldurup sürekli atıyordu.
+      tickSuperPassive(b, dt, 1 + botLevelT(b.level));
       if (isSamuraiFighter(b)) {
-        b.samuraiCharge = Math.min(1, b.samuraiCharge + dt * 0.16);
+        tickSamuraiPassive(b, dt);
         if (
           b.samuraiCharge >= 1 &&
           b.samuraiUltT <= 0 &&
