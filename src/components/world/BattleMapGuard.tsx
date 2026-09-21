@@ -3,6 +3,7 @@ import { GlbModelBoundary } from "@/engine/GlbAvatar3D";
 import { BattleMapModel as BattlefieldMap } from "./BattleMapModel";
 import { MapPalette } from "./WarAtmosphere";
 import { MapVividPass } from "./mapVivid";
+import { DefenseTowerLayer } from "./arena/DefenseTowers";
 
 /**
  * The battlefield with a crash guard. Previously a map that failed to parse
@@ -30,6 +31,11 @@ export function BattleMapModel() {
             sırasına göre çalışır). Bkz. mapVivid.tsx. */}
         <MapVividPass />
         <BattlefieldMap />
+        {/* 🛡️ SAVUNMA KULELERİ: satın alınan kuleler ve boş kule arsaları.
+            Arena uzayında (haritanın fit dönüşümünden bağımsız) durur;
+            ekonomi/simülasyon `@/engine/BattleTowers` içindedir. Yalnızca
+            sahne kule sistemini bağladığında (bot düellosu) görünür. */}
+        <DefenseTowerLayer />
       </Suspense>
     </GlbModelBoundary>
   );

@@ -420,6 +420,48 @@ export const claimDailyBonus = mutation({
   },
 });
 
+/**
+ * Oyun içi harcama (savaş alanında kule inşası gibi). Tutar sunucuda
+ * doğrulanır: bakiye yetmiyorsa istek reddedilir, yani istemci cüzdanı
+ * kandıramaz. Başarılıysa yeni bakiyeyi döner.
+ */
+const MAX_SPEND_PER_PURCHASE = 5000;
+
+export const spendCoins = mutation({
+  args: {
+    amount: v.number(),
+    /** Kayıt/telemetri için serbest etiket (ör. "tower"). */
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { amount }) => {
+    if (!Number.isFinite(amount) || amount <= 0 || Math.floor(amount) !== amount) {
+      throw new Error("Geçersiz harcama tutarı.");
+    }
+    if (amount > MAX_SPEND_PER_PURCHASE) {
+      throw new Error("Tek seferde harcanabilecek üst sınır aşıldı.");
+    }
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Oturum açman gerekiyor.");
+    }
+    const profile = await ctx.db
+      .query("profiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (profile === null) {
+      throw new Error("Önce karakterini oluştur.");
+    }
+    assertNotBanned(profile);
+    const coins = profile.coins ?? STARTING_COINS;
+    if (coins < amount) {
+      throw new Error(`Yeterli SP yok — ${amount} SP gerekiyor, ${coins} SP var.`);
+    }
+    const next = coins - amount;
+    await ctx.db.patch(profile._id, { coins: next, updatedAt: Date.now() });
+    return next;
+  },
+});
+
 /** Buy a battle super from the ability shop (banned players are blocked). */
 export const buyAbility = mutation({
   args: { abilityId: v.string() },

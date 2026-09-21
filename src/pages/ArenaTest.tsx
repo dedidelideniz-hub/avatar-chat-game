@@ -33,6 +33,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
 
+/**
+ * Test sahasının SANAL altın bütçesi: kule alımı burada gerçek cüzdana
+ * yazılmaz (bkz. `<BattleScene sandbox>`), yalnız sahne içinde düşer. Yani
+ * "Kule Satın Al" düğmesini doyuncaya kadar deneyebilirsin, hesabın eksilmez.
+ */
+const SANDBOX_GOLD = 1500;
+
 /** Testte giyilebilecek karakter skinleri (PRODUCTS içindeki `skin-*` kimlikleri). */
 const SKINS: { id: string; label: string }[] = [
   { id: "", label: "Varsayılan" },
@@ -224,6 +231,8 @@ export default function ArenaTest() {
         opponentEquipped={[]}
         opponentAbility={setup.botAbility}
         opponentLevel={setup.level}
+        gold={SANDBOX_GOLD}
+        sandbox
         onExit={() => setFighting(false)}
       />
     );
@@ -384,7 +393,10 @@ export default function ArenaTest() {
           <div className="rounded-xl border border-white/10 bg-black/30 p-3">
             <p className="mb-1 font-bold text-foreground">Kaydetmez</p>
             Bu ekran hiçbir ilerleme, altın veya lig verisi yazmaz; Convex'e maç
-            kaydı göndermez (tamamen izole test).
+            kaydı göndermez (tamamen izole test). Haritadaki kule arsalarına
+            yaklaşıp <strong>Kule Satın Al</strong> düğmesini deneyebilirsin:
+            harcama sanal {SANDBOX_GOLD} SP bütçeden düşer, gerçek cüzdanına
+            dokunmaz.
           </div>
         </div>
       </div>

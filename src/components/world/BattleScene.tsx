@@ -37,7 +37,18 @@ import {
   resolveAim,
 } from "@/components/world/arena/skillshot";
 import { useAbilityAim } from "@/components/world/useAbilityAim";
+// 💰 Cüzdan: kule alımı gerçek bakiyeden düşsün diye harcama sunucuya yazılır
+// ve bakiye canlı profil sorgusundan okunur.
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { hitsRockCollision } from "@/components/world/BattleMapModel";
+// 🛡️ Savunma kulesi ekonomisi + simülasyonu: satın alma, otomatik hedefleme,
+// ateş (sahnenin mermi havuzundan) ve kule koruması tek modülde yaşar.
+import {
+  configureTowers,
+  setTowerWallet,
+  towerGuardAbsorb,
+} from "@/engine/BattleTowers";
 // 🏃 MovementComponent — zemin kontrolü, kapsül çarpışması ve pürüzsüz kayma
 // (wall sliding). Hareket matematiği artık bu sahnede değil modülde yaşar.
 import {
@@ -354,6 +365,7 @@ export default function BattleScene({
   opponentAbility,
   opponentLevel,
   gold,
+  sandbox,
   onExit,
 }: {
   playerName: string;
@@ -367,9 +379,22 @@ export default function BattleScene({
   opponentLevel: number;
   /** Oyuncunun Vaelos Parası — üst şeritteki altın sayacı (yoksa gizlenir). */
   gold?: number;
+  /**
+   * Test laboratuvarı kipi: kule harcaması GERÇEK cüzdandan düşülmez, yalnız
+   * sahnede simüle edilir (misafir oyuncu ve test sahası için).
+   */
+  sandbox?: boolean;
   onExit: (victory: boolean) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
+  // 🛡️ Kule alımı: tutarı sunucu doğrular (bakiye yetmezse reddeder), başarılı
+  // yazımda profil sorgusu düşer ve üstteki altın sayacı kendiliğinden iner.
+  const spendCoins = useMutation(api.profiles.spendCoins);
+  // 💰 Cüzdan kaynağı: `gold` prop'u verilmediyse (üretim akışı) canlı profil
+  // bakiyesi okunur — Convex sorgusu reaktiftir, yani sunucu harcamayı
+  // işlerken üstteki altın sayacı ve kule düğmesi kendiliğinden güncellenir.
+  const myProfile = useQuery(api.profiles.getMyProfile);
+  const wallet = gold ?? myProfile?.coins ?? 0;
   // The joystick's live direction vector.
   const joystickRef = useRef({ x: 0, y: 0 });
   // Brawl-Stars-style attack joystick: while held, drag to pick the aim
@@ -553,6 +578,40 @@ export default function BattleScene({
     [],
   );
 
+  // 🛡️ SAVUNMA KULELERİ: ekonomi/simülasyon köprüsü. Kule ATEŞ ETMEZ —
+  // sahnenin KENDİ mermi havuzuna `owner: "player"` mermisi bırakır, yani
+  // hasar/isabet/ölüm/skor akışı normal savaş hattından geçer. Kule sistemi
+  // KAPALIYSa (PvP) hiçbir şey değişmez.
+  useEffect(() => {
+    configureTowers({
+      player,
+      // Menzil taraması rakip LİSTESİ üzerinden yapılır: şu an tek rakip
+      // dövüşçü var; minyon dalgası eklendiğinde aynı listeye katılır ve kule
+      // en yakın hedefi kendisi seçer (kule kodu değişmez).
+      hostiles: () => [
+        { x: bot.current.x, y: bot.current.y, hp: bot.current.hp },
+      ],
+      projs,
+      fxs,
+      // Altın cüzdandan düşer (sunucu doğrular). Reddedilirse kule bu maç
+      // için kurulu kalır, harcama maç sonunda sıfırlanır. Test sahasında
+      // harcama hiç yazılmaz: gerçek bakiye tükenmesin.
+      spend: sandbox
+        ? undefined
+        : (amount, reason) => {
+            void spendCoins({ amount, reason }).catch((err: unknown) => {
+              console.warn("[towers] harcama sunucuya yazılamadı:", err);
+            });
+          },
+    });
+    return () => configureTowers(null);
+  }, [spendCoins, sandbox]);
+  // Cüzdan: profil bakiyesi (veya test bütçesi). HUD her karede canlı
+  // değerle tazeler; harcama sunucuya yazılınca bakiye düşer ve buraya yansır.
+  useEffect(() => {
+    setTowerWallet(wallet);
+  }, [wallet]);
+
   // Animated VS banner plays once the loading sequence finishes.
   useEffect(() => {
     if (phase !== "fight") return;
@@ -687,14 +746,23 @@ export default function BattleScene({
     dmg: number,
   ) => {
     if (target.hp <= 0 || resultRef.current) return;
-    target.hp = Math.max(0, target.hp - dmg);
+    // 🛡️ KULE KORUMASI: oyuncunun dibinde bir savunma kulesi varsa gelen
+    // hasar ÖNCE kulenin (zırhlı) canından düşer. Kule bu yüzden "tek atışta
+    // yıkılmayacak" kadar yüksek canlıdır ama zamanla düşer. Kule yoksa
+    // davranış bire bir eskisi gibidir.
+    let amount = dmg;
+    if (target === player.current) {
+      amount = towerGuardAbsorb(dmg);
+      if (amount <= 0) return;
+    }
+    target.hp = Math.max(0, target.hp - amount);
     target.lastHitAt = performance.now();
     // Üst şeritteki skor tablosu: isabetler taraflara yazılır.
     if (attacker === player.current) scoreRef.current.p += 1;
     else if (attacker === bot.current) scoreRef.current.o += 1;
     // Vuruş tepkisi: vurulan karakter sarsılır ve vuran taraftan uzağa
     // savrulur (ulti/beam/dash sert, normal mermi hafif).
-    applyHitReaction(target, attacker.x, attacker.y, dmg);
+    applyHitReaction(target, attacker.x, attacker.y, amount);
     // Taking damage in a bush reveals the victim (Brawl-style).
     target.revealUntil = performance.now() + BUSH_REVEAL_MS;
     // Hasar sayısı dövüşçünün hemen üzerinde doğar (eski 130 px'lik kayma
@@ -703,7 +771,7 @@ export default function BattleScene({
     floatText(
       target.x,
       target.y - 8,
-      `-${dmg}`,
+      `-${amount}`,
       target === player.current ? "#ff6b6b" : "#fbbf24",
     );
     // ⚡ Kraliyet ultisi YALNIZ savaşta dolar: düşmana vurdukça (ULT_CHARGE_DEAL)

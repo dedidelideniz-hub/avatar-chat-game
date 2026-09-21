@@ -40,6 +40,7 @@ import {
   Crown,
   EyeOff,
   Flame,
+  Hammer,
   HeartPulse,
   LogOut,
   ScrollText,
@@ -53,6 +54,19 @@ import {
 import type { BattleFighter } from "@/components/world/Arena3D";
 // Yakın dövüş (melee) yuvasının bekleme halkası aynı sabitten ölçeklenir.
 import { MELEE_CD } from "@/engine/RoyalMelee";
+// 🛡️ Savunma kulesi ekonomisi: HUD düğmesi bu modülün TEK kaynağını okur
+// (arsaya yakınlık, altın bakiyesi, kurulu kuleler).
+import {
+  TOWER_ARMOR,
+  TOWER_COST,
+  TOWER_HP,
+  buyTower,
+  isSiteOpen,
+  setTowerWallet,
+  towerGold,
+  towerState,
+} from "@/engine/BattleTowers";
+import { playSound } from "@/lib/sounds";
 import { cn } from "@/lib/utils";
 // Cam (glassmorphism) katmanı: index.css'in sonundaki HUD bloklarını bu dosya
 // günceller (index.css düzenleme aracının pencere sınırının dışında kalıyor).
@@ -652,10 +666,19 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const vitalsXp = useRef<HTMLSpanElement>(null);
   const vitalsNum = useRef<HTMLSpanElement>(null);
   const burstRef = useRef<MobaBurstHandle>(null);
+  // 🛡️ Kule arsası istemi: arsaya yaklaşınca beliren inşa düğmesi.
+  const towerWrap = useRef<HTMLDivElement>(null);
+  const towerBtn = useRef<HTMLButtonElement>(null);
+  const goldEl = useRef<HTMLSpanElement>(null);
   // Altın sayacı: referanstaki gibi sağ üstte. Profil reaktif okunur, yani
-  // maç sırasında kazanılan para da anında yansır (meta.gold varsa o kazanır).
+  // maç sırasında kazanılan para da anında yansır. Sahne açıkça bir bütçe
+  // verdiyse (meta.gold — test sahasının sanal bütçesi) o kazanır.
   const profile = useQuery(api.profiles.getMyProfile);
-  const gold = profile?.coins ?? meta.gold;
+  const gold = meta.gold ?? profile?.coins;
+  // Taban bakiye ref'te tutulur: rAF döngüsü efekt kapsamına bağlı kalmadan
+  // her karede GÜNCEL profili okur (kule alımında bakiye anında düşsün).
+  const goldBase = useRef<number | undefined>(gold);
+  goldBase.current = gold;
 
   // ── Nadiren değişen bayraklar (React state: kare başına çizim yok) ──
   const [phase, setPhase] = useState(live.current.phase);
@@ -699,6 +722,24 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       writeWidth(vitalsXp.current, l.pc);
       writeText(vitalsNum.current, `${Math.round(l.ph)}/${meta.maxHp}`);
 
+      // ── 🛡️ kule arsası istemi + canlı altın bakiyesi ─────────────────
+      // Arsanın yanına gelindiğinde düğme belirir; altın yetmezse kilitli
+      // görünür. Kule alımı bakiyeden ANINDA düşer (towerGold = cüzdan −
+      // harcanan), yani sayaç sağ üstte aynı karede azalır.
+      const base = goldBase.current;
+      if (base !== undefined) setTowerWallet(base);
+      const cash = towerGold();
+      if (base !== undefined) {
+        writeText(goldEl.current, String(Math.floor(cash)));
+      }
+      const open = isSiteOpen(towerState.nearSiteId);
+      toggleClass(towerWrap.current, "moba-tower-wrap--on", open);
+      toggleClass(
+        towerBtn.current,
+        "moba-tower-buy--locked",
+        open && cash < TOWER_COST,
+      );
+
       // ── tepki tetikleyicileri: süper kullanımı, ağır hasar, devirme ──
       if (prev.pc >= 1 && l.pc < 0.2) {
         burstRef.current?.burst("super", "SÜPER YETENEK!");
@@ -738,6 +779,22 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [live, meta, score, store]);
+
+  /**
+   * 🛡️ Kule satın al — yalnız BOŞ ve YAKIN bir arsada, altın yeterliyse.
+   * Ekonomi motoru tek kaynak olduğu için burada sadece geri bildirim (ses +
+   * duyuru) verilir; kule, simülasyon ve bakiye motorun içinde kurulur.
+   */
+  const buildTower = () => {
+    if (!isSiteOpen(towerState.nearSiteId)) return;
+    if (towerGold() < TOWER_COST) {
+      playSound("error", { volume: 0.6 });
+      return;
+    }
+    if (!buyTower()) return;
+    playSound("buy", { volume: 0.85 });
+    burstRef.current?.burst("super", "KULE KURULDU!");
+  };
 
   if (phase !== "fight") return null;
 
@@ -817,7 +874,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           {gold !== undefined && (
             <span className="moba-gold shrink-0 items-center gap-1 font-extrabold">
               <Coins size={14} strokeWidth={2.4} className="text-amber-300" />
-              <span className="tabular-nums">{Math.floor(gold)}</span>
+              <span ref={goldEl} className="tabular-nums">
+                {Math.floor(gold)}
+              </span>
             </span>
           )}
           <div className="flex shrink-0 items-center gap-1">
@@ -887,6 +946,35 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           className={cn("moba-rail-btn", cardOpen && "moba-rail-btn--on")}
         >
           <ScrollText size={18} strokeWidth={2.2} aria-hidden />
+        </button>
+      </div>
+
+      {/* ── 🛡️ KULE ARSASI İSTEMİ ──
+          Oyuncu koridordaki bir kule arsasına yaklaştığında ekranda belirir.
+          Altın yetmiyorsa kilitli görünür; arsadan uzaklaşınca kaybolur.
+          Görünürlük/kilit durumu tek rAF döngüsünde DOM'a yazılır (kare
+          başına React çizimi yok — bkz. yukarıdaki tick döngüsü). */}
+      <div ref={towerWrap} className="moba-tower-wrap absolute left-1/2">
+        <button
+          ref={towerBtn}
+          type="button"
+          onClick={buildTower}
+          className="moba-tower-buy pointer-events-auto"
+          aria-label={`Kule satın al — ${TOWER_COST} altın`}
+        >
+          <span className="moba-tower-buy-icon" aria-hidden>
+            <Hammer size={20} strokeWidth={2.3} />
+          </span>
+          <span className="moba-tower-buy-body">
+            <span className="moba-tower-buy-title">Kule Satın Al</span>
+            <span className="moba-tower-buy-sub">
+              <Coins size={12} strokeWidth={2.6} />
+              <b className="tabular-nums">{TOWER_COST}</b>
+              <span className="moba-tower-buy-stats">
+                {TOWER_HP} can · %{Math.round(TOWER_ARMOR * 100)} zırh
+              </span>
+            </span>
+          </span>
         </button>
       </div>
 

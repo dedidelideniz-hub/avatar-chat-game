@@ -370,6 +370,136 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
   display: flex;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   🛡️ KULE SATIN ALMA İSTEMİ
+
+   Savaş alanındaki bir kule arsasına yaklaşan oyuncunun ekranında beliren
+   inşa düğmesi. Görünürlük ve "altın yetersiz" durumu HUD'un rAF döngüsünde
+   sınıf olarak yazılır (`moba-tower-wrap--on`, `moba-tower-buy--locked`),
+   yani kare başına React çizimi yoktur. Düğme yetenek barının ÜSTÜNDE
+   durur; arsadan uzaklaşınca yumuşakça kaybolur.
+   ══════════════════════════════════════════════════════════════════════ */
+.moba-tower-wrap.moba-tower-wrap {
+  position: absolute;
+  bottom: calc(max(58px, calc(env(safe-area-inset-bottom, 0px) + 16px)) + 96px);
+  transform: translateX(-50%) translateY(10px);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+  pointer-events: none;
+  z-index: 12;
+}
+.moba-tower-wrap.moba-tower-wrap--on {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+button.moba-tower-buy.moba-tower-buy {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 15px 8px 10px;
+  border: 1.5px solid rgb(255 199 92 / 0.55);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(58 36 14 / 0.9), rgb(16 11 6 / 0.92));
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.12),
+    0 6px 18px rgb(0 0 0 / 0.45),
+    0 0 18px rgb(251 191 36 / 0.28);
+  color: #ffe9c2;
+  backdrop-filter: blur(6px);
+  text-align: left;
+  animation: moba-tower-pop 180ms ease-out;
+}
+button.moba-tower-buy.moba-tower-buy:active {
+  transform: scale(0.95);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.18),
+    0 0 26px rgb(251 191 36 / 0.55);
+}
+button.moba-tower-buy.moba-tower-buy--locked {
+  filter: grayscale(0.65) brightness(0.72);
+  border-color: rgb(255 255 255 / 0.28);
+}
+/* Altın yetmediğinde düğmenin üstünde kısa bir ipucu belirir. */
+button.moba-tower-buy.moba-tower-buy--locked::after {
+  content: "Altın yetersiz";
+  position: absolute;
+  top: -19px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgb(120 20 20 / 0.85);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #ffd9d3;
+  white-space: nowrap;
+}
+
+.moba-tower-buy-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: radial-gradient(
+    circle at 35% 25%,
+    rgb(255 199 92 / 0.34),
+    rgb(58 30 8 / 0.62)
+  );
+  box-shadow: inset 0 0 0 1px rgb(255 213 138 / 0.45);
+  color: #ffd48a;
+}
+.moba-tower-buy-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+}
+.moba-tower-buy-title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+}
+.moba-tower-buy-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #f7c86a;
+}
+.moba-tower-buy-stats {
+  color: rgb(255 255 255 / 0.62);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+@keyframes moba-tower-pop {
+  from {
+    transform: translateY(6px) scale(0.94);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Cam efekti desteklenmiyorsa istem daha opak olur (okunabilirlik). */
+@supports not (backdrop-filter: blur(2px)) {
+  button.moba-tower-buy.moba-tower-buy {
+    background: linear-gradient(180deg, rgb(58 36 14 / 0.97), rgb(16 11 6 / 0.98));
+  }
+}
+
 /* Yatay kısa ekran: küme küçülünce düğme de aynı oranda küçülür ve aynı
    kavis noktasında kalır (katsayılar kümenin clamp'leriyle birebir). */
 @media (orientation: landscape) and (max-height: 560px) {
