@@ -128,8 +128,10 @@ const KEY_LIGHT_DIR: [number, number, number] = [14, 26, -10];
 // `mobaLight` işareti, aşağıdaki ana ışık geçişinin bu dolguyu kendi sıcak
 // rengi + yüksek şiddetiyle ezmesini engeller.
 const FILL_LIGHT_DIR: [number, number, number] = [-14, 9, 20];
-const FILL_LIGHT_COLOR = "#cfd8ff";
-const FILL_LIGHT_INTENSITY = 0.5;
+const FILL_LIGHT_COLOR = "#b9d2ff";
+// Karşı dolgu da kısıldı: gölgedeki yüzleri kaldırır ama ana ışığın
+// kontrastını (ve dolayısıyla rengin doygunluğunu) yıkamaz.
+const FILL_LIGHT_INTENSITY = 0.3;
 
 /* --- DERİNLİK KONTRASTI (gölge dengesi) ------------------------------
  * Wild Rift / LoL Mobile referansında karakterin, kayanın ve kulenin ALTINDA
@@ -145,14 +147,25 @@ const FILL_LIGHT_INTENSITY = 0.5;
  * aynı değerler sahneyi gereksiz karanlığa itmesin diye daha yüksek bir
  * yedek denge kullanılır — mobilde görünüm eskisi gibi kalır.
  */
-const AMBIENT_SHADOWED = 0.62;
-const AMBIENT_FLAT = 1.35;
-const HEMI_SHADOWED = 0.5;
-const HEMI_FLAT = 0.75;
-/* Ana yönlü ışık: gölge varken dolguyu biraz geri çeker (gölge ışığı zaten
- * yönü o taşır), yoksa parlaklığı yalnız başına üstlenir. */
-const KEY_INTENSITY_SHADOWED = 1.0;
-const KEY_INTENSITY_FLAT = 1.18;
+/* --- CANLI PALET DENGESİ (mat/gri görünümü bitirir) -------------------
+ * "Harita ölü, gri-kahve tonlar baskın" şikâyetinin kaynağı düz dolgu
+ * ışığıydı: yüksek ambient + hemisfer her yüzü aynı parlaklığa çekiyor,
+ * dolayısıyla ÇİM soluk yosun rengine, taş griye dönüyordu (doygunluk
+ * yalnızca ışık farkı olduğunda okunur).
+ *
+ * Yeni denge: düz dolgu iyice geri çekilir, parlaklığı yönlü ana ışık
+ * taşır. Böylece renkler kendi doygunluğunda okunur, gölgeler koyulaşır ve
+ * gerçek zamanlı temas gölgeleri (ArenaShadowLight) görünür kalır.
+ * Ambient AŞIRI düşürülmez: 0'ın altına inildiğinde gölgedeki yüzler
+ * tamamen siyaha düşer ve kare "delik" görünür. */
+const AMBIENT_SHADOWED = 0.4;
+const AMBIENT_FLAT = 1.05;
+const HEMI_SHADOWED = 0.32;
+const HEMI_FLAT = 0.6;
+/* Ana yönlü ışık: gölge varken yükü kendisi üstlenir (düz dolgu kısıldı),
+ * gölge yoksa (dokunmatik) parlaklığı yine o taşır. */
+const KEY_INTENSITY_SHADOWED = 1.4;
+const KEY_INTENSITY_FLAT = 1.35;
 
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
@@ -205,13 +218,17 @@ export function useArenaCamera(
         // Gökyüzü tarafı gece moru, zemin tarafı nötr-sıcak: arazi kahverengi
         // bir peçeye değil, temiz bir dolguya boyanır. Gölgeli sahnede şiddet
         // kısılır (yönsüz dolgu yine kontrastı yer).
-        hemi.color.set("#6f7fc4");
-        hemi.groundColor.set("#8d7a63");
+        // Gökyüzü dolgusu temiz mavi, zemin sıçraması ise ÇİM yeşili:
+        // eski kahve (0x8d7a63) tonlu zemin dolgusu bütün araziye "kahve
+        // peçe" bindiriyordu — çimler bu yüzden yeşil değil, soluk yosun
+        // rengi okunuyordu.
+        hemi.color.set("#7cb6e6");
+        hemi.groundColor.set("#6f7d4c");
         hemi.intensity = shadowed ? HEMI_SHADOWED : HEMI_FLAT;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
         // Arena3D'nin nötr ana ışığı: yumuşak sıcak. Parlaklığın büyük kısmını
         // üstlenir ki her yüz aynı düzeyde aydınlanmasın ve form/gölge okunsun.
-        light.color.set("#ffe8cf");
+        light.color.set("#fff0dc");
         light.intensity = shadowed
           ? KEY_INTENSITY_SHADOWED
           : KEY_INTENSITY_FLAT;

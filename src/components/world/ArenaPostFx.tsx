@@ -1,10 +1,18 @@
-// ArenaPostFx — savaş alanının GERÇEK bloom (neon ışıma) katmanı.
+// ArenaPostFx — savaş alanının bloom (neon ışıma) + RENK DERECELENDİRME
+// (tone mapping / pozlama / doygunluk) katmanı.
 //
 // Referanstaki görüntüdeki gibi lav nehirlerinin, kor havuzlarının, yetenek
 // ışınlarının ve mavi üs kristalinin etrafa taşarak parlaması için sahne artık
 // doğrudan ekrana değil bir EffectComposer zincirinden geçer:
 //
-//   RenderPass → UnrealBloomPass → OutputPass
+//   RenderPass → UnrealBloomPass → ColorGrade → OutputPass
+//
+// * TONE MAPPING + POZLANA — renderer ACES yerine Khronos Neutral eğrisiyle ve
+//   1.15 pozlamayla çalışır; renkler griye çekilmez (bkz. TONE_MAPPING,
+//   EXPOSURE).
+// * COLOR GRADE — bloom'dan sonra, tone mapping'den önce doygunluk + vibrance
+//   uygulanır: ekran gerçekten "patlar" ama parlak katmanların bloom eşiği
+//   değişmediği için ekranı saran ışıma oluşmaz (bkz. COLOR_GRADE_SHADER).
 //
 // * SELECTIVE bloom: eşik (threshold) yüksek tutulduğu için yalnızca GERÇEKTEN
 //   parlak öğeler — üs/kule kristalleri, zemindeki nişan çemberi, menzil
@@ -34,6 +42,7 @@ import { resetBloomPulse, stepBloomPulse } from "./arena/VFXComponent";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 /** Çalışan composer sayısı — hiçbiri yoksa sahneyi biz normal çizeriz. */
@@ -45,9 +54,69 @@ let workingComposers = 0;
  *  dönüyor ve TÜM ışıklar birbirine karışıyordu. Bu tavan hepsini ölçülü bir
  *  seviyeye indirir; altındaki ışıklara (lav havuzları, atmosfer) dokunulmaz. */
 const POINT_LIGHT_CAP = 0.5;
-/** Genel pozlama: arena ACES ile tone map edildiği için tek çarpanla bütün
- *  sahne kısılabilir. 1'in altındaki değer görüntüyü koyulaştırır. */
-const EXPOSURE = 1;
+/** Genel pozlama (tek çarpan). 1'in ALTINDA görüntü koyulaşır, ÜSTÜNDE açar:
+ *  arena artık ACES'in kısık/kül grisi tonuyla değil, Khronos Neutral tone
+ *  mapping ile çizildiği için (bkz. TONE_MAPPING) dolgu ışığını kısmak
+ *  görüntüyü öldürmez; pozlama canlılığı geri verir. */
+const EXPOSURE = 1.15;
+/** Arenanın tone mapping eğrisi. ACES filmik eğri renkleri omzunda griye
+ *  çeker ("mat/gri harita" şikâyetinin yarısı buydu) ve doygunluğu düşürür;
+ *  Neutral (Khronos PBR Neutral) eğrisi renkleri olduğu yerde bırakıp
+ *  yalnızca tepeleri yumuşatır — MOBA paleti için doğru seçim. */
+const TONE_MAPPING = THREE.NeutralToneMapping;
+
+/* ------------------------------------------------------------------ */
+/* RENK DERECELENDİRME (post-processing color grade)                   */
+/* ------------------------------------------------------------------ */
+/* Işık hesabı doğru olsa bile ham render "mat" okunur; üstelik albedo
+   doygunluğu ile EKRAN doygunluğu aynı şey değildir. Bu geçiş, tone
+   mapping'den ÖNCE (lineer HDR tamponunda) tek bir ucuz shader ile:
+
+     • DOYGUNLUK (uSaturation) — rengi kendi parlaklığı etrafında dışa açar,
+     • VIBRANCE (uVibrance) — ZATEN doygun pikselleri patlatmadan soluk
+       olanları öne çıkarır; çim/kristal canlanır, cilt ve taş bozulmaz.
+
+   Bloom'dan SONRA, tone mapping'den ÖNCE durur: parlayan katmanların eşiği
+   değişmez (ekranı saran ışıma oluşmaz), yalnızca son görüntünün rengi
+   canlanır. Pozlama bilinçli olarak BURADA değil renderer'da
+   (`gl.toneMappingExposure`) durur ki bloom kurulamazsa bile kaybolmasın
+   (bkz. dosya sonundaki yedek `gl.render` yolu). */
+const COLOR_GRADE = {
+  saturation: 1.22,
+  vibrance: 0.28,
+};
+
+const COLOR_GRADE_SHADER = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    uSaturation: { value: COLOR_GRADE.saturation },
+    uVibrance: { value: COLOR_GRADE.vibrance },
+  },
+  vertexShader: `varying vec2 vGradeUv;
+
+void main() {
+  vGradeUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}`,
+  fragmentShader: `uniform sampler2D tDiffuse;
+uniform float uSaturation;
+uniform float uVibrance;
+varying vec2 vGradeUv;
+
+void main() {
+  vec4 texel = texture2D( tDiffuse, vGradeUv );
+  vec3 color = max( texel.rgb, 0.0 );
+  float luma = dot( color, vec3( 0.2126, 0.7152, 0.0722 ) );
+  float maxC = max( max( color.r, color.g ), color.b );
+  float minC = min( min( color.r, color.g ), color.b );
+  // Vibrance payı: renk zaten doygun (chroma/maxC → 1) ise ek doygunluk
+  // verilmez; soluk pikseller (çim, taş, sis) tam payı alır.
+  float headroom = 1.0 - clamp( ( maxC - minC ) / max( maxC, 1e-4 ), 0.0, 1.0 );
+  float amount = uSaturation + uVibrance * headroom;
+  vec3 graded = mix( vec3( luma ), color, amount );
+  gl_FragColor = vec4( max( graded, 0.0 ), texel.a );
+}`,
+};
 
 /** Sahne bir kez mount edilir; yine de dokunmatik cihaz kontrolü için. */
 function isCoarsePointer() {
@@ -59,9 +128,13 @@ function isCoarsePointer() {
 }
 
 export function ArenaPostFx({
-  strength = 0.45,
-  radius = 0.32,
-  threshold = 0.8,
+  // Bloom: şiddet/yarıçap yükseltildi (ışık patlaması) ama eşik YÜKSELTİLDİ:
+  // canlı palet zemini aydınlattığı için düşük eşik, çim/taş gibi normal
+  // yüzeyleri de taşırıp "her yeri saran ışıma"ya dönüşürdü. Eşiğin üstünde
+  // yalnızca kristaller, yetenekler, lav ve kenar ışığı kalır.
+  strength = 0.62,
+  radius = 0.38,
+  threshold = 0.88,
 }: {
   strength?: number;
   radius?: number;
@@ -87,12 +160,17 @@ export function ArenaPostFx({
   useEffect(() => {
     const el = gl.domElement;
     const prevExposure = gl.toneMappingExposure;
+    const prevToneMapping = gl.toneMapping;
     const prevStyle = {
       width: el.style.width,
       height: el.style.height,
       display: el.style.display,
     };
     const dprCap = isCoarsePointer() ? 1.5 : 2;
+    // ACES → Neutral: renkleri griye çeken omuz eğrisi yerine renkleri
+    // koruyan eğri. OutputPass bu değeri her karede okuyup kendi shader'ını
+    // yeniden kurar, yani çalışma anında değiştirmek güvenlidir.
+    gl.toneMapping = TONE_MAPPING;
     gl.toneMappingExposure = EXPOSURE;
     gl.setPixelRatio(
       Math.min(
@@ -105,6 +183,7 @@ export function ArenaPostFx({
     el.style.display = "block";
     return () => {
       gl.toneMappingExposure = prevExposure;
+      gl.toneMapping = prevToneMapping;
       el.style.width = prevStyle.width;
       el.style.height = prevStyle.height;
       el.style.display = prevStyle.display;
@@ -139,6 +218,9 @@ export function ArenaPostFx({
       );
       bloomRef.current = bloom;
       composer.addPass(bloom);
+      // Renk derecelendirme: doygunluk + vibrance (bloom'dan sonra, tone
+      // mapping'den önce — bkz. COLOR_GRADE_SHADER).
+      composer.addPass(new ShaderPass(COLOR_GRADE_SHADER));
       composer.addPass(new OutputPass());
       composer.setSize(width, height);
       workingComposers += 1;

@@ -14,10 +14,18 @@
 // `waterFlow.tsx`'te akan su için, `CharacterRimLight`'ta kenar ışığı için
 // kullanılır; üçü de `onBeforeCompile` ile tek satırlık enjeksiyondur.
 //
-//   • ÇİM / AĞAÇ / ÇALI      → SAT 1.45, VAL 1.06  (canlı yeşiller)
-//   • PATİKA / YOL / TOPRAK  → SAT 1.30, VAL 0.84  (doygun ve KOYU kahve)
-//   • TAŞ / KULE / DUVAR / ÜS→ SAT 1.20, VAL 0.98  (nötr griye düşmesin)
-//   • diğer zemin/dekor      → SAT 1.16
+//   • ÇİM / AĞAÇ / ÇALI      → SAT 1.45, VAL 1.05, albedo ×1.14
+//   • PATİKA / YOL / TOPRAK  → SAT 1.35, VAL 0.86, albedo ×1.03 (koyu kahve)
+//   • TAŞ / KULE / DUVAR / ÜS→ SAT 1.25, VAL 1.00, albedo ×1.06, roughness ≤0.55
+//   • diğer zemin/dekor      → SAT 1.25, VAL 1.00, albedo ×1.08, roughness ≤0.60
+//
+// ÜÇÜNCÜ KATMAN — ALBEDO YÜKSELTMESİ VE PBR PARLAKLIĞI: dokulu zemin/çim
+// kaplamaları renk olarak çok koyu kalıyordu, bu yüzden materyalin `color`
+// çarpanı 1'in ÜZERİNE çekilir (doku aydınlanır, albedo > 1 kabul edilir —
+// stilize palet) ve çevre yansıması tabanı yükseltilir (`envMapIntensity`;
+// zemin geçişi bunu 0.15'e indirdiği için taş/metal hiç yansımıyordu).
+// Böylece yüzeyler hem daha açık hem hafif ışık yakalayan (PBR "sheen")
+// hâle gelir.
 //
 // İŞ BÖLÜMÜ: renk/ışıma katmanı `WarAtmosphere → applyVividTone`'dadır (düz
 // renkli yüzeylerin HSL doygunluğu ve kristal/büyü objelerinin emissive 0.3
@@ -54,14 +62,24 @@ interface VividTone {
   sat: number;
   /** Parlaklık çarpanı (< 1 patikaları koyulaştırır). */
   val: number;
+  /** Albedo yükseltmesi: materyalin `color` çarpanı bu kadar AÇILIR
+   *  (> 1 = koyu doku aydınlanır). */
+  bright: number;
+  /** Çevre yansıması tabanı (PBR parlaklığı). */
+  env: number;
+  /** Roughness üst sınırı (1 = dokunma): taş/zemin ışığı hafifçe yakalasın. */
+  rough: number;
 }
 
 /** Mesh adı zincirine göre canlı palet tonu. */
 function vividToneFor(semantic: string): VividTone {
-  if (FOLIAGE_RE.test(semantic)) return { sat: 1.45, val: 1.06 };
-  if (PATH_RE.test(semantic)) return { sat: 1.3, val: 0.84 };
-  if (STONE_RE.test(semantic)) return { sat: 1.2, val: 0.98 };
-  return { sat: 1.16, val: 1 };
+  if (FOLIAGE_RE.test(semantic))
+    return { sat: 1.45, val: 1.05, bright: 1.14, env: 0.3, rough: 1 };
+  if (PATH_RE.test(semantic))
+    return { sat: 1.35, val: 0.86, bright: 1.03, env: 0.26, rough: 0.8 };
+  if (STONE_RE.test(semantic))
+    return { sat: 1.25, val: 1, bright: 1.06, env: 0.4, rough: 0.55 };
+  return { sat: 1.25, val: 1, bright: 1.08, env: 0.32, rough: 0.6 };
 }
 
 /**
@@ -76,6 +94,23 @@ function patchVivid(material: THREE.Material, tone: VividTone): boolean {
   if (std.blending === THREE.AdditiveBlending) return false;
   if (std.userData?.vaelosWater) return false;
 
+  // (1) ALBEDO: koyu kalmış zemin/çim dokusu açılır (color > 1 olabilir).
+  const baseColor = std.color as THREE.Color | undefined;
+  if (baseColor) baseColor.multiplyScalar(tone.bright);
+  // (2) PBR: zemin geçişinin 0.15'e indirdiği çevre yansıması geri gelir,
+  //     yüzey ışığı yakalar (mat "karton" görünümü biter).
+  std.envMapIntensity = Math.max(
+    typeof std.envMapIntensity === "number" ? std.envMapIntensity : 0,
+    tone.env,
+  );
+  // (3) Roughness üst sınırı: zemin geçişi her yüzeyi matlaştırıyordu (≥ 0.6),
+  //     bu yüzden taş/kaya hiç speküler ışık yakalamıyor ve "karton" gibi
+  //     duruyordu. Sınır yalnızca YUKARIDAN çekilir; zaten daha mat bir
+  //     yüzey olduğu gibi kalır.
+  if (typeof std.roughness === "number") {
+    std.roughness = Math.min(std.roughness, tone.rough);
+  }
+
   const sat = tone.sat.toFixed(3);
   const val = tone.val.toFixed(3);
   std.onBeforeCompile = (shader) => {
@@ -89,10 +124,12 @@ function patchVivid(material: THREE.Material, tone: VividTone): boolean {
       // patikalarda değer bir tık kısılır (yüksek doygunluklu low-poly okunuşu).
       {
         float vividLum = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+        // Tavan 1.35: albedo yükseltmesi (color > 1) kırpılıp geri
+        // koyulaşmasın, ama HDR taşması da sınırlı kalsın.
         diffuseColor.rgb = clamp(
           mix( vec3( vividLum ), diffuseColor.rgb, ${sat} ) * ${val},
           0.0,
-          1.0
+          1.35
         );
       }`,
     );
