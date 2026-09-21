@@ -46,15 +46,15 @@ import {
 } from "@/components/world/arena/MovementComponent";
 // ⚔️ SkillComponent — bekleme süreleri, MAX_RANGE nişanı ve atış tablosu.
 import {
-  SUPER_CHARGE_DEAL,
-  SUPER_CHARGE_TAKE,
+  ULT_CHARGE_DEAL,
+  ULT_CHARGE_TAKE,
   castSuper,
   castUltimate,
   emitUltCrack,
+  gainUltCharge,
   planAim,
   planBasicAttack,
   tickCooldown,
-  tickSamuraiPassive,
   tickSuperPassive,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
@@ -576,7 +576,8 @@ export default function PvpBattleScene({
     floatText(p.x, p.y - 8, `-${dmg}`, "#ff6b6b");
     playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
     playSound("hit", { volume: 0.35, rate: 1.5 });
-    p.superCharge = Math.min(1, p.superCharge + SUPER_CHARGE_TAKE);
+    // ⚡ Kraliyet ultisi yalnız savaşta dolar (hasar aldıkça).
+    gainUltCharge(p, ULT_CHARGE_TAKE);
     const arenaEl = arenaRef.current;
     if (arenaEl) {
       arenaEl.classList.remove("battle-shake");
@@ -832,10 +833,7 @@ export default function PvpBattleScene({
     if (hit) {
       floatText(b.x, b.y - 8, `-${pr.dmg}`, "#fbbf24");
       hitRemote(pr.dmg);
-      player.current.superCharge = Math.min(
-        1,
-        player.current.superCharge + SUPER_CHARGE_DEAL,
-      );
+      gainUltCharge(player.current, ULT_CHARGE_DEAL);
     }
   };
 
@@ -1018,9 +1016,8 @@ export default function PvpBattleScene({
       const b = bot.current;
       if (resultRef.current) return;
       if (isSamuraiFighter(p)) {
-        // ⚡ Kraliyet ultisi zamanla dolar (şarj tablosu — SkillComponent);
-        // bar ancak %100'de kullanılabilir.
-        tickSamuraiPassive(p, dt);
+        // Ulti zamanla dolmaz: yalnız savaşta dolar (bkz. `damageMe` /
+        // `gainUltCharge` çağrıları) ve bar ancak %100'de kullanılabilir.
         if (p.samuraiUltT > 0) {
           p.samuraiUltT -= dt;
           if (!p.samuraiUltHit && p.samuraiUltT < 0.31) {
@@ -1054,6 +1051,7 @@ export default function PvpBattleScene({
             if (hit) {
               floatText(b.x, b.y - 8, `-${SAMURAI_ULTIMATE_DAMAGE}`, "#fbbf24");
               hitRemote(SAMURAI_ULTIMATE_DAMAGE);
+              gainUltCharge(player.current, ULT_CHARGE_DEAL);
             }
           }
         }
@@ -1133,8 +1131,9 @@ export default function PvpBattleScene({
       }
 
       tickCooldown(p, dt);
-      // ⚡ Zamanla dolan şarjlar (oyuncu): SÜPER yetenek de ulti gibi azar
-      // azar dolar; ana skil (düz vuruş) şarj değildir.
+      // ⚡ SÜRELİ BUTON: süper bar yalnız zamanla, yavaşça dolar (şarj
+      // tablosu — SkillComponent). Kraliyet ultisi savaşta dolar, düz vuruş
+      // ise kendi bekleme süresiyle (`ATK_CD`) çalışır.
       tickSuperPassive(p, dt);
       // Yakın dövüş bekleme süresi (melee) MeleeComponent'te yönetilir.
       tickMelee(p, dt);
@@ -1218,6 +1217,7 @@ export default function PvpBattleScene({
             if (s.hit) {
               floatText(b.x, b.y - 8, `-${s.dmg}`, "#fbbf24");
               hitRemote(s.dmg);
+              gainUltCharge(player.current, ULT_CHARGE_DEAL);
               playSound(s.stage >= 2 ? "explode" : "hit", {
                 volume: s.stage >= 2 ? 0.5 : 0.8,
                 rate: s.stage >= 2 ? 0.9 : 1.35,
@@ -1236,10 +1236,7 @@ export default function PvpBattleScene({
           burstFx(b.x, b.y - 40, 90, "#e0f2fe", 0.4);
           hitRemote(200);
           playSound("hit", { volume: 0.9, rate: 1.1 });
-          player.current.superCharge = Math.min(
-            1,
-            player.current.superCharge + SUPER_CHARGE_DEAL,
-          );
+          gainUltCharge(player.current, ULT_CHARGE_DEAL);
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
@@ -1281,15 +1278,12 @@ export default function PvpBattleScene({
             pushEvent({ type: "hit", dmg: pr.dmg });
             floatText(b.x, b.y - 8, `-${pr.dmg}`, "#fbbf24");
             hitRemote(pr.dmg);
+            gainUltCharge(player.current, ULT_CHARGE_DEAL);
             vfx.coldFlameImpact(pr.x, pr.y - 40, 62);
             playSound("hit", {
               volume: 0.85,
               rate: 0.95 + Math.random() * 0.25,
             });
-            player.current.superCharge = Math.min(
-              1,
-              player.current.superCharge + SUPER_CHARGE_DEAL,
-            );
           }
           if (!pr.pierce) {
             swapRemove(ownProjs.current, i);

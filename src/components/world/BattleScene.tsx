@@ -52,17 +52,15 @@ import {
 // ⚔️ SkillComponent — bekleme süreleri, MAX_RANGE nişan çözümü ve yetenek
 // atış tablosu (cooldown + menzil + atış tek modülde).
 import {
-  SUPER_CHARGE_DEAL,
-  SUPER_CHARGE_TAKE,
   ULT_CHARGE_DEAL,
   ULT_CHARGE_TAKE,
   castSuper,
   castUltimate,
   emitUltCrack,
+  gainUltCharge,
   planAim,
   planBasicAttack,
   tickCooldown,
-  tickSamuraiPassive,
   tickSuperPassive,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
@@ -622,10 +620,6 @@ export default function BattleScene({
   const hitsObstacle = (cx: number, cy: number, r: number) =>
     hitsRockCollision(cx, cy, r);
 
-  const chargeGain = (f: BattleFighter, amt: number) => {
-    f.superCharge = Math.min(1, f.superCharge + amt);
-  };
-
   // ✨ VFX katmanı: bütün tek seferlik efektler bu veri yolundan geçer.
   // (Effekt ölçüleri/renkleri ve bloom senkronu arena/VFXComponent'te.)
   const addFx = (fx: BattleFx) => {
@@ -712,23 +706,12 @@ export default function BattleScene({
       `-${dmg}`,
       target === player.current ? "#ff6b6b" : "#fbbf24",
     );
-    // ⚡ Şarj kazançları: şarj tablosunun (SkillComponent) vuruş başına
-    // değerleri — zamanla dolan pasif şarjla aynı ölçekte. Ana skil (düz
-    // vuruş) şarj kullanmaz; yalnız süper/ulti/melee zamanla dolar.
-    chargeGain(attacker, SUPER_CHARGE_DEAL);
-    chargeGain(target, SUPER_CHARGE_TAKE);
-    if (isSamuraiFighter(attacker)) {
-      attacker.samuraiCharge = Math.min(
-        1,
-        attacker.samuraiCharge + ULT_CHARGE_DEAL,
-      );
-    }
-    if (isSamuraiFighter(target)) {
-      target.samuraiCharge = Math.min(
-        1,
-        target.samuraiCharge + ULT_CHARGE_TAKE,
-      );
-    }
+    // ⚡ Kraliyet ultisi YALNIZ savaşta dolar: düşmana vurdukça (ULT_CHARGE_DEAL)
+    // ve hasar aldıkça (ULT_CHARGE_TAKE). Süper yetenek ve yakın dövüş
+    // "süreli" butonlardır — vuruş onlara şarj eklemez (bkz. SkillComponent
+    // → şarj tablosu). Ana skil (düz vuruş) hiç şarj kullanmaz.
+    gainUltCharge(attacker, ULT_CHARGE_DEAL);
+    gainUltCharge(target, ULT_CHARGE_TAKE);
     // Distinct audio for getting hurt vs. dealing damage.
     if (target === player.current) {
       playSound("hurt", { volume: 0.9, rate: 0.82 + Math.random() * 0.2 });
@@ -1014,12 +997,10 @@ export default function BattleScene({
           vy = joystickRef.current.y;
         }
       }
-      // ⚡ ZAMANLA DOLAN ŞARJLAR (oyuncu): SÜPER yetenek ve Kraliyet ultisi
-      // hasar vurmanın yanında zamanla da azar azar dolar; bar ancak %100'de
-      // kullanılabilir. Ana skil (düz vuruş) şarj değildir — kendi bekleme
-      // süresiyle (`ATK_CD`) çalışır.
+      // ⚡ SÜRELİ BUTON (oyuncu): süper bar yalnız zamanla, yavaşça dolar ve
+      // ancak %100'de kullanılabilir. Kraliyet ultisi zamanla dolmaz (savaşta
+      // dolar), düz vuruş ise kendi bekleme süresiyle (`ATK_CD`) çalışır.
       tickSuperPassive(p, dt);
-      tickSamuraiPassive(p, dt);
       // ── Düz vuruş animasyonu + cancel penceresi (kiting / hit-and-run) ──
       // Windup boyunca karakter köklenir; pencere açıldıktan sonra joystick'e
       // dokunmak bitiş animasyonunu keser ve karakter hemen yürümeye başlar.
@@ -1306,13 +1287,13 @@ export default function BattleScene({
         }
       }
 
-      // Bot şarjı da oyuncuyla AYNI tablodan dolar (şarj tablosu —
-      // SkillComponent): yavaş pasif dolum + vuruş başına kazanç. Seviye
-      // farkı yalnızca dolumu biraz hızlandırır (yüksek seviye = biraz hızlı),
-      // yoksa bot yeteneği birkaç saniyede doldurup sürekli atıyordu.
+      // Bot da oyuncuyla AYNI tabloyu okur (SkillComponent → şarj tablosu):
+      // süper yalnız zamanla dolar; seviye farkı dolumu biraz hızlandırır
+      // (yoksa bot yeteneği birkaç saniyede doldurup sürekli atıyordu).
       tickSuperPassive(b, dt, 1 + botLevelT(b.level));
       if (isSamuraiFighter(b)) {
-        tickSamuraiPassive(b, dt);
+        // Ulti zamanla dolmaz: botun ultisi de düşmana vurdukça dolar
+        // (`damageEnemy` → gainUltCharge).
         if (
           b.samuraiCharge >= 1 &&
           b.samuraiUltT <= 0 &&
