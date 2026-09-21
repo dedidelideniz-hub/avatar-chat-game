@@ -23,6 +23,10 @@ import {
   resolveIdleWalk,
 } from "@/engine/GlbAvatar3D";
 import {
+  applyCharacterRimLight,
+  characterRimColor,
+} from "@/engine/CharacterRimLight";
+import {
   isRoyalWarriorSkin,
   useRoyalWarriorEffects,
 } from "@/engine/RoyalWarriorEffects";
@@ -697,12 +701,15 @@ function GlbFighterBodyCore({
     // boyama HİÇ uygulanmaz: o modeller orijinal renklerini (yazarın
     // dokularını) korur — "skinli karaktere renk seçilmez". Renk, az önce
     // üretilen bireysel materyal klonlarından başlayarak uygulanır.
-    applyCharacterTint(
-      clone,
-      hasCharacterSkin(fighter.current.equipped)
-        ? null
-        : fighter.current.config?.shirt,
-    );
+    const chosenTint = hasCharacterSkin(fighter.current.equipped)
+      ? null
+      : fighter.current.config?.shirt;
+    applyCharacterTint(clone, chosenTint);
+    // KENAR IŞIĞI (rim light): karakterin dış hattını parlatır — sahnenin
+    // ışığından bağımsız olarak siluet her zeminde okunur (bkz.
+    // engine/CharacterRimLight). Boyama materyalleri KLONLADIĞI ve klonlama
+    // `onBeforeCompile`'ı taşımadığı için EN SON, boyamadan sonra uygulanır.
+    applyCharacterRimLight(clone, characterRimColor(chosenTint));
   }, [clone]);
 
   // Hareket klibi seçimi + adım oranı (modelden BİR KEZ ölçülür).

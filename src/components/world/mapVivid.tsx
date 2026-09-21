@@ -1,0 +1,149 @@
+// 🌈 mapVivid — haritanın zemin/dekor materyallerine CANLI (high-saturation
+// low-poly) doygunluk enjeksiyonu.
+//
+// NEDEN GERÇEK IŞIK DEĞİL, GÖLGELENDİRİCİ YAMASI: haritanın çimen/ağaç/
+// patika/taş renkleri neredeyse tamamen DOKUDAN gelir; materyalin `color`
+// çarpanı beyaz olduğu için rengi HSL'de doyurmak ekranda hiçbir şey
+// değiştirmez (beyazın doygunluğu yoktur). Bu yüzden doygunluk, fragment
+// gölgelendiricisinde dokunun uygulandığı noktadan hemen sonra açılır:
+//
+//   diffuseColor.rgb = clamp( mix( vec3(luma), diffuseColor.rgb, SAT ) * VAL )
+//
+// Yani renk, kendi parlaklığı (luma) etrafında dışa doğru açılır: doku, UV ve
+// ışık hesabı DEĞİŞMEZ — yalnızca okunan albedo canlanır. Aynı desen
+// `waterFlow.tsx`'te akan su için, `CharacterRimLight`'ta kenar ışığı için
+// kullanılır; üçü de `onBeforeCompile` ile tek satırlık enjeksiyondur.
+//
+//   • ÇİM / AĞAÇ / ÇALI      → SAT 1.45, VAL 1.06  (canlı yeşiller)
+//   • PATİKA / YOL / TOPRAK  → SAT 1.30, VAL 0.84  (doygun ve KOYU kahve)
+//   • TAŞ / KULE / DUVAR / ÜS→ SAT 1.20, VAL 0.98  (nötr griye düşmesin)
+//   • diğer zemin/dekor      → SAT 1.16
+//
+// İŞ BÖLÜMÜ: renk/ışıma katmanı `WarAtmosphere → applyVividTone`'dadır (düz
+// renkli yüzeylerin HSL doygunluğu ve kristal/büyü objelerinin emissive 0.3
+// ışıması). DOKULU yüzeylerin doygunluğu ise — materyalin `color` çarpanı
+// beyaz olduğu için — burada, gölgelendiriciye enjekte edilir.
+//
+// SIRA: `BattleMapGuard` bu bileşeni `MapPalette`'ten SONRA render eder; layout
+// effect'ler ağaç sırasına göre çalıştığı için zemin geçişi (normalize), dekor
+// ölçeklemesi ve ışıma temizliği bittikten sonra doygunluk uygulanır. Ayrıca
+// HİÇBİR yeni materyal örneği üretilmez — yama paylaşılan materyalin kendisine
+// yazılır, yani ekrandaki harita ile fizik aynı kalır.
+//
+// GÖRSEL-ONLY: çarpışma ızgarası, yürünebilirlik, hasar ve menzil etkilenmez.
+import { useGLTF } from "@react-three/drei";
+import { useLayoutEffect } from "react";
+import * as THREE from "three";
+import { MAP_URL } from "./WarAtmosphere";
+
+/** Doygunluk yaması uygulanmış materyaller (klonlanan örnekler temiz başlar). */
+const VIVID_PATCHED = new WeakSet<THREE.Material>();
+
+/** Çim / ağaç / çalı — en canlı yeşil bandı. */
+const FOLIAGE_RE =
+  /(grass|foliage|leaf|leaves|tree|bush|shrub|plant|fern|reed|mushroom|underbrush|groundcover|flower|vine|moss|canopy|stump|trunk)/i;
+/** Patika / yol / toprak — doygun ama daha koyu kahve. */
+const PATH_RE =
+  /(path|trail|road|lane|dirt|soil|track|walkway|crossing|bridge|sand|mud|plaza)/i;
+/** Taş / kaya / kule / duvar / üs — nötr griye düşmesin. */
+const STONE_RE =
+  /(rock|boulder|cliff|stone|wall|tower|block|base|station|island|perimeter|ruin|pillar|arch|sculpture|monument|stair)/i;
+
+interface VividTone {
+  /** Doygunluk çarpanı (1 = dokunun kendisi). */
+  sat: number;
+  /** Parlaklık çarpanı (< 1 patikaları koyulaştırır). */
+  val: number;
+}
+
+/** Mesh adı zincirine göre canlı palet tonu. */
+function vividToneFor(semantic: string): VividTone {
+  if (FOLIAGE_RE.test(semantic)) return { sat: 1.45, val: 1.06 };
+  if (PATH_RE.test(semantic)) return { sat: 1.3, val: 0.84 };
+  if (STONE_RE.test(semantic)) return { sat: 1.2, val: 0.98 };
+  return { sat: 1.16, val: 1 };
+}
+
+/**
+ * Tek bir materyale doygunluk yamasını yazar. `false` dönerse materyal
+ * atlanmıştır (ışık almayan, additif efekt ya da akan su katmanı).
+ */
+function patchVivid(material: THREE.Material, tone: VividTone): boolean {
+  const std = material as THREE.MeshStandardMaterial;
+  if (!std.isMeshStandardMaterial) return false;
+  if (VIVID_PATCHED.has(std)) return false;
+  // Additif efekt katmanları ve akan su kendi görsel dilini taşır.
+  if (std.blending === THREE.AdditiveBlending) return false;
+  if (std.userData?.vaelosWater) return false;
+
+  const sat = tone.sat.toFixed(3);
+  const val = tone.val.toFixed(3);
+  std.onBeforeCompile = (shader) => {
+    // `map_fragment` her ışık alan materyalde vardır (meshbasic dâhil);
+    // beklenmedik bir shader'da değişiklik yapmadan çıkılır.
+    if (!shader.fragmentShader.includes("#include <map_fragment>")) return;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <map_fragment>",
+      `#include <map_fragment>
+      // CANLI PALET: dokunun kendi parlaklığı etrafında doygunluk açılır,
+      // patikalarda değer bir tık kısılır (yüksek doygunluklu low-poly okunuşu).
+      {
+        float vividLum = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );
+        diffuseColor.rgb = clamp(
+          mix( vec3( vividLum ), diffuseColor.rgb, ${sat} ) * ${val},
+          0.0,
+          1.0
+        );
+      }`,
+    );
+  };
+  // Ton başına ayrı program: farklı tonlardaki materyaller aynı derlenmiş
+  // programı paylaşıp birbirinin doygunluğunu almasın.
+  std.customProgramCacheKey = () => `vaelos-vivid-${sat}-${val}`;
+  VIVID_PATCHED.add(std);
+  std.needsUpdate = true;
+  return true;
+}
+
+/**
+ * Harita GLB'sindeki (drei önbelleğinden, kopya indirmeden) her mesh'in
+ * materyaline canlı palet tonunu uygular. Canvas içine render edilmelidir ve
+ * `MapPalette`'ten SONRA gelmelidir.
+ */
+export function MapVividPass(): null {
+  const { scene } = useGLTF(MAP_URL);
+
+  useLayoutEffect(() => {
+    let patched = 0;
+    const tones = new Map<string, number>();
+    scene.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const names: string[] = [];
+      let node: THREE.Object3D | null = mesh;
+      for (let i = 0; node && i < 8; node = node.parent, i++) {
+        if (node.name) names.push(node.name);
+      }
+      const semantic = names.join("/");
+      const tone = vividToneFor(semantic);
+      const list = Array.isArray(mesh.material)
+        ? mesh.material
+        : [mesh.material];
+      for (const entry of list) {
+        if (!patchVivid(entry, tone)) continue;
+        patched += 1;
+        const key = `${tone.sat}/${tone.val}`;
+        tones.set(key, (tones.get(key) ?? 0) + 1);
+      }
+    });
+    // Teşhis: sahne yeniden kurulduğunda da tekrar eder (materyal başına bir
+    // kez yamalanır), yani satır "canlı palet bağlandı"nın kanıtıdır.
+    console.log(
+      `[mapVivid] ${patched} materyal canlı palete bağlandı (` +
+        [...tones].map(([tone, n]) => `${tone}×${n}`).join(", ") +
+        ")",
+    );
+  }, [scene]);
+
+  return null;
+}

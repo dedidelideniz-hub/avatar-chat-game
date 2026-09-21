@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { GlbModelBoundary } from "@/engine/GlbAvatar3D";
 import { BattleMapModel as BattlefieldMap } from "./BattleMapModel";
 import { MapPalette } from "./WarAtmosphere";
+import { MapVividPass } from "./mapVivid";
 
 /**
  * The battlefield with a crash guard. Previously a map that failed to parse
@@ -23,6 +24,11 @@ export function BattleMapModel() {
             yalnızca zemine sonradan binen yansıma ve kendinden parlama
             temizlenir. Aynı Suspense içindedir, GLB hazır olunca çalışır. */}
         <MapPalette />
+        {/* CANLI PALET (doygunluk): MapPalette'ten SONRA çalışmak ZORUNDA —
+            zemin geçişi ve dekor ölçeklemesi bittikten sonra dokulu
+            yüzeylere doygunluk yaması yazılır (layout effect'ler ağaç
+            sırasına göre çalışır). Bkz. mapVivid.tsx. */}
+        <MapVividPass />
         <BattlefieldMap />
       </Suspense>
     </GlbModelBoundary>
