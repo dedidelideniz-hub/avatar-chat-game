@@ -1,14 +1,25 @@
-// 🛡️ BattleTowers — savunma kulesi EKONOMİSİ ve SİMÜLASYONU.
+// 🛡️ BattleTowers — HARİTANIN KENDİ KULELERİNİN aktive edilmesi + simülasyonu.
 //
-// Oyuncu koridorun kenarındaki KULE ARSALARINDAN birine yaklaştığında HUD'da
-// "Kule Satın Al" düğmesi belirir; yeterli altını varsa bastığı an arsaya bir
-// savunma kulesi kurulur, altın bakiyesinden düşülür ve kule menziline giren
-// rakibi otomatik hedefleyip ateş etmeye başlar.
+// Kule MODELLERİ ÜRETİLMEZ. Haritanın GLB'sinde zaten duran orijinal küçük
+// kuleler (mesh adı `...Tower...`) bulunur, boyutları haritanın kendi
+// ölçeğinde kalır ve asla büyütülmez. Oyuncu bir kulenin yanına geldiğinde
+// HUD'da "Kuleyi Aktif Et" düğmesi belirir; altın ödendiğinde YENİ bir kule
+// doğmaz — o ORİJİNAL kule pasif durumdan aktif duruma geçer. Aynı kuleye
+// tekrar altın ödenirse seviyesi artar (hasar + menzil + can).
 //
 // NEDEN AYRI MODÜL (React state'i yok): kule verisi hem 3B katmanın (bkz.
 // components/world/arena/DefenseTowers.tsx) hem de DOM HUD'ın (bkz.
 // moba/MobaHud.tsx) okuduğu TEK kaynaktır. İkisi de bu modülün singleton'ını
 // okur; kare başına React çizimi olmadığı için savaş alanı akıcı kalır.
+//
+// KULELERİ KİM BULUR: 3B katman haritayı tarar (isimden) ve bulduğu kuleleri
+// `setTowerPosts` ile buraya yazar. Sabit koordinat tablosu yoktur: harita
+// güncellenirse kuleler kendiliğinden doğru yerde bulunur.
+//
+// TAKIM AYRIMI: her kule oyuncunun başlangıç noktasına mı yoksa rakibin
+// başlangıcına mı yakın olduğuna göre "ally"/"enemy" olarak işaretlenir.
+// Oyuncu YALNIZ kendi tarafındaki kuleleri aktive edebilir; rakip kuleleri
+// dokunulmaz ve ateş etmez (bot düellosunda tarafsız kalır).
 //
 // ALTIN: kule alımı cüzdandan düşer. HUD bakiyeyi profil sorgusundan tazeler;
 // harcama Convex `profiles.spendCoins` ile SUNUCUYA yazılır (tutar orada
@@ -18,80 +29,96 @@
 // ATEŞ HATTI: kule kendi mermisini uydurmaz — sahnenin KENDİ mermi havuzuna
 // `owner: "player"` ile bir mermi bırakır (bkz. `runtime.projs`). Böylece
 // hasar, isabet tepkisi, uçan hasar yazısı, skor tablosu, can/ölüm akışı ve
-// ulti şarjı dâhil her şey mevcut savaş simülasyonundan geçer; kule ayrı bir
-// hasar yolu açmaz.
+// ulti şarjı dâhil her şey mevcut savaş simülasyonundan geçer.
 //
 // ZIRH & DAYANIKLILIK: kuleye gelen hasar `1 - TOWER_ARMOR` ile çarpılır, yani
-// zırh hasarın bir kısmını emer. Ayrıca kule, MENZİLİNDEKİ oyuncuya gelen
-// hasarı önce kendi canından karşılar (`towerGuardAbsorb`) — "yüksek canlı
-// kule" böylece oyun anlamı kazanır: tek atışta yıkılmaz, ama zamanla düşer.
-//
-// Görsel-only hiçbir şey yoktur: bu modül oyun mantığıdır, ancak çarpışma
-// ızgarasına/patika bulmaya dokunmaz (kule arsaları yürünebilir zemine
-// "snap"lenir, arsa dışına taşmaz).
+// zırh hasarın bir kısmını emer. Ayrıca aktif kule, MENZİLİNDEKİ oyuncuya
+// gelen hasarı önce kendi canından karşılar (`towerGuardAbsorb`). Kule canı
+// bittiğinde YIKILMAZ (haritanın orijinal mesh'ine dokunulmaz): pasif duruma
+// döner, yani korumayı ve ateşi keser — tekrar altınla aktive edilebilir.
 
-import type { BattleFx, BattleProj } from "@/components/world/arena/shared";
-import { S } from "@/components/world/arena/shared";
+import type { BattleProj } from "@/components/world/arena/shared";
 
-/** Kule fiyatı (oyun içi altın). Başlangıç cüzdanı 500 SP olduğu için taze
- * bir oyuncu iki kule kurabilir; üçüncü arsa için altın biriktirmesi gerekir. */
-export const TOWER_COST = 250;
-/** Kule canı — "tek atışta yıkılmaz" hedefiyle yüksek tutuldu. */
-export const TOWER_HP = 2600;
+/** Kule seviyesi: 0 = pasif (haritadaki orijinal hâli), 1-3 = aktif seviyeler. */
+export const MAX_TOWER_LEVEL = 3;
 /** Zırh: gelen hasarın bu oranı emilir (0.35 = %35 az hasar). */
 export const TOWER_ARMOR = 0.35;
-/** Kule menzili (px). Sahnenin mermi menzili 200px (MAX_RANGE_PX) olduğu
- *  için bunun ALTINDA kalır; yoksa mermi hedefe varmadan sönerdi. */
-export const TOWER_RANGE_PX = 175;
-/** Atışlar arası bekleme (sn). */
-export const TOWER_ATTACK_CD = 1.15;
-/** Kule mermisinin hasarı (sahne simülasyonu uygular). */
-export const TOWER_DAMAGE = 95;
-/** Merminin uçuş hızı (px/sn) — oyuncunun temel atışıyla aynı ailede. */
-export const TOWER_SHOT_SPEED = 420;
-/** Namlu çıkışının gövde dışına kayması (px). */
-const TOWER_MUZZLE_PX = 26;
-/** "Kule Satın Al" düğmesinin belirdiği yakınlık (px ≈ 2.7 birim). */
-export const TOWER_SITE_RADIUS_PX = 135;
-/** Kulenin, oyuncuya gelen hasarı emmesi için gereken yakınlık (px ≈ 3.6 birim). */
-export const TOWER_GUARD_RADIUS_PX = 180;
-/** Kule gövdesinin yarıçapı (px) — projeksiyon/çarpışma değil, yalnız mesafe. */
-export const TOWER_BODY_R = 26;
 
-/**
- * KULE ARSALARI — koridorun oyuncu tarafındaki üç nokta (arena birimi).
- *
- * Sabit tablo kullanılır çünkü haritanın KENDİ kuleleri zaten yerleşiktir;
- * arsalar onların üstüne değil, koridorun savunulabilir noktalarına oturur.
- * Yine de kesin konum, yükleme sırasında `nearestWalkable` ile YÜRÜNEBİLİR
- * zemine snap'lenir (bkz. DefenseTowers.tsx → ensureTowerSites): bir arsa
- * kayanın içine düşerse oyuncu oraya yürüyemez ve düğme asla açılmazdı.
- */
-export const TOWER_SITE_UNITS: ReadonlyArray<readonly [number, number]> = [
-  [6.4, 4.1],
-  [9.6, 6.7],
-  [12.9, 9.4],
-];
-
-export interface TowerSite {
-  id: number;
-  /** Arena px konumu (yürünebilir zemine snap'lenmiş olabilir). */
-  x: number;
-  y: number;
+export interface TowerLevelStats {
+  /** Menzil (px). Sahnenin mermi menzili 200px (MAX_RANGE_PX) olduğu için
+   *  bunun ALTINDA kalır; yoksa mermi hedefe varmadan sönerdi. */
+  range: number;
+  /** Kule mermisinin hasarı (sahne simülasyonu uygular). */
+  dmg: number;
+  /** Kule canı — "tek atışta yıkılmaz" hedefiyle yüksek tutuldu. */
+  hp: number;
 }
 
-export interface BattleTower {
+/**
+ * Seviye tablosu (tek kaynak). 0. satır PASİF hâldir: menzil/hasar yoktur.
+ * Seviye yükseldikçe hem ateş gücü hem dayanıklılık artar.
+ */
+export const TOWER_LEVELS: readonly TowerLevelStats[] = [
+  { range: 0, dmg: 0, hp: 0 },
+  { range: 152, dmg: 74, hp: 1300 },
+  { range: 170, dmg: 114, hp: 1900 },
+  { range: 186, dmg: 154, hp: 2600 },
+];
+
+/** Seviye atlama fiyatları: [0→1 aktifle, 1→2, 2→3]. */
+export const TOWER_UPGRADE_COST: readonly number[] = [250, 420, 640];
+
+/** Atışlar arası bekleme (sn). */
+export const TOWER_ATTACK_CD = 1.15;
+/** Merminin uçuş hızı (px/sn) — oyuncunun temel atışıyla aynı ailede. */
+export const TOWER_SHOT_SPEED = 430;
+/** Namlu çıkışının kule merkezinden kayması (px). */
+const TOWER_MUZZLE_PX = 22;
+/** "Kuleyi Aktif Et" düğmesinin belirdiği yakınlık (px = 3 birim). */
+export const TOWER_SITE_RADIUS_PX = 150;
+/** Aktif kulenin, oyuncuya gelen hasarı emmesi için gereken yakınlık (px ≈ 3.6 birim). */
+export const TOWER_GUARD_RADIUS_PX = 180;
+
+/** 3B katmanın bulduğu orijinal kule mesh'inin bu modüle verdiği veri. */
+export interface TowerPostSeed {
+  /** Kararlı kimlik: haritadaki mesh adından türetilir (aynı kule = aynı id). */
   id: string;
-  siteId: number;
+  /** Tespit edilen mesh adı (konsol logu / teşhis). */
+  name: string;
+  /** Arena px konumu (3B dünya konumu × S). */
   x: number;
   y: number;
+  /** Kulenin oturduğu zemin yüksekliği (dünya birimi) — halka buraya oturur. */
+  baseY: number;
+  /** Kulenin tepe noktası (dünya birimi) — ışıma çekirdeği buraya yerleşir. */
+  top: number;
+  /**
+   * Kulenin KENDİ yatay ayak izi (dünya birimi). Zemin halkası bu yarıçapa
+   * oturur — kule büyütülmez, halka da kulenin kendi ölçeğini aşmaz.
+   */
+  radius: number;
+  /** Kulenin kendi takım rengi (harita adından: kırmızı üs / mavi üs). */
+  color: string;
+  /** Oyuncunun tarafı mı? Yalnız "ally" kuleleri etkileşime açıktır. */
+  side: "ally" | "enemy";
+  /**
+   * Düğmenin belirdiği yakınlık (px). Normalde `TOWER_SITE_RADIUS_PX`, ama 3B
+   * katman kule çevresinin tamamen kapalı olduğunu görürse en yakın yürünebilir
+   * zemine kadar genişletir — aksi hâlde düğme hiç açılmazdı.
+   */
+  reachPx: number;
+}
+
+/** Kurulu kule durumu (seed + canlı simülasyon alanları). */
+export interface TowerPost extends TowerPostSeed {
+  level: number;
   hp: number;
   maxHp: number;
   /** Kalan ateş beklemesi (sn). */
   cd: number;
-  /** Gövdenin hedefe dönüş açısı (radyan, dünya XZ). */
+  /** Gövde/namlu yönü (radyan, dünya XZ). */
   yaw: number;
-  /** Ateş anındaki kısa parlama (sn). */
+  /** Ateş anındaki kısa parlama (sn) — 3B katman tepeden ışıma çizer. */
   flashT: number;
 }
 
@@ -102,7 +129,7 @@ export interface TowerHostile {
   hp: number;
 }
 
-/** Sahnenin kuleye verdiği bağlantılar (ref'ler — kopya yok). */
+/** Sahnenin kule sistemine verdiği bağlantılar (ref'ler — kopya yok). */
 export interface TowerRuntime {
   player: { current: { x: number; y: number; hp: number } };
   /**
@@ -113,8 +140,6 @@ export interface TowerRuntime {
   hostiles: () => readonly TowerHostile[];
   /** Sahnenin mermi havuzu: kule atışı buradan geçer. */
   projs: { current: BattleProj[] };
-  /** Sahnenin tek seferlik efekt havuzu (namlu halkası, hasar yazısı…). */
-  fxs: { current: BattleFx[] };
   /**
    * Harcamayı gerçek cüzdana yazar (Convex `profiles.spendCoins`).
    * Verilmezse alım yalnız bu maç için geçerli olur (maç sonunda bakiye
@@ -129,19 +154,21 @@ interface TowerState {
   wallet: number;
   /**
    * Sunucuya yazılmış ama profilde HENÜZ görünmeyen harcama (iyimser sayım).
-   * Kule alındığı an bakiyeden düşmüş gibi gösterilir; sunucu yanıtı cüzdanı
-   * düşürdüğü an bu sayaç temizlenir (bkz. setTowerWallet).
+   * Kule aktive edildiği an bakiyeden düşmüş gibi gösterilir; sunucu yanıtı
+   * cüzdanı düşürdüğü an bu sayaç temizlenir (bkz. setTowerWallet).
    */
   pending: number;
   /** Bir önceki cüzdan değeri — düşüşü yakalamak için. */
   lastWallet: number;
-  towers: BattleTower[];
-  sites: TowerSite[];
-  /** Arsalar yürünebilir zemine snap'lendi mi? */
-  sitesReady: boolean;
-  /** Oyuncunun yanında durduğu boş arsa (yoksa null). */
-  nearSiteId: number | null;
-  seq: number;
+  /** Haritadan bulunan kuleler (seviye/can durumuyla birlikte). */
+  posts: TowerPost[];
+  /** Harita taraması bitti mi? (3B katman bir kez yazar.) */
+  postsReady: boolean;
+  /** Oyuncunun yanında durduğu kule (yoksa null) — yalnız "ally" kuleleri. */
+  nearPostId: string | null;
+  /** Kuleleri "benim/rakip" diye ayıran başlangıç noktaları (px). */
+  allyAnchor: { x: number; y: number } | null;
+  enemyAnchor: { x: number; y: number } | null;
 }
 
 export const towerState: TowerState = {
@@ -149,17 +176,18 @@ export const towerState: TowerState = {
   wallet: 0,
   pending: 0,
   lastWallet: -1,
-  towers: [],
-  sites: [],
-  sitesReady: false,
-  nearSiteId: null,
-  seq: 0,
+  posts: [],
+  postsReady: false,
+  nearPostId: null,
+  allyAnchor: null,
+  enemyAnchor: null,
 };
 
 /** Sahne kule sistemini açar/kapatır (yalnız bot düellosu kullanır). */
 export function configureTowers(runtime: TowerRuntime | null): void {
-  // Yeni MAÇ (kapalı → açık) ekonomiyi sıfırdan başlatır; aynı maç içinde
-  // sahne yeniden bağlanırsa (yeni runtime nesnesi) harcama geçmişi korunur.
+  // Yeni MAÇ (kapalı → açık) her şeyi sıfırdan başlatır: seviyeler, canlar ve
+  // altın geçmişi. Aynı maç içinde sahne yeniden bağlanırsa (yeni runtime
+  // nesnesi) harcama geçmişi korunur.
   const fresh = runtime !== null && towerState.runtime === null;
   towerState.runtime = runtime;
   if (fresh) {
@@ -167,13 +195,23 @@ export function configureTowers(runtime: TowerRuntime | null): void {
     towerState.lastWallet = -1;
   }
   if (!runtime) {
-    towerState.towers = [];
-    towerState.sites = [];
-    towerState.sitesReady = false;
-    towerState.nearSiteId = null;
-    towerState.seq = 0;
+    towerState.posts = [];
+    towerState.postsReady = false;
+    towerState.nearPostId = null;
+    towerState.allyAnchor = null;
+    towerState.enemyAnchor = null;
     towerState.pending = 0;
     towerState.lastWallet = -1;
+    return;
+  }
+  // Takım ayrımı için başlangıç noktalarını bir kez yakala: kule, kimin
+  // spawn'ına daha yakınsa o tarafındır.
+  towerState.allyAnchor = { x: runtime.player.current.x, y: runtime.player.current.y };
+  if (!towerState.enemyAnchor) {
+    const hostiles = runtime.hostiles();
+    towerState.enemyAnchor = hostiles[0]
+      ? { x: hostiles[0].x, y: hostiles[0].y }
+      : { x: 1700 - runtime.player.current.x, y: 1100 - runtime.player.current.y };
   }
 }
 
@@ -197,72 +235,115 @@ export function towerGold(): number {
   return Math.max(0, towerState.wallet - towerState.pending);
 }
 
-/** Arsaları (yürünebilir zemine snap'lenmiş px konumlarıyla) kurar. */
-export function setTowerSites(positions: ReadonlyArray<{ x: number; y: number }>): void {
-  towerState.sites = positions.map((p, i) => ({ id: i, x: p.x, y: p.y }));
-  towerState.sitesReady = towerState.sites.length > 0;
+/**
+ * Haritadan bulunan orijinal kuleleri kaydeder (3B katman bir kez çağırır).
+ *
+ * Aynı id ile tekrar çağrılırsa SEVİYE ve CAN KORUNUR: yalnız konum/tepe
+ * bilgisi tazelenir. Yeni bulunan kuleler pasif (seviye 0) başlar.
+ */
+export function setTowerPosts(seeds: readonly TowerPostSeed[]): void {
+  const previous = new Map(towerState.posts.map((p) => [p.id, p]));
+  towerState.posts = seeds.map((seed) => {
+    const old = previous.get(seed.id);
+    if (!old) {
+      return {
+        ...seed,
+        level: 0,
+        hp: 0,
+        maxHp: TOWER_LEVELS[1].hp,
+        cd: 0,
+        yaw: 0,
+        flashT: 0,
+      };
+    }
+    return { ...old, ...seed, side: seed.side };
+  });
+  towerState.postsReady = towerState.posts.length > 0;
 }
 
-/** Arsa id'sinde kurulu kule var mı? */
-export function towerAtSite(siteId: number): BattleTower | null {
-  return towerState.towers.find((t) => t.siteId === siteId) ?? null;
+/** Yanında durulan (etkileşime açık) kule. */
+export function nearPost(): TowerPost | null {
+  const id = towerState.nearPostId;
+  if (id === null) return null;
+  return towerState.posts.find((p) => p.id === id) ?? null;
 }
 
-/** Kurulabilir (boş) arsa mı? */
-export function isSiteOpen(siteId: number | null): boolean {
-  if (siteId === null) return false;
-  return towerState.sites.some((s) => s.id === siteId) && !towerAtSite(siteId);
+/** Yanındaki kule yükseltilebilir mi (pasif veya en üst seviyenin altında)? */
+export function isNearTowerUpgradable(): boolean {
+  const post = nearPost();
+  return post !== null && post.level < MAX_TOWER_LEVEL;
+}
+
+/** Yanındaki kulenin bir sonraki seviyesinin fiyatı (yoksa null). */
+export function nextTowerCost(): number | null {
+  const post = nearPost();
+  if (!post || post.level >= MAX_TOWER_LEVEL) return null;
+  return TOWER_UPGRADE_COST[post.level];
+}
+
+/** Yanındaki kulenin bir sonraki seviyesinin istatistikleri (yoksa null). */
+export function nextTowerStats(): TowerLevelStats | null {
+  const post = nearPost();
+  if (!post || post.level >= MAX_TOWER_LEVEL) return null;
+  return TOWER_LEVELS[post.level + 1];
+}
+
+/** Seviyeye göre istatistikler (0 = pasif). */
+export function towerStats(level: number): TowerLevelStats {
+  return TOWER_LEVELS[Math.max(0, Math.min(MAX_TOWER_LEVEL, level))];
 }
 
 /**
- * Oyuncunun arsaya yakınlığını günceller. Düğmenin görünürlüğü TAMAMEN buna
- * bağlıdır: "arsanın yanına gel → düğme çıkar".
+ * Oyuncunun kulelere yakınlığını günceller. Düğmenin görünürlüğü TAMAMEN buna
+ * bağlıdır: "kulenin yanına gel → düğme çıkar".
  */
 export function updateTowerProximity(): void {
   const rt = towerState.runtime;
   if (!rt) return;
   const p = rt.player.current;
-  let best: number | null = null;
-  let bestDist = TOWER_SITE_RADIUS_PX;
-  for (const site of towerState.sites) {
-    if (towerAtSite(site.id)) continue;
-    const d = Math.hypot(site.x - p.x, site.y - p.y);
-    if (d <= bestDist) {
+  let best: string | null = null;
+  // Eşik kule başına değiştiği için başlangıç sonsuz: en yakın kule, kendi
+  // erişim yarıçapının içindeyse seçilir.
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const post of towerState.posts) {
+    if (post.side !== "ally") continue;
+    if (post.level >= MAX_TOWER_LEVEL) continue;
+    const d = Math.hypot(post.x - p.x, post.y - p.y);
+    // Kule çevresi tamamen kapalıysa erişim yarıçapi genişletilmiş olabilir
+    // (bkz. TowerPostSeed.reachPx); karşılaştırma her kule için ayrı yapılır.
+    const reach = Math.max(TOWER_SITE_RADIUS_PX, post.reachPx);
+    if (d <= reach && d <= bestDist) {
       bestDist = d;
-      best = site.id;
+      best = post.id;
     }
   }
-  towerState.nearSiteId = best;
+  towerState.nearPostId = best;
 }
 
 /**
- * Kuleyi satın alır: yalnız yakınındaki BOŞ arsaya kurulabilir ve altın
- * yetersizse hiçbir şey olmaz. `true` dönerse kule kurulmuştur.
+ * Yanındaki ORİJİNAL kuleyi aktive eder / seviyesini yükseltir. Yeni bir kule
+ * modeli yaratmaz; altın yetersizse hiçbir şey olmaz. `true` dönerse seviye
+ * artmıştır.
  */
-export function buyTower(): boolean {
-  const siteId = towerState.nearSiteId;
-  if (!isSiteOpen(siteId) || siteId === null) return false;
-  if (towerGold() < TOWER_COST) return false;
-  const site = towerState.sites.find((s) => s.id === siteId);
-  if (!site) return false;
-  towerState.pending += TOWER_COST;
-  towerState.seq += 1;
-  towerState.towers.push({
-    id: `tower-${towerState.seq}`,
-    siteId,
-    x: site.x,
-    y: site.y,
-    hp: TOWER_HP,
-    maxHp: TOWER_HP,
-    cd: TOWER_ATTACK_CD * 0.4,
-    yaw: 0,
-    flashT: 0.35,
-  });
-  towerState.nearSiteId = null;
+export function upgradeNearTower(): boolean {
+  const post = nearPost();
+  if (!post || post.level >= MAX_TOWER_LEVEL) return false;
+  const cost = TOWER_UPGRADE_COST[post.level];
+  if (towerGold() < cost) return false;
+  towerState.pending += cost;
+  post.level += 1;
+  const stats = towerStats(post.level);
+  // Seviye atlarken kule tam canla uyanır (ilk aktivasyonda ve her
+  // güçlendirmede): önceki seviyede aldığı hasar sıfırlanır.
+  post.hp = stats.hp;
+  post.maxHp = stats.hp;
+  post.cd = TOWER_ATTACK_CD * 0.3;
+  post.flashT = 0.4;
+  towerState.nearPostId = null;
   // Altın gerçekten düşülür: sunucu bakiyeyi doğrular ve profili günceller;
   // reaktif cüzdan düşünce `pending` temizlenir. Sunucu reddederse (misafir
-  // oyuncu / çevrimdışı test) kule kurulu kalır, harcama bu maçla sınırlı olur.
-  towerState.runtime?.spend?.(TOWER_COST, "tower");
+  // oyuncu / çevrimdışı test) seviye artmış kalır, harcama bu maçla sınırlı olur.
+  towerState.runtime?.spend?.(cost, "tower");
   return true;
 }
 
@@ -275,103 +356,78 @@ function turnToward(current: number, target: number, k: number): number {
 }
 
 /**
- * Kulelerin hedefleme + ateş döngüsü. Her kare sahne tarafından çağrılır.
+ * Aktif kulelerin hedefleme + ateş döngüsü. Her kare sahne tarafından çağrılır.
  *
  * Hedef: menzile giren EN YAKIN rakip. Sahne rakip listesini verir
  * (`runtime.hostiles()`): bot düellosunda rakip dövüşçü, minyon dalgaları
- * geldiğinde onlar da aynı listeden geçer — kule hedefi kendisi seçer, yani
- * kule "tek düşmana" bağlı değildir.
+ * geldiğinde onlar da aynı listeden geçer — kule hedefi kendisi seçer.
+ * Pasif (seviye 0) kuleler hiç ateş etmez.
  */
 export function stepTowers(dt: number): void {
   const rt = towerState.runtime;
   if (!rt) return;
   const hostiles = rt.hostiles().filter((h) => h.hp > 0);
 
-  for (let i = towerState.towers.length - 1; i >= 0; i--) {
-    const t = towerState.towers[i];
-    t.flashT = Math.max(0, t.flashT - dt);
-    t.cd = Math.max(0, t.cd - dt);
+  for (const post of towerState.posts) {
+    post.flashT = Math.max(0, post.flashT - dt);
+    if (post.level <= 0 || post.hp <= 0) continue;
+    post.cd = Math.max(0, post.cd - dt);
     if (hostiles.length === 0) continue;
+    const stats = towerStats(post.level);
 
     // Hedef seçimi: mesafe karar verir (minyon önce değil).
     let enemy: TowerHostile | null = null;
     let dist = Number.POSITIVE_INFINITY;
     for (const h of hostiles) {
-      const d = Math.hypot(h.x - t.x, h.y - t.y);
+      const d = Math.hypot(h.x - post.x, h.y - post.y);
       if (d < dist) {
         dist = d;
         enemy = h;
       }
     }
-    if (!enemy || dist > TOWER_RANGE_PX) continue;
+    if (!enemy || dist > stats.range || dist <= 0) continue;
 
-    const dx = enemy.x - t.x;
-    const dy = enemy.y - t.y;
-    if (dist <= 0) continue;
-
-    // Kilitlenme: gövde rakibe döner (yumuşak takip, anlık sıçrama yok).
-    t.yaw = turnToward(t.yaw, Math.atan2(dy, dx), 1 - Math.exp(-dt * 7));
-    if (t.cd > 0) continue;
+    const dx = enemy.x - post.x;
+    const dy = enemy.y - post.y;
+    // Kilitlenme: kule rakibe döner (yumuşak takip, anlık sıçrama yok).
+    post.yaw = turnToward(post.yaw, Math.atan2(dy, dx), 1 - Math.exp(-dt * 7));
+    if (post.cd > 0) continue;
 
     const ux = dx / dist;
     const uy = dy / dist;
     rt.projs.current.push({
       owner: "player",
-      x: t.x + ux * TOWER_MUZZLE_PX,
-      y: t.y + uy * TOWER_MUZZLE_PX,
+      x: post.x + ux * TOWER_MUZZLE_PX,
+      y: post.y + uy * TOWER_MUZZLE_PX,
       vx: ux * TOWER_SHOT_SPEED,
       vy: uy * TOWER_SHOT_SPEED,
-      dmg: TOWER_DAMAGE,
+      dmg: stats.dmg,
       r: 14,
       travelled: 0,
       pierce: false,
     });
-    // Namlu ağzı halkası: sahnenin kendi efekt havuzuna yazılır (ek katman yok).
-    rt.fxs.current.push({
-      kind: "ring",
-      x: t.x + ux * TOWER_MUZZLE_PX,
-      y: t.y + uy * TOWER_MUZZLE_PX,
-      ttl: 0.24,
-      maxTtl: 0.24,
-      grow: 34,
-      color: "#ffb066",
-    });
-    t.cd = TOWER_ATTACK_CD;
-    t.flashT = 0.18;
+    post.cd = TOWER_ATTACK_CD;
+    post.flashT = 0.18;
   }
 }
 
-/** Kuleyi hasarlandırır (zırh uygulanır); can biterse kule yıkılır. */
-function damageTower(tower: BattleTower, dmg: number): void {
+/**
+ * Kuleyi hasarlandırır (zırh uygulanır). Can biterse kule YIKILMAZ: haritanın
+ * orijinal mesh'ine dokunulmaz, kule pasif duruma (seviye 0) döner ve ateşi
+ * keser. Böylece "dayanıklılık" oyun anlamı kazanır ama harita bozulmaz.
+ */
+function damagePost(post: TowerPost, dmg: number): void {
   const paid = Math.max(0, dmg) * (1 - TOWER_ARMOR);
-  tower.hp = Math.max(0, tower.hp - paid);
-  const rt = towerState.runtime;
-  rt?.fxs.current.push({
-    kind: "text",
-    x: tower.x,
-    y: tower.y - 8,
-    ttl: 0.7,
-    maxTtl: 0.7,
-    text: `-${Math.round(paid)}`,
-    color: "#ffd0a8",
-  });
-  if (tower.hp > 0) return;
-  // Yıkım: kule listeden düşer, yerinde kısa bir patlama kalır.
-  rt?.fxs.current.push({
-    kind: "burst",
-    x: tower.x,
-    y: tower.y,
-    ttl: 0.5,
-    maxTtl: 0.5,
-    grow: 120,
-    color: "#ff8a3c",
-  });
-  const idx = towerState.towers.indexOf(tower);
-  if (idx >= 0) towerState.towers.splice(idx, 1);
+  post.hp = Math.max(0, post.hp - paid);
+  if (post.hp > 0) return;
+  post.level = 0;
+  post.hp = 0;
+  post.maxHp = 0;
+  post.cd = 0;
 }
 
 /**
- * Kule koruması: oyuncuya gelen hasarı, YAKINDAKİ bir kule karşılar.
+ * Kule koruması: oyuncuya gelen hasarı, YAKINDAKİ AKTİF bir kule karşılar.
  *
  * Dönüş: oyuncunun alacağı KALAN hasar. Kule hasarı emdiyse 0 döner (yani
  * oyuncu o vuruşta hasar almaz; hasarı kule, zırhıyla birlikte yer).
@@ -380,21 +436,17 @@ export function towerGuardAbsorb(dmg: number): number {
   const rt = towerState.runtime;
   if (!rt) return dmg;
   const p = rt.player.current;
-  let guard: BattleTower | null = null;
+  let guard: TowerPost | null = null;
   let bestDist = TOWER_GUARD_RADIUS_PX;
-  for (const t of towerState.towers) {
-    const d = Math.hypot(t.x - p.x, t.y - p.y);
+  for (const post of towerState.posts) {
+    if (post.level <= 0 || post.hp <= 0) continue;
+    const d = Math.hypot(post.x - p.x, post.y - p.y);
     if (d <= bestDist) {
       bestDist = d;
-      guard = t;
+      guard = post;
     }
   }
   if (!guard) return dmg;
-  damageTower(guard, dmg);
+  damagePost(guard, dmg);
   return 0;
-}
-
-/** Bir dünya noktasının koridor px'ine çevrilmesi (3B katman yardımcısı). */
-export function unitsToPx(x: number, y: number): [number, number] {
-  return [x * S, y * S];
 }

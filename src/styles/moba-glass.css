@@ -371,13 +371,15 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   🛡️ KULE SATIN ALMA İSTEMİ
+   🛡️ KULE AKTİVASYON İSTEMİ
 
-   Savaş alanındaki bir kule arsasına yaklaşan oyuncunun ekranında beliren
-   inşa düğmesi. Görünürlük ve "altın yetersiz" durumu HUD'un rAF döngüsünde
-   sınıf olarak yazılır (`moba-tower-wrap--on`, `moba-tower-buy--locked`),
-   yani kare başına React çizimi yoktur. Düğme yetenek barının ÜSTÜNDE
-   durur; arsadan uzaklaşınca yumuşakça kaybolur.
+   Oyuncu HARİTANIN KENDİ ORİJİNAL kulesine yaklaştığında ekranında beliren
+   düğme: "Kuleyi Aktif Et" (kule pasifken) / "Kuleyi Güçlendir" (seviye
+   atlarken). Yeni kule modeli kurulmaz — altın, haritadaki kulenin
+   aktifleşmesine / seviye atlamasına harcanır. Görünürlük, kilit ve etiket
+   HUD'un rAF döngüsünde yazılır (`moba-tower-wrap--on`,
+   `moba-tower-buy--locked`), yani kare başına React çizimi yoktur. Düğme
+   yetenek barının ÜSTÜNDE durur; kuleden uzaklaşınca yumuşakça kaybolur.
    ══════════════════════════════════════════════════════════════════════ */
 .moba-tower-wrap.moba-tower-wrap {
   position: absolute;

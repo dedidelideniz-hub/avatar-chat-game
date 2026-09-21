@@ -578,10 +578,12 @@ export default function BattleScene({
     [],
   );
 
-  // 🛡️ SAVUNMA KULELERİ: ekonomi/simülasyon köprüsü. Kule ATEŞ ETMEZ —
-  // sahnenin KENDİ mermi havuzuna `owner: "player"` mermisi bırakır, yani
-  // hasar/isabet/ölüm/skor akışı normal savaş hattından geçer. Kule sistemi
-  // KAPALIYSa (PvP) hiçbir şey değişmez.
+  // 🛡️ SAVUNMA KULELERİ: ekonomi/simülasyon köprüsü. Haritanın KENDİ orijinal
+  // kuleleri (3B katman isimden bulur) aktive edilir; YENİ kule modeli
+  // üretilmez. Kule ateş etmez — sahnenin KENDİ mermi havuzuna
+  // `owner: "player"` mermisi bırakır, yani hasar/isabet/ölüm/skor akışı
+  // normal savaş hattından geçer. Kule sistemi KAPALIysa (PvP) hiçbir şey
+  // değişmez.
   useEffect(() => {
     configureTowers({
       player,
@@ -592,9 +594,8 @@ export default function BattleScene({
         { x: bot.current.x, y: bot.current.y, hp: bot.current.hp },
       ],
       projs,
-      fxs,
       // Altın cüzdandan düşer (sunucu doğrular). Reddedilirse kule bu maç
-      // için kurulu kalır, harcama maç sonunda sıfırlanır. Test sahasında
+      // için aktif kalır, harcama maç sonunda sıfırlanır. Test sahasında
       // harcama hiç yazılmaz: gerçek bakiye tükenmesin.
       spend: sandbox
         ? undefined
