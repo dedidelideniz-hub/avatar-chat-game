@@ -35,6 +35,8 @@ import * as THREE from "three";
 import type { BattleFighter } from "@/components/world/Arena3D";
 // Yakın dövüş izi (kılıç ucunun rotası → hilal şerit).
 import { SwordArcTrail } from "./SwordArcTrail";
+// Darbe & toz katmanı (yumuşak puf + minik kıvılcım; kaba beyaz küre/flash yok).
+import { HitImpactVfx } from "./HitImpactVfx";
 
 /* ------------------------------- palet ---------------------------------- */
 
@@ -313,6 +315,9 @@ export function SlashTrail({
       {/* ⚔️ Yakın dövüş izi: kılıç ucunun rotası boyunca hilal şerit
           (dünya uzayında, additif, 0.15 sn). */}
       <SwordArcTrail fighter={fighter} />
+      {/* 💥 Darbe/toz efektleri: dövüşçü başına bir katman — darbeyi kim
+          yaptıysa efektin sahibi de odur (bot, oyuncu ve PvP rakibi dahil). */}
+      <HitImpactVfx fighter={fighter} />
     </>
   );
 }

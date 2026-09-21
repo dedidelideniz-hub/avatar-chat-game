@@ -34,6 +34,7 @@ import {
 } from "@/engine/RoyalMelee";
 import type { SkillHost } from "./SkillComponent";
 import type { VfxBus } from "./VFXComponent";
+import { pushHitImpact } from "./hitImpacts";
 import { aimedHit, resolveAim, type AimDir } from "./skillshot";
 
 /** Nişan/atış için ihtiyaç duyulan host dilimi (tam SkillHost fazlası olur). */
@@ -177,22 +178,25 @@ function strikePoint(
 }
 
 /**
- * Vuruş anının görsel patlaması (iki arena da aynı efekti görür).
+ * Vuruş anının görsel geri bildirimi (iki arena da aynı efekti görür).
  *
  * “Kesme”nin okunması için katmanlar birlikte çalışır:
  *  1. KILIÇ İZİ (kavis) — `arena/SwordArcTrail`: kılıç UCUNUN rotası örneklenip
  *     hilal şerit olarak çizilir. Düz `beam` şeritleri KALDIRILDI: kılıçtan
  *     bağımsız, ekrana fırlayan düz bantlar gibi okunuyorlardı.
- *  2. KIVILCIM — vuruş noktasında darbe parlaması + kıvılcım pufu.
+ *  2. DARBE (toz + kıvılcım) — `arena/HitImpactVfx`: vuruş noktasının
+ *     zemininde dağılan yumuşak toz pufları + 3-4 minik kıvılcım.
  *  3. SAVURMA HALKASI — saldıranın ayağında kısa yay halkası (gövde kilitlenip
  *     savurduğu için “ağırlık” hissi).
  *
- * Palet: iz katmanının mavi/beyaz ışık dalgasıyla aynı dil (soğuk ışık).
+ * KALDIRILANLAR (görüşü kapatıyordu): parlak ~2 birimlik beyaz küre
+ * (`vfx.burst`), 2.4 birim yükselen iri duman bloğu (`vfx.smoke`), mermi
+ * vuruşu efekti (`vfx.coldFlameImpact`) ve tüm ekranı ışıtan bloom nabzı
+ * (`vfx.flash`). Darbe artık yalnız kendi yerini boyar.
  */
-const MELEE_HOT = "#eaf7ff";
 const MELEE_COOL = "#4aa8ff";
 
-/** Vuruş anının görsel patlaması (iki arena da aynı efekti görür). */
+/** Vuruş anının görsel geri bildirimi (iki arena da aynı efekti görür). */
 function emitMeleeStrikeFx(
   vfx: VfxBus,
   caster: BattleFighter,
@@ -206,33 +210,30 @@ function emitMeleeStrikeFx(
   // yükseklik/kaydırma ofseti yok — onlar efekti kılıçtan koparıyordu).
   const { x, y } = strikePoint(caster, enemy, dir, hit);
 
+  // Darbe katmanı: silah değdiyse kıvılcım + zemin tozu, ıskada yalnız toz.
+  pushHitImpact(caster, {
+    kind: "strike",
+    x,
+    y,
+    hit,
+    heavy: finish,
+    t: performance.now(),
+  });
+
   if (finish) {
     // ── İMPALE (bitirici): bıçak gövdeye GİRER ──
-    // İleri düz şerit YOK: bıçağın ileri sürülmesi ve kesme kavisi iz
-    // katmanında (kılıç ucunun rotasından) okunur. Burada darbe geri
-    // bildirimi kalır: kan + kıvılcım + parlama.
+    // Kan (okunurluk) ve savurma halkası kalır; patlama/parlama katmanı yok.
     if (hit) {
       vfx.blood(x, y, 98);
       vfx.blood(x - dir.x * 26, y - dir.y * 26, 70);
     }
-    vfx.burst(x, y, 96, MELEE_HOT, 0.32);
-    vfx.smoke(x, y, 5, 95);
-    if (hit) vfx.coldFlameImpact(x, y, 82);
-    vfx.flash(0.4);
     vfx.ring(caster.x, caster.y, 96, MELEE_COOL, 0.3);
     return;
   }
 
-  // Çapraz kesiş: kavis iz katmanından gelir; burada yalnız vuruş kıvılcımı,
-  // hafif duman ve savurma halkası kalır.
-  vfx.burst(x, y, 66, MELEE_HOT, 0.3);
-  vfx.smoke(x, y, 3, 58);
-  if (hit) {
-    vfx.coldFlameImpact(x, y, 54);
-    // Kesiş de kan bırakır (daha hafif) — çıpanın kendisinden.
-    vfx.blood(x, y, 58);
-  }
-  vfx.flash(0.18);
+  // Çapraz kesiş: kavis iz + darbe katmanından okunur; burada yalnız kan ve
+  // savurma halkası kalır.
+  if (hit) vfx.blood(x, y, 58);
   vfx.ring(caster.x, caster.y, 64, MELEE_COOL, 0.28);
 }
 
@@ -280,7 +281,16 @@ export function stepMelee(
       );
       // Kayma/hop tozu: karakter yerden kesilip üstüne süzülüyormuş gibi.
       // İz, hareket yönünün TERSİNE düşer (kuzeye sabitlenmiş ofset yok).
-      opts.vfx.smoke(caster.x - (dx / d) * 14, caster.y - (dy / d) * 14, 2, 40);
+      // Yumuşak toz katmanından gelir (iri beyaz duman bloğu değil); görsel
+      // katman aynı karede tekrarlanan isteği kendi kısar.
+      pushHitImpact(caster, {
+        kind: "dust",
+        x: caster.x - (dx / d) * 14,
+        y: caster.y - (dy / d) * 14,
+        hit: false,
+        heavy: false,
+        t: performance.now(),
+      });
     }
   }
 

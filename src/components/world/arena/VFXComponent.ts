@@ -16,7 +16,10 @@
 // ile aynı desen: yazan taraf efekt katmanı, okuyan taraf render döngüsü.
 // Böylece efekt başına hiçbir React yeniden çizimi olmaz.
 import type { BattleFx } from "./shared";
-import { pushColdFlameFx, pushColdFlameImpact } from "./shared";
+import { COLD_FLAME, pushColdFlameFx } from "./shared";
+// Darbe katmanı (yumuşak toz + minik kıvılcım): iri duman bloğu ve bloom
+// nabzı yerine geçer.
+import { pushHitImpact } from "./hitImpacts";
 
 /* ---------------------------------- bloom --------------------------------- */
 
@@ -144,8 +147,26 @@ export function createVfxBus(sink: (fx: BattleFx) => void): VfxBus {
       pulseBloom(0.32);
     },
     coldFlameImpact: (x, y, size = 56) => {
-      pushColdFlameImpact(sink, x, y, size);
-      pulseBloom(0.25);
+      // Mermi çarpması: İNCE büyü halkası (merminin kimliği) + yumuşak darbe
+      // katmanı. Eski iri, 2.4 birim yükselen duman bloğu ve onunla gelen
+      // bloom nabzı KALDIRILDI — temas noktası artık görüşü kapatmaz.
+      sink({
+        kind: "ring",
+        x,
+        y,
+        ttl: 0.3,
+        maxTtl: 0.3,
+        grow: size * 0.7,
+        color: COLD_FLAME.ring,
+      });
+      pushHitImpact(null, {
+        kind: "strike",
+        x,
+        y,
+        hit: true,
+        heavy: size > 58,
+        t: performance.now(),
+      });
     },
 
     flash: pulseBloom,

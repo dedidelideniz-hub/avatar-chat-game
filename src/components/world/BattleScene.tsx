@@ -71,7 +71,9 @@ import {
 // ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
 // 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
-import { MUZZLE, S } from "@/components/world/arena/shared";
+import { COLD_FLAME, MUZZLE, S } from "@/components/world/arena/shared";
+// Darbe geri bildirimi: patlama/bloom yerine yumuşak toz + kıvılcım kuyruğu.
+import { pushHitImpact } from "@/components/world/arena/hitImpacts";
 import {
   DUEL_LEAVE_EVENT,
   useAndroidBattleOrientation,
@@ -720,8 +722,9 @@ export default function BattleScene({
     } else {
       playSound("hit", { volume: 0.85, rate: 0.95 + Math.random() * 0.25 });
     }
-    // Vuruş ışığı: bloom parçacıklarla aynı karede yükselir.
-    vfx.flash(0.3);
+    // Vuruş başına tam ekran bloom nabzı KALDIRILDI: her darbede ekranı
+    // ışıtan sert beyaz parlama görüşü kapatıyordu. Darbe geri bildirimi
+    // artık yerel: `arena/HitImpactVfx` (toz + kıvılcım) + sarsıntı.
     // GIF-style feedback: arena shake on every hit.
     const arenaEl = arenaRef.current;
     if (arenaEl) {
@@ -1360,7 +1363,16 @@ export default function BattleScene({
           // sweep going, so they reposition instead of relying on shots
           // passing through cover.
           playSound("thud", { volume: 0.3, rate: 0.7 + Math.random() * 0.4 });
-          vfx.coldFlameImpact(nx, ny, 46);
+          // Engele çarpma: yalnızca küçük bir toz pufu (iri duman bloğu ve
+          // parlak küre kaldırıldı; efekt atıcının kendi katmanından çıkar).
+          pushHitImpact(pr.owner === "player" ? player.current : bot.current, {
+            kind: "dust",
+            x: nx,
+            y: ny,
+            hit: false,
+            heavy: false,
+            t: performance.now(),
+          });
           projs.current.splice(i, 1);
           continue;
         }

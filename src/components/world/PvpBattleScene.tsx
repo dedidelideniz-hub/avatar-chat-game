@@ -62,6 +62,8 @@ import {
 } from "@/components/world/arena/MeleeComponent";
 // ✨ VFXComponent — efekt veri yolu + bloom senkronlu ışık patlamaları.
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
+// Darbe geri bildirimi: patlama/bloom yerine yumuşak toz + kıvılcım kuyruğu.
+import { pushHitImpact } from "@/components/world/arena/hitImpacts";
 // 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
 import { MUZZLE, S } from "@/components/world/arena/shared";
 // 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik kilit.
@@ -651,11 +653,18 @@ export default function PvpBattleScene({
         b.vy = ev.vy;
         break;
       case "meleeHit":
-        // Rakibin kesişi: vuruş efekti + hasar (atıcı tarafı belirledi).
+        // Rakibin kesişi: vuruş geri bildirimi + hasar (atıcı tarafı belirledi).
+        // Efekt, saldıranın kendi katmanından çıkar (kaba beyaz küre, iri duman
+        // bloğu ve tam ekran bloom parlaması yerine yumuşak toz + kıvılcım).
         if (ev.hit) {
-          vfx.coldFlameImpact(b.x, b.y - 40, 56);
-          vfx.burst(b.x, b.y - 40, 90, "#fbbf24", 0.3);
-          vfx.flash(0.25);
+          pushHitImpact(b, {
+            kind: "strike",
+            x: b.x,
+            y: b.y,
+            hit: true,
+            heavy: true,
+            t: performance.now(),
+          });
           damageMe(ev.dmg);
         }
         break;
