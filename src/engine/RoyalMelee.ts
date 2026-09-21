@@ -34,12 +34,16 @@ export const MELEE_LUNGE_DUR = 0.95;
 /**
  * Yeniden kullanma bekleme süresi (sn) — yakın dövüş de diğer yetenekler gibi
  * "süre ile dolar, %100'de kullanılır" kuralına uyar (bkz. SkillComponent →
- * şarj tablosu). Salınım bittiğinde halka hemen dolu görünmesin diye süre,
- * en uzun salınımdan (üstüne atlamalı bitirici = `MELEE_LUNGE_DUR`) biraz
- * uzundur. Eski 0.42 sn neredeyse anında doluyordu (halka hep dolu okunuyordu);
- * yeni değer istenen "yavaş" dolumun karşılığıdır (~%40 hız).
+ * şarj tablosu).
+ *
+ * Süre OKUNUR olmak zorunda: eski 0.42 sn ve 1.05 sn değerleri düz vuruşun
+ * kendi bekleme süresine (0.85 sn) yakındı, yani halka neredeyse her an dolu
+ * görünüyor ve buton "süresiz" okunuyordu. Şimdiki değer, halkanın boştan
+ * doluya görünür biçimde ilerlediği gerçek bir bekleme süresidir (4 sn).
+ * Salınım (en fazla `MELEE_LUNGE_DUR` = 0.95 sn) bu sürenin içinde akar,
+ * yani halka kullanımdan itibaren kesintisiz olarak %0 → %100 ilerler.
  */
-export const MELEE_CD = 1.05;
+export const MELEE_CD = 4;
 /**
  * Kesme menzili (px). Kılıcın GERÇEK erişimine göre sınırlıdır: bıçak ucu
  * gövde merkezinden ~68 px (sap+kol), rakip yarıçapı ~22 px → kılıç ancak
