@@ -128,10 +128,11 @@ function currentDir(f: BattleFighter): AimDir {
 const ANCHOR_MAX_AGE_MS = 120;
 /**
  * Yedek erişim (px) — çıpa ölçülemezse (ör. kemik katmanı bu karede yazmadı):
- * kılıç 0.85 birim (42.5 px) + avuç/omuzun öne uzanması ~0.5 birim.
- * Kural menzili (155) DEĞİL: yedek de kılıcın gerçekten ulaştığı yeri temsil
- * eder, yoksa efekt yine kılıçtan kopar. SlashTrail yayının dış yarıçapı da
- * aynı ölçekte (~0.9–1.1 birim) — iki katman aynı mesafeyi anlatır.
+ * kılıç 0.85 birim (42.5 px) + avuç/omuzun öne uzanması ~0.5 birim. Yedek de
+ * kılıcın GERÇEKTEN ulaştığı yeri temsil eder ve kural menzili
+ * (`MELEE_RANGE_PX` = 96 px, bıçak ucu 68 + rakip yarıçapı ~22) ile aynı
+ * ölçektedir — efekt ile kural aynı mesafeyi anlatır, yoksa efekt kılıçtan
+ * kopar. SlashTrail yayının dış yarıçapı da aynı ailededir.
  */
 const MELEE_BLADE_REACH_PX = 68;
 /**
@@ -272,13 +273,13 @@ export function stepMelee(
     const dx = enemy.x - caster.x;
     const dy = enemy.y - caster.y;
     const d = Math.hypot(dx, dy) || 1;
-    if (d > MELEE_LEAP_MIN_PX * 0.55) {
-      opts.leapMove(
-        caster,
-        (dx / d) * MELEE_LEAP_SPEED * dt,
-        (dy / d) * MELEE_LEAP_SPEED * dt,
-        dt,
-      );
+    // DURAKLAMA (standoff): karakter rakibin YANINDA durur, üstünden geçmez.
+    // Adım kalan boşlukla sınırlanır; menzil kısaldığı için hop yalnızca son
+    // boşluğu kapatır (uzun atlama yok, hedefin içine gömülme yok).
+    const standoff = MELEE_LEAP_MIN_PX * 0.55;
+    const step = Math.min(MELEE_LEAP_SPEED * dt, Math.max(0, d - standoff));
+    if (step > 0.01) {
+      opts.leapMove(caster, (dx / d) * step, (dy / d) * step, dt);
       // Kayma/hop tozu: karakter yerden kesilip üstüne süzülüyormuş gibi.
       // İz, hareket yönünün TERSİNE düşer (kuzeye sabitlenmiş ofset yok).
       // Yumuşak toz katmanından gelir (iri beyaz duman bloğu değil); görsel

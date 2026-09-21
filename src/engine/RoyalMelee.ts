@@ -33,14 +33,27 @@ export const MELEE_DUR = 0.72;
 export const MELEE_LUNGE_DUR = 0.95;
 /** Yeniden kullanma bekleme süresi (sn). */
 export const MELEE_CD = 0.42;
-/** Kesme menzili (px) — MAX_RANGE'in (200) içinde kısa yakın dövüş. */
-export const MELEE_RANGE_PX = 155;
-/** Rakip bu mesafe içindeyse üstüne atlanır (px). */
-export const MELEE_LUNGE_RANGE_PX = 230;
-/** Zaten dibindeyse atlama yapılmaz (px). */
-export const MELEE_LEAP_MIN_PX = 58;
+/**
+ * Kesme menzili (px). Kılıcın GERÇEK erişimine göre sınırlıdır: bıçak ucu
+ * gövde merkezinden ~68 px (sap+kol), rakip yarıçapı ~22 px → kılıç ancak
+ * ~90 px'lik merkez-mesafede rakibin GÖVDESİNE değer. Eski 155 px değeri
+ * kılıcın ulaşamadığı mesafeden vuruyordu ("uzaktan kılıç" hatası); 96 px ile
+ * efekt (kılıç ucu) ile kural artık aynı mesafeyi anlatır.
+ */
+export const MELEE_RANGE_PX = 96;
+/**
+ * Rakip bu mesafe içindeyse nişan ona kilitlenir ve üstüne atlanır (px).
+ * Kesme menzilinin biraz üstünde: yalnızca SON adımı kapatmak için hop atılır
+ * (eski 230 px "uzaktan atlama" hissini veriyordu — artık rakip gerçekten
+ * dibindeyken kilitlenir, uzaktakinin peşinden gitmez).
+ */
+export const MELEE_LUNGE_RANGE_PX = 112;
+/** Zaten dibindeyse atlama yapılmaz (px). Temas mesafesi (2×22 px) üstünde. */
+export const MELEE_LEAP_MIN_PX = 52;
 /** Atlama hızı (px/sn) — dövüşçü fiziğiyle (çarpışma kontrollü) sürülür.
- *  ~0.18 sn'lik pencerede ~160 px yol: menzil içindeki rakibin üstüne varır. */
+ *  Atlama penceresi (~0.21 sn) bu hızda ~188 px yol alabilir; `stepMelee`
+ *  adımı kalan boşlukla sınırlar, yani karakter rakibin YANINDA durur (üstünden
+ *  geçip savrulmaz). Menzil kısaldığı için hop artık yalnızca son boşluğu kapatır. */
 export const MELEE_LEAP_SPEED = 900;
 /** Her kesme fazındaki küçük ÖNE ADIM hızı (px/sn). Karakter yerinde
  *  savurmaz: her darbe biraz yakınlaşır (yakın dövüşçü hissi). */
