@@ -35,6 +35,7 @@
 // bırakır (`ENVIRONMENT_CONTAINER_RE` → tree|bush|foliage|grass|plant...),
 // yani büyüyen çim ne yürünebilirliği değiştirir ne görünmez duvar üretir.
 import * as THREE from "three";
+import { ARENA_D, ARENA_W } from "./arena/shared";
 
 /** Dekoratif çevre objelerinin yeni ölçeği — istenen %40-50 küçültme. */
 export const DECOR_SCALE = 0.52;
@@ -73,9 +74,30 @@ export interface FoliageScale {
  * çim belirgin şekilde kabarır ama karakteri yutmaz.
  */
 export const FOLIAGE_SCALE: { grass: FoliageScale; bush: FoliageScale } = {
-  grass: { xz: 1.28, y: 1.5 },
-  bush: { xz: 1.16, y: 1.26 },
+  grass: { xz: 1.7, y: 2.4 },
+  bush: { xz: 1.5, y: 2.0 },
 };
+
+/**
+ * Yükseklik TAVANI (arena birimi; savaşçı ≈1.5 birim). Çim karakterin göğsüne
+ * kadar uzayabilir ama üstünü kapatamaz: 1.1 ≈ karakterin 3/4'ü. Tavana
+ * dayanan küme daha fazla büyümez, kısa kalanlar ise tam büyür — yani ayar
+ * ne olursa olsun görüş açıklığı korunur.
+ *
+ * Tavan da ±%8 sapmaya bağlıdır (`foliageJitter`): hepsi aynı boya sabitlenip
+ * "budanmış çit" görünümü oluşmasın diye çim kümeleri 1.01–1.19 arasında
+ * dağılır, hiçbiri bandı aşmaz.
+ */
+export const FOLIAGE_MAX_H = { grass: 1.1, bush: 0.8 };
+
+/** Rüzgârın paylaşılan zaman uniform'u — tek sürücü ilerletir. */
+export const FOLIAGE_WIND = { value: 0 };
+
+/**
+ * Salınım genliği (0 = tamamen sabit). `prefers-reduced-motion` açıkken 0'a
+ * çekilir: hareket hassasiyeti olan oyuncu için çim salınmaz, dik durur.
+ */
+export const FOLIAGE_WIND_AMP = { value: 1 };
 
 // ⚠️ NEDEN TOKEN, NEDEN REGEX DEĞİL: GLB adları PascalCase'dir ve ayraçsız
 // birleşir (`PGD_M_20JungleGrassGroup`, `PGD_M_YeQuTreeD`). Düz bir
@@ -129,13 +151,17 @@ function isFoliage(node: THREE.Object3D): boolean {
  * Her çim kümesi isminden aynı sapmayı aldığı için tek tip "şişmiş" görünüm
  * oluşmaz, ama kareler arasında titreme de olmaz (Math.random DEĞİL).
  */
-function foliageJitter(name: string): number {
+function hash32(text: string): number {
   let hash = 2166136261;
-  for (let i = 0; i < name.length; i++) {
-    hash ^= name.charCodeAt(i);
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
     hash = Math.imul(hash, 16777619);
   }
-  return 0.92 + ((hash >>> 0) % 1000) * 0.00016;
+  return hash >>> 0;
+}
+
+function foliageJitter(name: string): number {
+  return 0.92 + (hash32(name) % 1000) * 0.00016;
 }
 
 /**
@@ -145,14 +171,148 @@ function foliageJitter(name: string): number {
  *
  * Dönüş: kaç bitki grubu / kaç mesh ölçeklendi (çim ve çalı ayrı sayılır).
  */
-export function scaleMapFoliage(scene: THREE.Object3D): {
+type ShaderParams = Parameters<THREE.Material["onBeforeCompile"]>[0];
+type ShaderContext = Parameters<THREE.Material["onBeforeCompile"]>[1];
+
+const WIND_VERT_HEAD = `
+attribute float aWindWeight;
+attribute float aWindPhase;
+uniform float uWindTime;
+uniform float uWindAmp;
+`;
+
+const WIND_VERT_BODY = `
+  // 🌬️ RÜZGÂR: sapma, tepe noktasının TABANDAN yüksekliğiyle orantılıdır
+  // (aWindWeight = yerel taban-üstü yükseklik) → kök sabit kalır, uçlar
+  // salınır; oran her ölçekte korunur, birim varsayımı gerekmez. İki frekans
+  // üst üste biner (yavaş esinti + hızlı titreşim), her kümenin kendi fazı
+  // olduğu için tarlada ilerleyen bir dalga okunur — tek tip mekanik sallanma
+  // değil. Taban noktaları (ağırlık = 0) hiç kıpırdamaz, yere basmaya devam eder.
+  {
+    float windGust = sin( uWindTime * 1.35 + aWindPhase );
+    float windFlutter = sin( uWindTime * 3.1 + aWindPhase * 1.7 );
+    float windBend = aWindWeight * uWindAmp;
+    transformed.x += windBend * ( windGust * 0.13 + windFlutter * 0.045 );
+    transformed.z += windBend * ( windGust * 0.075 - windFlutter * 0.02 );
+  }
+`;
+
+/**
+ * Harita `terrain` kutusundan arena ölçeğini türetir — `BattleMapModel`'in fit
+ * kuralının birebir aynısı. Böylece bitki yüksekliği "arena birimi" cinsinden
+ * (savaşçı ≈1.5) ölçülüp tavana vurulabilir. 0 → ölçüm yapılamadı.
+ */
+function arenaFitScale(scene: THREE.Object3D): number {
+  const box = new THREE.Box3();
+  const meshBox = new THREE.Box3();
+  let found = false;
+  scene.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh || !/terrain/i.test(mesh.name || "")) return;
+    meshBox.setFromObject(mesh);
+    if (meshBox.isEmpty()) return;
+    box.union(meshBox);
+    found = true;
+  });
+  if (!found) return 0;
+  const size = box.getSize(new THREE.Vector3());
+  if (size.x <= 1 || size.z <= 1) return 0;
+  return Math.min((ARENA_W - 0.3) / size.x, (ARENA_D - 0.3) / size.z);
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/**
+ * Rüzgâr ağırlığını (taban-üstü yerel yükseklik) ve küme fazını geometriye
+ * yazar. Yerel uzayda çalışır: 0 = taban (sabit), büyük değer = uç (serbest).
+ * Faz, küme adından geldiği için her küme farklı anda salınır.
+ */
+function bakeWindAttributes(geo: THREE.BufferGeometry, seed: string): void {
+  const pos = geo.getAttribute("position") as THREE.BufferAttribute | undefined;
+  if (!pos) return;
+  if (!geo.boundingBox) geo.computeBoundingBox();
+  const box = geo.boundingBox;
+  if (!box) return;
+  if (!(box.max.y - box.min.y > 1e-6)) return;
+  const count = pos.count;
+  const weights = new Float32Array(count);
+  const phases = new Float32Array(count);
+  for (let i = 0; i < count; i++) weights[i] = pos.getY(i) - box.min.y;
+  phases.fill((hash32(seed) % 997) * (Math.PI * 2 / 997));
+  geo.setAttribute("aWindWeight", new THREE.BufferAttribute(weights, 1));
+  geo.setAttribute("aWindPhase", new THREE.BufferAttribute(phases, 1));
+}
+
+/** Tek bir materyale rüzgâr yaması yazar (paylaşılan materyal bir kez). */
+function patchWindMaterial(material: THREE.Material): boolean {
+  if (material.userData.vaelosWind) return false;
+  material.userData.vaelosWind = true;
+  const prev = material.onBeforeCompile;
+  const prevKey = material.customProgramCacheKey;
+  material.onBeforeCompile = (shader: ShaderParams, renderer: ShaderContext) => {
+    // ÖNCE canlı palet yaması (MapVividPass) çalışsın: onBeforeCompile'ın
+    // üzerine doğrudan yazmak onu silerdi, bu yüzden zincirlenir.
+    prev.call(material, shader, renderer);
+    shader.uniforms.uWindTime = FOLIAGE_WIND;
+    shader.uniforms.uWindAmp = FOLIAGE_WIND_AMP;
+    shader.vertexShader = WIND_VERT_HEAD + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      "#include <begin_vertex>" + WIND_VERT_BODY,
+    );
+  };
+  // Önbellek anahtarı: aynı canlı palet tonu + rüzgâr → aynı program. İki çim
+  // materyali programı paylaşır, materyal başına ayrı derleme olmaz.
+  material.customProgramCacheKey = () => `${prevKey.call(material)}|vaelos-wind`;
+  material.needsUpdate = true;
+  return true;
+}
+
+function patchWindOnMesh(mesh: THREE.Mesh): boolean {
+  const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  let patched = false;
+  for (const entry of list) {
+    if (entry && patchWindMaterial(entry)) patched = true;
+  }
+  return patched;
+}
+
+/**
+ * Haritadaki çim/çalı mesh'lerini doğrudan büyütür — GLB yüklendikten sonra,
+ * dekor küçültmesinden SONRA çalışır (`MapFoliagePass`, MapPalette'ten sonra
+ * render edilir; layout effect'ler ağaç sırasına göre işler). Ayrıca rüzgâr
+ * salınımı için vertex verisini ve materyal yamasını yazar.
+ */
+export interface FoliageResult {
   groups: number;
   meshes: number;
   grass: number;
   bush: number;
-} {
+  /** Rüzgâr yaması yazılan materyal sayısı (paylaşılan materyal bir kez). */
+  windMaterials: number;
+  /** Yükseklik tavanına takılıp kısılan küme sayısı. */
+  capped: number;
+  /** Arena biriminde ortanca bitki yüksekliği (önce → sonra). */
+  heightBefore: number;
+  heightAfter: number;
+}
+
+export function scaleMapFoliage(scene: THREE.Object3D): FoliageResult {
   if (scene.userData.mapFoliageScaled) {
-    return { groups: 0, meshes: 0, grass: 0, bush: 0 };
+    return {
+      groups: 0,
+      meshes: 0,
+      grass: 0,
+      bush: 0,
+      windMaterials: 0,
+      capped: 0,
+      heightBefore: 0,
+      heightAfter: 0,
+    };
   }
   scene.userData.mapFoliageScaled = true;
   scene.updateMatrixWorld(true);
@@ -177,6 +337,13 @@ export function scaleMapFoliage(scene: THREE.Object3D): {
   let meshes = 0;
   let grass = 0;
   let bush = 0;
+  let windMaterials = 0;
+  let capped = 0;
+  // Yükseklik ölçümü arena biriminde yapılır (savaşçı ≈1.5 birim): ayar
+  // "kaç kat" değil "ne kadar yüksek" sorusuna bağlanır.
+  const fit = arenaFitScale(scene);
+  const before: number[] = [];
+  const after: number[] = [];
 
   for (const prop of props) {
     prop.updateWorldMatrix(true, true);
@@ -189,13 +356,34 @@ export function scaleMapFoliage(scene: THREE.Object3D): {
     const profile = isGrass ? FOLIAGE_SCALE.grass : FOLIAGE_SCALE.bush;
     const jitter = foliageJitter(prop.name);
     const sxz = profile.xz * jitter;
-    const sy = profile.y * jitter;
+    // YÜKSEKLİK TAVANI: küme, arena biriminde tavana kadar büyütülür. Çim
+    // karakterin üstünü kapatmasın (savaşçı ≈1.5 birim, tavan 1.1), kısa
+    // kalan çalı ise tam büyüsün. Tavana dayanan küme bir daha büyümez.
+    let sy = profile.y * jitter;
+    const cap =
+      (isGrass ? FOLIAGE_MAX_H.grass : FOLIAGE_MAX_H.bush) * jitter;
+    const heightBefore = fit > 0 ? (propBox.max.y - propBox.min.y) * fit : 0;
+    if (heightBefore > 1e-4) {
+      const allowed = Math.max(1, cap / heightBefore);
+      if (allowed < sy) {
+        sy = allowed;
+        capped += 1;
+      }
+      before.push(heightBefore);
+      after.push(heightBefore * sy);
+    }
     if (isGrass) grass += 1;
     else bush += 1;
 
     prop.traverse((node) => {
       const mesh = node as THREE.Mesh;
       if (!mesh.isMesh || !mesh.geometry) return;
+      // 🌬️ RÜZGÂR VERİSİ + MATERYAL YAMASI ölçeklemeden ÖNCE yazılır ve
+      // yapısal adı yüzünden ölçeklenmeyen parçalar için de gerekir: aynı
+      // paylaşılan materyali kullanan bir mesh ağırlıksız kalırsa eksik
+      // vertex attribute ile çizilirdi.
+      bakeWindAttributes(mesh.geometry as THREE.BufferGeometry, prop.name);
+      if (patchWindOnMesh(mesh)) windMaterials += 1;
       // Küme içinde kalan yapısal parçalara (duvar, zemin, kule) dokunulmaz.
       if (mesh.name && KEEP_RE.test(mesh.name)) return;
       meshBox.setFromObject(mesh);
@@ -233,7 +421,16 @@ export function scaleMapFoliage(scene: THREE.Object3D): {
     });
   }
 
-  return { groups: props.length, meshes, grass, bush };
+  return {
+    groups: props.length,
+    meshes,
+    grass,
+    bush,
+    windMaterials,
+    capped,
+    heightBefore: median(before),
+    heightAfter: median(after),
+  };
 }
 
 /**
