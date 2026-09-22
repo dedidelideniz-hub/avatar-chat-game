@@ -15,6 +15,7 @@
 // butona `is-aiming` sınıfı elle eklenir (CSS tarafında parlar).
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
+import { playSound } from "@/lib/sounds";
 import { aimState } from "./arena/skillshot";
 // Düğmelerin görünüm işaretleri (hazır / hangi yetenek): ikonlar CSS'te bu
 // işaretlere göre çizilir. Sahne JSX'i araç penceresinin dışında kaldığı için
@@ -101,8 +102,22 @@ export function useAbilityAim(
       const k: AbilityKind = btn.classList.contains("battle-hud-ult")
         ? "ult"
         : "super";
-      // Dolmamış yetenekte nişan alınacak bir şey yok: olay serbest bırakılır.
-      if (!cbs.current.isReady(k)) return;
+      // Dolmamış yetenekte nişan alınacak bir şey yok. Eskiden dokunuş sessizce
+      // yutuluyordu ve oyuncu "bastım ama hiçbir şey olmadı" hissiyle kalıyordu:
+      // artık kısa, kısık bir "kilitli" vuruşu duyulur ve düğme minik bir
+      // titreme yapar (CSS: .is-locked). Nişan akışı değişmez — olay serbest
+      // bırakılır, yani düğmenin kendi davranışı aynen korunur.
+      if (!cbs.current.isReady(k)) {
+        playSound("error", { volume: 0.32, rate: 0.72 });
+        btn.classList.remove("is-locked");
+        void btn.offsetWidth; // animasyonu baştan başlatmak için zorunlu okuma
+        btn.classList.add("is-locked");
+        window.setTimeout(() => btn.classList.remove("is-locked"), 360);
+        return;
+      }
+
+      // Hazır yetenek: basış onayı (ateş sesi parmağı kaldırınca gelir).
+      playSound("click", { volume: 0.22, rate: 1.15 });
 
       pointerId = ev.pointerId;
       button = btn;

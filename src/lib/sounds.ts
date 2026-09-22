@@ -56,7 +56,13 @@ export type SoundName =
   /** Aktif kulenin ateşi — silaha göre daha ağır, alçak ve yankılı. */
   | "towerShot"
   /** Kule aktivasyonu / güçlendirmesi (inşa geri bildirimi). */
-  | "towerUp";
+  | "towerUp"
+  /**
+   * Kritik can uyarısı: can %30'un altına düşünce çalan alçak "kalp atışı".
+   * Yeni bir kayıt eklemek yerine mevcut darbe kaydı çok yavaşlatılıp altına
+   * sub + thump katmanı bindirilir (bkz. SPECS.lowhp).
+   */
+  | "lowhp";
 
 type FileName = SoundName | "ambience";
 
@@ -125,6 +131,7 @@ const FALLBACK_PRESETS: Partial<Record<SoundName, string>> = {
   whoosh: "jump",
   towerShot: "laserShoot",
   towerUp: "powerUp",
+  lowhp: "hitHurt",
 };
 
 const STORAGE_KEY = "vaelos-ses-kapali";
@@ -203,7 +210,16 @@ const SPECS: Record<SoundName, SoundSpec> = {
     gain: 0.85,
     reverb: 0.35,
   },
-  error: { variants: [{ key: "error" }], bus: "ui", gain: 0.7 },
+  error: {
+    variants: [{ key: "error" }],
+    bus: "ui",
+    gain: 0.7,
+    // Reddedilen işlem üst üste tetiklenebilir (kilitli yeteneğe üst üste
+    // basmak, parası yetmeyen satın alma denemesi): kısa bir kapı + ses tavanı
+    // olmadan bu uyarılar üst üste binip "bağırıyordu".
+    throttleMs: 90,
+    maxVoices: 3,
+  },
   invite: {
     variants: [{ key: "invite", rate: 0.92 }],
     bus: "ui",
@@ -321,6 +337,23 @@ const SPECS: Record<SoundName, SoundSpec> = {
     reverb: 0.1,
     throttleMs: 65,
     maxVoices: 3,
+  },
+  /**
+   * 💓 Kritik can uyarısı. Kısa bir kayıt yerine "göğüste hissedilen" alçak
+   * bir vuruş: mevcut thud kaydı yarı hıza yakın çalınır (o yüzden buffer
+   * yeniden çözülmez, `thud` ile paylaşılır) ve altına sub + thump katmanı
+   * bindirilir. Çağıran taraf iki kez tetikleyerek "lub-dub" yapar; bu yüzden
+   * throttle kısa tutulur (ikinci vuruş yutulmasın).
+   */
+  lowhp: {
+    variants: [{ key: "thud", rate: 0.55 }],
+    gain: 1,
+    reverb: 0.18,
+    jitter: 0.03,
+    layers: ["sub", "thump"],
+    layerGain: 0.8,
+    throttleMs: 140,
+    maxVoices: 4,
   },
 
   // ── Battle — towers ─────────────────────────────────────────────────────

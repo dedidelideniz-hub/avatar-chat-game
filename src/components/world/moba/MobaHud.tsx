@@ -699,6 +699,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const vitalsXp = useRef<HTMLSpanElement>(null);
   const vitalsNum = useRef<HTMLSpanElement>(null);
   const burstRef = useRef<MobaBurstHandle>(null);
+  // 💓 Kritik can uyarısı: kalp atışının son çalındığı an (ms). Can yalnız
+  // kare döngüsünde okunduğu için sayaç da orada tutulur (yeni state yok).
+  const lastBeat = useRef(0);
   // 🛡️ Kule istemi: haritanın orijinal kulesine yaklaşınca beliren düğme.
   const towerWrap = useRef<HTMLDivElement>(null);
   const towerBtn = useRef<HTMLButtonElement>(null);
@@ -870,6 +873,31 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       } else if (l.ohp < prev.ohp - 150) {
         burstRef.current?.burst("clash");
       }
+
+      // ── 💓 kritik can uyarısı (yalnız SESLİ) ───────────────────────────
+      // Can %30'un altına düşünce alçak bir kalp atışı duyulur; %14'ün
+      // altında hem hızlanır hem yükselir. Ekranda yeni bir uyarı katmanı
+      // açılmaz — oyuncu görüşü kapanmadan sadece "tehlike" hisseder.
+      const danger = l.phase === "fight" && l.ph > 0 && pct < 0.3;
+      if (danger) {
+        const critical = pct < 0.14;
+        const gap = critical ? 620 : 1050;
+        const now = performance.now();
+        if (now - lastBeat.current > gap) {
+          lastBeat.current = now;
+          playSound("lowhp", { volume: critical ? 0.5 : 0.34 });
+          // "lub-dub": ikinci vuruş 170 ms sonra, daha hafif.
+          window.setTimeout(
+            () => playSound("lowhp", { volume: critical ? 0.32 : 0.2 }),
+            168,
+          );
+        }
+      } else {
+        // Tehlikeden çıkıldı: ilk vuruş, uyarı yeniden başladığında ~450 ms
+        // sonra gelir (aniden pat diye girmez).
+        lastBeat.current = performance.now() - 600;
+      }
+
       prev.pc = l.pc;
       prev.ph = l.ph;
       prev.ohp = l.ohp;
