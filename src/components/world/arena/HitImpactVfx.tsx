@@ -11,6 +11,9 @@
 //   · TOZ — yumuşak radyal dokulu sprite'lar (küre mesh'i DEĞİL), %34-50
 //     opaklıkta, zeminde dağılan, 0.15-0.20 sn içinde dışa doğru açılıp
 //     sönen küçük puflar. Yükselmez: vurulan noktanın zemininde kalır.
+//     İkinci bir "tad" vardır: 👣 ADIM TOZU (`FOOT_DUST`) — yürüyen karakterin
+//     ayak arkasından çıkar, daha büyük/daha uzun ömürlüdür ve hareketin
+//     tersine savrulur (konum kararı `arena/footDust`, çağrılar iki arenada).
 //   · KIVILCIM — temas anında 3-4 minik parlak parçacık (additif, 0.10-0.16
 //     sn, yer çekimiyle düşer). Ağır/bitirici vuruşta 5.
 //
@@ -34,17 +37,88 @@ import { HUD, S } from "./shared";
 
 const TAU = Math.PI * 2;
 /** Havuz boyutları: aynı anda en fazla bu kadar parçacık yaşar. */
-const DUST_POOL = 20;
+const DUST_POOL = 32;
 const SPARK_POOL = 12;
 /** Toz ömrü (sn) — istenen üst sınır 0.2 sn. */
 const DUST_LIFE_MIN = 0.15;
 const DUST_LIFE_MAX = 0.2;
-/** Toz: zeminde dağılma yarıçapı ve dışa doğru hızı (birim, birim/sn). */
-const DUST_SPREAD = 0.42;
-const DUST_SPEED = 0.5;
-/** Toz opaklığı: spec aralığı 0.3-0.5 (asla görüşü kapatmaz). */
-const DUST_ALPHA_MIN = 0.34;
-const DUST_ALPHA_MAX = 0.5;
+/**
+ * Toz ayarı: puf başına ömür/ölçü/hız. İki ayrı "tad" vardır — darbe tozu ve
+ * adım tozu — böylece adım tozu belirginleştirilirken darbe geri bildirimi
+ * aynen korunur.
+ */
+interface DustTune {
+  /** Kaç puf çıkar. */
+  count: number;
+  /** Ömür aralığı (sn). */
+  life0: number;
+  life1: number;
+  /** Doğuş / açılmış yarıçap aralığı (arena birimi, HUD ile ölçeklenir). */
+  size0: [number, number];
+  size1: [number, number];
+  /** Opaklık aralığı: spec 0.3-0.5 — asla görüşü kapatmaz. */
+  alpha0: number;
+  alpha1: number;
+  /** Nokta çevresine dağılma yarıçapı ve dışa doğru hız (birim, birim/sn). */
+  spread: number;
+  speed: number;
+  /** Dikey hız aralığı (birim/sn). */
+  rise0: number;
+  rise1: number;
+  /** Adım tozu: pufların itildiği GERİ yön (dünya XZ, birim vektör). */
+  backX?: number;
+  backZ?: number;
+  /** Adım tozu: geriye itme hızı ve yanal saçılma (birim/sn). */
+  backSpeed?: number;
+  lateral?: number;
+}
+
+/** Darbe/havalanma tozu — mevcut ayarlar (yumuşak, zeminde dağılan puflar). */
+const HIT_DUST: DustTune = {
+  count: 3,
+  life0: DUST_LIFE_MIN,
+  life1: DUST_LIFE_MAX,
+  size0: [0.12, 0.17],
+  size1: [0.36, 0.5],
+  alpha0: 0.34,
+  alpha1: 0.5,
+  spread: 0.42,
+  speed: 0.5,
+  rise0: 0.18,
+  rise1: 0.4,
+};
+
+/**
+ * 👣 ADIM TOZU — eskiden `vfx.smoke` ile isteniyordu: iri, yükselen duman
+ * sistemi, 2 puf ve küçük büyümeyle neredeyse görünmez kalıyordu. Burada
+ * zemine yapışık, sayıca daha çok ve daha büyük açılan puf lar var:
+ *   · ömür 0.30-0.44 sn (toz bir an asılı kalır, sonra söner),
+ *   · açılmış yarıçap ~0.55-0.77 birim (darbe tozunun ~1.4 katı: artık okunur),
+ *   · opaklık 0.38-0.52 (bant içinde: görüş kapanmaz, ekran sislenmez),
+ *   · puflar hareket yönünün TERSİNE itilir → ayak arkasından savrulma okunur.
+ * Konumun ayağın arkasına kaydırılması çağıranda yapılır (`arena/footDust`).
+ */
+const FOOT_DUST: DustTune = {
+  count: 4,
+  life0: 0.3,
+  life1: 0.44,
+  size0: [0.18, 0.26],
+  size1: [0.5, 0.7],
+  alpha0: 0.38,
+  alpha1: 0.52,
+  spread: 0.2,
+  speed: 0.35,
+  rise0: 0.1,
+  rise1: 0.26,
+  backSpeed: 0.75,
+  lateral: 0.4,
+};
+
+/**
+ * Adım tozu en fazla bu sıklıkta üretilir (ms). Kendi kısıtı vardır ki yoğun
+ * yürüyüş ne darbe tozunu aç bıraksın ne de tersi olsun.
+ */
+const FOOT_MIN_INTERVAL_MS = 90;
 /** Kıvılcım ömrü (sn), dışa açılma hızı (birim/sn) ve yer çekimi. */
 const SPARK_LIFE_MIN = 0.1;
 const SPARK_LIFE_MAX = 0.16;
@@ -139,6 +213,7 @@ interface ImpactState {
   dust: Puff[];
   sparks: Spark[];
   lastDustAt: number;
+  lastFootAt: number;
 }
 
 /** Boş yuva arar (havuzlar küçük; doğrusal tarama yeterli). */
@@ -230,8 +305,11 @@ export function HitImpactVfx({
       });
     }
 
-    return { group, dust, sparks, lastDustAt: 0 };
+    return { group, dust, sparks, lastDustAt: 0, lastFootAt: 0 };
   }, []);
+
+  /** Adım tozu ayarının kopyası: yön alanı her adımda buraya yazılır (tahsis yok). */
+  const footTune = useMemo<DustTune>(() => ({ ...FOOT_DUST }), []);
 
   useEffect(() => {
     scene.add(st.group);
@@ -244,31 +322,74 @@ export function HitImpactVfx({
 
   /* ------------------------------ üretim ------------------------------ */
 
-  const spawnDust = (x: number, y: number, count: number, now: number) => {
-    // Havalanma tozu her karede istenebilir (atlama boyunca); kısılır.
-    if (now - st.lastDustAt < DUST_MIN_INTERVAL_MS) return;
-    st.lastDustAt = now;
+  /** Pufları verilen ayarla doğurur (`z`, arena pikseli y'sinin dünya karşılığı). */
+  const spawnDust = (x: number, z: number, tune: DustTune, count: number) => {
     for (let i = 0; i < count; i++) {
       const p = freePuff(st.dust);
       if (!p) return;
       const ang = Math.random() * TAU;
-      const r = 0.05 + Math.random() * DUST_SPREAD;
+      const r = 0.05 + Math.random() * tune.spread;
       p.x = x + Math.cos(ang) * r;
-      p.z = y + Math.sin(ang) * r;
+      p.z = z + Math.sin(ang) * r;
       p.y = GROUND_Y + Math.random() * 0.06;
-      p.vx = Math.cos(ang) * DUST_SPEED;
-      p.vz = Math.sin(ang) * DUST_SPEED;
-      p.vy = 0.18 + Math.random() * 0.22;
-      p.max = p.life =
-        DUST_LIFE_MIN + Math.random() * (DUST_LIFE_MAX - DUST_LIFE_MIN);
-      p.size0 = (0.12 + Math.random() * 0.05) * HUD;
-      p.size1 = (0.36 + Math.random() * 0.14) * HUD;
-      p.alpha = DUST_ALPHA_MIN + Math.random() * (DUST_ALPHA_MAX - DUST_ALPHA_MIN);
+      // Dışa dağılma + (adım tozunda) hareketin tersine savrulma.
+      const back = tune.backSpeed ?? 0;
+      p.vx = Math.cos(ang) * tune.speed + (tune.backX ?? 0) * back;
+      p.vz = Math.sin(ang) * tune.speed + (tune.backZ ?? 0) * back;
+      if (tune.lateral) {
+        p.vx += (Math.random() - 0.5) * tune.lateral;
+        p.vz += (Math.random() - 0.5) * tune.lateral;
+      }
+      p.vy = tune.rise0 + Math.random() * (tune.rise1 - tune.rise0);
+      p.max = p.life = tune.life0 + Math.random() * (tune.life1 - tune.life0);
+      p.size0 =
+        (tune.size0[0] + Math.random() * (tune.size0[1] - tune.size0[0])) * HUD;
+      p.size1 =
+        (tune.size1[0] + Math.random() * (tune.size1[1] - tune.size1[0])) * HUD;
+      p.alpha = tune.alpha0 + Math.random() * (tune.alpha1 - tune.alpha0);
       p.sprite.visible = true;
       p.sprite.position.set(p.x, p.y, p.z);
       p.sprite.scale.setScalar(p.size0);
       p.mat.opacity = p.alpha;
     }
+  };
+
+  /** Darbe/havalanma tozu (kısılır: atlama boyunca her karede istenebilir). */
+  const spawnHitDust = (
+    x: number,
+    z: number,
+    now: number,
+    count = HIT_DUST.count,
+  ) => {
+    if (now - st.lastDustAt < DUST_MIN_INTERVAL_MS) return;
+    st.lastDustAt = now;
+    spawnDust(x, z, HIT_DUST, count);
+  };
+
+  /**
+   * 👣 Adım tozu: konum çağıranda ayak arkasına kaydırılmıştır (bkz.
+   * `arena/footDust`); burada puflar o noktanın zemininden çıkar ve hareket
+   * yönünün tersine savrulur.
+   */
+  const spawnFootDust = (
+    x: number,
+    z: number,
+    dirX: number,
+    dirZ: number,
+    now: number,
+  ) => {
+    if (now - st.lastFootAt < FOOT_MIN_INTERVAL_MS) return;
+    st.lastFootAt = now;
+    const len = Math.hypot(dirX, dirZ);
+    if (len > 1e-4) {
+      // Kopya ayır mıyoruz: yön, adım başına tek kullanım için yazılır.
+      footTune.backX = -dirX / len;
+      footTune.backZ = -dirZ / len;
+    } else {
+      footTune.backX = 0;
+      footTune.backZ = 0;
+    }
+    spawnDust(x, z, footTune, FOOT_DUST.count);
   };
 
   const spawnSparks = (x: number, y: number, heavy: boolean) => {
@@ -301,13 +422,17 @@ export function HitImpactVfx({
     // Arena pikseli → dünya birimi (efekt katmanı dünya uzayında çizer).
     const x = im.x / S;
     const z = im.y / S;
+    if (im.kind === "footstep") {
+      spawnFootDust(x, z, im.dirX ?? 0, im.dirY ?? 0, now);
+      return;
+    }
     if (im.kind === "dust") {
-      spawnDust(x, z, 3, now);
+      spawnHitDust(x, z, now);
       return;
     }
     // Silah teması: minik kıvılcımlar (ıskada yok) + zemin tozu.
     if (im.hit) spawnSparks(x, z, im.heavy);
-    spawnDust(x, z, im.hit ? 4 : 3, now);
+    spawnHitDust(x, z, now, im.hit ? 4 : 3);
   };
 
   /* ------------------------------- güncelle ------------------------------ */

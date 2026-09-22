@@ -68,6 +68,11 @@ import {
 import { createVfxBus, tickFx } from "@/components/world/arena/VFXComponent";
 // Darbe geri bildirimi: patlama/bloom yerine yumuşak toz + kıvılcım kuyruğu.
 import { pushHitImpact } from "@/components/world/arena/hitImpacts";
+import {
+  createFootDustTrack,
+  emitFootstepDust,
+  holdFootTrack,
+} from "@/components/world/arena/footDust";
 // 🖐️ MUZZLE/S — atış noktası karakterin ELİNE kaydırılır (elden ateş efekti).
 import { MUZZLE, S } from "@/components/world/arena/shared";
 // 🎯 Skillshot (menzilli nişan): sabit maksimum menzil + menzil içi otomatik kilit.
@@ -959,7 +964,16 @@ export default function PvpBattleScene({
     const SIM_STEP = 1 / 60;
     let simAcc = 0;
     let stepAcc = 0;
+    let botStepAcc = 0;
     let lastPub = 0;
+    // 👣 Adım tozu izleri (oyuncu + ağdan gelen rakip): toz, adımı atan AYAĞIN
+    // arkasından çıksın diye son konum + dönüşümlü ayak burada tutulur.
+    // Bkz. arena/footDust — iki arena aynı kuralı kullanır.
+    const footTrack = createFootDustTrack(
+      player.current.x,
+      player.current.y,
+    );
+    const botFootTrack = createFootDustTrack(bot.current.x, bot.current.y);
     const onKeyDown = (e: KeyboardEvent) => {
       if (
         [
@@ -1249,10 +1263,24 @@ export default function PvpBattleScene({
         if (stepAcc > 0.3) {
           stepAcc = 0;
           playSound("step", { volume: 0.16, rate: 0.8 + Math.random() * 0.5 });
-          smokeFx(p.x, p.y - 6, 2, 20);
+          // 👣 Toz ayak arkasından, zeminden (gövde merkezinden değil).
+          emitFootstepDust(p, footTrack, p.x, p.y);
         }
       } else {
         stepAcc = 0;
+        holdFootTrack(footTrack, p.x, p.y);
+      }
+      // Rakip de yürürken aynı tozu çıkarır (görsel yerel; ağdan yalnız
+      // konuş/hareket bayrağı gelir).
+      if (b.moving && b.dashT <= 0 && b.hitStunT <= 0) {
+        botStepAcc += dt;
+        if (botStepAcc > 0.34) {
+          botStepAcc = 0;
+          emitFootstepDust(b, botFootTrack, b.x, b.y);
+        }
+      } else {
+        botStepAcc = 0;
+        holdFootTrack(botFootTrack, b.x, b.y);
       }
 
       // --- my projectiles ---

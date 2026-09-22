@@ -89,6 +89,11 @@ import { COLD_FLAME, MUZZLE, S } from "@/components/world/arena/shared";
 // Darbe geri bildirimi: patlama/bloom yerine yumuşak toz + kıvılcım kuyruğu.
 import { pushHitImpact } from "@/components/world/arena/hitImpacts";
 import {
+  createFootDustTrack,
+  emitFootstepDust,
+  holdFootTrack,
+} from "@/components/world/arena/footDust";
+import {
   DUEL_LEAVE_EVENT,
   useAndroidBattleOrientation,
   useLandscapeGate,
@@ -939,6 +944,13 @@ export default function BattleScene({
     let simAcc = 0;
     let stepAcc = 0;
     let botStepAcc = 0;
+    // 👣 Adım tozu izleri: toz, adımı atan AYAĞIN arkasından çıksın diye son
+    // konum + dönüşümlü ayak (sol/sağ) burada tutulur. Bkz. arena/footDust.
+    const footTrack = createFootDustTrack(
+      player.current.x,
+      player.current.y,
+    );
+    const botFootTrack = createFootDustTrack(bot.current.x, bot.current.y);
     // Bush stealth: where the bot last saw the player, plus patrol waypoints
     // used while the player is hidden so the bot keeps hunting (no sight
     // through bushes).
@@ -1087,8 +1099,9 @@ export default function BattleScene({
           vx = 0;
           vy = 0;
         } else if (atkAnim.canceled) {
-          // Bitiş animasyonu kesildi — adım tozu ile hissettir.
-          smokeFx(p.x, p.y - 4, 2, 26);
+          // Bitiş animasyonu kesildi — adım tozu ile hissettir (aynı katman:
+          // ayak arkasından çıkan zemin tozu).
+          emitFootstepDust(p, footTrack, p.x, p.y);
         }
       }
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
@@ -1167,20 +1180,27 @@ export default function BattleScene({
             volume: 0.16,
             rate: 0.8 + Math.random() * 0.5,
           });
-          smokeFx(p.x, p.y - 6, 2, 20); // footstep dust
+          // 👣 Toz AYAK ARKASINDAN çıkar: konum hareket yönünün tersine
+          // kaydırılır, sağ/sol ayak dönüşümlü seçilir (eskiden gövde
+          // merkezinden yükselen küçük bir dumanla isteniyordu: hem yerde
+          // değildi hem neredeyse görünmüyordu).
+          emitFootstepDust(p, footTrack, p.x, p.y);
         }
       } else {
         stepAcc = 0;
+        // Dururken iz tazelenir: sonraki adımda eski konumdan sahte yön çıkmasın.
+        holdFootTrack(footTrack, p.x, p.y);
       }
       if (b.moving && b.dashT <= 0 && b.hitStunT <= 0) {
         botStepAcc += dt;
         if (botStepAcc > 0.34) {
           botStepAcc = 0;
           playSound("step", { volume: 0.08, rate: 0.7 + Math.random() * 0.4 });
-          smokeFx(b.x, b.y - 6, 2, 20); // footstep dust
+          emitFootstepDust(b, botFootTrack, b.x, b.y); // ayak arkası tozu
         }
       } else {
         botStepAcc = 0;
+        holdFootTrack(botFootTrack, b.x, b.y);
       }
 
       // --- bot AI ---

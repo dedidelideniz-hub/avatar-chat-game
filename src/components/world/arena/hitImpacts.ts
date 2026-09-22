@@ -19,8 +19,10 @@
 export type ImpactKind =
   /** Silah teması: minik kıvılcımlar + zemin tozu. */
   | "strike"
-  /** Sadece zemin tozu (havalanma, kayma, adım). */
-  | "dust";
+  /** Sadece zemin tozu (havalanma, kayma, mermi çarpması). */
+  | "dust"
+  /** 👣 Yürüyüş adımı tozu: ayak arkasından, zeminden çıkan belirgin puf. */
+  | "footstep";
 
 export interface HitImpact {
   kind: ImpactKind;
@@ -31,6 +33,12 @@ export interface HitImpact {
   hit: boolean;
   /** Bitirici/ağır vuruş → kıvılcım bir tık daha güçlü. */
   heavy: boolean;
+  /**
+   * Yalnız `footstep`: adımın atıldığı yön (arena pikseli, birim vektör).
+   * Toz bu yönün TERSİNE savrulur — ayak arkasından çıkar.
+   */
+  dirX?: number;
+  dirY?: number;
   /** Üretim zamanı (ms): bayat kayıtlar yeni maça taşınmaz. */
   t: number;
 }
