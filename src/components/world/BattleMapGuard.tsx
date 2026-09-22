@@ -4,6 +4,7 @@ import { BattleMapModel as BattlefieldMap } from "./BattleMapModel";
 import { MapPalette } from "./WarAtmosphere";
 import { MapVividPass } from "./mapVivid";
 import { MapFoliagePass } from "./mapFoliage";
+import { GrassTufts } from "./grassTufts";
 import { DefenseTowerLayer } from "./arena/DefenseTowers";
 import { GroundShadowFlags } from "./arena/GroundShadows";
 
@@ -45,6 +46,12 @@ export function BattleMapModel() {
             geçiş: 14 MB'lık harita geç yüklense de bayraklar yazılır. Yalnızca
             görsel bir bayraktır — fizik/çarpışma etkilenmez. */}
         <GroundShadowFlags />
+        {/* 🌱 ÇİM ÖBEKLERİ: haritanın çim alanlarından örneklenen noktalara
+            rüzgârda salınan dekoratif çim serper — her yere değil, seçilmiş
+            yamalara; su yüzeyi olan noktalar elenir. Harita yerine oturduktan
+            sonra (kare döngüsünde) bir kez kurulur, tek çizim çağrısıdır ve
+            çarpışmayı etkilemez. Bkz. grassTufts.tsx. */}
+        <GrassTufts />
         {/* 🛡️ SAVUNMA KULELERİ: satın alınan kuleler ve boş kule arsaları.
             Arena uzayında (haritanın fit dönüşümünden bağımsız) durur;
             ekonomi/simülasyon `@/engine/BattleTowers` içindedir. Yalnızca

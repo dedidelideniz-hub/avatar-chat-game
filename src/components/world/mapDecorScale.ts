@@ -136,7 +136,7 @@ function tokensMatch(name: string, tokens: Set<string>): boolean {
 }
 
 /** Çim bandı mı (Y ağırlıklı, diz boyu büyütme)? */
-function isGrassName(name: string): boolean {
+export function isGrassName(name: string): boolean {
   return tokensMatch(name, GRASS_TOKENS);
 }
 
@@ -151,7 +151,7 @@ function isFoliage(node: THREE.Object3D): boolean {
  * Her çim kümesi isminden aynı sapmayı aldığı için tek tip "şişmiş" görünüm
  * oluşmaz, ama kareler arasında titreme de olmaz (Math.random DEĞİL).
  */
-function hash32(text: string): number {
+export function hash32(text: string): number {
   let hash = 2166136261;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);
@@ -331,8 +331,12 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-/** Tek bir materyale rüzgâr yaması yazar (paylaşılan materyal bir kez). */
-function patchWindMaterial(material: THREE.Material): boolean {
+/**
+ * Tek bir materyale rüzgâr yaması yazar (paylaşılan materyal bir kez).
+ * `GrassTufts` de aynı salınımı kullansın diye dışa açıktır: tek ortak zaman
+ * uniform'u (`FOLIAGE_WIND`) iki sistemi aynı rüzgârda buluşturur.
+ */
+export function patchWindMaterial(material: THREE.Material): boolean {
   if (material.userData.vaelosWind) return false;
   material.userData.vaelosWind = true;
   const prev = material.onBeforeCompile;
