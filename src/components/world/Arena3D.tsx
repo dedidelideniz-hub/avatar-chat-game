@@ -30,6 +30,7 @@ import {
   isRoyalWarriorSkin,
   useRoyalWarriorEffects,
 } from "@/engine/RoyalWarriorEffects";
+import { useSamuraiBomb } from "@/engine/SamuraiBomb";
 import {
   applyBattleStance,
   findBattleStance,
@@ -636,6 +637,9 @@ function GlbFighterBodyCore({
     useRef<THREE.Mesh | null>(null),
     movingRef,
   );
+  // 🧨 Samuray: elinde bomba. Kraliyet silahı katmanından BAĞIMSIZ çalışır
+  // (farklı skin kapısı) — aynı el-kemiği zincirini ve kalibrasyonu kullanır.
+  useSamuraiBomb(clone, skinUrl);
 
   // Normalize to FIGHTER_MODEL_H — her görünüm (varsayılan / Samuray /
   // Kraliyet Savaşçısı / Şövalye) aynı gövde boyuna gelir ve üstüne ortak

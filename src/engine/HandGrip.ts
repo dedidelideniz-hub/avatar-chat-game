@@ -271,6 +271,128 @@ export function buildStructuralSword(): THREE.Group {
   return sword;
 }
 
+/* ── 🧨 BOMBA (Samuray skini) — kapsayıcı ayarları ────────────────── */
+
+/**
+ * Bomba da kılıçla AYNI zincirle tutulur:
+ *
+ *   el kemiği → `grip` (kemik ölçeğini 1'e indirir → içindeki birim = dünya
+ *   birimi) → `pivot` (model-uzayı düzeltmesi) → model
+ *
+ * Fark: bombanın hizalanacak uzun bir ekseni yoktur, bu yüzden tek gereken
+ * "fünye yukarı, gövde avuç içinde" duruşu. `calibrateSwordGrip` (aşağıdaki
+ * `calibrateHandGrip` takma adı) kapsayıcının DÜNYA yönelimini kimliğe
+ * çevirdiği için, pivot'ta ek düzeltme GEREKMEZ: model uzayında fünye +Y ise
+ * dünyada da yukarı bakar (kılıcın dikey kalmasıyla aynı kural).
+ */
+export const BOMB_GRIP_POS: [number, number, number] = [0, 11.72, 0]; // yumruk merkezi (kılıçla aynı ölçüm)
+/**
+ * MODEL OFFSET'İ — dünya birimi (kapsayıcı kemik ölçeğini söndürdüğü için
+ * içindeki 1 birim = 1 dünya birimi). +0.02: gövde merkezi avucun İÇİNDE
+ * kalır, yalnızca biraz yukarı alınır ki yumruk bombayı tam ortadan kavrasın,
+ * parmakların üstünde de görünsün. (Samuray rig'i ölçümü: avuç derinliği
+ * 0.058, parmak boğumu 0.034 dünya birimi — 0.12'lik bir kaydırma bombayı
+ * avucun bir buçuk boyu havaya kaldırıp "havada duran top" gibi gösteriyordu.)
+ */
+export const BOMB_CONTAINER_MODEL_POS: [number, number, number] = [0, 0.02, 0];
+export const BOMB_CONTAINER_MODEL_ROT: [number, number, number] = [0, 0, 0];
+export const BOMB_CONTAINER_MODEL_SCALE = 1;
+
+/**
+ * Model uzayı: gövde merkezi ORİJİN'de, gövde çapı 2.08 birim (üretilen
+ * `public/models/bomba.glb` ile birebir aynı — ekseni 2.08, yüksekliği 2.74).
+ *
+ * HEDEF DÜNYA GENİŞLİĞİ = 0.14 birim. Bu, Samuray rig'inden ÖLÇÜLEREK
+ * seçildi (kemik dünya ölçeği 0.00437): avuç derinliği 0.058, parmak boğumu
+ * 0.034, yani elin tamamı ≈0.08-0.09 birim. 0.14'lük bomba avucu ~%70 taşar
+ * — "kavranmış" okunur; daha büyüğü (0.19) elin iki katı olup top gibi
+ * duruyordu, daha küçüğü parmakların içinde kayboluyordu.
+ */
+export const BOMB_MODEL_SPAN = 2.08;
+export const BOMB_TARGET_WORLD_SPAN = 0.14;
+/** Fitil ucunun kendinden ışıma şiddeti (bloom'u besler, ekranı sislemez). */
+export const BOMB_FUSE_EMISSIVE = 2.6;
+/** Model/üretilen dosyada fitil ucunu taşıyan malzeme adı. */
+export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
+
+/**
+ * Kapsayıcıyı canlı el pozundan hizalar. Kılıç kalibrasyonuyla AYNI iş: el
+ * kemiğinin dünya yönelimi ters çevrilir → kapsayıcı dünyada kimlik olur ve
+ * içindeki model kendi uzayında durduğu gibi görünür. Takma ad, çağrı
+ * yerlerinin niyetini okunur kılar (kılıç adıyla bombayı kalibre etmek
+ * kafa karıştırıyordu).
+ */
+export const calibrateHandGrip = calibrateSwordGrip;
+
+/**
+ * Prosedürel bomba — `public/models/bomba.glb` yüklenene kadar (ve dosya
+ * bulunamazsa kalıcı olarak) eli boş bırakmaz. AYNI model uzayında üretilir:
+ * gövde yarıçapı 1, fünye +Y, parlayan uç y ≈ 1.62. Böylece ölçek/hizalama
+ * kodu GLB ile birebir aynıdır.
+ */
+export function buildStructuralBomb(): THREE.Group {
+  const bomb = new THREE.Group();
+
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: "#2a2d34", metalness: 0.72, roughness: 0.34,
+    emissive: "#12161c", emissiveIntensity: 0.35,
+  });
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: "#c9952f", metalness: 0.85, roughness: 0.28,
+    emissive: "#6d4c0d", emissiveIntensity: 0.3,
+  });
+  const fuseMat = new THREE.MeshStandardMaterial({
+    color: "#6b4a2a", metalness: 0.05, roughness: 0.9,
+  });
+  const glowMat = new THREE.MeshStandardMaterial({
+    name: BOMB_FUSE_MATERIAL,
+    color: "#ff9a2e", metalness: 0, roughness: 0.5,
+    emissive: "#ff7a18", emissiveIntensity: BOMB_FUSE_EMISSIVE,
+    toneMapped: false,
+  });
+
+  // Gövde: hafif basık küre (GLB ile aynı ölçü).
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), bodyMat);
+  body.scale.y = 0.96;
+  bomb.add(body);
+
+  // Ekvator + üst halka: pirinç bilezikler.
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.985, 0.055, 6, 20), brassMat);
+  belt.rotation.x = Math.PI / 2;
+  bomb.add(belt);
+  const upper = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.045, 6, 18), brassMat);
+  upper.rotation.x = Math.PI / 2;
+  upper.position.y = 0.62;
+  bomb.add(upper);
+
+  // Boyun/kapak: fitilin çıktığı bilezik.
+  const collar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.34, 0.42, 0.26, 12),
+    brassMat,
+  );
+  collar.position.y = 1.02;
+  bomb.add(collar);
+
+  // Fitil: hafif eğik ip.
+  const fuse = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.075, 0.52, 8),
+    fuseMat,
+  );
+  fuse.rotation.z = 0.16;
+  fuse.position.set(0.03, 1.36, 0);
+  bomb.add(fuse);
+
+  // Yanan uç + kıvılcım: bloom'u besleyen iki küçük parlak parça.
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.115, 8, 6), glowMat);
+  tip.position.set(0.075, 1.62, 0);
+  bomb.add(tip);
+  const spark = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 0), glowMat);
+  spark.position.set(0.14, 1.74, 0.03);
+  bomb.add(spark);
+
+  return bomb;
+}
+
 /* ── Debug: hand joint markers (?handDebug=1) ───────────────────── */
 
 /**

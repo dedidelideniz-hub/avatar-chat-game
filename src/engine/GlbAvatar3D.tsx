@@ -21,6 +21,7 @@ import {
   emitWarriorPuff,
   advanceWarriorPuffs,
 } from "./RoyalWarriorEffects";
+import { useSamuraiBomb } from "./SamuraiBomb";
 import { VendorBadge, VendorSparkle } from "./VendorSparkle";
 import { VENDOR_COLOR, isVipCharacterColor } from "@/lib/avatar";
 
@@ -799,6 +800,9 @@ function GlbAvatarCore({
     flashRef,
     movingRef,
   );
+
+  // ── 🧨 Samuray: elinde bomba (sokak ve arena aynı katmanı kullanır) ──
+  useSamuraiBomb(clone, skinUrl);
 
   // ── Near-camera fade ─────────────────────────────────────────
   // A character that slips between the camera and the action (bot walking

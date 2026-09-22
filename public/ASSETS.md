@@ -22,6 +22,28 @@ Regenerate from a real GLB:
 node scripts/glb-to-embedded-json.mjs public/models/5v5_game_map.glb
 ```
 
+### `models/bomba.glb` (samurayın elindeki bomba)
+
+Bu dosya hazır bir GLB'den çevrilmedi, **üretildi**: `scripts/build-bomba-glb.mjs`
+bombayı üç.js geometrileriyle kurar (gövde + pirinç bilezikler + fitil + yanan uç),
+malzeme başına bir primitive olacak şekilde tek JSON glTF'ye yazar ve binary
+chunk'ı base64 `data:` URI olarak gömer — yani yukarıdaki tüm kurallara uyar
+(saf ASCII, `.glb` uzantısı, `useGLTF` ile doğrudan çalışır).
+
+Yeniden üretmek için:
+
+```bash
+node scripts/build-bomba-glb.mjs
+```
+
+Model uzayı sözleşmesi (runtime bu uzayı bilir, `src/engine/HandGrip.ts`):
+**gövde merkezi orijinde, gövde çapı 2.08 birim, fünye +Y yönünde, yanan uç
+y ≈ 1.62.** Ölçek runtime'da dünya boyuna normalize edilir (hedef: 0.14 birim →
+elin ölçüsü, bkz. `BOMB_TARGET_WORLD_SPAN`). Malzeme adları sabittir:
+`BombaBody`, `BombaBrass`, `BombaFuse`, `BombaFuseGlow` (fitil ucu runtime'da bu
+adla bulunup `emissiveIntensity` yükseltilir). Dosya yüklenemezse aynı uzayda
+üretilen prosedürel `buildStructuralBomb()` devreye girer — el boş kalmaz.
+
 ## `sounds/*.mp3.b64`
 
 Sound effects ship as standard base64 text companions (`base64 -w0`). The app
