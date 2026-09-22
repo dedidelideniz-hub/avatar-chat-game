@@ -13,7 +13,8 @@
 //
 // Üç kural:
 //   1. Nokta, son adımdan bu yana oluşan hareket vektörünün TERSİNE kaydırılır
-//      → toz ayağın arkasında belirir.
+//      → toz ayağın arkasında belirir (0.28 birim; büyüyen bulutun alt kenarı
+//      hâlâ ayak bileğinin dibinde kalır).
 //   2. Her adımda sağ/sol ayak DÖNÜŞÜMLÜ seçilir → tek ayaktan çıkıyormuş gibi
 //      görünmez, yürüyüş ritmi okunur.
 //   3. Dikey ofset yoktur: toz zeminden (ayak hizasından) çıkar.
@@ -31,10 +32,10 @@ export interface FootDustTrack {
   side: number;
 }
 
-/** Tozun ayağın ARKASINA kaydırılma miktarı (arena pikseli, S=50 → ~0.22 birim). */
-const BEHIND_PX = 11;
-/** Sol/sağ ayak ayrımı (arena pikseli → ~0.14 birim). */
-const LATERAL_PX = 7;
+/** Tozun ayağın ARKASINA kaydırılma miktarı (arena pikseli, S=50 → 0.28 birim). */
+const BEHIND_PX = 14;
+/** Sol/sağ ayak ayrımı (arena pikseli, S=50 → 0.16 birim). */
+const LATERAL_PX = 8;
 /** Bu mesafeden az yer değiştirdiyse yön güncellenmez (piksel). */
 const MOVE_MIN_PX = 0.5;
 /** Bundan büyük sıçrama (respawn/ışınlanma) toz üretmez, yalnız izi tazeler. */

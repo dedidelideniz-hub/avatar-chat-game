@@ -36,9 +36,26 @@ import { HUD, S } from "./shared";
 /* -------------------------------- ölçüler -------------------------------- */
 
 const TAU = Math.PI * 2;
-/** Havuz boyutları: aynı anda en fazla bu kadar parçacık yaşar. */
-const DUST_POOL = 32;
+/** Darbe/havalanma tozu havuzu: aynı anda en fazla bu kadar puf yaşar. */
+const HIT_DUST_POOL = 32;
+/**
+ * 👣 ADIM TOZU için AYRILMIŞ havuz.
+ *
+ * NEDEN AYRI: eskiden adım tozu darbe tozuyla AYNI 32 yuvayı paylaşıyordu.
+ * Yoğun savaşta (her vuruş 3-4 puf) havuz dolduğunda `freePuff` null dönüyor
+ * ve adım tozu hiç doğmuyordu — "yürürken ayak tozu görünmüyor" şikâyetinin
+ * sessiz sebeplerinden biri buydu. Artık darbe tozu onu aç bırakamaz.
+ */
+const FOOT_DUST_POOL = 20;
+/** Toplam toz sprite'ı (ilk `HIT_DUST_POOL` darbe, kalanı adım). */
+const DUST_POOL = HIT_DUST_POOL + FOOT_DUST_POOL;
 const SPARK_POOL = 12;
+/**
+ * Adım tozunun rengi: gündüz çim paletinin (doygun yeşil) üstünde okunan sıcak
+ * toprak tonu. Darbe tozundan bir tık daha koyu/doygun — aydınlık zeminde
+ * "kaybolan açık gri bulut" etkisi olmaz.
+ */
+const FOOT_DUST_COLOR = "#c9b48c";
 /** Toz ömrü (sn) — istenen üst sınır 0.2 sn. */
 const DUST_LIFE_MIN = 0.15;
 const DUST_LIFE_MAX = 0.2;
@@ -71,6 +88,21 @@ interface DustTune {
   /** Adım tozu: geriye itme hızı ve yanal saçılma (birim/sn). */
   backSpeed?: number;
   lateral?: number;
+  /**
+   * Sönme eğrisi üssü. 2 = `fade²` (puflar doğar doğmaz kararır → neredeyse
+   * görünmez); 1.2 = toz bir an okunur kalır, sonra söner.
+   */
+  fadePow?: number;
+  /**
+   * Zeminden yukarı kaydırma (birim, `HUD` ile ölçeklenir).
+   *
+   * NEDEN GEREKLİ: toz sprite'ı kameraya dönük bir DÖRTGEN; merkezi tam zemin
+   * kotundaysa alt yarısı zeminin altında kalır ve derinlik testinde kesilir —
+   * yani hem görünür alan yarıya iner hem de parlak ÇEKİRDEK yerine yalnızca
+   * soluk kenar kalır. Adım tozunda merkez ~0.33 birim yukarı alınır: bulut
+   * ayak bileğinin dibinden çıkar, tamamı görünür.
+   */
+  lift?: number;
 }
 
 /** Darbe/havalanma tozu — mevcut ayarlar (yumuşak, zeminde dağılan puflar). */
@@ -90,35 +122,40 @@ const HIT_DUST: DustTune = {
 
 /**
  * 👣 ADIM TOZU — eskiden `vfx.smoke` ile isteniyordu: iri, yükselen duman
- * sistemi, 2 puf ve küçük büyümeyle neredeyse görünmez kalıyordu. Burada
- * zemine yapışık, sayıca daha çok ve daha büyük açılan puf lar var:
- *   · ömür 0.30-0.44 sn (toz bir an asılı kalır, sonra söner),
- *   · açılmış yarıçap ~0.55-0.77 birim (darbe tozunun ~1.4 katı: artık okunur),
- *   · opaklık 0.38-0.52 (bant içinde: görüş kapanmaz, ekran sislenmez),
+ * sistemi, 2 puf ve küçük büyümeyle neredeyse görünmez kalıyordu. Şimdi:
+ *   · 6 puf, ömür 0.42-0.60 sn (toz bir an asılı kalır, sonra dağılır),
+ *   · açılmış yarıçap 0.8-1.05 birim → ekranda karakterin beline kadar okunur
+ *     bir bulut (darbe tozunun ~2 katı) — "yürüyor" bilgisi net verilir,
+ *   · opaklık 0.46-0.56 ve sönme `fade^1.2`: doğar doğmaz kararıp kaybolmaz,
+ *   · merkez zeminden ~0.33 birim yukarı (`lift`): dörtgenin tamamı görünür,
+ *     parlak çekirdek zeminin altında kesilmez,
  *   · puflar hareket yönünün TERSİNE itilir → ayak arkasından savrulma okunur.
  * Konumun ayağın arkasına kaydırılması çağıranda yapılır (`arena/footDust`).
  */
 const FOOT_DUST: DustTune = {
-  count: 4,
-  life0: 0.3,
-  life1: 0.44,
-  size0: [0.18, 0.26],
-  size1: [0.5, 0.7],
-  alpha0: 0.38,
-  alpha1: 0.52,
-  spread: 0.2,
-  speed: 0.35,
-  rise0: 0.1,
-  rise1: 0.26,
-  backSpeed: 0.75,
-  lateral: 0.4,
+  count: 6,
+  life0: 0.42,
+  life1: 0.6,
+  size0: [0.22, 0.32],
+  size1: [0.8, 1.05],
+  alpha0: 0.46,
+  alpha1: 0.56,
+  spread: 0.22,
+  speed: 0.3,
+  rise0: 0.12,
+  rise1: 0.3,
+  backSpeed: 0.9,
+  lateral: 0.5,
+  fadePow: 1.2,
+  lift: 0.3,
 };
 
 /**
  * Adım tozu en fazla bu sıklıkta üretilir (ms). Kendi kısıtı vardır ki yoğun
- * yürüyüş ne darbe tozunu aç bıraksın ne de tersi olsun.
+ * yürüyüş ne darbe tozunu aç bıraksın ne de tersi olsun. Adım aralığı ~0.3 sn
+ * olduğu için 70 ms kısıt ardışık adımları yutmaz.
  */
-const FOOT_MIN_INTERVAL_MS = 90;
+const FOOT_MIN_INTERVAL_MS = 70;
 /** Kıvılcım ömrü (sn), dışa açılma hızı (birim/sn) ve yer çekimi. */
 const SPARK_LIFE_MIN = 0.1;
 const SPARK_LIFE_MAX = 0.16;
@@ -192,6 +229,10 @@ interface Puff {
   size0: number;
   size1: number;
   alpha: number;
+  /** Sönme eğrisi üssü (ayardan kopyalanır: kare başına hesap basitleşir). */
+  fadePow: number;
+  /** Bu pufun düşemeyeceği en alt kot (doğuş kotu = `GROUND_Y + lift`). */
+  floorY: number;
 }
 
 interface Spark {
@@ -216,9 +257,13 @@ interface ImpactState {
   lastFootAt: number;
 }
 
-/** Boş yuva arar (havuzlar küçük; doğrusal tarama yeterli). */
-function freePuff(pool: Puff[]): Puff | null {
-  for (const p of pool) if (p.life <= 0) return p;
+/**
+ * Boş yuva arar (havuzlar küçük; doğrusal tarama yeterli).
+ * `from`/`to` aralığı havuzları ayırır: darbe tozu adım tozunun yuvasını
+ * çalamaz (ve tersi).
+ */
+function freePuff(pool: Puff[], from: number, to: number): Puff | null {
+  for (let i = from; i < to; i++) if (pool[i].life <= 0) return pool[i];
   return null;
 }
 
@@ -244,9 +289,11 @@ export function HitImpactVfx({
 
     const dust: Puff[] = [];
     for (let i = 0; i < DUST_POOL; i++) {
+      // İlk grup darbe/havalanma tozu, son grup 👣 adım tozu (kendi rengi).
+      const footSlot = i >= HIT_DUST_POOL;
       const mat = new THREE.SpriteMaterial({
         map: dustTex,
-        color: DUST_COLOR,
+        color: footSlot ? FOOT_DUST_COLOR : DUST_COLOR,
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -272,6 +319,8 @@ export function HitImpactVfx({
         size0: 0,
         size1: 0,
         alpha: 0,
+        fadePow: 2,
+        floorY: GROUND_Y,
       });
     }
 
@@ -323,15 +372,26 @@ export function HitImpactVfx({
   /* ------------------------------ üretim ------------------------------ */
 
   /** Pufları verilen ayarla doğurur (`z`, arena pikseli y'sinin dünya karşılığı). */
-  const spawnDust = (x: number, z: number, tune: DustTune, count: number) => {
+  const spawnDust = (
+    x: number,
+    z: number,
+    tune: DustTune,
+    count: number,
+    from: number,
+    to: number,
+  ) => {
     for (let i = 0; i < count; i++) {
-      const p = freePuff(st.dust);
+      const p = freePuff(st.dust, from, to);
       if (!p) return;
+      p.fadePow = tune.fadePow ?? 2;
       const ang = Math.random() * TAU;
       const r = 0.05 + Math.random() * tune.spread;
       p.x = x + Math.cos(ang) * r;
       p.z = z + Math.sin(ang) * r;
-      p.y = GROUND_Y + Math.random() * 0.06;
+      // `lift`: zemin kotunun TAM üstünde duran bir sprite'ın alt yarısı zeminin
+      // altında kalıp derinlik testinde kesilirdi (parlak çekirdek kaybolurdu).
+      p.floorY = GROUND_Y + (tune.lift ?? 0) * HUD;
+      p.y = p.floorY + Math.random() * 0.06;
       // Dışa dağılma + (adım tozunda) hareketin tersine savrulma.
       const back = tune.backSpeed ?? 0;
       p.vx = Math.cos(ang) * tune.speed + (tune.backX ?? 0) * back;
@@ -363,7 +423,7 @@ export function HitImpactVfx({
   ) => {
     if (now - st.lastDustAt < DUST_MIN_INTERVAL_MS) return;
     st.lastDustAt = now;
-    spawnDust(x, z, HIT_DUST, count);
+    spawnDust(x, z, HIT_DUST, count, 0, HIT_DUST_POOL);
   };
 
   /**
@@ -389,7 +449,14 @@ export function HitImpactVfx({
       footTune.backX = 0;
       footTune.backZ = 0;
     }
-    spawnDust(x, z, footTune, FOOT_DUST.count);
+    spawnDust(
+      x,
+      z,
+      footTune,
+      FOOT_DUST.count,
+      HIT_DUST_POOL,
+      DUST_POOL,
+    );
   };
 
   const spawnSparks = (x: number, y: number, heavy: boolean) => {
@@ -460,14 +527,16 @@ export function HitImpactVfx({
       p.vx -= p.vx * 2.4 * dt;
       p.vz -= p.vz * 2.4 * dt;
       p.vy -= p.vy * 2.8 * dt;
-      if (p.y < GROUND_Y) p.y = GROUND_Y;
+      if (p.y < p.floorY) p.y = p.floorY;
       const k = 1 - p.life / p.max;
       // easeOutQuad: hızlı açılır, sonra yavaşlar (patlama değil, dağılma).
       const grow = 1 - (1 - k) * (1 - k);
       p.sprite.position.set(p.x, p.y, p.z);
       p.sprite.scale.setScalar(p.size0 + (p.size1 - p.size0) * grow);
       const fade = 1 - k;
-      p.mat.opacity = p.alpha * fade * fade;
+      // Adım tozu daha yavaş söner (`fadePow` 1.2): toz doğar doğmaz kararmaz,
+      // bir an havada asılı kalıp dağılır. Darbe tozu eskisi gibi fade².
+      p.mat.opacity = p.alpha * Math.pow(fade, p.fadePow);
     }
 
     for (const s of st.sparks) {
