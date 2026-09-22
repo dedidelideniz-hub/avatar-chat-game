@@ -171,6 +171,111 @@ function foliageJitter(name: string): number {
  *
  * Dönüş: kaç bitki grubu / kaç mesh ölçeklendi (çim ve çalı ayrı sayılır).
  */
+/* ──────────────────── YAPRAK (bağlı bileşen) BÖLÜTLEME ────────────────────
+ *
+ * KRİTİK GERÇEK (meshopt çözülüp ölçüldü): haritadaki "çim" mesh'i tek bir
+ * bitki DEĞİL, haritaya yayılmış bir YAMAdır — ör. `JungleGrassGroup_04`
+ * ≈4.6 arena birimi genişliğinde ve içinde **1400+ ayrı yaprak** (3-4 köşeli
+ * ada) taşır. Ölçek yamanın kendi kutusundan uygulanırsa her yaprak yama
+ * merkezinden dışa savrulur ve ortak bir taban kotuna göre havaya kalkar —
+ * bitkilerin yerinden kopup kareler hâlinde savrulması bu hatanın sonucuydu.
+ *
+ * Bu yüzden ölçek, mesh'in ÜÇGEN BAĞLANTILARINDAN çıkarılan her bağlı bileşene
+ * AYRI AYRI uygulanır: her yaprak kendi ayak izi merkezinden ve KENDİ
+ * tabanından büyür → kökler yerinde kalır, yapraklar yere basar. Yama merkezine
+ * göre ölçeklemenin bir yan etkisi de buydu: savrulan yapraklar haritanın SU
+ * bölgelerine düşüp "suyun üstünde bitki" görüntüsü oluşturuyordu; yaprak
+ * bazlı pivot bunu kökten engeller, taşıma/silme gibi bir düzeltme gerekmez.
+ *
+ * ⚠️ NEDEN SU MASKEYLE TAŞIMA YOK (denendi, geri alındı): haritada su adı taşıyan
+ * (`*TerrainRiver*`) mesh'ler görünen nehir yüzeyi değil, ARAZİNİN içindeki nehir
+ * YATAĞIDIR — alanları haritanın %21'ini kaplar ve hücrelerinin %99.8'i zemin
+ * üçgenleriyle çakışır. Bu maskeyle "suda" sanılan kümeler haritanın bitkilerinin
+ * %98'iydi ve hepsi kareler hâlinde ızgara hizasına taşınıyordu. Bitkiler zaten
+ * haritacı tarafından karaya yerleştirilmiştir; yapılacak tek şey yerlerinde
+ * büyütmektir.
+ */
+
+interface Cluster {
+  index: number;
+  min: THREE.Vector3;
+  max: THREE.Vector3;
+  vertices: number[];
+}
+
+/** Geometriyi bağlı bileşenlere (yaprak/parça adalarına) böler. */
+function findClusters(geo: THREE.BufferGeometry): Cluster[] {
+  const pos = geo.getAttribute("position");
+  if (!pos) return [];
+  const count = pos.count;
+  if (count < 3) return [];
+
+  // Union-find: her üçgenin köşeleri birbirine bağlanır.
+  const parent = new Int32Array(count);
+  for (let i = 0; i < count; i++) parent[i] = i;
+  const find = (a: number): number => {
+    let root = a;
+    while (parent[root] !== root) root = parent[root];
+    while (parent[a] !== root) {
+      const next = parent[a];
+      parent[a] = root;
+      a = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[rb] = ra;
+  };
+
+  const index = geo.index;
+  const triCount = index
+    ? Math.floor(index.count / 3)
+    : Math.floor(count / 3);
+  for (let t = 0; t < triCount; t++) {
+    const a = index ? index.getX(t * 3) : t * 3;
+    const b = index ? index.getX(t * 3 + 1) : t * 3 + 1;
+    const c = index ? index.getX(t * 3 + 2) : t * 3 + 2;
+    union(a, b);
+    union(b, c);
+  }
+
+  const buckets = new Map<number, number[]>();
+  const boxes = new Map<number, THREE.Box3>();
+  const v = new THREE.Vector3();
+  for (let i = 0; i < count; i++) {
+    const root = find(i);
+    let list = buckets.get(root);
+    if (!list) {
+      list = [];
+      buckets.set(root, list);
+    }
+    list.push(i);
+    let box = boxes.get(root);
+    if (!box) {
+      box = new THREE.Box3();
+      boxes.set(root, box);
+    }
+    box.expandByPoint(v.set(pos.getX(i), pos.getY(i), pos.getZ(i)));
+  }
+
+  const clusters: Cluster[] = [];
+  for (const [root, vertices] of buckets) {
+    // Tek/iki köşeli sahipsiz parçalar bitki değildir.
+    if (vertices.length < 3) continue;
+    const box = boxes.get(root);
+    if (!box) continue;
+    clusters.push({
+      index: clusters.length,
+      min: box.min.clone(),
+      max: box.max.clone(),
+      vertices,
+    });
+  }
+  return clusters;
+}
+
 type ShaderParams = Parameters<THREE.Material["onBeforeCompile"]>[0];
 type ShaderContext = Parameters<THREE.Material["onBeforeCompile"]>[1];
 
@@ -226,27 +331,6 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-/**
- * Rüzgâr ağırlığını (taban-üstü yerel yükseklik) ve küme fazını geometriye
- * yazar. Yerel uzayda çalışır: 0 = taban (sabit), büyük değer = uç (serbest).
- * Faz, küme adından geldiği için her küme farklı anda salınır.
- */
-function bakeWindAttributes(geo: THREE.BufferGeometry, seed: string): void {
-  const pos = geo.getAttribute("position") as THREE.BufferAttribute | undefined;
-  if (!pos) return;
-  if (!geo.boundingBox) geo.computeBoundingBox();
-  const box = geo.boundingBox;
-  if (!box) return;
-  if (!(box.max.y - box.min.y > 1e-6)) return;
-  const count = pos.count;
-  const weights = new Float32Array(count);
-  const phases = new Float32Array(count);
-  for (let i = 0; i < count; i++) weights[i] = pos.getY(i) - box.min.y;
-  phases.fill((hash32(seed) % 997) * (Math.PI * 2 / 997));
-  geo.setAttribute("aWindWeight", new THREE.BufferAttribute(weights, 1));
-  geo.setAttribute("aWindPhase", new THREE.BufferAttribute(phases, 1));
-}
-
 /** Tek bir materyale rüzgâr yaması yazar (paylaşılan materyal bir kez). */
 function patchWindMaterial(material: THREE.Material): boolean {
   if (material.userData.vaelosWind) return false;
@@ -288,7 +372,8 @@ function patchWindOnMesh(mesh: THREE.Mesh): boolean {
  * salınımı için vertex verisini ve materyal yamasını yazar.
  */
 export interface FoliageResult {
-  groups: number;
+  /** Ölçeklenen parça (yaprak/yaprak adası) sayısı. */
+  clumps: number;
   meshes: number;
   grass: number;
   bush: number;
@@ -304,7 +389,7 @@ export interface FoliageResult {
 export function scaleMapFoliage(scene: THREE.Object3D): FoliageResult {
   if (scene.userData.mapFoliageScaled) {
     return {
-      groups: 0,
+      clumps: 0,
       meshes: 0,
       grass: 0,
       bush: 0,
@@ -328,101 +413,140 @@ export function scaleMapFoliage(scene: THREE.Object3D): FoliageResult {
     props.push(node);
   });
 
-  const propBox = new THREE.Box3();
-  const meshBox = new THREE.Box3();
-  const pivot = new THREE.Vector3();
-  const toLocal = new THREE.Matrix4();
-  const scaled = new THREE.Matrix4();
-  const transform = new THREE.Matrix4();
   let meshes = 0;
+  let clumps = 0;
   let grass = 0;
   let bush = 0;
   let windMaterials = 0;
   let capped = 0;
+
   // Yükseklik ölçümü arena biriminde yapılır (savaşçı ≈1.5 birim): ayar
   // "kaç kat" değil "ne kadar yüksek" sorusuna bağlanır.
   const fit = arenaFitScale(scene);
   const before: number[] = [];
   const after: number[] = [];
-
+  const pivot = new THREE.Vector3();
+  const worldPivot = new THREE.Vector3();
+  const worldScale = new THREE.Vector3();
+  const vertex = new THREE.Vector3();
+  const worldMatrix = new THREE.Matrix4();
+  const composeMatrix = new THREE.Matrix4();
+  const toLocalMatrix = new THREE.Matrix4();
+  const localMatrix = new THREE.Matrix4();
   for (const prop of props) {
-    prop.updateWorldMatrix(true, true);
-    propBox.setFromObject(prop);
-    if (propBox.isEmpty()) continue;
-    // Grubun zemin teması: tüm parçalar aynı tabandan büyütülür → çim
-    // yerinden oynamaz, tabanı yere basmaya devam eder.
-    const baseY = propBox.min.y;
     const isGrass = isGrassName(prop.name);
     const profile = isGrass ? FOLIAGE_SCALE.grass : FOLIAGE_SCALE.bush;
-    const jitter = foliageJitter(prop.name);
-    const sxz = profile.xz * jitter;
-    // YÜKSEKLİK TAVANI: küme, arena biriminde tavana kadar büyütülür. Çim
-    // karakterin üstünü kapatmasın (savaşçı ≈1.5 birim, tavan 1.1), kısa
-    // kalan çalı ise tam büyüsün. Tavana dayanan küme bir daha büyümez.
-    let sy = profile.y * jitter;
-    const cap =
-      (isGrass ? FOLIAGE_MAX_H.grass : FOLIAGE_MAX_H.bush) * jitter;
-    const heightBefore = fit > 0 ? (propBox.max.y - propBox.min.y) * fit : 0;
-    if (heightBefore > 1e-4) {
-      const allowed = Math.max(1, cap / heightBefore);
-      if (allowed < sy) {
-        sy = allowed;
-        capped += 1;
-      }
-      before.push(heightBefore);
-      after.push(heightBefore * sy);
-    }
     if (isGrass) grass += 1;
     else bush += 1;
 
     prop.traverse((node) => {
       const mesh = node as THREE.Mesh;
       if (!mesh.isMesh || !mesh.geometry) return;
-      // 🌬️ RÜZGÂR VERİSİ + MATERYAL YAMASI ölçeklemeden ÖNCE yazılır ve
-      // yapısal adı yüzünden ölçeklenmeyen parçalar için de gerekir: aynı
-      // paylaşılan materyali kullanan bir mesh ağırlıksız kalırsa eksik
-      // vertex attribute ile çizilirdi.
-      bakeWindAttributes(mesh.geometry as THREE.BufferGeometry, prop.name);
-      if (patchWindOnMesh(mesh)) windMaterials += 1;
       // Küme içinde kalan yapısal parçalara (duvar, zemin, kule) dokunulmaz.
       if (mesh.name && KEEP_RE.test(mesh.name)) return;
-      meshBox.setFromObject(mesh);
-      if (meshBox.isEmpty()) return;
-      pivot.set(
-        (meshBox.min.x + meshBox.max.x) / 2,
-        baseY,
-        (meshBox.min.z + meshBox.max.z) / 2,
-      );
+      const geo = mesh.geometry as THREE.BufferGeometry;
+      // Harita mesh'i tek bir bitki DEĞİL, haritaya yayılmış bir YAMAdır;
+      // büyütme HER KÜMENİN kendi tabanından yapılır (bkz. `findClusters`).
+      if (geo.userData.mapFoliageScaled) return;
+      const clusters = findClusters(geo);
+      if (!clusters.length) return;
+      const pos = geo.getAttribute("position") as
+        | THREE.BufferAttribute
+        | undefined;
+      if (!pos) return;
+      // 🌬️ RÜZGÂR MATERYAL YAMASI: paylaşılan materyali kullanan yapısal
+      // parçalar da yamalı olmalı, yoksa eksik vertex attribute ile çizilirler.
+      if (patchWindOnMesh(mesh)) windMaterials += 1;
 
-      let geo = mesh.geometry as THREE.BufferGeometry;
-      if (geo.userData.mapFoliageScaled) {
-        // Geometri başka bir bitki örneğiyle paylaşılıyor: bu örnek kendi
-        // pivotuyla büyüyebilsin diye bağımsız kopya alınır.
-        geo = geo.clone();
-        geo.userData = { ...geo.userData, mapFoliageScaled: false };
-        mesh.geometry = geo;
+      worldMatrix.copy(mesh.matrixWorld);
+      toLocalMatrix.copy(worldMatrix).invert();
+      worldScale.setFromMatrixScale(worldMatrix);
+
+      const weights = new Float32Array(pos.count);
+      const phases = new Float32Array(pos.count);
+      meshes += 1;
+
+      for (const cluster of clusters) {
+        const spanY = cluster.max.y - cluster.min.y;
+        if (!(spanY > 0)) continue;
+        clumps += 1;
+        const seed = `${mesh.name}#${cluster.index}`;
+        const jitter = foliageJitter(seed);
+        const arenaHeight = spanY * Math.abs(worldScale.y) * fit;
+        // YÜKSEKLİK TAVANI: HER küme kendi boyuna göre sınırlanır — çim
+        // karakterin üstünü kapatamaz (savaşçı ≈1.5 birim, tavan 1.1), kısa
+        // kalan küme ise tam büyür.
+        let sy = profile.y * jitter;
+        const cap =
+          (isGrass ? FOLIAGE_MAX_H.grass : FOLIAGE_MAX_H.bush) * jitter;
+        if (arenaHeight > 1e-4) {
+          const allowed = Math.max(1, cap / arenaHeight);
+          if (allowed < sy) {
+            sy = allowed;
+            capped += 1;
+          }
+          before.push(arenaHeight);
+          after.push(arenaHeight * sy);
+        }
+        const sxz = profile.xz * jitter;
+
+        // Kümenin KENDİ ayak izi merkezi + KENDİ taban kotu (dünya uzayında).
+        pivot.set(
+          (cluster.min.x + cluster.max.x) / 2,
+          cluster.min.y,
+          (cluster.min.z + cluster.max.z) / 2,
+        );
+        worldPivot.copy(pivot).applyMatrix4(worldMatrix);
+
+        // Dünya uzayında: p' = P + S·(p − P)
+        //   → M⁻¹ · T(P − S·P) · S · M
+        // Pivot kümenin KENDİ ayak izi merkezidir: bitki ne kayar ne havalanır,
+        // yalnızca durduğu yerde büyür/kabarır.
+        composeMatrix.makeScale(sxz, sy, sxz);
+        localMatrix.makeTranslation(
+          worldPivot.x * (1 - sxz),
+          worldPivot.y * (1 - sy),
+          worldPivot.z * (1 - sxz),
+        );
+        localMatrix.multiply(composeMatrix); // T · S
+        localMatrix.premultiply(toLocalMatrix); // M⁻¹ · T · S
+        localMatrix.multiply(worldMatrix); // M⁻¹ · T · S · M
+
+        for (const vi of cluster.vertices) {
+          vertex
+            .set(pos.getX(vi), pos.getY(vi), pos.getZ(vi))
+            .applyMatrix4(localMatrix);
+          pos.setXYZ(vi, vertex.x, vertex.y, vertex.z);
+        }
+
+        // 🌬️ Rüzgâr ağırlığı DÖNÜŞÜMDEN SONRA, kümenin yeni tabanından
+        // ölçülür: 0 = kök (sabit), büyük değer = uç (serbest). Faz küme
+        // başına farklıdır → tarlada ilerleyen dalga.
+        let baseLocalY = Infinity;
+        for (const vi of cluster.vertices) {
+          const y = pos.getY(vi);
+          if (y < baseLocalY) baseLocalY = y;
+        }
+        const phase = (hash32(seed) % 997) * (Math.PI * 2 / 997);
+        for (const vi of cluster.vertices) {
+          weights[vi] = pos.getY(vi) - baseLocalY;
+          phases[vi] = phase;
+        }
       }
 
-      // p' = P + S·(p − P), S = diag(sxz, sy, sxz)
-      //   → M⁻¹ · T(P − S·P) · S · M
-      scaled.makeScale(sxz, sy, sxz);
-      transform.makeTranslation(
-        pivot.x * (1 - sxz),
-        pivot.y * (1 - sy),
-        pivot.z * (1 - sxz),
-      );
-      transform.multiply(scaled); // T · S
-      toLocal.copy(mesh.matrixWorld).invert();
-      transform.premultiply(toLocal); // M⁻¹ · T · S
-      transform.multiply(mesh.matrixWorld); // M⁻¹ · T · S · M
-      geo.applyMatrix4(transform);
+      geo.setAttribute("aWindWeight", new THREE.BufferAttribute(weights, 1));
+      geo.setAttribute("aWindPhase", new THREE.BufferAttribute(phases, 1));
+      pos.needsUpdate = true;
+      // Tavan/bounding box'lar tazelenir (üç, var olan kutuları `applyMatrix4`
+      // dışında kendiliğinden güncellemez).
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
       geo.userData.mapFoliageScaled = true;
-      meshes += 1;
     });
   }
 
   return {
-    groups: props.length,
+    clumps,
     meshes,
     grass,
     bush,

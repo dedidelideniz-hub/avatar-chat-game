@@ -20,6 +20,14 @@
 // uzar, üstünü asla kapatmaz; tavan ölçümü arena ölçeğinden türetilir
 // (`arenaFitScale`, BattleMapModel'in fit kuralının aynısı).
 //
+// ⚠️ EN ÖNEMLİ AYRINTI — ÖLÇEK KÜME BAŞINA UYGULANIR: haritadaki çim/çalı
+// mesh'i tek bir bitki değil, haritaya yayılmış bir YAMAdır (içinde onlarca
+// ayrı küme). Ölçek yamanın kutusundan uygulanırsa kümeler yama merkezinden
+// DIŞA SAVRULUR ve ortak bir taban kotuna göre havaya kalkar — "suyun üstünde
+// duran bitkiler" bu hatanın sonucuydu. Bu yüzden her küme üçgen
+// bağlantılarından ayrı ayrı bulunup KENDİ tabanından büyütülür. Bitki hiçbir
+// zaman taşınmaz/silinmez: haritacının koyduğu yerde, kendi kökünden büyür.
+//
 // 🌬️ RÜZGÂR: sapma vertex gölgelendiricisinde, tepe noktasının TABANDAN
 // yüksekliğiyle orantılı uygulanır → kökler sabit, uçlar salınır. İki frekans
 // (yavaş esinti + hızlı titreşim) ve küme başına faz → tarlada ilerleyen dalga.
@@ -71,13 +79,14 @@ export function MapFoliagePass(): ReactElement {
     // kullanıldığında 0 döner — yani satır "ikinci kez şişmedi"nin kanıtıdır.
     // Yükseklikler arena biriminde (savaşçı ≈1.5) yazılır.
     console.log(
-      `[mapFoliageScale] ${out.groups} bitki grubu / ${out.meshes} mesh ` +
+      `[mapFoliageScale] ${out.meshes} yama / ${out.clumps} yaprak parçası ` +
         `büyütüldü (çim ×${FOLIAGE_SCALE.grass.xz}/${FOLIAGE_SCALE.grass.y} — ` +
-        `${out.grass} grup, çalı ×${FOLIAGE_SCALE.bush.xz}/` +
-        `${FOLIAGE_SCALE.bush.y} — ${out.bush} grup) · ortanca yükseklik ` +
+        `${out.grass} yama, çalı ×${FOLIAGE_SCALE.bush.xz}/` +
+        `${FOLIAGE_SCALE.bush.y} — ${out.bush} yama) · ortanca yükseklik ` +
         `${out.heightBefore.toFixed(2)} → ${out.heightAfter.toFixed(2)} ` +
         `arena birimi (tavan: çim ${FOLIAGE_MAX_H.grass}, ` +
         `çalı ${FOLIAGE_MAX_H.bush}; kısılan ${out.capped}) · ` +
+        
         `rüzgâr ${out.windMaterials} materyalde bağlı` +
         (prefersReducedMotion() ? " (hareket azaltma: sabit)" : ""),
     );
