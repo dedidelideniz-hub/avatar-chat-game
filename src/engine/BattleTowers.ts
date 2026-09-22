@@ -41,8 +41,8 @@ import type { BattleProj } from "@/components/world/arena/shared";
 
 /** Kule seviyesi: 0 = pasif (haritadaki orijinal hâli), 1-3 = aktif seviyeler. */
 export const MAX_TOWER_LEVEL = 3;
-/** Zırh: gelen hasarın bu oranı emilir (0.35 = %35 az hasar). */
-export const TOWER_ARMOR = 0.35;
+/** Zırh: gelen hasarın bu oranı emilir (0.28 = %28 az hasar). */
+export const TOWER_ARMOR = 0.28;
 
 export interface TowerLevelStats {
   /** Menzil (px). Sahnenin mermi menzili 200px (MAX_RANGE_PX) olduğu için
@@ -60,16 +60,16 @@ export interface TowerLevelStats {
  */
 export const TOWER_LEVELS: readonly TowerLevelStats[] = [
   { range: 0, dmg: 0, hp: 0 },
-  { range: 152, dmg: 74, hp: 1300 },
-  { range: 170, dmg: 114, hp: 1900 },
-  { range: 186, dmg: 154, hp: 2600 },
+  { range: 138, dmg: 50, hp: 880 },
+  { range: 152, dmg: 76, hp: 1320 },
+  { range: 168, dmg: 104, hp: 1820 },
 ];
 
 /** Seviye atlama fiyatları: [0→1 aktifle, 1→2, 2→3]. */
 export const TOWER_UPGRADE_COST: readonly number[] = [250, 420, 640];
 
-/** Atışlar arası bekleme (sn). */
-export const TOWER_ATTACK_CD = 1.15;
+/** Atışlar arası bekleme (sn) — yavaşlarsa kule daha az baskı kurar. */
+export const TOWER_ATTACK_CD = 1.3;
 /** Boşta tarama hızı (rad/sn) — ateş başı sağa sola bu hızla döner. */
 export const TOWER_SCAN_SPEED = 0.62;
 /** Boşta tarama açısı (radyan): orta yönün iki yanına ±0.62 rad ≈ ±35°. */

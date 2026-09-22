@@ -672,7 +672,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const towerBtn = useRef<HTMLButtonElement>(null);
   const towerTitle = useRef<HTMLSpanElement>(null);
   const towerCostEl = useRef<HTMLElement>(null);
-  const towerStatsEl = useRef<HTMLSpanElement>(null);
+  const towerPips = useRef<(HTMLElement | null)[]>([]);
   // Etiket metni yalnız seviye/fiyat değiştiğinde yazılır (writeText zaten
   // aynı değeri yazmıyor; bu ref döngüyü tamamen atlar).
   const towerLabel = useRef("");
@@ -741,32 +741,40 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       }
       const towerCost = nextTowerCost();
       const open = towerCost !== null && isNearTowerUpgradable();
+      const poor = open && cash < (towerCost ?? 0);
       toggleClass(towerWrap.current, "moba-tower-wrap--on", open);
-      toggleClass(
-        towerBtn.current,
-        "moba-tower-buy--locked",
-        open && cash < (towerCost ?? 0),
-      );
+      toggleClass(towerWrap.current, "moba-tower-wrap--poor", poor);
+      toggleClass(towerBtn.current, "moba-tower-buy--locked", poor);
       const post = nearPost();
       if (open && post && towerCost !== null) {
+        // Seviye pip'leri: kaçıncı seviyede olduğunu gösterir (metin yok).
+        for (let i = 0; i < towerPips.current.length; i++) {
+          toggleClass(
+            towerPips.current[i],
+            "moba-tower-buy-pip--on",
+            post.level > i,
+          );
+        }
         const nextLevel = Math.min(MAX_TOWER_LEVEL, post.level + 1);
         const stats = nextTowerStats();
         const label = `${post.level}|${towerCost}|${nextLevel}`;
         if (towerLabel.current !== label) {
           towerLabel.current = label;
-          writeText(
-            towerTitle.current,
-            post.level === 0 ? "Kuleyi Aktif Et" : "Kuleyi Güçlendir",
-          );
+          const title =
+            post.level === 0 ? "Kuleyi Aktif Et" : "Kuleyi Güçlendir";
+          writeText(towerTitle.current, title);
           writeText(towerCostEl.current, String(towerCost));
-          writeText(
-            towerStatsEl.current,
-            stats ? `Sv. ${nextLevel} · ${stats.dmg} hasar · ${stats.hp} can` : "",
-          );
           if (towerBtn.current) {
             towerBtn.current.setAttribute(
               "aria-label",
-              `${post.level === 0 ? "Kuleyi aktif et" : "Kuleyi güçlendir"} — ${towerCost} altın`,
+              `${title} — ${towerCost} altın`,
+            );
+            // İstatistikler kompakt kapsülü büyütmesin: ipucunda durur.
+            towerBtn.current.setAttribute(
+              "title",
+              stats
+                ? `${title} · Sv. ${nextLevel} · ${stats.dmg} hasar · ${stats.hp} can · ${stats.range}px menzil`
+                : title,
             );
           }
         }
@@ -991,6 +999,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           harcanır. Görünürlük, kilit ve etiket tek rAF döngüsünde DOM'a
           yazılır (kare başına React çizimi yok). */}
       <div ref={towerWrap} className="moba-tower-wrap absolute left-1/2">
+        {/* Kompakt kapsül: tek satır (ikon · başlık · seviye pip'leri · fiyat).
+            Detay istatistikler `title` ipucundadır — savaş alanı kapanmaz. */}
+        <span className="moba-tower-buy-hint">Altın yetersiz</span>
         <button
           ref={towerBtn}
           type="button"
@@ -999,19 +1010,27 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           aria-label="Kuleyi güçlendir"
         >
           <span className="moba-tower-buy-icon" aria-hidden>
-            <Hammer size={20} strokeWidth={2.3} />
+            <Hammer size={13} strokeWidth={2.5} />
           </span>
-          <span className="moba-tower-buy-body">
-            <span ref={towerTitle} className="moba-tower-buy-title">
-              Kuleyi Aktif Et
-            </span>
-            <span className="moba-tower-buy-sub">
-              <Coins size={12} strokeWidth={2.6} />
-              <b ref={towerCostEl} className="tabular-nums">
-                —
-              </b>
-              <span ref={towerStatsEl} className="moba-tower-buy-stats" />
-            </span>
+          <span ref={towerTitle} className="moba-tower-buy-title">
+            Kuleyi Aktif Et
+          </span>
+          <span className="moba-tower-buy-pips" aria-hidden>
+            {[0, 1, 2].map((i) => (
+              <i
+                key={i}
+                ref={(el) => {
+                  towerPips.current[i] = el;
+                }}
+                className="moba-tower-buy-pip"
+              />
+            ))}
+          </span>
+          <span className="moba-tower-buy-cost">
+            <Coins size={11} strokeWidth={2.8} />
+            <b ref={towerCostEl} className="tabular-nums">
+              —
+            </b>
           </span>
         </button>
       </div>

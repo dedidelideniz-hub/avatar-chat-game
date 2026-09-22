@@ -380,11 +380,15 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
    HUD'un rAF döngüsünde yazılır (`moba-tower-wrap--on`,
    `moba-tower-buy--locked`), yani kare başına React çizimi yoktur. Düğme
    yetenek barının ÜSTÜNDE durur; kuleden uzaklaşınca yumuşakça kaybolur.
+
+   BOYUT: bilinçli olarak TEK SATIR, ~30px yüksekliğinde kompakt bir kapsül.
+   Savaş alanını kapatmasın diye: ikon + başlık + seviye çubuğu + fiyat.
+   Detay istatistikleri (hasar/can) yalnız `title` ipucunda durur.
    ══════════════════════════════════════════════════════════════════════ */
 .moba-tower-wrap.moba-tower-wrap {
   position: absolute;
-  bottom: calc(max(58px, calc(env(safe-area-inset-bottom, 0px) + 16px)) + 96px);
-  transform: translateX(-50%) translateY(10px);
+  bottom: calc(max(58px, calc(env(safe-area-inset-bottom, 0px) + 16px)) + 86px);
+  transform: translateX(-50%) translateY(8px);
   opacity: 0;
   visibility: hidden;
   transition:
@@ -401,89 +405,132 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
 
 button.moba-tower-buy.moba-tower-buy {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 8px 15px 8px 10px;
-  border: 1.5px solid rgb(255 199 92 / 0.55);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(58 36 14 / 0.9), rgb(16 11 6 / 0.92));
+  gap: 7px;
+  height: 30px;
+  padding: 0 11px 0 5px;
+  border: 1px solid rgb(255 199 92 / 0.5);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(48 31 11 / 0.88), rgb(11 8 5 / 0.94));
   box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.12),
-    0 6px 18px rgb(0 0 0 / 0.45),
-    0 0 18px rgb(251 191 36 / 0.28);
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    inset 0 0 0 1px rgb(255 199 92 / 0.08),
+    0 5px 14px rgb(0 0 0 / 0.45),
+    0 0 14px rgb(251 191 36 / 0.22);
   color: #ffe9c2;
   backdrop-filter: blur(6px);
-  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
   animation: moba-tower-pop 180ms ease-out;
 }
-button.moba-tower-buy.moba-tower-buy:active {
-  transform: scale(0.95);
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 0.18),
-    0 0 26px rgb(251 191 36 / 0.55);
-}
-button.moba-tower-buy.moba-tower-buy--locked {
-  filter: grayscale(0.65) brightness(0.72);
-  border-color: rgb(255 255 255 / 0.28);
-}
-/* Altın yetmediğinde düğmenin üstünde kısa bir ipucu belirir. */
-button.moba-tower-buy.moba-tower-buy--locked::after {
-  content: "Altın yetersiz";
+/* Süpüren ışık: tek hareketli detay, kapsülü büyütmeden "gaming" hissi verir. */
+button.moba-tower-buy.moba-tower-buy::before {
+  content: "";
   position: absolute;
-  top: -19px;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgb(255 236 190 / 0.2) 50%,
+    transparent 62%
+  );
+  animation: moba-tower-shine 2.9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes moba-tower-shine {
+  0%,
+  58% {
+    transform: translateX(-110%);
+  }
+  88%,
+  100% {
+    transform: translateX(110%);
+  }
+}
+button.moba-tower-buy.moba-tower-buy:active {
+  transform: scale(0.96);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.2),
+    0 0 22px rgb(251 191 36 / 0.5);
+}
+/* Altın yetmezse kapsül solar; kırmızı ipucu kapsülün ÜSTÜNDE durur
+   (kapsülde overflow var, ipucu sarmalayıcıda yaşar). */
+button.moba-tower-buy.moba-tower-buy--locked {
+  filter: grayscale(0.55) brightness(0.72);
+  border-color: rgb(255 255 255 / 0.26);
+}
+button.moba-tower-buy.moba-tower-buy--locked .moba-tower-buy-cost {
+  color: #ff9d94;
+}
+.moba-tower-buy-hint {
+  position: absolute;
+  bottom: calc(100% + 5px);
   left: 50%;
   transform: translateX(-50%);
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgb(120 20 20 / 0.85);
+  background: rgb(120 20 20 / 0.88);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #ffd9d3;
   white-space: nowrap;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.moba-tower-wrap--poor .moba-tower-buy-hint {
+  opacity: 1;
 }
 
 .moba-tower-buy-icon {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
   background: radial-gradient(
     circle at 35% 25%,
-    rgb(255 199 92 / 0.34),
-    rgb(58 30 8 / 0.62)
+    rgb(255 199 92 / 0.38),
+    rgb(58 30 8 / 0.7)
   );
-  box-shadow: inset 0 0 0 1px rgb(255 213 138 / 0.45);
+  box-shadow: inset 0 0 0 1px rgb(255 213 138 / 0.42);
   color: #ffd48a;
 }
-.moba-tower-buy-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  align-items: flex-start;
-}
 .moba-tower-buy-title {
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.85);
 }
-.moba-tower-buy-sub {
+/* Seviye pip'leri: kaçıncı seviyede olduğunu tek bakışta gösterir. */
+.moba-tower-buy-pips {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #f7c86a;
+  gap: 2.5px;
 }
-.moba-tower-buy-stats {
-  color: rgb(255 255 255 / 0.62);
-  font-size: 10px;
-  font-weight: 700;
+.moba-tower-buy-pip {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.22);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.moba-tower-buy-pip--on {
+  background: linear-gradient(180deg, #ffe9a8, #f0a72c);
+  box-shadow: 0 0 6px rgb(251 191 36 / 0.8);
+}
+.moba-tower-buy-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+  font-weight: 900;
+  color: #f7c86a;
 }
 
 @keyframes moba-tower-pop {
