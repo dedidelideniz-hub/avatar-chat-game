@@ -378,8 +378,16 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
    atlarken). Yeni kule modeli kurulmaz — altın, haritadaki kulenin
    aktifleşmesine / seviye atlamasına harcanır. Görünürlük, kilit ve etiket
    HUD'un rAF döngüsünde yazılır (`moba-tower-wrap--on`,
-   `moba-tower-buy--locked`), yani kare başına React çizimi yoktur. Düğme
-   yetenek barının ÜSTÜNDE durur; kuleden uzaklaşınca yumuşakça kaybolur.
+   `moba-tower-buy--locked`), yani kare başına React çizimi yoktur.
+
+   KONUM: SAĞ KENARDA, sağ raydaki bilgi düğmelerinin (moba-rail) HEMEN
+   ÜSTÜNDE. Düğme eskiden yetenek barının üzerinde ortada duruyordu, yani
+   tam karakterin tepesine gelip görüşü kapatıyordu; artık karakterin
+   olmadığı sağ kenarda bir "bağlamsal eylem" olarak çıkar. Ray yüksekliği
+   ekrana göre clamp'lendiği için ofset de aynı clamp'ten türetilir:
+   ray = 3 düğme + 2 boşluk (bkz. index.css `.moba-rail-btn`), yarısı + 10px
+   nefes. Böylece hem uzun dikey ekranda hem kısa yatay telefonda raya
+   çarpmadan üstünde kalır. Kule kümesiyle/ultıyla da çakışmaz.
 
    BOYUT: bilinçli olarak TEK SATIR, ~30px yüksekliğinde kompakt bir kapsül.
    Savaş alanını kapatmasın diye: ikon + başlık + seviye çubuğu + fiyat.
@@ -387,8 +395,16 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
    ══════════════════════════════════════════════════════════════════════ */
 .moba-tower-wrap.moba-tower-wrap {
   position: absolute;
-  bottom: calc(max(58px, calc(env(safe-area-inset-bottom, 0px) + 16px)) + 86px);
-  transform: translateX(-50%) translateY(8px);
+  /* SAĞ KENAR: karakter ekranın ortasında/altında durduğu için düğme artık
+     onun üstünü kapatmaz. Sağdaki bilgi rayının (moba-rail) hemen üstüne
+     oturur; ray dikeyde ortalandığı için (index.css `.moba-rail`) ofset de
+     yarı yükseklik üzerinden hesaplanır. */
+  left: auto;
+  right: max(6px, calc(env(safe-area-inset-right, 0px) + 6px));
+  bottom: calc(
+    50% + (clamp(26px, 4.2vh, 38px) * 3 + 12px) / 2 + 10px
+  );
+  transform: translateY(8px);
   opacity: 0;
   visibility: hidden;
   transition:
@@ -400,7 +416,7 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
 .moba-tower-wrap.moba-tower-wrap--on {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
 }
 
 button.moba-tower-buy.moba-tower-buy {

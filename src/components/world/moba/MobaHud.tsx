@@ -998,7 +998,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
           kurulmaz: altın, o kulenin aktifleşmesi / seviye atlaması için
           harcanır. Görünürlük, kilit ve etiket tek rAF döngüsünde DOM'a
           yazılır (kare başına React çizimi yok). */}
-      <div ref={towerWrap} className="moba-tower-wrap absolute left-1/2">
+      <div ref={towerWrap} className="moba-tower-wrap absolute">
         {/* Kompakt kapsül: tek satır (ikon · başlık · seviye pip'leri · fiyat).
             Detay istatistikler `title` ipucundadır — savaş alanı kapanmaz. */}
         <span className="moba-tower-buy-hint">Altın yetersiz</span>
