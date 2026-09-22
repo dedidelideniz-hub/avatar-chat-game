@@ -117,7 +117,11 @@ import {
   stopBattleAmbience,
 } from "@/lib/sounds";
 import { AnimatePresence, motion } from "framer-motion";
-import { Trophy, X } from "lucide-react";
+import { Crosshair, Crown, Sword, Trophy, X } from "lucide-react";
+// Yetenek ikonları: süper düğmesinin "resmi" artık skine göre doğru vektör
+// ikonu çizer. Eşleme burada kopyalanmaz — HUD ile TEK kaynaktan gelir
+// (`AbilityIcon`, bkz. moba/MobaHud.tsx).
+import { AbilityIcon } from "@/components/world/moba/MobaHud";
 import {
   Component,
   type ReactNode,

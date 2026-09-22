@@ -16,6 +16,10 @@
 import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 import { aimState } from "./arena/skillshot";
+// Düğmelerin görünüm işaretleri (hazır / hangi yetenek): ikonlar CSS'te bu
+// işaretlere göre çizilir. Sahne JSX'i araç penceresinin dışında kaldığı için
+// ikon eşlemesi düğmeye buradan yazılır (bkz. battle/abilityButtonState.ts).
+import { observeAbilityButtonState } from "./battle/abilityButtonState";
 
 export type AbilityKind = "super" | "ult";
 
@@ -37,6 +41,14 @@ export function useAbilityAim(
   useEffect(() => {
     cbs.current = { onFire, isReady };
   });
+
+  // Sahne düğmelerinin görünüm işaretleri: yalnız gerçek bir içerik/class
+  // değişiminde çalışır (kare döngüsüne ek yük getirmez).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    return observeAbilityButtonState(container);
+  }, [containerRef]);
 
   useEffect(() => {
     const el = containerRef.current;

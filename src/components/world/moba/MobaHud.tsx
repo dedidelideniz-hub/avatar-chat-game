@@ -51,6 +51,7 @@ import {
   Swords,
   Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { BattleFighter } from "@/components/world/Arena3D";
 // Yakın dövüş (melee) yuvasının bekleme halkası aynı sabitten ölçeklenir.
 import { MELEE_CD } from "@/engine/RoyalMelee";
@@ -84,28 +85,58 @@ const RING_R = 15.5;
 const RING_C = 2 * Math.PI * RING_R;
 
 /**
- * Yetenek emojisi → tematik vektör ikon.
+ * Yetenek ikonu anahtarı — hem React tarafı (`AbilityIcon`) hem de sahne
+ * düğmelerinin görünüm işaretleri (bkz. battle/abilityButtonState.ts →
+ * `abilityIconKey`) AYNI tabloyu okur. Yani HUD'un yetenek yuvası ile
+ * sağ-alttaki yetenek düğmesi asla farklı ikon gösteremez.
+ */
+export type AbilityIconKey =
+  | "bomb"
+  | "heal"
+  | "sparkle"
+  | "bolt"
+  | "flame"
+  | "swords";
+
+/** Emoji → tematik vektör ikon (tek kaynak). */
+const ABILITY_ICONS: Record<AbilityIconKey, LucideIcon> = {
+  bomb: Bomb,
+  heal: HeartPulse,
+  sparkle: Sparkles,
+  bolt: Zap,
+  flame: Flame,
+  swords: Swords,
+};
+
+/**
+ * Yetenek emojisi → ikon anahtarı.
  *
  * Yetenek tanımları (src/lib/shop.ts) emoji tutar ve savaş sahneleri HUD'a
  * yalnızca o emojiyi geçer; bu yüzden eşleme emoji üzerinden yapılır ve
- * arayüzde hiç emoji gösterilmez.
+ * arayüzde hiç emoji gösterilmez. Bilinmeyen yetenek güvenli varsayılana
+ * (çapraz kılıç) düşer.
  */
-export function AbilityIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
-  const props = { size, strokeWidth: 2.1 } as const;
+export function abilityIconKey(emoji: string): AbilityIconKey {
   switch (emoji) {
     case "💥":
-      return <Bomb {...props} />;
+      return "bomb";
     case "💚":
-      return <HeartPulse {...props} />;
+      return "heal";
     case "✨":
-      return <Sparkles {...props} />;
+      return "sparkle";
     case "⚡":
-      return <Zap {...props} />;
+      return "bolt";
     case "🔥":
-      return <Flame {...props} />;
+      return "flame";
     default:
-      return <Swords {...props} />;
+      return "swords";
   }
+}
+
+/** Yetenek emojisini tematik vektör ikona çevirir. */
+export function AbilityIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
+  const Icon = ABILITY_ICONS[abilityIconKey(emoji)];
+  return <Icon size={size} strokeWidth={2.1} />;
 }
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -780,6 +811,12 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
             Math.max(34, anchor.h - h - 8),
           );
           wrapEl.style.translate = `${Math.round(x)}px ${Math.round(y)}px`;
+        } else if (wasOpen.current && wrapEl.style.translate) {
+          // İzdüşüm alınamadı (kule kameranın arkasında / kamera henüz bağlı
+          // değil): BAYAT ofset bırakılmaz. Eskiden `translate` yalnız anchor
+          // varken yazılıyordu; offset bir kez yazıldıktan sonra kalıcı
+          // kalıyor ve istem yanlış yerde asılı kalıyordu.
+          wrapEl.style.translate = "";
         }
       }
       wasOpen.current = open;

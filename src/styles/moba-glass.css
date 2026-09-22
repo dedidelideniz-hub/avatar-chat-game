@@ -226,7 +226,11 @@
 
 /* Süper hazırken yalnızca ikon gösterilir; hazır değilken yüzde okuması
    (ör. %64) olduğu gibi kalır — o yüzden gizleme düğmeye değil, yalnızca
-   hazır durumundaki ikon yuvasına uygulanır. */
+   hazır durumundaki ikon yuvasına uygulanır.
+
+   NOT: Aşağıdaki şimşek artık YALNIZ YEDEKTİR (düğme işaretini alamazsa).
+   Gerçek ikon, skine ait yeteneğe göre bir sonraki bölümdeki tablodan gelir
+   (data-ability). */
 .battle-hud-super.super-ready .battle-hud-icon {
   font-size: 0 !important;
   width: 26px;
@@ -236,13 +240,83 @@
 }
 
 /* Kraliyet ultisi yalnızca dolduğunda (altın zemin) emoji çizer: o durumda
-   taç ikonuna dönüşür, dolmamışken yüzde yazar. */
+   taç ikonuna dönüşür, dolmamışken yüzde yazar. Ölçü/parlaklık bir sonraki
+   bölümde büyütülür (bkz. `[data-state="ready"]`). */
 .battle-hud-ult[class*="from-amber-300"] .battle-hud-icon {
   font-size: 0 !important;
   width: 22px;
   height: 22px;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M3 18 4.6 8l4.4 3.6L12 5l3 6.6L19.4 8 21 18z'/%3E%3Cpath d='M4.5 21h15'/%3E%3C/svg%3E")
     center / contain no-repeat;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   YETENEK DÜĞMELERİNİN İKONLARI — skine göre DOĞRU resim.
+
+   Şikâyet: sağ-alttaki düğmelerin resmi yanlıştı — süper düğmesi hangi skini
+   kuşanırsan kuşan aynı şimşeği çiziyordu (CSS'te sabit bir data-URI), yani
+   HUD'un yetenek yuvası bombayı/kalp atışını gösterirken düğme şimşek
+   gösteriyordu. Üstelik ikonlar 22-26px'e sıkışmış, zemine göre soluk kalmıştı.
+
+   Çözüm iki parçalı (sahne JSX'i araç penceresinin dışında olduğu için):
+     1) battle/abilityButtonState.ts düğmeye `data-state` + `data-ability`
+        işaretlerini yazar (hazır mı, hangi yetenek).
+     2) Aşağıdaki tablo her anahtar için lucide'ın KENDİ path verisini
+        (lucide-react v0.555) data-URI olarak çizer — yani düğme, HUD'daki
+        ikonun birebir aynısını gösterir; emoji hiç görünmez.
+
+   Ölçü artık düğmeden türetilir (`--hud-skill` / `--hud-ult`), böylece ikon
+   yatay modda kümeyle birlikte küçülür ama hep net kalır.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Hazır yetenek: yuva ikon kutusuna döner (bekleme halkası yerine ikon). */
+.battle-hud-controls .battle-hud-super[data-state="ready"] .battle-hud-icon,
+.battle-hud-controls .battle-hud-ult[data-state="ready"] .battle-hud-icon {
+  display: block;
+  font-size: 0 !important;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.32));
+}
+.battle-hud-controls .battle-hud-super[data-state="ready"] .battle-hud-icon {
+  width: calc(var(--hud-skill) * 0.52);
+  height: calc(var(--hud-skill) * 0.52);
+}
+.battle-hud-controls .battle-hud-ult[data-state="ready"] .battle-hud-icon {
+  width: calc(var(--hud-ult) * 0.5);
+  height: calc(var(--hud-ult) * 0.5);
+}
+
+/* 💥 patlayıcı yetenek */
+.battle-hud-controls .battle-hud-super[data-ability="bomb"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='13' r='9'/%3E%3Cpath d='M14.35 4.65 16.3 2.7a2.41 2.41 0 0 1 3.4 0l1.6 1.6a2.4 2.4 0 0 1 0 3.4l-1.95 1.95'/%3E%3Cpath d='m22 2-1.5 1.5'/%3E%3C/svg%3E");
+}
+/* 💚 iyileştirme yeteneği */
+.battle-hud-controls .battle-hud-super[data-ability="heal"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5'/%3E%3Cpath d='M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27'/%3E%3C/svg%3E");
+}
+/* ✨ büyü / parıltı yeteneği */
+.battle-hud-controls .battle-hud-super[data-ability="sparkle"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z'/%3E%3Cpath d='M20 2v4'/%3E%3Cpath d='M22 4h-4'/%3E%3Ccircle cx='4' cy='20' r='2'/%3E%3C/svg%3E");
+}
+/* ⚡ yıldırım yeteneği */
+.battle-hud-controls .battle-hud-super[data-ability="bolt"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'/%3E%3C/svg%3E");
+}
+/* 🔥 ateş yeteneği */
+.battle-hud-controls .battle-hud-super[data-ability="flame"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4'/%3E%3C/svg%3E");
+}
+/* Varsayılan (bilinmeyen yetenek): çapraz kılıç — AbilityIcon ile aynı. */
+.battle-hud-controls .battle-hud-super[data-ability="swords"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='14.5 17.5 3 6 3 3 6 3 17.5 14.5'/%3E%3Cline x1='13' x2='19' y1='19' y2='13'/%3E%3Cline x1='16' x2='20' y1='16' y2='20'/%3E%3Cline x1='19' x2='21' y1='21' y2='19'/%3E%3Cpolyline points='14.5 6.5 18 3 21 3 21 6 17.5 9.5'/%3E%3Cline x1='5' x2='9' y1='14' y2='18'/%3E%3Cline x1='7' x2='4' y1='17' y2='20'/%3E%3Cline x1='3' x2='5' y1='19' y2='21'/%3E%3C/svg%3E");
+}
+
+/* Kraliyet ultisi: taç. Düğme işareti (data-ability) sayesinde artık
+   Tailwind sınıf adına bağlı değil — hazır durumu okunduğu sürece taç çizilir. */
+.battle-hud-controls .battle-hud-ult[data-ability="crown"] .battle-hud-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23451a03' stroke-width='2.2' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M3 18 4.6 8l4.4 3.6L12 5l3 6.6L19.4 8 21 18z'/%3E%3Cpath d='M4.5 21h15'/%3E%3C/svg%3E");
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -422,6 +496,39 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+}
+
+/* İzdüşüm alınabiliyorsa istem, kulenin tepesine MUTLAK yerleşir: köşe
+   referansı sol-üst olur ve konum yalnız `translate` ile verilir. Bu kural
+   olmadan `right/bottom` yedeği + `translate` toplanıyordu; yani konum, kule
+   ekranda nerede olursa olsun sağ-alt kümeye göre KAYIYOR ve istem yanlış
+   yerde asılı kalıyordu (bkz. MobaHud'un kare döngüsü). */
+.moba-tower-wrap.moba-tower-wrap--float {
+  left: 0;
+  top: 0;
+  right: auto;
+  bottom: auto;
+}
+
+/* Kulenin tepesine bağlıyken kapsülün altında küçük bir İŞARETÇİ olur: düğme
+   ile dünya nesnesi arasındaki ilişki tek bakışta okunur (Wild Rift'in
+   bağlamsal düğmeleri gibi). Yedeğe düşen konumda işaretçi çizilmez. */
+.moba-tower-wrap.moba-tower-wrap--float::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid rgb(255 199 92 / 0.5);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.moba-tower-wrap--float.moba-tower-wrap--on::after {
+  opacity: 1;
 }
 
 button.moba-tower-buy.moba-tower-buy {
