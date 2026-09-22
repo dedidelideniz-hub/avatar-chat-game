@@ -3,6 +3,7 @@ import { GlbModelBoundary } from "@/engine/GlbAvatar3D";
 import { BattleMapModel as BattlefieldMap } from "./BattleMapModel";
 import { MapPalette } from "./WarAtmosphere";
 import { MapVividPass } from "./mapVivid";
+import { MapFoliagePass } from "./mapFoliage";
 import { DefenseTowerLayer } from "./arena/DefenseTowers";
 import { GroundShadowFlags } from "./arena/GroundShadows";
 
@@ -31,6 +32,12 @@ export function BattleMapModel() {
             yüzeylere doygunluk yaması yazılır (layout effect'ler ağaç
             sırasına göre çalışır). Bkz. mapVivid.tsx. */}
         <MapVividPass />
+        {/* 🌿 ÇİM / ÇALI BÜYÜTME: haritanın kendi çim ve çalı mesh'leri
+            (JungleGrassGroup / FoliageGroup / bush) yerinde büyütülür —
+            MapPalette'teki dekor küçültmesinden SONRA çalışır (layout
+            effect'ler ağaç sırasına göre işler) ve yalnızca geometriye
+            dokunur: yürünebilirlik/çarpışma değişmez. Bkz. mapFoliage.tsx. */}
+        <MapFoliagePass />
         <BattlefieldMap />
         {/* 🌑 HARİTA GÖLGE ALICILARI: yönlü ana ışık gölge düşürdüğünde zemin
             (yol/çim/taş) gölgeyi gerçekten göstersin diye ışık alan her mesh
