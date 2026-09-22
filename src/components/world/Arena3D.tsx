@@ -113,6 +113,9 @@ import {
   type BattleFx,
   type BattleProj,
 } from "./arena/shared";
+// 🌑 Zemin gölgeleri: ayak altı temas gölgesi (harita gölge ALICI bayrakları
+// `BattleMapGuard` içinde kurulur).
+import { ContactShadow } from "./arena/GroundShadows";
 
 /* Arena sabitleri, tipleri ve efekt yardımcıları `./arena/shared` içinde.
  * Genel API eskisi gibi Arena3D üzerinden de erişilebilir kalsın diye
@@ -900,6 +903,12 @@ function GlbFighterBodyCore({
       >
         <primitive object={clone} />
       </group>
+      {/* 🌑 TEMAS GÖLGESİ (GLB gövde yolu): rig kökünün kardeşi olarak çizilir,
+          yani gövde ölçeklemesinden (bodyFit.scale) ve kemik animasyonundan
+          bağımsızdır — ayakların tam altında, karakter hangi skini kuşanırsa
+          kuşansın aynı boyda durur. Gölge haritası olmayan cihazlarda
+          karakterin zeminden kopmasını engelleyen katmandır. */}
+      <ContactShadow />
     </>
   );
 }

@@ -12,6 +12,7 @@ import type { MutableRefObject } from "react";
 import type * as THREE from "three";
 import type { AvatarConfig } from "@/lib/avatar";
 import { BODY_SCALE_GAIN } from "./shared";
+import { ContactShadow } from "./GroundShadows";
 
 /** Yedek/prosedürel gövde GLB karakteriyle AYNI boyda çizilir (aynı
  *  `BODY_SCALE_GAIN`): yoksa model akışı sırasında — ya da GLB hiç
@@ -32,13 +33,19 @@ export function ProceduralBody({
   armR: MutableRefObject<THREE.Group | null>;
 }) {
   return (
-    <group ref={bob} scale={BODY_SCALE_GAIN}>
+    <>
+      {/* 🌑 TEMAS GÖLGESİ: `bob` grubunun DIŞINDA çizilir — o grup gövde
+          kazancıyla büyür ve yürürken sallanır; gölge ayakların altında sabit
+          ve düz kalmalı ki karakter zemine otursun. */}
+      <ContactShadow />
+      <group ref={bob} scale={BODY_SCALE_GAIN}>
       {/* legs + shoes */}
       <group ref={legL} position={[0, 0.5, 0.1]}>
         <RoundedBox
           args={[0.18, 0.52, 0.2]}
           radius={0.06}
           position={[0, -0.26, 0]}
+          castShadow
         >
           <meshStandardMaterial color={c.pants} roughness={0.9} />
         </RoundedBox>
@@ -46,6 +53,7 @@ export function ProceduralBody({
           args={[0.2, 0.12, 0.32]}
           radius={0.045}
           position={[0, -0.54, 0.03]}
+          castShadow
         >
           <meshStandardMaterial color={c.shoes} roughness={0.55} />
         </RoundedBox>
@@ -55,6 +63,7 @@ export function ProceduralBody({
           args={[0.18, 0.52, 0.2]}
           radius={0.06}
           position={[0, -0.26, 0]}
+          castShadow
         >
           <meshStandardMaterial color={c.pants} roughness={0.9} />
         </RoundedBox>
@@ -62,6 +71,7 @@ export function ProceduralBody({
           args={[0.2, 0.12, 0.32]}
           radius={0.045}
           position={[0, -0.54, 0.03]}
+          castShadow
         >
           <meshStandardMaterial color={c.shoes} roughness={0.55} />
         </RoundedBox>
@@ -81,10 +91,11 @@ export function ProceduralBody({
           args={[0.16, 0.54, 0.18]}
           radius={0.07}
           position={[0, -0.27, 0]}
+          castShadow
         >
           <meshStandardMaterial color={c.shirt} roughness={0.85} />
         </RoundedBox>
-        <mesh position={[0, -0.52, 0]}>
+        <mesh position={[0, -0.52, 0]} castShadow>
           <sphereGeometry args={[0.09, 10, 10]} />
           <meshStandardMaterial color={c.skin} roughness={0.8} />
         </mesh>
@@ -94,10 +105,11 @@ export function ProceduralBody({
           args={[0.16, 0.54, 0.18]}
           radius={0.07}
           position={[0, -0.27, 0]}
+          castShadow
         >
           <meshStandardMaterial color={c.shirt} roughness={0.85} />
         </RoundedBox>
-        <mesh position={[0, -0.52, 0]}>
+        <mesh position={[0, -0.52, 0]} castShadow>
           <sphereGeometry args={[0.09, 10, 10]} />
           <meshStandardMaterial color={c.skin} roughness={0.8} />
         </mesh>
@@ -136,7 +148,7 @@ export function ProceduralBody({
         {/* hair styles */}
         {c.hair !== "none" && (
           <group>
-            <mesh position={[0, 0.17, 0]} scale={[1.02, 0.72, 1.02]}>
+            <mesh position={[0, 0.17, 0]} scale={[1.02, 0.72, 1.02]} castShadow>
               <sphereGeometry args={[0.2, 18, 18]} />
               <meshStandardMaterial color={c.hairColor} roughness={0.9} />
             </mesh>
@@ -148,6 +160,7 @@ export function ProceduralBody({
                     key={i}
                     position={[Math.cos(a) * 0.13, 0.3, Math.sin(a) * 0.13]}
                     rotation={[Math.cos(a) * 0.4, 0, -Math.sin(a) * 0.4]}
+                    castShadow
                   >
                     <coneGeometry args={[0.055, 0.26, 8]} />
                     <meshStandardMaterial color={c.hairColor} roughness={0.9} />
@@ -155,7 +168,7 @@ export function ProceduralBody({
                 );
               })}
             {c.hair === "long" && (
-              <mesh position={[0, -0.12, -0.17]}>
+              <mesh position={[0, -0.12, -0.17]} castShadow>
                 <boxGeometry args={[0.34, 0.62, 0.13]} />
                 <meshStandardMaterial color={c.hairColor} roughness={0.9} />
               </mesh>
@@ -167,6 +180,7 @@ export function ProceduralBody({
                   <mesh
                     key={i}
                     position={[Math.cos(a) * 0.12, 0.26, Math.sin(a) * 0.12]}
+                    castShadow
                   >
                     <sphereGeometry args={[0.085, 10, 10]} />
                     <meshStandardMaterial
@@ -178,14 +192,15 @@ export function ProceduralBody({
               })}
             {c.hair === "bob" &&
               [0.17, -0.17].map((sx) => (
-                <mesh key={sx} position={[sx, -0.08, 0]}>
+                <mesh key={sx} position={[sx, -0.08, 0]} castShadow>
                   <boxGeometry args={[0.13, 0.38, 0.34]} />
                   <meshStandardMaterial color={c.hairColor} roughness={0.9} />
                 </mesh>
               ))}
           </group>
         )}
+        </group>
       </group>
-    </group>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { BattleMapModel as BattlefieldMap } from "./BattleMapModel";
 import { MapPalette } from "./WarAtmosphere";
 import { MapVividPass } from "./mapVivid";
 import { DefenseTowerLayer } from "./arena/DefenseTowers";
+import { GroundShadowFlags } from "./arena/GroundShadows";
 
 /**
  * The battlefield with a crash guard. Previously a map that failed to parse
@@ -31,6 +32,12 @@ export function BattleMapModel() {
             sırasına göre çalışır). Bkz. mapVivid.tsx. */}
         <MapVividPass />
         <BattlefieldMap />
+        {/* 🌑 HARİTA GÖLGE ALICILARI: yönlü ana ışık gölge düşürdüğünde zemin
+            (yol/çim/taş) gölgeyi gerçekten göstersin diye ışık alan her mesh
+            alıcı işaretlenir. İsim kalıbına ve kare bütçesine bağlı olmayan
+            geçiş: 14 MB'lık harita geç yüklense de bayraklar yazılır. Yalnızca
+            görsel bir bayraktır — fizik/çarpışma etkilenmez. */}
+        <GroundShadowFlags />
         {/* 🛡️ SAVUNMA KULELERİ: satın alınan kuleler ve boş kule arsaları.
             Arena uzayında (haritanın fit dönüşümünden bağımsız) durur;
             ekonomi/simülasyon `@/engine/BattleTowers` içindedir. Yalnızca
