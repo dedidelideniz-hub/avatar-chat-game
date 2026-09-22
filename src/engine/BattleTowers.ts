@@ -70,6 +70,10 @@ export const TOWER_UPGRADE_COST: readonly number[] = [250, 420, 640];
 
 /** Atışlar arası bekleme (sn). */
 export const TOWER_ATTACK_CD = 1.15;
+/** Boşta tarama hızı (rad/sn) — ateş başı sağa sola bu hızla döner. */
+export const TOWER_SCAN_SPEED = 0.62;
+/** Boşta tarama açısı (radyan): orta yönün iki yanına ±0.62 rad ≈ ±35°. */
+export const TOWER_SCAN_ARC = 0.62;
 /** Merminin uçuş hızı (px/sn) — oyuncunun temel atışıyla aynı ailede. */
 export const TOWER_SHOT_SPEED = 430;
 /** Namlu çıkışının kule merkezinden kayması (px). */
@@ -107,6 +111,12 @@ export interface TowerPostSeed {
    * zemine kadar genişletir — aksi hâlde düğme hiç açılmazdı.
    */
   reachPx: number;
+  /**
+   * Nişan alınacak hedef yokken ateş başının SALINDIĞI orta yön (radyan).
+   * Koridora (rakip üse) bakar: kule boşta da "bekçilik" yapar gibi sağa sola
+   * döner, yani canlı olduğu okunur.
+   */
+  baseYaw: number;
 }
 
 /** Kurulu kule durumu (seed + canlı simülasyon alanları). */
@@ -116,8 +126,15 @@ export interface TowerPost extends TowerPostSeed {
   maxHp: number;
   /** Kalan ateş beklemesi (sn). */
   cd: number;
-  /** Gövde/namlu yönü (radyan, dünya XZ). */
+  /** Ateş başının baktığı yön (radyan, dünya XZ). */
   yaw: number;
+  /** Tarama (boşta salınım) fazı. */
+  scanT: number;
+  /**
+   * Menzilde hedef var mı? 3B katman bunu okur: hedef kilitliyken ateş başı
+   * parlar, hedef yokken yalnız yumuşak tarama ışığı kalır.
+   */
+  locked: boolean;
   /** Ateş anındaki kısa parlama (sn) — 3B katman tepeden ışıma çizer. */
   flashT: number;
 }
@@ -252,7 +269,9 @@ export function setTowerPosts(seeds: readonly TowerPostSeed[]): void {
         hp: 0,
         maxHp: TOWER_LEVELS[1].hp,
         cd: 0,
-        yaw: 0,
+        yaw: seed.baseYaw,
+        scanT: Math.random() * Math.PI * 2,
+        locked: false,
         flashT: 0,
       };
     }
@@ -370,9 +389,11 @@ export function stepTowers(dt: number): void {
 
   for (const post of towerState.posts) {
     post.flashT = Math.max(0, post.flashT - dt);
-    if (post.level <= 0 || post.hp <= 0) continue;
+    if (post.level <= 0 || post.hp <= 0) {
+      post.locked = false;
+      continue;
+    }
     post.cd = Math.max(0, post.cd - dt);
-    if (hostiles.length === 0) continue;
     const stats = towerStats(post.level);
 
     // Hedef seçimi: mesafe karar verir (minyon önce değil).
@@ -385,11 +406,20 @@ export function stepTowers(dt: number): void {
         enemy = h;
       }
     }
-    if (!enemy || dist > stats.range || dist <= 0) continue;
+
+    // HEDEF YOK → TARAMA: ateş başı orta yön (koridor) çevresinde sağa sola
+    // salınır. Böylece kule boşta da canlı görünür ve sağa/sola döner.
+    if (!enemy || dist > stats.range || dist <= 0) {
+      post.locked = false;
+      post.scanT += dt * TOWER_SCAN_SPEED;
+      post.yaw = post.baseYaw + Math.sin(post.scanT) * TOWER_SCAN_ARC;
+      continue;
+    }
 
     const dx = enemy.x - post.x;
     const dy = enemy.y - post.y;
-    // Kilitlenme: kule rakibe döner (yumuşak takip, anlık sıçrama yok).
+    // KİLİTLENME: baş hedefe döner (yumuşak takip, anlık sıçrama yok).
+    post.locked = true;
     post.yaw = turnToward(post.yaw, Math.atan2(dy, dx), 1 - Math.exp(-dt * 7));
     if (post.cd > 0) continue;
 
@@ -424,6 +454,7 @@ function damagePost(post: TowerPost, dmg: number): void {
   post.hp = 0;
   post.maxHp = 0;
   post.cd = 0;
+  post.locked = false;
 }
 
 /**

@@ -180,6 +180,10 @@ function buildSeeds(parts: readonly RawTowerPart[]): TowerPostSeed[] {
       const gap = Math.hypot(free[0] - px, free[1] - py);
       reachPx = Math.min(300, Math.max(TOWER_SITE_RADIUS_PX, gap + 48));
     }
+    // TARAMA YÖNÜ: hedef yokken ateş başı bu yöne bakar (koridor / rakip üs).
+    // Rakip başlangıcı bilinmiyorsa harita merkezi kullanılır.
+    const lookX = enemy ? enemy.x - px : 850 - px;
+    const lookY = enemy ? enemy.y - py : 550 - py;
     return {
       id: "",
       name: anchor.semantic.split("/").filter(Boolean)[0] ?? "tower",
@@ -193,6 +197,7 @@ function buildSeeds(parts: readonly RawTowerPart[]): TowerPostSeed[] {
       color: towerColor(anchor.semantic),
       side,
       reachPx,
+      baseYaw: Math.atan2(lookY, lookX),
     } satisfies TowerPostSeed;
   });
   seeds.sort((a, b) => a.x - b.x || a.y - b.y);
@@ -221,7 +226,11 @@ function sameLayout(a: readonly TowerPostSeed[], b: readonly TowerPostSeed[]): b
 function TowerMarker({ post }: { post: TowerPost }) {
   const camera = useThree((s) => s.camera);
   const ring = useRef<THREE.Mesh>(null);
+  const head = useRef<THREE.Group>(null);
+  const muzzle = useRef<THREE.Mesh>(null);
+  const arc = useRef<THREE.Mesh>(null);
   const core = useRef<THREE.Sprite>(null);
+  const flashSprite = useRef<THREE.Sprite>(null);
   const beam = useRef<THREE.Mesh>(null);
   const lastLevel = useRef(post.level);
   const pulse = useRef(0);
@@ -265,6 +274,46 @@ function TowerMarker({ post }: { post: TowerPost }) {
       }),
     [post.color],
   );
+  // Namlu ışığı + kilit halkası: YALNIZ ateş eden başa aittir. Kulenin kendi
+  // modeli hiç oynamaz; "canlı" görünen kısım bu baştır.
+  const muzzleMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: post.color,
+        transparent: true,
+        opacity: 0.2,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [post.color],
+  );
+  const arcMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: post.color,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      }),
+    [post.color],
+  );
+  const flashMat = useMemo(
+    () =>
+      new THREE.SpriteMaterial({
+        map: getGlowTexture(),
+        color: "#ffffff",
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      }),
+    [],
+  );
 
   const height = Math.max(0.6, post.top - post.baseY);
 
@@ -295,20 +344,50 @@ function TowerMarker({ post }: { post: TowerPost }) {
       ring.current.scale.setScalar(1 + pulseK * 0.3 + (inRange ? 0.03 * breathe : 0));
     }
 
-    // ── tepedeki ışıma çekirdeği: aktiflik + ateş anı ──
+    // ── ATEŞ BAŞI: sağa sola döner ─────────────────────────────────────
+    // Makine yönü `post.yaw` (px uzayı, +X'e göre atan2(dy, dx)). Dünyada
+    // hedef yönü (cos yaw, sin yaw) olduğu için Y ekseni dönüşü -yaw'dır.
     const flash = post.flashT > 0 ? post.flashT / 0.18 : 0;
+    if (head.current) {
+      head.current.visible = active;
+      head.current.rotation.y = -post.yaw;
+      // Ateş anı tepmesi: baş bir anlık geri kaçar (canlı his).
+      head.current.scale.setScalar(1 + flash * 0.1 + pulseK * 0.12);
+    }
+    // Namlu ışığı: hedef kilitliyken belirgin, boştayken silik tarama ışığı.
+    muzzleMat.opacity = active
+      ? (post.locked ? 0.46 + 0.12 * breathe : 0.14 + 0.05 * breathe) +
+        flash * 0.4
+      : 0;
+    if (muzzle.current) muzzle.current.visible = active;
+    // Kilit halkası: başın arkasında dönen ince ışık yayı.
+    arcMat.opacity = active
+      ? (post.locked ? 0.5 + 0.2 * breathe : 0.2 + 0.1 * breathe) + flash * 0.3
+      : 0;
+    if (arc.current) {
+      arc.current.visible = active;
+      arc.current.rotation.z = Math.PI / 2 + Math.sin(t * 1.4) * 0.12;
+    }
+
+    // ── başın içindeki ışıma çekirdeği: aktiflik + ateş anı ──
     coreMat.opacity = active
       ? 0.26 + 0.08 * (post.level - 1) + 0.1 * breathe + flash * 0.72 + pulseK * 0.4
       : 0;
     if (core.current) {
       core.current.visible = active;
-      const base = 0.52 + 0.14 * (post.level - 1);
+      const base = 0.46 + 0.13 * (post.level - 1) + (post.locked ? 0.06 : 0);
       core.current.scale.setScalar(base * (1 + flash * 0.5 + pulseK * 0.35));
     }
+    // Namlu ağzı parlaması (ateş anı).
+    flashMat.opacity = flash * 0.75;
+    if (flashSprite.current) {
+      flashSprite.current.visible = flash > 0.01;
+      flashSprite.current.scale.setScalar(0.3 + flash * 0.45);
+    }
 
-    // ── ince ışık sütunu: aktif kulenin "enerjili" okunuşu ──
+    // ── ince ışık sütunu: yalnız gövdenin "enerjili" okunuşu (baş canlı) ──
     beamMat.opacity = active
-      ? 0.05 + 0.025 * (post.level - 1) + flash * 0.16 + pulseK * 0.22
+      ? 0.035 + 0.02 * (post.level - 1) + flash * 0.14 + pulseK * 0.22
       : 0;
     if (beam.current) {
       beam.current.visible = active;
@@ -330,9 +409,33 @@ function TowerMarker({ post }: { post: TowerPost }) {
         <planeGeometry args={[0.34, height]} />
         <primitive object={beamMat} attach="material" />
       </mesh>
-      <sprite ref={core} position={[0, height + 0.06, 0]} raycast={() => null}>
-        <primitive object={coreMat} attach="material" />
-      </sprite>
+      {/* ── ATEŞ BAŞI (sağa sola dönen tek parça) ──
+          Namlu ışığı +X yönünü gösterir; baş `post.yaw` ile döndüğü için
+          kule gerçekten nişan alıyormuş gibi okunur. Geometri yalnız IŞIK:
+          kule modeli üretilmez, haritanın kendi kulesi yerinde kalır. */}
+      <group ref={head} position={[0, height, 0]} raycast={() => null}>
+        <mesh
+          ref={muzzle}
+          position={[0.24, 0, 0]}
+          rotation={[0, 0, -Math.PI / 2]}
+          raycast={() => null}
+        >
+          <coneGeometry args={[0.075, 0.42, 7]} />
+          <primitive object={muzzleMat} attach="material" />
+        </mesh>
+        {/* Yatay tarama halesi: yayın boşluğu ateş yönüne (+X) bakar, yani
+            başın nereye döndüğü tepeden bakışta da okunur. */}
+        <mesh ref={arc} rotation={[-Math.PI / 2, 0, Math.PI / 2]} raycast={() => null}>
+          <torusGeometry args={[0.3, 0.02, 6, 22, Math.PI * 1.15]} />
+          <primitive object={arcMat} attach="material" />
+        </mesh>
+        <sprite ref={core} raycast={() => null}>
+          <primitive object={coreMat} attach="material" />
+        </sprite>
+        <sprite ref={flashSprite} position={[0.52, 0, 0]} raycast={() => null}>
+          <primitive object={flashMat} attach="material" />
+        </sprite>
+      </group>
     </group>
   );
 }
