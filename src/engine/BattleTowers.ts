@@ -37,7 +37,11 @@
 // bittiğinde YIKILMAZ (haritanın orijinal mesh'ine dokunulmaz): pasif duruma
 // döner, yani korumayı ve ateşi keser — tekrar altınla aktive edilebilir.
 
+import * as THREE from "three";
 import type { BattleProj } from "@/components/world/arena/shared";
+
+/** Arena px → dünya birimi (arena/shared `S` ile aynı: 50 px = 1 birim). */
+const S = 50;
 
 /** Kule seviyesi: 0 = pasif (haritadaki orijinal hâli), 1-3 = aktif seviyeler. */
 export const MAX_TOWER_LEVEL = 3;
@@ -285,6 +289,77 @@ export function nearPost(): TowerPost | null {
   const id = towerState.nearPostId;
   if (id === null) return null;
   return towerState.posts.find((p) => p.id === id) ?? null;
+}
+
+/* ── KULE İSTEMİNİN EKRAN KONUMU (floating UI) ─────────────────────────────
+   "Kuleyi Aktif Et" kapsülü ekranın bir köşesinde DEĞİL, haritadaki kulenin
+   tam üstünde durur: oyuncu hangi kuleye yaklaşırsa istem o kulenin tepesine
+   bağlanır, yani düğme ile dünya nesnesi arasındaki ilişki görsel olarak
+   nettir (Wild Rift'teki bağlamsal düğmeler gibi).
+
+   Nasıl: 3B sahne kamerası + canvas buraya bir kez tanıtılır (bkz.
+   ArenaCamera → useArenaCamera) ve HUD kendi rAF döngüsünde kulenin tepe
+   noktasını piksele çevirir. React state yoktur, kare maliyeti tek bir
+   vektör izdüşümüdür.
+
+   İzdüşüm alınamazsa (kamera henüz bağlanmadı / kule kameranın arkasında)
+   `null` döner; HUD bu durumda CSS'teki yedek konuma düşer. */
+let screenCamera: THREE.PerspectiveCamera | null = null;
+let screenEl: HTMLCanvasElement | null = null;
+const _projVec = new THREE.Vector3();
+
+/** Sahnenin kamerasını ve canvas'ını izdüşüm için tanıtır (null = kapat). */
+export function setTowerScreenProjection(
+  camera: THREE.PerspectiveCamera | null,
+  canvas: HTMLCanvasElement | null,
+): void {
+  screenCamera = camera;
+  screenEl = canvas;
+}
+
+/**
+ * Kaydı YALNIZ hâlâ bu kameraya aitse siler.
+ * PvP'de iki rig aynı sahneyi paylaşır; biri söküldüğünde diğerinin
+ * kaydını düşürmemelidir.
+ */
+export function clearTowerScreenProjection(
+  camera: THREE.PerspectiveCamera | null,
+): void {
+  if (camera !== null && screenCamera !== camera) return;
+  screenCamera = null;
+  screenEl = null;
+}
+
+/** Kule isteminin bağlanacağı ekran noktası (canvas'ın sol-üstüne göre px). */
+export interface TowerScreenAnchor {
+  /** Kulenin TEPE noktasının ekran koordinatı (CSS px). */
+  x: number;
+  y: number;
+  /** Canvas ölçüsü — kapsülü ekran kenarlarının içinde tutmak için. */
+  w: number;
+  h: number;
+}
+
+/**
+ * Yanındaki kulenin TEPE noktasını ekrana izdüşürür.
+ * Kule yoksa, kamera bağlı değilse veya nokta kameranın arkasındaysa `null`.
+ */
+export function nearTowerScreenAnchor(): TowerScreenAnchor | null {
+  const post = nearPost();
+  if (!post || !screenCamera || !screenEl) return null;
+  const rect = screenEl.getBoundingClientRect();
+  if (rect.width < 8 || rect.height < 8) return null;
+  // Arena px → dünya birimi (karakterler de aynı dönüşümü kullanır).
+  _projVec.set(post.x / S, post.baseY + post.top, post.y / S);
+  _projVec.project(screenCamera);
+  // z > 1: nokta kameranın arkasında → ekranda anlamsız bir yere düşerdi.
+  if (_projVec.z > 1) return null;
+  return {
+    x: ((_projVec.x + 1) / 2) * rect.width,
+    y: ((-_projVec.y + 1) / 2) * rect.height,
+    w: rect.width,
+    h: rect.height,
+  };
 }
 
 /** Yanındaki kule yükseltilebilir mi (pasif veya en üst seviyenin altında)? */

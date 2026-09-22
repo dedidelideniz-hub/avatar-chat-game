@@ -61,6 +61,7 @@ import {
   MAX_TOWER_LEVEL,
   isNearTowerUpgradable,
   nearPost,
+  nearTowerScreenAnchor,
   nextTowerCost,
   nextTowerStats,
   setTowerWallet,
@@ -89,7 +90,7 @@ const RING_C = 2 * Math.PI * RING_R;
  * yalnızca o emojiyi geçer; bu yüzden eşleme emoji üzerinden yapılır ve
  * arayüzde hiç emoji gösterilmez.
  */
-function AbilityIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
+export function AbilityIcon({ emoji, size = 16 }: { emoji: string; size?: number }) {
   const props = { size, strokeWidth: 2.1 } as const;
   switch (emoji) {
     case "💥":
@@ -676,6 +677,12 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   // Etiket metni yalnız seviye/fiyat değiştiğinde yazılır (writeText zaten
   // aynı değeri yazmıyor; bu ref döngüyü tamamen atlar).
   const towerLabel = useRef("");
+  // Floating UI: istemin ölçüsü kare başına DEĞİL, göründüğü/etiket değiştiği
+  // anda bir kez ölçülür (offsetWidth her karede okunursa zorlamalı yerleşim
+  // tetiklenir). `wasOpen` yalnızca görünürlük geçişini yakalar.
+  const towerSize = useRef({ w: 150, h: 46 });
+  const towerMeasure = useRef(true);
+  const wasOpen = useRef(false);
   const goldEl = useRef<HTMLSpanElement>(null);
   // Altın sayacı: referanstaki gibi sağ üstte. Profil reaktif okunur, yani
   // maç sırasında kazanılan para da anında yansır. Sahne açıkça bir bütçe
@@ -745,6 +752,38 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       toggleClass(towerWrap.current, "moba-tower-wrap--on", open);
       toggleClass(towerWrap.current, "moba-tower-wrap--poor", poor);
       toggleClass(towerBtn.current, "moba-tower-buy--locked", poor);
+
+      // ── KONUM: kapsül HARİTADAKİ kulenin tam üstünde süzülür (floating UI) ──
+      // Hangi kuleye yaklaşırsan istem O kulenin tepesine bağlanır; ekran
+      // kenarına değecekse içeride tutulur. İzdüşüm alınamazsa (kamera henüz
+      // bağlanmadı / kule kameranın arkasında) `--float` sınıfı kalkar ve
+      // CSS'teki yedek konum (kümenin üstü) geçerli olur.
+      const wrapEl = towerWrap.current;
+      const anchor = open ? nearTowerScreenAnchor() : null;
+      if (wrapEl) {
+        toggleClass(wrapEl, "moba-tower-wrap--float", anchor !== null);
+        if (anchor) {
+          if (towerMeasure.current || !wasOpen.current) {
+            towerMeasure.current = false;
+            towerSize.current = {
+              w: wrapEl.offsetWidth,
+              h: wrapEl.offsetHeight,
+            };
+          }
+          const { w, h } = towerSize.current;
+          const x = Math.min(
+            Math.max(anchor.x - w / 2, 8),
+            Math.max(8, anchor.w - w - 8),
+          );
+          const y = Math.min(
+            Math.max(anchor.y - h - 18, 34),
+            Math.max(34, anchor.h - h - 8),
+          );
+          wrapEl.style.translate = `${Math.round(x)}px ${Math.round(y)}px`;
+        }
+      }
+      wasOpen.current = open;
+
       const post = nearPost();
       if (open && post && towerCost !== null) {
         // Seviye pip'leri: kaçıncı seviyede olduğunu gösterir (metin yok).
@@ -760,6 +799,9 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
         const label = `${post.level}|${towerCost}|${nextLevel}`;
         if (towerLabel.current !== label) {
           towerLabel.current = label;
+          // Başlık/fiyat uzunluğu değişti → kapsül genişliği değişir: bir
+          // sonraki karede bir kez daha ölç (floating konum ortalanmış kalsın).
+          towerMeasure.current = true;
           const title =
             post.level === 0 ? "Kuleyi Aktif Et" : "Kuleyi Güçlendir";
           writeText(towerTitle.current, title);

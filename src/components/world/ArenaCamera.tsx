@@ -41,6 +41,12 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import * as THREE from "three";
+// Kule istemi ("Kuleyi Aktif Et") ekranın köşesinde değil, haritadaki kulenin
+// TAM ÜSTÜNDE durur: HUD, kulenin tepe noktasını bu kamerayla piksele çevirir.
+import {
+  clearTowerScreenProjection,
+  setTowerScreenProjection,
+} from "@/engine/BattleTowers";
 
 const S = 50; // px per 3D unit — must match Arena3D
 const ARENA_W = 34;
@@ -283,6 +289,14 @@ export function useArenaCamera(
       window.removeEventListener("orientationchange", sync);
       window.visualViewport?.removeEventListener("resize", sync);
     };
+  }, [camera, gl]);
+
+  // Kule isteminin izdüşümü için kamera + canvas'ı HUD'a tanıt (bkz.
+  // engine/BattleTowers → nearTowerScreenAnchor). Canvas'ın kendi CSS kutusu
+  // referanstır: izdüşüm ile HUD aynı kutuyu paylaşır.
+  useEffect(() => {
+    setTowerScreenProjection(camera, gl.domElement);
+    return () => clearTowerScreenProjection(camera);
   }, [camera, gl]);
 
   useFrame((state, rawDt) => {
