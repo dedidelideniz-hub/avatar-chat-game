@@ -844,7 +844,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   return (
     <div className="moba-chrome pointer-events-none absolute inset-0 z-[9]">
       {/* ── üst şerit ── */}
-      <div className="moba-top absolute inset-x-0 top-0 flex items-center gap-2 px-2 py-1.5 text-white sm:px-3">
+      <div className="moba-top absolute inset-x-0 top-0 flex items-center gap-2 px-2 py-1 text-white sm:px-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="moba-items hidden shrink-0 items-center gap-1 sm:flex">
             {ITEM_CHIPS.map((chip, i) => (
@@ -861,7 +861,7 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
               {meta.playerLevel}
             </span>
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="battle-hud-name max-w-[22vw] truncate font-extrabold tracking-wide">
+              <span className="battle-hud-name moba-plate-name max-w-[22vw] truncate font-extrabold tracking-wide">
                 {meta.playerName}
               </span>
               <span className="moba-plate-bar">
@@ -898,12 +898,12 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
         </div>
 
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-          <div className="moba-plate flex min-w-0 flex-row-reverse items-center gap-1.5">
+          <div className="moba-plate moba-plate--foe flex min-w-0 flex-row-reverse items-center gap-1.5">
             <span className="moba-plate-level flex shrink-0 items-center justify-center rounded-full font-black text-rose-100">
               {meta.opponentLevel}
             </span>
             <div className="flex min-w-0 flex-col items-end gap-0.5">
-              <span className="battle-hud-name max-w-[22vw] truncate font-extrabold tracking-wide">
+              <span className="battle-hud-name moba-plate-name max-w-[22vw] truncate font-extrabold tracking-wide">
                 {meta.opponentName}
               </span>
               <span className="moba-plate-bar">

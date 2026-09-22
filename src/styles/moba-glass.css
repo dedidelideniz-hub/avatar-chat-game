@@ -292,6 +292,8 @@
 button.moba-melee-action.moba-melee-action {
   position: absolute;
   z-index: 11;
+  /* Kümenin geri kalanıyla aynı okunurluk (bkz. aşağıdaki yetenek
+     düğmesi bloğu): zemine yapışmasın diye bir tık daha opak. */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -314,8 +316,8 @@ button.moba-melee-action.moba-melee-action {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  /* Kümenin geri kalanı gibi varsayılan %45, basılınca %85. */
-  opacity: 0.45;
+  /* Kümenin geri kalanı gibi yarı saydam, basılınca %85. */
+  opacity: 0.58;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -380,29 +382,32 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
    HUD'un rAF döngüsünde yazılır (`moba-tower-wrap--on`,
    `moba-tower-buy--locked`), yani kare başına React çizimi yoktur.
 
-   KONUM: SAĞ KENARDA, sağ raydaki bilgi düğmelerinin (moba-rail) HEMEN
-   ÜSTÜNDE. Düğme eskiden yetenek barının üzerinde ortada duruyordu, yani
-   tam karakterin tepesine gelip görüşü kapatıyordu; artık karakterin
-   olmadığı sağ kenarda bir "bağlamsal eylem" olarak çıkar. Ray yüksekliği
-   ekrana göre clamp'lendiği için ofset de aynı clamp'ten türetilir:
-   ray = 3 düğme + 2 boşluk (bkz. index.css `.moba-rail-btn`), yarısı + 10px
-   nefes. Böylece hem uzun dikey ekranda hem kısa yatay telefonda raya
-   çarpmadan üstünde kalır. Kule kümesiyle/ultıyla da çakışmaz.
+   KONUM: SAĞ ALTTA, yetenek kümesinin (kavis) HEMEN ÜSTÜNDE. Düğme iki
+   kez yanlış yerdeydi: önce yetenek barının üzerinde ortada (karakterin
+   tepesinde), sonra sağ raya göre hizalanınca kısa yatay ekranlarda
+   şeridin altına, yani ekranın ÜST sağına kaçtı (`50% + …` kısa ekranda
+   "tepe" demektir). Artık kümenin kendi geometrisi taban alınır:
+     küme = max(40px, güvenli alan + 12px) + ulti yüksekliği + 8px nefes
+   Yani konum ekran yüksekliğinden bağımsız olarak hep ALTTA kalır ve
+   başparmağın zaten çizdiği yayın devamına düşer (bkz. index.css
+   `.battle-hud-controls`). Ray (sağ-orta) ve dokunma ipucu ile çakışmaz:
+   ipucu kümenin 24px üstünde, istem onun 8px daha üstünde durur.
 
-   BOYUT: bilinçli olarak TEK SATIR, ~30px yüksekliğinde kompakt bir kapsül.
+   BOYUT: bilinçli olarak TEK SATIR, ~27px yüksekliğinde kompakt bir kapsül.
    Savaş alanını kapatmasın diye: ikon + başlık + seviye çubuğu + fiyat.
    Detay istatistikleri (hasar/can) yalnız `title` ipucunda durur.
    ══════════════════════════════════════════════════════════════════════ */
 .moba-tower-wrap.moba-tower-wrap {
   position: absolute;
-  /* SAĞ KENAR: karakter ekranın ortasında/altında durduğu için düğme artık
-     onun üstünü kapatmaz. Sağdaki bilgi rayının (moba-rail) hemen üstüne
-     oturur; ray dikeyde ortalandığı için (index.css `.moba-rail`) ofset de
-     yarı yükseklik üzerinden hesaplanır. */
+  /* Yetenek kümesiyle AYNI sağ kenar boşluğu: istem, kümenin hemen
+     üstünde durur (kavisin devamı). Karakter ekranın ortasında/altında
+     olduğu için görüşü kapatmaz. */
   left: auto;
-  right: max(6px, calc(env(safe-area-inset-right, 0px) + 6px));
+  right: max(50px, calc(env(safe-area-inset-right, 0px) + 12px));
+  /* Dikey (uzun) ekran: --hud-ult 74px, --hud-atk 88px → 96.8px + 74px. */
   bottom: calc(
-    50% + (clamp(26px, 4.2vh, 38px) * 3 + 12px) / 2 + 10px
+    max(40px, calc(env(safe-area-inset-bottom, 0px) + 12px)) + 96.8px + 74px +
+      8px
   );
   transform: translateY(8px);
   opacity: 0;
@@ -423,17 +428,20 @@ button.moba-tower-buy.moba-tower-buy {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 11px 0 5px;
-  border: 1px solid rgb(255 199 92 / 0.5);
+  gap: 6px;
+  height: 27px;
+  padding: 0 8px 0 4px;
+  border: 1px solid rgb(255 199 92 / 0.45);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgb(48 31 11 / 0.88), rgb(11 8 5 / 0.94));
+  /* HUD'un kendi dili: lacivert cam + altın aksan. Eskiden koyu KAHVE bir
+     bloktu ve oyun evreninden kopuk duruyordu. */
+  background: linear-gradient(180deg, rgb(22 32 54 / 0.9), rgb(7 11 21 / 0.94));
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.16),
-    inset 0 0 0 1px rgb(255 199 92 / 0.08),
-    0 5px 14px rgb(0 0 0 / 0.45),
-    0 0 14px rgb(251 191 36 / 0.22);
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    inset 0 0 0 1px rgb(255 199 92 / 0.12),
+    0 0 0 2px rgb(4 8 18 / 0.45),
+    0 6px 16px rgb(0 0 0 / 0.5),
+    0 0 12px rgb(251 191 36 / 0.18);
   color: #ffe9c2;
   backdrop-filter: blur(6px);
   overflow: hidden;
@@ -505,22 +513,26 @@ button.moba-tower-buy.moba-tower-buy--locked .moba-tower-buy-cost {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 19px;
+  height: 19px;
   border-radius: 999px;
-  background: radial-gradient(
-    circle at 35% 25%,
-    rgb(255 199 92 / 0.38),
-    rgb(58 30 8 / 0.7)
+  background: linear-gradient(
+    180deg,
+    rgb(255 231 176 / 0.95),
+    rgb(196 133 22 / 0.92)
   );
-  box-shadow: inset 0 0 0 1px rgb(255 213 138 / 0.42);
-  color: #ffd48a;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 245 208 / 0.6),
+    0 0 7px rgb(251 191 36 / 0.4);
+  color: #3a2205;
 }
 .moba-tower-buy-title {
-  font-size: 11.5px;
+  /* Kapsül dar kalsın: büyük harf genişliği kazandırmıyor, başlık normal
+     yazımla ~%20 daha kısa duruyor. */
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.015em;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.85);
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
 }
 /* Seviye pip'leri: kaçıncı seviyede olduğunu tek bakışta gösterir. */
 .moba-tower-buy-pips {
@@ -544,9 +556,11 @@ button.moba-tower-buy.moba-tower-buy--locked .moba-tower-buy-cost {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 900;
-  color: #f7c86a;
+  font-variant-numeric: tabular-nums;
+  color: #ffd98f;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
 }
 
 @keyframes moba-tower-pop {
@@ -561,13 +575,265 @@ button.moba-tower-buy.moba-tower-buy--locked .moba-tower-buy-cost {
 /* Cam efekti desteklenmiyorsa istem daha opak olur (okunabilirlik). */
 @supports not (backdrop-filter: blur(2px)) {
   button.moba-tower-buy.moba-tower-buy {
-    background: linear-gradient(180deg, rgb(58 36 14 / 0.97), rgb(16 11 6 / 0.98));
+    background: linear-gradient(180deg, rgb(26 38 62 / 0.97), rgb(9 14 26 / 0.98));
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ÜST ŞERİT — İNCELTME + PLAKA TASARIMI
+
+   Şikâyet: şerit koyu bir bant gibi çok dikey alan yiyordu ve oyuncu/rakip
+   profilleri "ilkel dikey kutular" gibi duruyordu. Çözüm iki parçalı:
+
+   1) Yükseklik: şerit dolgusu 6px → 3px, can barı 8px → 6px, seviye rozeti
+      28px → 22px, isim tek satır 8.5-11px. Toplam şerit ~40px → ~30px.
+   2) Biçim: plaka artık bir "çip" — yuvarlak cam gövde + ince çerçeve +
+      seviye rozeti + can barı YATAY olarak; ad üstte küçük bir etiket.
+      Plaka genişliği (can barı 52-108px) yüksekliğinden çok büyük olduğu
+      için göz onu yatay bir çubuk olarak okur, dikey kutu olarak değil.
+
+   Özgüllük: index.css'teki tek sınıflı kuralları yenmek için
+   `.moba-top .moba-plate…` yazımı kullanılır (bu dosya sonradan gelse de
+   garanti olsun diye).
+   ══════════════════════════════════════════════════════════════════ */
+.moba-top.moba-top {
+  padding-top: 3px;
+  padding-bottom: 3px;
+  /* Daha az "siyah bant": üstten alta sönümlenen hafif bir cam perde. */
+  background: linear-gradient(
+    180deg,
+    rgb(16 23 40 / 0.55) 0%,
+    rgb(8 12 24 / 0.28) 100%
+  );
+  box-shadow:
+    inset 0 -1px 0 rgb(255 199 92 / 0.3),
+    0 3px 12px rgb(0 0 0 / 0.26);
+}
+
+/* Oyuncu / rakip plakası: yatay çip. */
+.moba-top .moba-plate {
+  height: clamp(20px, 3vh, 27px);
+  padding: 1px 8px 1px 1px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgb(12 18 33 / 0.5),
+    rgb(5 9 18 / 0.44)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.14),
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 3px 10px rgb(0 0 0 / 0.3);
+}
+/* Rakip plakası `flex-row-reverse` olduğu için dolgu aynalanır: geniş nefes
+   can barının yanında (solda), rozet yine kenara yapışık kalır. */
+.moba-top .moba-plate--foe {
+  padding: 1px 1px 1px 8px;
+}
+.moba-top .moba-plate-level.moba-plate-level {
+  width: clamp(17px, 2.6vh, 22px);
+  height: clamp(17px, 2.6vh, 22px);
+  font-size: clamp(8.5px, 1.35vh, 11px);
+  box-shadow:
+    inset 0 0 0 1.5px rgb(255 255 255 / 0.32),
+    inset 0 -3px 6px rgb(0 0 0 / 0.4),
+    0 0 7px rgb(0 0 0 / 0.45);
+}
+.moba-top .moba-plate-name {
+  /* Küçük etiket: büyük harf adı ~%10 genişletip erken kırpıyordu, bu
+     yüzden normal yazım korunur. */
+  font-size: clamp(8.5px, 1.25vh, 11px);
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: rgb(226 232 240 / 0.82);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+}
+.moba-top .moba-plate-bar.moba-plate-bar {
+  width: clamp(52px, 15vw, 108px);
+  height: clamp(4px, 0.85vh, 6px);
+  background: rgb(2 6 23 / 0.6);
+}
+
+/* Orta blok (skor · VAELOS arması · saat) şeridin YÜKSEKLİĞİNİ belirliyordu:
+   arma yazısı 26px + altında saat = ~48px'lik bir şerit. Ölçüler kısılır ve
+   satır yükseklikleri sıkılaştırılır → şerit artık plakanın kendi
+   yüksekliğiyle (~30px) sınırlı. */
+.moba-top .moba-logo-text {
+  font-size: clamp(12px, 1.9vh, 18px);
+  letter-spacing: clamp(1.5px, 0.4vh, 3px);
+  line-height: 1;
+}
+.moba-top .moba-logo-wing {
+  font-size: clamp(7px, 1.05vh, 10px);
+}
+.moba-top .moba-score {
+  min-width: clamp(16px, 2.3vh, 22px);
+  padding: 0 clamp(3px, 0.6vh, 5px);
+  font-size: clamp(10px, 1.5vh, 13px);
+  line-height: 1.15;
+}
+.moba-top .moba-clock {
+  font-size: clamp(8px, 1.15vh, 10px);
+  line-height: 1.05;
+}
+.moba-top .moba-center {
+  gap: 1px;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   YETENEK DÜĞMELERİ — ÇERÇEVE, DERİNLİK, OKUNURLUK
+
+   Şikâyet: sağ alttaki düğmeler zemine karışıyor, çerçevesi/ikon derinliği
+   yok ve yüzdeler amatör duruyor. Üç katmanda düzeltilir:
+
+   1) Bar bir "kaide": alt yetenek barı koyulaşır ve altına gölge salar.
+   2) Yuva/düğme: koyu dış halka + iç üst parlama + iç alt gölge → 3B
+      derinlik; ikonlar artık kısılmaz (eskiden `saturate(.7)
+      brightness(.8)` ile karartılıyordu).
+   3) Yüzde okuması: tabular rakam + güçlü gölge, hazır hâlde ikon.
+   ══════════════════════════════════════════════════════════════════ */
+.moba-abilitybar.moba-abilitybar {
+  opacity: 0.9;
+  background: linear-gradient(
+    180deg,
+    rgb(13 20 36 / 0.62) 0%,
+    rgb(4 8 16 / 0.72) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.3),
+    inset 0 1px 0 rgb(255 240 205 / 0.3),
+    inset 0 -8px 14px rgb(2 5 12 / 0.4),
+    0 10px 22px rgb(0 0 0 / 0.55);
+}
+
+/* Yuva: çelik jant + iç derinlik (önceki bloğun gölgesini tamamlar). */
+.moba-slot.moba-slot {
+  box-shadow:
+    inset 0 0 0 1.5px rgb(255 255 255 / 0.42),
+    inset 0 2px 0 rgb(255 255 255 / 0.2),
+    inset 0 -8px 14px rgb(3 7 18 / 0.55),
+    0 0 0 2px rgb(4 8 18 / 0.55),
+    0 6px 14px rgb(0 0 0 / 0.5);
+}
+.moba-slot.moba-slot .moba-slot-icon {
+  filter: brightness(1.08) drop-shadow(0 1px 3px rgb(0 0 0 / 0.75));
+}
+
+/* Sahne kontrol kümesi (ana saldırı / süper / ulti). */
+.battle-hud-controls .battle-hud-attack.battle-hud-attack,
+.battle-hud-controls .battle-hud-super.battle-hud-super,
+.battle-hud-controls .battle-hud-ult.battle-hud-ult {
+  opacity: 0.58;
+  outline-width: 1.5px;
+  outline-offset: 2px;
+  box-shadow:
+    inset 0 1.5px 0 rgb(255 255 255 / 0.4),
+    inset 0 -8px 14px rgb(3 7 18 / 0.42),
+    0 0 0 2px rgb(4 8 18 / 0.55),
+    0 8px 18px rgb(0 0 0 / 0.55);
+}
+/* Basılı / nişan alıyor: index.css'teki %85 vurgusu aynen korunur (aynı
+   özgüllükte olduğu için burada açıkça yazılır). */
+.battle-hud-controls .battle-hud-attack.battle-hud-attack:active,
+.battle-hud-controls .battle-hud-super.battle-hud-super:active,
+.battle-hud-controls .battle-hud-ult.battle-hud-ult:active,
+.battle-hud-controls .battle-hud-super.battle-hud-super.is-aiming,
+.battle-hud-controls .battle-hud-ult.battle-hud-ult.is-aiming {
+  opacity: 0.88;
+}
+.battle-hud-controls .battle-hud-icon {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 1px 3px rgb(0 0 0 / 0.9),
+    0 0 10px rgb(0 0 0 / 0.55);
+}
+
+/* Dolmayan yetenekte ikon yuvasının yerinde artık bir OKUMA diski var:
+   koyu cam + ince halka + hafif nabız. Böylece yüzde, çıplak bir yazı
+   olarak düğmenin üstünde durmaz ("amatör/sabit" görünümün sebebi buydu).
+   Hazır durumda (süper: `.super-ready`, ulti: altın zemin) kural düşer ve
+   ikon/taç aynen çizilir. */
+.battle-hud-controls .battle-hud-super:not(.super-ready) .battle-hud-icon,
+.battle-hud-controls
+  .battle-hud-ult:not([class*="from-amber-300"])
+  .battle-hud-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 66%;
+  min-height: 66%;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 50% 38%,
+    rgb(3 8 20 / 0.74),
+    rgb(3 8 20 / 0.5)
+  );
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2);
+  animation: moba-cd-pulse 2.4s ease-in-out infinite;
+}
+@keyframes moba-cd-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.18),
+      0 0 0 rgb(125 211 252 / 0);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.3),
+      0 0 7px rgb(125 211 252 / 0.45);
+  }
+}
+
+/* Hareket joystick'i de aynı ailedendir: zeminden ayrılsın diye ince koyu
+   dış halka alır. `:not(.is-active)` — aktif parlaması (index.css) korunur. */
+.battle-hud-stick.battle-hud-stick:not(.is-active) {
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.14),
+    0 0 0 2px rgb(4 8 18 / 0.45),
+    0 8px 18px rgb(0 0 0 / 0.42);
+}
+
+/* Kule istemi açıkken dokunma ipucu ("BAS → SÜRÜKLE → NİŞAN AL") gizlenir:
+   ikisi de kümenin ÜSTÜNDEKİ aynı bandı paylaşır ve ipucu yalnızca ilk
+   tur öğretici bir hatırlatmadır. Sahne `main` içinde olduğu için `:has()`
+   ile kardeş ağaçtan okunur (index.css'te de aynı desen kullanılır). */
+main:has(.moba-tower-wrap--on) .battle-hud-hint {
+  display: none;
 }
 
 /* Yatay kısa ekran: küme küçülünce düğme de aynı oranda küçülür ve aynı
    kavis noktasında kalır (katsayılar kümenin clamp'leriyle birebir). */
 @media (orientation: landscape) and (max-height: 560px) {
+  /* Şerit burada en kıymetli alan: ad etiketi düşer, plaka tek satıra iner
+     (seviye rozeti + can barı) → şerit ~24px kalır. İsim zaten rakip
+     kartında ve dövüşçünün üstündeki dünya etiketinde görünür. */
+  .moba-top .moba-plate-name {
+    display: none;
+  }
+  .moba-top .moba-plate-bar.moba-plate-bar {
+    width: clamp(58px, 17vw, 120px);
+  }
+  /* Kısa yatay ekranda genişlik bol, yükseklik kıt: arma ve saat yan yana
+     dizilir (eskiden alt alta oldukları için şerit iki katı yükseliyordu). */
+  .moba-top .moba-center {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+  .moba-top .moba-logo-text {
+    font-size: clamp(12px, 2.7vh, 17px);
+  }
+  /* Kule istemi: küme kısalınca konum da aynı oranda iner (katsayılar
+     index.css yatay-mod `--hud-*` clamp'leriyle birebir). */
+  .moba-tower-wrap.moba-tower-wrap {
+    bottom: calc(
+      max(40px, calc(env(safe-area-inset-bottom, 0px) + 12px)) +
+        clamp(63.8px, 20.9vh, 88px) + clamp(50px, 16.5vh, 68px) + 8px
+    );
+  }
   button.moba-melee-action.moba-melee-action {
     width: clamp(43px, 13.8vh, 57px);
     height: clamp(43px, 13.8vh, 57px);
