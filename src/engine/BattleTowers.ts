@@ -190,6 +190,20 @@ interface TowerState {
   /** Kuleleri "benim/rakip" diye ayıran başlangıç noktaları (px). */
   allyAnchor: { x: number; y: number } | null;
   enemyAnchor: { x: number; y: number } | null;
+  /**
+   * Ateşlenen atış sayacı. Motor ses ÇALMAZ (saf simülasyon kalır); sahne bu
+   * sayacın arttığını görünce ateş sesini çalar ve sayaçla birlikte son atışın
+   * konumunu okur — böylece ses kuleye göre yönlenir (bkz. DefenseTowers).
+   */
+  shots: number;
+  /** Son atışı yapan kulenin konumu (px) — yalnız ses yönlendirmesi için. */
+  lastShot: { x: number; y: number } | null;
+  /** Kule hasar emme sayacı + konumu (ses olayı). */
+  hits: number;
+  lastHit: { x: number; y: number } | null;
+  /** Aktif kulenin pasifleşme (yıkılma) sayacı + konumu (ses olayı). */
+  downs: number;
+  lastDown: { x: number; y: number } | null;
 }
 
 export const towerState: TowerState = {
@@ -202,6 +216,12 @@ export const towerState: TowerState = {
   nearPostId: null,
   allyAnchor: null,
   enemyAnchor: null,
+  shots: 0,
+  lastShot: null,
+  hits: 0,
+  lastHit: null,
+  downs: 0,
+  lastDown: null,
 };
 
 /** Sahne kule sistemini açar/kapatır (yalnız bot düellosu kullanır). */
@@ -214,6 +234,12 @@ export function configureTowers(runtime: TowerRuntime | null): void {
   if (fresh) {
     towerState.pending = 0;
     towerState.lastWallet = -1;
+    towerState.shots = 0;
+    towerState.lastShot = null;
+    towerState.hits = 0;
+    towerState.lastHit = null;
+    towerState.downs = 0;
+    towerState.lastDown = null;
   }
   if (!runtime) {
     towerState.posts = [];
@@ -223,6 +249,12 @@ export function configureTowers(runtime: TowerRuntime | null): void {
     towerState.enemyAnchor = null;
     towerState.pending = 0;
     towerState.lastWallet = -1;
+    towerState.shots = 0;
+    towerState.lastShot = null;
+    towerState.hits = 0;
+    towerState.lastHit = null;
+    towerState.downs = 0;
+    towerState.lastDown = null;
     return;
   }
   // Takım ayrımı için başlangıç noktalarını bir kez yakala: kule, kimin
@@ -513,6 +545,9 @@ export function stepTowers(dt: number): void {
     });
     post.cd = TOWER_ATTACK_CD;
     post.flashT = 0.18;
+    // Ses için atış olayı: motor çalmaz, sahne okur (ek yük: iki sayı).
+    towerState.shots += 1;
+    towerState.lastShot = { x: post.x, y: post.y };
   }
 }
 
@@ -524,12 +559,18 @@ export function stepTowers(dt: number): void {
 function damagePost(post: TowerPost, dmg: number): void {
   const paid = Math.max(0, dmg) * (1 - TOWER_ARMOR);
   post.hp = Math.max(0, post.hp - paid);
+  // Ses olayı: kule hasar emdiğinde sahne "metal gövde" sesini çalar.
+  towerState.hits += 1;
+  towerState.lastHit = { x: post.x, y: post.y };
   if (post.hp > 0) return;
   post.level = 0;
   post.hp = 0;
   post.maxHp = 0;
   post.cd = 0;
   post.locked = false;
+  // Pasifleşme (seviye 0) ayrı olay: sahne "çöküş" sesini duyurur.
+  towerState.downs += 1;
+  towerState.lastDown = { x: post.x, y: post.y };
 }
 
 /**

@@ -914,7 +914,10 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
     }
     const wasPassive = (nearPost()?.level ?? 0) === 0;
     if (!upgradeNearTower()) return;
-    playSound("buy", { volume: 0.85 });
+    // Kule geri bildirimi: ağır "inşa" sesi (alçak gövde + parıltı) ve altının
+    // gerçekten düştüğünü duyuran kısa para çınlaması.
+    playSound("towerUp", { volume: 0.9 });
+    playSound("coin", { volume: 0.55, rate: 0.94 });
     burstRef.current?.burst("super", wasPassive ? "KULE AKTİF!" : "KULE GÜÇLENDİ!");
   };
 

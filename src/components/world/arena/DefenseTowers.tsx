@@ -41,6 +41,7 @@ import {
   type TowerPostSeed,
 } from "@/engine/BattleTowers";
 import { findNearestWalkablePosition } from "../BattleMapModel";
+import { playSound, type SoundName } from "@/lib/sounds";
 import { S } from "./shared";
 
 /** Dövüşçü yarıçapı (px): yürünebilirlik yoklaması bu açıklıkla yapılır. */
@@ -446,10 +447,39 @@ function TowerMarker({ post }: { post: TowerPost }) {
  */
 export function DefenseTowerLayer() {
   const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
   const [allyIds, setAllyIds] = useState<readonly string[]>([]);
   const tries = useRef(0);
   const lastSeeds = useRef<TowerPostSeed[] | null>(null);
   const done = useRef(false);
+  const lastShots = useRef(0);
+  const lastHits = useRef(0);
+  const lastDowns = useRef(0);
+  const tmpA = useRef(new THREE.Vector3());
+  const tmpB = useRef(new THREE.Vector3());
+  const tmpR = useRef(new THREE.Vector3());
+
+  /**
+   * Kule olayını KONUMUNA göre seslendirir: sağ/sol ayrımı kameranın sağ
+   * vektörüne izdüşümle, ses seviyesi uzaklıkla ölçeklenir. Uzaktaki kulenin
+   * atışı hafif ve yandan duyulur — yanındaki tam güçte. Böylece ses sahneye
+   * bağlanır, HUD sesi gibi havada kalmaz.
+   */
+  const playAtTower = (
+    at: { x: number; y: number },
+    name: SoundName,
+    baseVolume: number,
+  ) => {
+    const target = tmpA.current.set(at.x / S, 0, at.y / S);
+    const toTower = tmpB.current.copy(target).sub(camera.position);
+    const dist = toTower.length();
+    const right = tmpR.current.setFromMatrixColumn(camera.matrixWorld, 0);
+    const pan = Math.max(-0.75, Math.min(0.75, toTower.dot(right) / 14));
+    playSound(name, {
+      volume: baseVolume * Math.max(0.22, Math.min(1, 1 - dist / 48)),
+      pan,
+    });
+  };
 
   useFrame((_, rawDt) => {
     if (!towerState.runtime) return;
@@ -484,6 +514,36 @@ export function DefenseTowerLayer() {
     // 2) Oyuncunun kuleye yakınlığı + aktif kulelerin hedefleme/ateş döngüsü.
     updateTowerProximity();
     stepTowers(dt);
+
+    // 2b) KULE SES OLAYLARI — simülasyon ses çalmaz (saf kalır); sahne
+    // sayaçların arttığını görüp sesi çalar:
+    //   · shots → atış (namlu)
+    //   · hits  → hasar emme (gövdeye darbe) — "her vuruş duyulur"
+    //   · downs → kulenin pasifleşmesi (yıkım)
+    const shots = towerState.shots;
+    if (shots !== lastShots.current) {
+      const fell = shots < lastShots.current; // yeni maç / sıfırlama
+      lastShots.current = shots;
+      if (!fell && towerState.lastShot) {
+        playAtTower(towerState.lastShot, "towerShot", 1);
+      }
+    }
+    const hits = towerState.hits;
+    if (hits !== lastHits.current) {
+      const fell = hits < lastHits.current;
+      lastHits.current = hits;
+      if (!fell && towerState.lastHit) {
+        playAtTower(towerState.lastHit, "thud", 0.95);
+      }
+    }
+    const downs = towerState.downs;
+    if (downs !== lastDowns.current) {
+      const fell = downs < lastDowns.current;
+      lastDowns.current = downs;
+      if (!fell && towerState.lastDown) {
+        playAtTower(towerState.lastDown, "explode", 0.85);
+      }
+    }
 
     // 3) React listesi yalnız oyuncu tarafındaki kuleler değiştiğinde tazelenir.
     const ally = towerState.posts.filter((p) => p.side === "ally");
