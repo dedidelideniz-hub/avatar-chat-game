@@ -58,7 +58,7 @@ const POINT_LIGHT_CAP = 0.5;
  *  arena artık ACES'in kısık/kül grisi tonuyla değil, Khronos Neutral tone
  *  mapping ile çizildiği için (bkz. TONE_MAPPING) dolgu ışığını kısmak
  *  görüntüyü öldürmez; pozlama canlılığı geri verir. */
-const EXPOSURE = 1.15;
+const EXPOSURE = 1.3;
 /** Arenanın tone mapping eğrisi. ACES filmik eğri renkleri omzunda griye
  *  çeker ("mat/gri harita" şikâyetinin yarısı buydu) ve doygunluğu düşürür;
  *  Neutral (Khronos PBR Neutral) eğrisi renkleri olduğu yerde bırakıp
@@ -81,9 +81,13 @@ const TONE_MAPPING = THREE.NeutralToneMapping;
    canlanır. Pozlama bilinçli olarak BURADA değil renderer'da
    (`gl.toneMappingExposure`) durur ki bloom kurulamazsa bile kaybolmasın
    (bkz. dosya sonundaki yedek `gl.render` yolu). */
+// AETHELGARD PALETİ: referans kare "açık ve doygun" bir gündüz arenası; pozlama
+// ve renk derecelendirmesi o yöne çekildi. Bloom eşiği DEĞİŞMEDİ — parlaklık
+// arttı ama ışıma yalnızca gerçekten parlak öğelerde (kristaller, yetenekler)
+// kalır, ekranı saran bir sise dönüşmez.
 const COLOR_GRADE = {
-  saturation: 1.22,
-  vibrance: 0.28,
+  saturation: 1.3,
+  vibrance: 0.34,
 };
 
 const COLOR_GRADE_SHADER = {

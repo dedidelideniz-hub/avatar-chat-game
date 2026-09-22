@@ -175,7 +175,7 @@ function MagmaLights() {
       if (!light) continue;
       // Işık bütçesi: havuz ışıkları sahneyi tek başına aydınlatmaz, sadece
       // çukurun kenarını belli eder (eskiden 0.95 ile tüm zemini yıkıyordu).
-      light.intensity = 0.34 + 0.1 * Math.sin(t * 1.7 + i * 2.1);
+      light.intensity = 0.2 + 0.06 * Math.sin(t * 1.7 + i * 2.1);
     }
   });
 
@@ -188,8 +188,8 @@ function MagmaLights() {
             refs.current[i] = el;
           }}
           position={[p.x, 0.62, p.z]}
-          color="#ff6a1f"
-          intensity={0.34}
+          color="#ff8a3f"
+          intensity={0.2}
           distance={6.5}
           decay={2}
         />
@@ -703,14 +703,14 @@ function VolcanicKeyLight() {
         ref={warm}
         userData={{ mobaLight: true }}
         position={[20, 12, -10]}
-        color="#ff9c3f"
+        color="#ffdca6"
         intensity={0.2}
       />
       <directionalLight
         ref={cool}
         userData={{ mobaLight: true }}
         position={[-14, 9, 18]}
-        color="#49daff"
+        color="#c8e8ff"
         intensity={0.12}
       />
       {/* Kritik nokta ışıkları: kuleler + nehir yatağı (renkli nokta ışıkları
@@ -736,7 +736,7 @@ function ArenaEnvironment() {
       <Lightformer
         form="rect"
         intensity={0.85}
-        color="#ff8a2b"
+        color="#ffe6bd"
         scale={[12, 5, 1]}
         position={[7, 3, -7]}
         target={[0, 0, 0]}
@@ -833,11 +833,13 @@ function WarEmbers() {
   );
 }
 
-/** Volkanik gökyüzü: ufukta kor parıltısı, dönen tanrı ışınları ve kül. */
+/** AETHELGARD GÖKYÜZÜ: ufukta sıcak güneş, dönen ışık huzmeleri ve havada
+ *  süzülen polen/toz. (Eskiden volkanik kor parıltısı + kül idi; referans
+ *  arenada gündüz güneşi ve temiz hava var — renkler o yöne çekildi.) */
 function BattleSky() {
   const raysRef = useRef<THREE.Group>(null);
   const ashRef = useRef<THREE.Points>(null);
-  const sunTex = useMemo(() => makeGlowTexture("rgba(255,150,80,1)"), []);
+  const sunTex = useMemo(() => makeGlowTexture("rgba(255,242,208,1)"), []);
 
   const ash = useMemo(() => {
     const count = 260;
@@ -879,9 +881,9 @@ function BattleSky() {
             >
               <planeGeometry args={[12, 0.5]} />
               <meshBasicMaterial
-                color="#ff9a4d"
+                color="#ffe6b6"
                 transparent
-                opacity={0.022}
+                opacity={0.03}
                 blending={THREE.AdditiveBlending}
                 side={THREE.DoubleSide}
                 depthWrite={false}
@@ -892,22 +894,22 @@ function BattleSky() {
         <sprite scale={[5.5, 5.5, 1]} raycast={() => null}>
           <spriteMaterial
             map={sunTex}
-            color="#ff8a44"
+            color="#fff3d2"
             transparent
-            opacity={0.16}
+            opacity={0.24}
             depthWrite={false}
             blending={THREE.AdditiveBlending}
           />
         </sprite>
       </group>
-      {/* süzülen kül */}
+      {/* havada süzülen polen/toz — gündüz havasına uygun nötr ton */}
       <points ref={ashRef} geometry={ash} raycast={() => null}>
         <pointsMaterial
-          color="#ffbb8a"
+          color="#eef8ff"
           size={0.14}
           sizeAttenuation
           transparent
-          opacity={0.2}
+          opacity={0.13}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
         />

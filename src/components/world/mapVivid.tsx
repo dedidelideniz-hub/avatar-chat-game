@@ -14,10 +14,14 @@
 // `waterFlow.tsx`'te akan su için, `CharacterRimLight`'ta kenar ışığı için
 // kullanılır; üçü de `onBeforeCompile` ile tek satırlık enjeksiyondur.
 //
-//   • ÇİM / AĞAÇ / ÇALI      → SAT 1.45, VAL 1.05, albedo ×1.14
-//   • PATİKA / YOL / TOPRAK  → SAT 1.35, VAL 0.86, albedo ×1.03 (koyu kahve)
-//   • TAŞ / KULE / DUVAR / ÜS→ SAT 1.25, VAL 1.00, albedo ×1.06, roughness ≤0.55
-//   • diğer zemin/dekor      → SAT 1.25, VAL 1.00, albedo ×1.08, roughness ≤0.60
+//   • ÇİM / AĞAÇ / ÇALI      → SAT 1.62, VAL 1.10, albedo ×1.26 (canlı orman)
+//   • PATİKA / YOL / TOPRAK  → SAT 1.30, VAL 1.02, albedo ×1.14 (AÇIK taş yol)
+//   • TAŞ / KULE / DUVAR / ÜS→ SAT 1.22, VAL 1.02, albedo ×1.16, roughness ≤0.62
+//   • diğer zemin/dekor      → SAT 1.30, VAL 1.02, albedo ×1.16, roughness ≤0.60
+//
+// AETHELGARD GÜNIŞIĞI (referans kare): yol/patika artık ÇİMDEN KOYU DEĞİL,
+// tam tersine açık sıcak taş tonunda (eski VAL 0.86 patikaları kahve lekesine
+// çeviriyordu); çim ise günışığında doygun yeşile çekildi.
 //
 // ÜÇÜNCÜ KATMAN — ALBEDO YÜKSELTMESİ VE PBR PARLAKLIĞI: dokulu zemin/çim
 // kaplamaları renk olarak çok koyu kalıyordu, bu yüzden materyalin `color`
@@ -74,12 +78,12 @@ interface VividTone {
 /** Mesh adı zincirine göre canlı palet tonu. */
 function vividToneFor(semantic: string): VividTone {
   if (FOLIAGE_RE.test(semantic))
-    return { sat: 1.45, val: 1.05, bright: 1.14, env: 0.3, rough: 1 };
+    return { sat: 1.62, val: 1.1, bright: 1.26, env: 0.34, rough: 1 };
   if (PATH_RE.test(semantic))
-    return { sat: 1.35, val: 0.86, bright: 1.03, env: 0.26, rough: 0.8 };
+    return { sat: 1.3, val: 1.02, bright: 1.14, env: 0.3, rough: 0.72 };
   if (STONE_RE.test(semantic))
-    return { sat: 1.25, val: 1, bright: 1.06, env: 0.4, rough: 0.55 };
-  return { sat: 1.25, val: 1, bright: 1.08, env: 0.32, rough: 0.6 };
+    return { sat: 1.22, val: 1.02, bright: 1.16, env: 0.42, rough: 0.62 };
+  return { sat: 1.3, val: 1.02, bright: 1.16, env: 0.34, rough: 0.6 };
 }
 
 /**

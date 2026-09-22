@@ -116,10 +116,14 @@ const LOOK_Y = 0.78;
 // gökyüzü arasında renkli bir derinlik gradyanı oluşur. Yoğunluk yatayda bir
 // tık azaltıldı: sisin kapatmadığı mesafede canlı renkler okunur, ufukta ise
 // harita hâlâ boşluğa taşmaz.
-const SKY = new THREE.Color("#151a38"); // gökyüzü — doygun gece indigosu
-const FOG = new THREE.Color("#2b3568"); // ufuk = tema rengine bağlı yumuşak sis
-const FOG_DENSITY_P = 0.0095; // FogExp2 yoğunluğu — dikey mod
-const FOG_DENSITY_L = 0.0185; // FogExp2 yoğunluğu — yatay mod
+// AETHELGARD GÜNIŞIĞI: referans arenada gökyüzü parlak mavi, ufuk ise sıcak
+// bir pus. Sis ve gökyüzü artık "boşluğu kapatan" koyu bir perde değil,
+// haritanın canlı yeşilini bozmayan açık mavi bir hava katmanı. Yoğunluk da
+// düşürüldü: uzak arazi silueti (kayalıklar, şelale) okunur kalır.
+const SKY = new THREE.Color("#57b0e6"); // gökyüzü — canlı gündüz mavisi
+const FOG = new THREE.Color("#a9d6ef"); // ufuk — sıcak gündüz pusu
+const FOG_DENSITY_P = 0.0055; // FogExp2 yoğunluğu — dikey mod
+const FOG_DENSITY_L = 0.0105; // FogExp2 yoğunluğu — yatay mod
 
 // --- YÖNLÜ IŞIK DENGESİ ---
 // Ana ışığın eski yönü (12, 16, 8) ışığı arenanın ön-sol köşesinden
@@ -134,10 +138,10 @@ const KEY_LIGHT_DIR: [number, number, number] = [14, 26, -10];
 // `mobaLight` işareti, aşağıdaki ana ışık geçişinin bu dolguyu kendi sıcak
 // rengi + yüksek şiddetiyle ezmesini engeller.
 const FILL_LIGHT_DIR: [number, number, number] = [-14, 9, 20];
-const FILL_LIGHT_COLOR = "#b9d2ff";
+const FILL_LIGHT_COLOR = "#cfe6ff";
 // Karşı dolgu da kısıldı: gölgedeki yüzleri kaldırır ama ana ışığın
 // kontrastını (ve dolayısıyla rengin doygunluğunu) yıkamaz.
-const FILL_LIGHT_INTENSITY = 0.3;
+const FILL_LIGHT_INTENSITY = 0.36;
 
 /* --- DERİNLİK KONTRASTI (gölge dengesi) ------------------------------
  * Wild Rift / LoL Mobile referansında karakterin, kayanın ve kulenin ALTINDA
@@ -164,14 +168,14 @@ const FILL_LIGHT_INTENSITY = 0.3;
  * gerçek zamanlı temas gölgeleri (ArenaShadowLight) görünür kalır.
  * Ambient AŞIRI düşürülmez: 0'ın altına inildiğinde gölgedeki yüzler
  * tamamen siyaha düşer ve kare "delik" görünür. */
-const AMBIENT_SHADOWED = 0.4;
-const AMBIENT_FLAT = 1.05;
-const HEMI_SHADOWED = 0.32;
-const HEMI_FLAT = 0.6;
+const AMBIENT_SHADOWED = 0.55;
+const AMBIENT_FLAT = 1.15;
+const HEMI_SHADOWED = 0.46;
+const HEMI_FLAT = 0.72;
 /* Ana yönlü ışık: gölge varken yükü kendisi üstlenir (düz dolgu kısıldı),
  * gölge yoksa (dokunmatik) parlaklığı yine o taşır. */
-const KEY_INTENSITY_SHADOWED = 1.4;
-const KEY_INTENSITY_FLAT = 1.35;
+const KEY_INTENSITY_SHADOWED = 1.62;
+const KEY_INTENSITY_FLAT = 1.5;
 
 /**
  * Follows the player with an aspect-aware framing. Called from the player's
@@ -228,13 +232,16 @@ export function useArenaCamera(
         // eski kahve (0x8d7a63) tonlu zemin dolgusu bütün araziye "kahve
         // peçe" bindiriyordu — çimler bu yüzden yeşil değil, soluk yosun
         // rengi okunuyordu.
-        hemi.color.set("#7cb6e6");
-        hemi.groundColor.set("#6f7d4c");
+        // Gökyüzü dolgusu referanstaki gibi temiz gündüz mavisi, zemin
+        // sıçraması ise CANLI çim yeşili: çimenler günışığında yeşil okunur.
+        hemi.color.set("#a8dcff");
+        hemi.groundColor.set("#7ea64f");
         hemi.intensity = shadowed ? HEMI_SHADOWED : HEMI_FLAT;
       } else if ((light as THREE.DirectionalLight).isDirectionalLight) {
         // Arena3D'nin nötr ana ışığı: yumuşak sıcak. Parlaklığın büyük kısmını
         // üstlenir ki her yüz aynı düzeyde aydınlanmasın ve form/gölge okunsun.
-        light.color.set("#fff0dc");
+        // Ana ışık: referanstaki sıcak öğle güneşi.
+        light.color.set("#fff6e4");
         light.intensity = shadowed
           ? KEY_INTENSITY_SHADOWED
           : KEY_INTENSITY_FLAT;
