@@ -43,6 +43,12 @@ Ağız ateşi modele bağlı DEĞİLDİR: fünye ucu çalışma zamanında bulun
 en üst noktası) ve oraya canlı alev kurulur — bkz. `src/engine/BombFuseFlame.ts`.
 Model değişse de ateş çalışır; yeni bir sabit gerekmez.
 
+**Modelin pivot'u ve fünye ekseni de sorun değildir:** yükleme anında gövdenin
+(fitil hariç) merkezi ve fünyenin yönü ölçülür; gövde merkezi avucun oturma
+noktasına çekilir ve fünye istenen yöne hizalanır (`measureBodyCenter` /
+`measureFuseDirection` → `SamuraiBomb.mount`). Yani Blender'da origin tabanda
+kalmış ya da fitil yana çizilmiş bir model de doğru oturur.
+
 ### `models/bomba.glb` (samurayın elindeki bomba — yedek model)
 
 Bu dosya hazır bir GLB'den çevrilmedi, **üretildi**: `scripts/build-bomba-glb.mjs`

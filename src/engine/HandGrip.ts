@@ -170,8 +170,11 @@ const fingerRest = new WeakMap<THREE.Object3D, THREE.Euler>();
  * hand reads as "holding" the sword. Idempotent: safe to call on every
  * gear attach. Never touches the mixer/clips. Bone lookup is
  * suffix-tolerant so rigs like moda-savasci.glb (Index1_00…) pose too.
+ *
+ * `scale` shrinks the pose for items a closed fist would clip through
+ * (the bomb is held in a cupped hand — see `BOMB_FINGER_GRIP`).
  */
-export function applyFingerGrip(clone: THREE.Object3D): void {
+export function applyFingerGrip(clone: THREE.Object3D, scale = 1): void {
   const hand = rightHandBone(clone);
   if (!hand) return;
   for (const bone of fingerBonesOf(hand)) {
@@ -184,7 +187,7 @@ export function applyFingerGrip(clone: THREE.Object3D): void {
     bone.rotation.copy(rest);
     const isThumb = /thumb/i.test(bone.name);
     const phalanx = phalanxOf(bone.name);
-    const amount = isThumb ? 0.18 : phalanx === 1 ? 0.16 : 0.22;
+    const amount = (isThumb ? 0.18 : phalanx === 1 ? 0.16 : 0.22) * scale;
     bone.rotation.x += amount;
     bone.rotation.z += amount * 0.18;
   }
@@ -285,19 +288,39 @@ export function buildStructuralSword(): THREE.Group {
  * çevirdiği için, pivot'ta ek düzeltme GEREKMEZ: model uzayında fünye +Y ise
  * dünyada da yukarı bakar (kılıcın dikey kalmasıyla aynı kural).
  */
-export const BOMB_GRIP_POS: [number, number, number] = [0, 11.72, 0]; // yumruk merkezi (kılıçla aynı ölçüm)
 /**
- * MODEL OFFSET'İ — dünya birimi (kapsayıcı kemik ölçeğini söndürdüğü için
- * içindeki 1 birim = 1 dünya birimi).
+ * BOMBANIN A VUÇTA OTURMASI — el-yerel eksenlerde, ÖLÇÜLMÜŞ sabitler.
  *
- * Gövde merkezi avucun merkezinde durur (kavrama noktası tam orasıdır); +0.04
- * onu bir tık yukarı alır ki top yumruğun ÜSTÜNDE oturuyormuş gibi okunsun.
- * Daha büyük bir kaydırma (0.12) bombayı avucun bir buçuk boyu havaya kaldırıp
- * "havada duran top" gibi gösteriyordu — boyut büyütüldükten sonra da bu
- * ayarın küçük kalması gerekir, çünkü bomba artık elin tamamından büyük.
+ * ÖLÇÜM (skin-samuray.glb, Idle klibi — tek karelik statik poz):
+ *   · el kemiği dünya ölçeği 0.00437 · avuç merkezi (hand-local) (0, 13.24, 0)
+ *     ≈ 0.058 dünya birimi; parmak zinciri toplam ≈0.13 birim.
+ *   · hand-local **+Y = PARMAK yönü** (parmak zinciri tam +Y boyunca uzanır).
+ *   · hand-local **+Z = AVUÇ NORMALİ** (avucun baktığı yön). İki bağımsız
+ *     ölçüm aynı ekseni verir: T-pose'da avuçlar aşağı bakar ve Z dünyada
+ *     aşağıya düşer; ayrıca parmak zinciri Index3→Index4 adımında +Z'ye
+ *     kıvrılır (parmaklar avucun İÇİNE doğru kıvrılır).
+ *
+ * Küre, avucun ÇUKURUNA oturur: topun merkezi avuç merkezinden avuç normali
+ * boyunca ~bir yarıçap dışarıdadır. Merkez avuç merkezinde bırakılırsa top elin
+ * İÇİNE saplanır — parmaklar topun ortasından geçer ve "eline saplanmış, yukarı
+ * fırlamış" görüntüsü çıkar. BOMB_SEAT_OUT bu yüzden ≈ bomba yarıçapıdır.
  */
-export const BOMB_CONTAINER_MODEL_POS: [number, number, number] = [0, 0.04, 0];
-export const BOMB_CONTAINER_MODEL_ROT: [number, number, number] = [0, 0, 0];
+export const BOMB_SEAT_OUT = 0.13; // avuç normali boyunca dışa (≈ bomba yarıçapı)
+export const BOMB_SEAT_FINGER = 0.01; // parmaklara doğru küçük kayma
+/**
+ * Fünyenin gövdeden UZAĞA yatış açısı (derece).
+ *
+ * Düz yukarı bakan bir fünye, tepe kamerasında kısalır ve uç detayları
+ * görünmez; ayrıca karakterin silüetiyle çakışır. 30-35° dışa yatış, fünyeyi
+ * gövdeden ayırıp kameraya yan gösterir (MOBA'ların standart çözümü).
+ */
+export const BOMB_TILT_OUT_DEG = 32;
+/**
+ * Bomba tutulurken parmak pozu: kapalı yumruk DEĞİL, topu S A R A N avuç.
+ * Yumrukta parmaklar topun içine kıvrılır; ~0.45 katsayısı parmakları topun
+ * yüzeyine yatırır (uçlar temas eder, içine girmez).
+ */
+export const BOMB_FINGER_GRIP = 0.45;
 export const BOMB_CONTAINER_MODEL_SCALE = 1;
 
 /**
@@ -335,13 +358,88 @@ export const BOMB_FUSE_EMISSIVE = 2.6;
 export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
 
 /**
- * Kapsayıcıyı canlı el pozundan hizalar. Kılıç kalibrasyonuyla AYNI iş: el
- * kemiğinin dünya yönelimi ters çevrilir → kapsayıcı dünyada kimlik olur ve
- * içindeki model kendi uzayında durduğu gibi görünür. Takma ad, çağrı
- * yerlerinin niyetini okunur kılar (kılıç adıyla bombayı kalibre etmek
- * kafa karıştırıyordu).
+ * Bombayı avuçta taşıyan nokta — el-yerel (kemik birimi) konum.
+ *
+ * Avuç merkezinden avuç normali (+Z) boyunca `BOMB_SEAT_OUT` kadar dışa,
+ * parmak yönünde (+Y) küçük bir kayma. KEMİK uzayında olduğu için el/kol her
+ * hareket ettiğinde top avuçla birlikte gider (kamera açısından bağımsız).
  */
-export const calibrateHandGrip = calibrateSwordGrip;
+export function bombSeatLocal(hand: THREE.Object3D): THREE.Vector3 {
+  const boneScale = Math.max(handBoneScale(hand), 1e-9);
+  const palm = palmCenterLocal(hand);
+  return new THREE.Vector3(
+    palm.x,
+    palm.y + BOMB_SEAT_FINGER / boneScale,
+    palm.z + BOMB_SEAT_OUT / boneScale,
+  );
+}
+
+/**
+ * Bomba kapsayıcısını CANLI el pozundan hizalar (kılıç kalibrasyonunun bomba
+ * karşılığı). İki parçalıdır ve ikisi de el-yerel olarak saklanır, yani kol
+ * salındığında top elden kaymaz:
+ *
+ *  1. **Konum** (`bombSeatLocal`): top avucun çukuruna oturur.
+ *  2. **Yönelim**: fünye düz yukarı değil, gövdeden UZAĞA `BOMB_TILT_OUT_DEG`
+ *     kadar yatık durur; ayrıca fünyenin kendi eğimi (model +X) dışa bakar.
+ *
+ * Kapsayıcının DÜNYA yönelimi sabitlenir (kılıçta bıçağın dikey kalmasıyla
+ * aynı kural): dünya yukarısını referans alan bir taban kurulur ve el-yerel
+ * olarak dondurulur, böylece ayakta/yürürken fünye daima okunur bir yönde
+ * kalır. Ölçeğe DOKUNMAZ (dev kılıç regresyonunun dersi).
+ *
+ * `reference`, "dışa" yönünü türetmek için kullanılan karakter köküdür (klon):
+ * dışa = yatayda kökten ele giden yön. Kol tam gövdenin önündeyse (yatay sapma
+ * yok) avuç normalinin yatay bileşenine düşülür — sabit/sahte bir eksen
+ * kullanılmaz.
+ */
+export function calibrateBombGrip(
+  hand: THREE.Object3D,
+  grip: THREE.Object3D,
+  reference?: THREE.Object3D | null,
+): void {
+  hand.updateWorldMatrix(true, false);
+
+  // 1) Avuçta oturma (el-yerel; konum kemik uzayında).
+  grip.position.copy(bombSeatLocal(hand));
+
+  // 2) Yönelim: dünya yukarısı → gövdeden uzağa doğru yatır.
+  const handQuat = handWorldQuat(hand);
+  const handPos = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+  const outward = new THREE.Vector3();
+  if (reference) {
+    reference.updateWorldMatrix(true, false);
+    const refPos = new THREE.Vector3().setFromMatrixPosition(reference.matrixWorld);
+    outward.set(handPos.x - refPos.x, 0, handPos.z - refPos.z);
+  }
+  if (outward.lengthSq() < 1e-6) {
+    // Kol gövdenin tam önünde/altında: avuç normalinin yatay bileşenini kullan.
+    outward.set(0, 0, 1).applyQuaternion(handQuat);
+    outward.y = 0;
+  }
+  if (outward.lengthSq() < 1e-8) outward.set(1, 0, 0);
+  outward.normalize();
+
+  const tilt = THREE.MathUtils.degToRad(BOMB_TILT_OUT_DEG);
+  const fuse = new THREE.Vector3(0, 1, 0)
+    .multiplyScalar(Math.cos(tilt))
+    .addScaledVector(outward, Math.sin(tilt))
+    .normalize();
+
+  // Fünyenin kendi eğimi (model +X) dışa baksın: X'i fünyeye dik, yatay dışa
+  // en yakın vektör olarak seç. Böylece "komik bomba" eğik fitili de doğru
+  // tarafa yatar; modelin fitili hangi eksende çizilmişse aynı kural işler.
+  const xAxis = outward.clone().addScaledVector(fuse, -outward.dot(fuse));
+  if (xAxis.lengthSq() < 1e-8) xAxis.set(1, 0, 0).addScaledVector(fuse, -fuse.x);
+  xAxis.normalize();
+  const zAxis = new THREE.Vector3().crossVectors(xAxis, fuse).normalize();
+  const desired = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(xAxis, fuse, zAxis),
+  );
+
+  grip.quaternion.copy(handQuat).invert().multiply(desired);
+  grip.updateMatrixWorld(true);
+}
 
 /**
  * Prosedürel bomba — `public/models/bomba.glb` yüklenene kadar (ve dosya

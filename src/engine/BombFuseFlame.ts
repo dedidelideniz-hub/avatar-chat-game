@@ -303,27 +303,18 @@ const FUSE_RE = /fuse|fitil|wick|glow|flame|fire|ember|spark|alev/i;
 export const isFuseLikeName = (name: string): boolean => FUSE_RE.test(name);
 
 /**
- * Modelin AĞIZ noktasını, model kökünün KENDİ uzayında döndürür.
+ * GÖVDE kutusu (model kökünün uzayında) — fitil/ateş mesh'leri HARİÇ.
  *
- * İki strateji:
- *  1. Fünye/ateş olduğu belli bir mesh veya malzeme varsa (ad kalıbı) onun
- *     merkezi kullanılır — yanan uç zaten oradadır.
- *  2. Ad ipucu yoksa modelin en üst noktası (kutu tepe merkezi) kullanılır;
- *     fünye her zaman yukarı bakar, dolayısıyla ağız orasıdır.
+ * NEDEN hariç: ölçek normalizasyonu "gövde kaç birim?" sorusuna dayanır. Tüm
+ * modelin kutusu kullanılırsa, YANA/UZAĞA uzanan bir fitil ya da kıvılcım XZ
+ * genişliğini şişirir ve bomba olduğundan küçük ölçeklenir (ekranda "ufacık"
+ * görünür). Aynı ayrım, bombanın AĞIRLIK MERKEZİNİ bulurken de gerekir: fitil
+ * tepeye doğru uzadığı için tüm modelin kutu merkezi gövdenin merkezi DEĞİLDİR.
  *
- * Dönen nokta model köküne GÖRELİDİR: çağıran onu modelin ölçeğiyle çarparak
- * kapsayıcı uzayına taşır (bkz. `SamuraiBomb.mount`).
+ * Çağıran, ebeveynsiz (dünya = yerel) bir klon geçirir — kutu bu yüzden
+ * doğrudan model kökünün uzayındadır.
  */
-/**
- * Gövde genişliği (XZ) — YALNIZCA gövde mesh'lerinden.
- *
- * NEDEN: ölçek normalizasyonu "gövde kaç birim?" sorusuna dayanır. Tüm modelin
- * kutusu kullanılırsa, YANA/UZAĞA uzanan bir fitil ya da kıvılcım XZ genişliğini
- * şişirir ve bomba olduğundan küçük ölçeklenir (ekranda "ufacık" görünür).
- * Bu yüzden fitil/ateş olduğu anlaşılan parçalar ölçümden çıkarılır; hiç
- * gövde bulunamazsa tüm modele düşülür.
- */
-export function measureBodySpan(root: THREE.Object3D): number {
+function bodyBox(root: THREE.Object3D): THREE.Box3 | null {
   root.updateWorldMatrix(true, true);
   const box = new THREE.Box3();
   let any = false;
@@ -340,11 +331,56 @@ export function measureBodySpan(root: THREE.Object3D): number {
     box.expandByObject(mesh);
     any = true;
   });
-  if (!any) box.setFromObject(root);
+  return any ? box : null;
+}
+
+/** Gövde genişliği (XZ) — yalnızca gövde mesh'lerinden; hiç bulunamazsa tüm model. */
+export function measureBodySpan(root: THREE.Object3D): number {
+  const box = bodyBox(root) ?? new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
   return Math.max(size.x, size.z);
 }
 
+/**
+ * Gövdenin MERKEZİ (model kökünün uzayında) — fünye hariç.
+ *
+ * NEDEN GEREKLİ: bomba avuca oturtulurken referans, gövdenin (kürenin)
+ * merkezidir. Modelin origin'i kürenin merkezinde DEĞİLSE (Blender'da pivot
+ * tabana konmuşsa) bomba avucun dışına kaçar ya da içine gömülür. Bu yüzden
+ * merkez ölçülür ve model buna göre kaydırılır — modele özel sabit gerekmez.
+ */
+export function measureBodyCenter(root: THREE.Object3D): THREE.Vector3 {
+  const box = bodyBox(root) ?? new THREE.Box3().setFromObject(root);
+  // Ölçüm dünya uzayında yapılır; çağıran modelin KENDİ biriminde bekler.
+  const center = box.getCenter(new THREE.Vector3());
+  return root.worldToLocal(center);
+}
+
+/**
+ * Fünye YÖNÜ (model kökünün uzayında, birim vektör): ağız noktasından gövde
+ * merkezine giden vektörün tersi. Modelin fitili hangi eksende çizilmiş olursa
+ * olsun (yukarı, yana, eğik), bu yön bulunur ve fünye istenen dünya yönüne
+ * hizalanır — bkz. `SamuraiBomb.mount` pivot rotasyonu.
+ */
+export function measureFuseDirection(root: THREE.Object3D): THREE.Vector3 {
+  const dir = findFuseAnchor(root).sub(measureBodyCenter(root));
+  if (dir.lengthSq() < 1e-10) return new THREE.Vector3(0, 1, 0);
+  return dir.normalize();
+}
+
+/**
+ * Modelin AĞIZ noktasını (fünyenin yanan ucu), model kökünün KENDİ uzayında
+ * döndürür.
+ *
+ * İki strateji:
+ *  1. Fünye/ateş olduğu belli mesh veya malzemeler varsa (ad kalıbı) hepsinin
+ *     birleşik kutusunun TEPE merkezi kullanılır — yanan uç orasıdır.
+ *  2. Ad ipucu yoksa modelin en üst noktası (kutu tepe merkezi) kullanılır;
+ *     fünye her zaman yukarı bakar, dolayısıyla ağız orasıdır.
+ *
+ * Dönen nokta model köküne GÖRELİDİR: çağıran onu modelin ölçeğiyle çarparak
+ * kapsayıcı uzayına taşır (bkz. `SamuraiBomb.mount`).
+ */
 export function findFuseAnchor(root: THREE.Object3D): THREE.Vector3 {
   root.updateWorldMatrix(true, true);
 
@@ -371,8 +407,35 @@ export function findFuseAnchor(root: THREE.Object3D): THREE.Vector3 {
   });
 
   if (found) {
-    const box = new THREE.Box3().setFromObject(found);
-    return root.worldToLocal(box.getCenter(new THREE.Vector3()));
+    // TÜM fitil/ateş parçalarının birleşik kutusu: tek tek bakıldığında
+    // "komik bomba" gibi modellerde ilk bulunan parça fitilin ORTASI olabiliyor
+    // (alev gövdenin üstünde değil ortasında yanıyormuş gibi görünür).
+    const box = new THREE.Box3();
+    let any = false;
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const list = Array.isArray(mesh.material)
+        ? mesh.material
+        : mesh.material
+          ? [mesh.material]
+          : [];
+      if (!FUSE_RE.test(o.name) && !list.some((m) => m && FUSE_RE.test(m.name))) return;
+      box.expandByObject(mesh);
+      any = true;
+    });
+    if (any) {
+      // Ağız = kümenin TEPESİ (yanan uç), ortası değil.
+      return root.worldToLocal(
+        new THREE.Vector3(
+          (box.min.x + box.max.x) / 2,
+          box.max.y,
+          (box.min.z + box.max.z) / 2,
+        ),
+      );
+    }
+    const single = new THREE.Box3().setFromObject(found);
+    return root.worldToLocal(single.getCenter(new THREE.Vector3()));
   }
 
   const box = new THREE.Box3().setFromObject(root);

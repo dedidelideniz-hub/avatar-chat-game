@@ -13,10 +13,16 @@
 //             → `pivot` (model-uzayı offset'i: gövde avucun içine oturur)
 //             → model   (dünya genişliği `BOMB_TARGET_WORLD_SPAN`'a normalize)
 //
-// Yönelim `calibrateHandGrip` ile CANLI el pozundan çıkarılır (kemik adı ya da
-// dosya bağımlı sabit yok): kapsayıcının dünya yönelimi kimliğe çevrilir, model
-// uzayında fünye +Y olduğu için bomba dünyada fünyesi yukarı duracak şekilde
-// avuçta kalır — yürürken/ulti sırasında kol salınsa bile sapıtlamaz.
+// A V U Ç T A   O T U R M A  (`calibrateBombGrip`) — kullanıcı geri bildirimi:
+// "bomba avuca oturmak yerine ele saplanmış, yukarı fırlamış gibi duruyor".
+// Sebep: topun merkezi avuç MERKEZİNDE bırakılmıştı → kürenin yarısı elin
+// içinde kalıyor, parmaklar topun ortasından geçiyordu. Artık konum EL-YEREL
+// olarak avuç normali boyunca ~bir yarıçap dışarıdadır (bkz. BOMB_SEAT_OUT) ve
+// fünye düz yukarı değil, gövdeden uzağa ~32° yatıktır (BOMB_TILT_OUT_DEG).
+//
+// Yönelim CANLI el pozundan türetilir (kemik adı ya da dosya bağımlı sabit
+// yok): dünya yukarısı referans alınıp el-yerel dondurulur, yani kol salınsa
+// bile fünye okunur bir yönde kalır; konum ise avuçla birlikte gider.
 //
 // GÖRSEL MODEL: önce `public/models/comical_bomb.glb`, yüklenemezse
 // `public/models/bomba.glb`, o da yoksa `buildStructuralBomb()` prosedürel
@@ -46,19 +52,18 @@ import { useFrame } from "@react-three/fiber";
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
 import { findBone } from "./EquipmentRegistry";
 import {
-  BOMB_CONTAINER_MODEL_POS,
-  BOMB_CONTAINER_MODEL_ROT,
   BOMB_CONTAINER_MODEL_SCALE,
+  BOMB_FINGER_GRIP,
   BOMB_FLAME_SPAN,
   BOMB_FUSE_EMISSIVE,
   BOMB_FUSE_MATERIAL,
-  BOMB_GRIP_POS,
   BOMB_MODEL_SPAN,
   BOMB_TARGET_WORLD_SPAN,
   applyFingerGrip,
+  bombSeatLocal,
   buildFingerMeshes,
   buildStructuralBomb,
-  calibrateHandGrip,
+  calibrateBombGrip,
   handBoneScale,
   rightHandBone,
 } from "./HandGrip";
@@ -66,7 +71,9 @@ import {
   createFuseFlame,
   findFuseAnchor,
   isFuseLikeName,
+  measureBodyCenter,
   measureBodySpan,
+  measureFuseDirection,
   type FuseFlame,
 } from "./BombFuseFlame";
 
@@ -140,12 +147,14 @@ export function useSamuraiBomb(
 
     const boneScale = Math.max(handBoneScale(hand), 1e-9);
     const grip = new THREE.Group();
-    grip.position.set(...BOMB_GRIP_POS);
+    // Avuçtaki oturma noktası EL-YEREL: top avucun çukurunda durur ve kol ne
+    // yaparsa yapsın oradan kaymaz (bkz. `bombSeatLocal` ölçümleri).
+    grip.position.copy(bombSeatLocal(hand));
     // Kemik ölçeğini söndür: kapsayıcı içindeki 1 birim = 1 dünya birimi.
     grip.scale.setScalar(BOMB_CONTAINER_MODEL_SCALE / boneScale);
+    // `pivot` MODEL-UZAYI düzeltmesidir (gövde merkezi → orijin, fünye → +Y).
+    // Değerleri model ölçülerek `mount` içinde kurulur.
     const pivot = new THREE.Group();
-    pivot.position.set(...BOMB_CONTAINER_MODEL_POS);
-    pivot.rotation.set(...BOMB_CONTAINER_MODEL_ROT);
     grip.add(pivot);
 
     const mount = (source: THREE.Object3D) => {
@@ -154,10 +163,30 @@ export function useSamuraiBomb(
       // Gövde genişliği (X/Z) hedefe normalize edilir; fünye serbest kalır.
       // Fitil/kıvılcım mesh'leri ölçümden ÇIKARILIR (bkz. `measureBodySpan`):
       // yana uzanan bir fitil kutuyu şişirip bombayı olduğundan küçük ölçekler.
+      //
+      // ÜÇÜ DE ölçek uygulanmadan ÖNCE ölçülür (modelin kendi birimi).
       const span = measureBodySpan(model) || BOMB_MODEL_SPAN;
+      // Gövde merkezi: modelin origin'i kürenin merkezinde değilse (Blender'da
+      // pivot tabana konmuşsa) top avucun dışına kaçar ya da içine gömülür.
+      const bodyCenter = measureBodyCenter(model);
+      // Fünye yönü: ağız noktasından gövde merkezine giden vektörün tersi.
+      const fuseDir = measureFuseDirection(model);
       const chain = grip.scale.x * boneScale * pivot.scale.x || 1;
       model.scale.setScalar(BOMB_TARGET_WORLD_SPAN / (span * chain));
       model.position.set(0, 0, 0);
+      // Pivot: gövde merkezini kapsayıcının orijinine çek ve modelin fünyesini
+      // +Y'ye hizala. `calibrateBombGrip` fünyeyi +Y varsayar; modelin fitili
+      // yana/eğik çizilmişse bile bomba doğru yönde durur.
+      const align = new THREE.Quaternion().setFromUnitVectors(
+        fuseDir,
+        new THREE.Vector3(0, 1, 0),
+      );
+      pivot.quaternion.copy(align);
+      pivot.position
+        .copy(bodyCenter)
+        .multiplyScalar(model.scale.x)
+        .applyQuaternion(align)
+        .negate();
       model.traverse((o) => {
         o.userData.isEquipment = true;
         // Sahne frustum culling'i kapatılır: kemik animasyonunda model
@@ -181,11 +210,13 @@ export function useSamuraiBomb(
           }
         }
       });
-      // 🔥 Ağız ateşinin oturacağı nokta: model köküne GÖRELİ bulunur, sonra
-      // modelin ölçeğiyle çarpılıp kapsayıcı (dünya birimi) uzayına taşınır.
-      // Model henüz `pivot`a eklenmeden hesaplandığı için ölçek zinciri
-      // karışmaz; `pivot`ta kaydırma/döndürme yoksa nokta doğrudan geçerlidir.
-      const anchor = findFuseAnchor(model).multiplyScalar(model.scale.x);
+      // 🔥 Ağız ateşinin oturacağı nokta: fünyenin yanan ucu. Model köküne
+      // GÖRELİ bulunur, gövde merkezine göre kaydırılır (pivot o kadar kaydı)
+      // ve pivot rotasyonundan geçirilerek kapsayıcı uzayına taşınır.
+      const anchor = findFuseAnchor(model)
+        .sub(bodyCenter)
+        .multiplyScalar(model.scale.x)
+        .applyQuaternion(align);
 
       // Önceki alev ve model varsa (yapısal → GLB) tek seferde değiştir.
       flameRef.current?.dispose();
@@ -222,9 +253,14 @@ export function useSamuraiBomb(
     frames.current = 0;
     calibrated.current = false;
 
-    // Kapalı yumruk: bomba parmakların arasında "tutuluyor" görünür.
-    applyFingerGrip(clone);
+    // Parmak pozu: yumruk DEĞİL, topu saran avuç (bkz. `BOMB_FINGER_GRIP`).
+    // Kapalı yumrukta parmak uçları topun İÇİNE kıvrılıyordu.
+    applyFingerGrip(clone, BOMB_FINGER_GRIP);
     const fingers = buildFingerMeshes(clone);
+
+    // İlk kareyi de doğru göster: kalibrasyon 20. karede (idle klibi oturunca)
+    // tazelenir, ama ilk 0.33 sn boyunca bomba elde savrulmasın.
+    calibrateBombGrip(hand, grip, clone);
 
     return () => {
       grip.removeFromParent();
@@ -236,8 +272,9 @@ export function useSamuraiBomb(
     };
   }, [clone, skinUrl, ready]);
 
-  // Kılıçla aynı kural: yönelim CANLI el pozundan bir kez kalibre edilir.
-  // 20 kare beklenir ki idle klibi otursun (kılıç kalibrasyonuyla aynı zamanlama).
+  // Kılıçla aynı kural: yönelim CANLI el pozundan kalibre edilir. Kurulumda bir
+  // kez (ilk kare doğru olsun), sonra 20. karede TAZELENİR — idle klibi o an
+  // oturmuş olur (kılıç kalibrasyonuyla aynı zamanlama).
   useFrame((_, dt) => {
     // Ateş her karede canlı kalır (titreme, kor parçacıkları, ışık).
     flameRef.current?.update(dt);
@@ -246,7 +283,7 @@ export function useSamuraiBomb(
     if (!grip || !hand || calibrated.current) return;
     frames.current += 1;
     if (frames.current < 20) return;
-    calibrateHandGrip(hand, grip);
+    calibrateBombGrip(hand, grip, clone);
     calibrated.current = true;
   });
 
