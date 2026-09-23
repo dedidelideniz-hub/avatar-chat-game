@@ -333,26 +333,24 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
  * Model uzayı: gövde merkezi ORİJİN'de, gövde çapı 2.08 birim (üretilen
  * `public/models/bomba.glb` ile birebir aynı — ekseni 2.08, yüksekliği 2.74).
  *
- * HEDEF DÜNYA ÇAPI = 0.52 birim (ölçekli ama karakter oranını koruyan prop).
+ * HEDEF DÜNYA ÇAPI = 0.32 birim (yaklaşık karakter boyunun beşte biri).
  *
  * NEDEN GERÇEKÇİ ÖLÇÜ (0.26) BIRAKILDI: kuş bakışı (top-down) MOBA/aksiyon
  * oyunlarında elde taşınan silah/bomba kasten gerçek boyutundan BÜYÜK
  * çizilir; oyuncu prop'u karakterin gövdesi, eli ve zemin karmaşasından
- * ayırt edebilmelidir. 0.26 birim ≈ 1.48 birimlik savaşçının %18'i kadardı ve
- * 55° izometrik kamerada elde "leke" gibi kalıyordu. 0.52, önceki 0.42
- * ölçüden yalnızca %24 büyük; 0.84'e göre %38 küçüktür. Böylece net görünür
- * kalırken karakterin silüetini ve el pozunu ele geçirmez.
+ * ayırt edebilmelidir. Önceki 0.52 değerinde, ekteki oyun görüntüsünde hâlâ
+ * karakterin silüetini bastırıyordu. 0.32 çap, 1.48 birimlik karakterin
+ * yaklaşık %22'sidir: elde seçilir ama artık karakterden büyük görünmez.
  *
  * Mermi/tuzak bombaları kendi oyun ölçülerini kullanır; elde tutulan model
  * yalnız okunurluk için hafif büyütülür, fakat tüm bombanın fitil dâhil silüeti
  * karakterin elinden ve gövdesinden küçük kalmalıdır.
  *
- * ÜST SINIR: gövde çapı 0.52; modelin fitiliyle toplam yüksekliği ≈0.9 dünya
- * birimidir. Ölçek, avuçtan dışarı oturma mesafesi ve aura yarıçapı aynı hedefi
- * izler.
+ * Gövde çapı 0.32'dir; fitil ve efektler de ayrıca kısaltılmıştır. Ölçek,
+ * avuçtan dışarı oturma mesafesi ve aura yarıçapı aynı hedefi izler.
  */
 export const BOMB_MODEL_SPAN = 2.08;
-export const BOMB_TARGET_WORLD_SPAN = 0.52;
+export const BOMB_TARGET_WORLD_SPAN = 0.32;
 /**
  * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
  *
@@ -379,7 +377,7 @@ export const BOMB_SEAT_OUT = BOMB_TARGET_WORLD_SPAN * 0.5 * 0.98;
  * birime çıkar (karakterin ~%36'sı) ve eli/omuzu kapatırdı. 0.20 = bomba
  * büyütmesine kısmen eşlik eden (0.16 → 1.25×), yine de görüşü kapatmayan ölçü.
  */
-export const BOMB_FLAME_SPAN = 0.2;
+export const BOMB_FLAME_SPAN = 0.13;
 /** Fitil ucunun kendinden ışıma şiddeti (bloom'u besler, ekranı sislemez). */
 export const BOMB_FUSE_EMISSIVE = 2.6;
 /**
@@ -396,7 +394,7 @@ export const BOMB_FUSE_EMISSIVE = 2.6;
  * `createBombAura` (kızıl-turuncu hâle + zayıf nokta ışığı + kor parçacıkları)
  * ve fünye alevidir.
  */
-export const BOMB_BODY_EMISSIVE = 0.22;
+export const BOMB_BODY_EMISSIVE = 0.12;
 /** Gövde emissive rengi — sıcak kızıl-turuncu (fünye aleviyle aynı aile). */
 export const BOMB_BODY_EMISSIVE_COLOR = "#ff4d16";
 /** Model/üretilen dosyada fitil ucunu taşıyan malzeme adı. */

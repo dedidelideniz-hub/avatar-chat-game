@@ -349,9 +349,9 @@ export function createBombAura(radius: number): BombAura {
     return mat;
   };
 
-  const haloMat = mk("#ff2d0a", 0.17);
+  const haloMat = mk("#ff2d0a", 0.08);
   const halo = new THREE.Sprite(haloMat);
-  const coreMat = mk("#ff7a1e", 0.24);
+  const coreMat = mk("#ff7a1e", 0.12);
   const core = new THREE.Sprite(coreMat);
   for (const s of [halo, core]) {
     s.raycast = () => {};
@@ -365,7 +365,7 @@ export function createBombAura(radius: number): BombAura {
   // LIGHT_INTENSITY yorumu): r155+ fiziksel birimlerde ışıma = şiddet / mesafe².
   // Prop ele yakın olduğu için ışık kontrollü yükseltilir: bomba yüzeyinde ve
   // elde hafif sıcak bir yansıma verir, fakat arenayı yıkayacak kadar güçlü değil.
-  const LIGHT_INTENSITY = 0.05;
+  const LIGHT_INTENSITY = 0.018;
   const light = new THREE.PointLight("#ff4d16", LIGHT_INTENSITY, radius * 8, 2);
   light.userData.isEquipment = true;
   group.add(light);
@@ -382,10 +382,10 @@ export function createBombAura(radius: number): BombAura {
         0.12 *
         motion;
 
-    halo.scale.setScalar(radius * 3.1 * pulse);
-    haloMat.opacity = 0.15 * pulse + 0.05 * motion;
-    core.scale.setScalar(radius * 1.75 * pulse);
-    coreMat.opacity = 0.21 * pulse + 0.06 * motion;
+    halo.scale.setScalar(radius * 2.2 * pulse);
+    haloMat.opacity = 0.07 * pulse + 0.025 * motion;
+    core.scale.setScalar(radius * 1.3 * pulse);
+    coreMat.opacity = 0.11 * pulse + 0.025 * motion;
     light.intensity = LIGHT_INTENSITY * (0.75 + 0.45 * pulse);
   };
 
