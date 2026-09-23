@@ -65,11 +65,18 @@ export const SWORD_GRIP_BAND_MODEL_Y = 0.12;
 
 /* ── Helpers ────────────────────────────────────────────────────── */
 
-/** Average world scale of a bone — the chain multiplier for size math. */
+/** Average world scale of a bone — used by legacy equipment measurements. */
 export function handBoneScale(bone: THREE.Object3D): number {
   bone.updateWorldMatrix(true, false);
   const ws = bone.getWorldScale(new THREE.Vector3());
   return (ws.x + ws.y + ws.z) / 3 || 1e-6;
+}
+
+/** Conservative maximum world-axis scale for held-bomb normalization. */
+export function handBoneMaxScale(bone: THREE.Object3D): number {
+  bone.updateWorldMatrix(true, false);
+  const ws = bone.getWorldScale(new THREE.Vector3());
+  return Math.max(Math.abs(ws.x), Math.abs(ws.y), Math.abs(ws.z), 1e-6);
 }
 
 /* ── Live grip calibration (rig-independent) ─────────────────────── */
@@ -326,27 +333,26 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
  * Model uzayı: gövde merkezi ORİJİN'de, gövde çapı 2.08 birim (üretilen
  * `public/models/bomba.glb` ile birebir aynı — ekseni 2.08, yüksekliği 2.74).
  *
- * HEDEF DÜNYA ÇAPI = 0.84 birim (önceki 0.42 ölçünün 2×'si).
+ * HEDEF DÜNYA ÇAPI = 0.52 birim (ölçekli ama karakter oranını koruyan prop).
  *
  * NEDEN GERÇEKÇİ ÖLÇÜ (0.26) BIRAKILDI: kuş bakışı (top-down) MOBA/aksiyon
  * oyunlarında elde taşınan silah/bomba kasten gerçek boyutundan BÜYÜK
  * çizilir; oyuncu prop'u karakterin gövdesi, eli ve zemin karmaşasından
  * ayırt edebilmelidir. 0.26 birim ≈ 1.48 birimlik savaşçının %18'i kadardı ve
- * 55° izometrik kamerada elde "leke" gibi kalıyordu. 0.84 = önceki ölçeğin
- * 2×'si: top-down açıdan belirgin okunur; avuç dışına türetilmiş offset ile
- * çıkar ve fitili gövdeden uzağa yatırılır.
+ * 55° izometrik kamerada elde "leke" gibi kalıyordu. 0.52, önceki 0.42
+ * ölçüden yalnızca %24 büyük; 0.84'e göre %38 küçüktür. Böylece net görünür
+ * kalırken karakterin silüetini ve el pozunu ele geçirmez.
  *
- * NEDEN TAM 0.42: elde tutulan bomba, FIRLATILAN ve YERE BIRAKILAN bombayla
- * aynı cisim olmalı. Fırlatılan/tuzak bombaları kendi oyun ölçülerini kullanır;
- * elde tutulan model ise okunurluk için bilerek 2× büyütülür. Yetenek
- * animasyonlarında tutulan prop ile mermi boyutu ayrı olabilir.
+ * Mermi/tuzak bombaları kendi oyun ölçülerini kullanır; elde tutulan model
+ * yalnız okunurluk için hafif büyütülür, fakat tüm bombanın fitil dâhil silüeti
+ * karakterin elinden ve gövdesinden küçük kalmalıdır.
  *
- * ÜST SINIR: 1.05 birim civarında (2.5×) eldeki prop gövdenin büyük bölümünü
- * kapatmaya başlayabilir. Değeri 0.84'te (2×) tutuyoruz; model ölçeği,
- * avuçtan dışarı oturma mesafesi ve aura yarıçapı aynı hedef ölçüyü izler.
+ * ÜST SINIR: gövde çapı 0.52; modelin fitiliyle toplam yüksekliği ≈0.9 dünya
+ * birimidir. Ölçek, avuçtan dışarı oturma mesafesi ve aura yarıçapı aynı hedefi
+ * izler.
  */
 export const BOMB_MODEL_SPAN = 2.08;
-export const BOMB_TARGET_WORLD_SPAN = 0.84;
+export const BOMB_TARGET_WORLD_SPAN = 0.52;
 /**
  * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
  *
@@ -404,7 +410,7 @@ export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
  * hareket ettiğinde top avuçla birlikte gider (kamera açısından bağımsız).
  */
 export function bombSeatLocal(hand: THREE.Object3D): THREE.Vector3 {
-  const boneScale = Math.max(handBoneScale(hand), 1e-9);
+  const boneScale = handBoneMaxScale(hand);
   const palm = palmCenterLocal(hand);
   return new THREE.Vector3(
     palm.x,

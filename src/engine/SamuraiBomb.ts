@@ -80,7 +80,7 @@ import {
   buildFingerMeshes,
   buildStructuralBomb,
   calibrateBombGrip,
-  handBoneScale,
+  handBoneMaxScale,
   rightHandBone,
 } from "./HandGrip";
 import {
@@ -154,7 +154,8 @@ export function useSamuraiBomb(
   const flameRef = useRef<FuseFlame | null>(null);
   /** Gövde hâlesi — kuş bakışı okunurluk katmanı (aynı yaşam döngüsü). */
   const auraRef = useRef<BombAura | null>(null);
-  const frames = useRef(0);    const calibrated = useRef(false);
+  const frames = useRef(0);
+  const calibrated = useRef(false);
   // Per-instance material clones are disposed when the attached model is replaced/unmounted.
   const equippedMaterials = useRef<THREE.Material[]>([]);
   // GLB arka planda hazır olduğunda katmanı yeniden kurar (yapısal → GLB geçişi).
@@ -166,7 +167,7 @@ export function useSamuraiBomb(
     const hand = findBone(clone, "MAIN_HAND") ?? rightHandBone(clone);
     if (!hand) return;
 
-    const boneScale = Math.max(handBoneScale(hand), 1e-9);
+    const boneScale = Math.max(handBoneMaxScale(hand), 1e-9);
     const grip = new THREE.Group();
     // Avuçtaki oturma noktası EL-YEREL: top avucun çukurunda durur ve kol ne
     // yaparsa yapsın oradan kaymaz (bkz. `bombSeatLocal` ölçümleri).
@@ -197,12 +198,16 @@ export function useSamuraiBomb(
       const bodyCenter = measureBodyCenter(model);
       // Fünye yönü: ağız noktasından gövde merkezine giden vektörün tersi.
       const fuseDir = measureFuseDirection(model);
+      // `grip` kemiğin en büyük world-axis ölçeğinin tersini taşır; bu çarpım
+      // parent zincirini ~1 dünya ölçeğine indirger ve kemik ölçeğinin prop'u
+      // tekrar büyütmesini önler.
       const chain = grip.scale.x * boneScale * pivot.scale.x || 1;
       const prepared = prepareHeldEquipment(model, {
         targetWorldSpan: BOMB_TARGET_WORLD_SPAN,
         sourceSpan: span,
         parentWorldScale: chain,
       });
+      for (const material of equippedMaterials.current) material.dispose();
       equippedMaterials.current = prepared.materials;
       model.position.set(0, 0, 0);
       // Pivot: gövde merkezini kapsayıcının orijinine çek ve modelin fünyesini
@@ -265,8 +270,6 @@ export function useSamuraiBomb(
       flameRef.current = null;
       auraRef.current?.dispose();
       auraRef.current = null;
-      for (const material of equippedMaterials.current) material.dispose();
-      equippedMaterials.current = [];
       for (const child of [...pivot.children]) pivot.remove(child);
       pivot.add(model);
 

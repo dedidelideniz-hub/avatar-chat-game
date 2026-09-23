@@ -5,7 +5,7 @@ export interface HeldEquipmentOptions {
   targetWorldSpan: number;
   /** Measured body diameter in the source model's local units. */
   sourceSpan: number;
-  /** Combined scale of the equipment's parent chain, excluding the model. */
+  /** Combined world scale of the equipment's parent chain, excluding the model. */
   parentWorldScale?: number;
 }
 
@@ -26,7 +26,7 @@ export function prepareHeldEquipment(
   root: THREE.Object3D,
   { targetWorldSpan, sourceSpan, parentWorldScale = 1 }: HeldEquipmentOptions,
 ): HeldEquipmentResult {
-  const denominator = Math.max(sourceSpan * parentWorldScale, 1e-9);
+  const denominator = Math.max(sourceSpan * Math.max(parentWorldScale, 1e-9), 1e-9);
   const modelScale = targetWorldSpan / denominator;
   root.scale.setScalar(modelScale);
 
