@@ -302,22 +302,37 @@ const FUSE_RE = /fuse|fitil|wick|glow|flame|fire|ember|spark|alev/i;
  */
 export const isFuseLikeName = (name: string): boolean => FUSE_RE.test(name);
 
+/** Ölçümde taranacak en fazla köşe (büyük modellerde maliyet sınırı). */
+const MEASURE_VERT_LIMIT = 20000;
+
+/** Ölçülen gövde küresi (model kökünün uzayında). */
+export interface BodyBall {
+  center: THREE.Vector3;
+  radius: number;
+}
+
 /**
- * GÖVDE kutusu (model kökünün uzayında) — fitil/ateş mesh'leri HARİÇ.
+ * GÖVDE YÜZEY KÖŞELERİ (model kökünün uzayında) — fitil/ateş mesh'leri HARİÇ.
  *
- * NEDEN hariç: ölçek normalizasyonu "gövde kaç birim?" sorusuna dayanır. Tüm
- * modelin kutusu kullanılırsa, YANA/UZAĞA uzanan bir fitil ya da kıvılcım XZ
- * genişliğini şişirir ve bomba olduğundan küçük ölçeklenir (ekranda "ufacık"
- * görünür). Aynı ayrım, bombanın AĞIRLIK MERKEZİNİ bulurken de gerekir: fitil
- * tepeye doğru uzadığı için tüm modelin kutu merkezi gövdenin merkezi DEĞİLDİR.
+ * NEDEN GERÇEK KÖŞELER, `Box3.expandByObject` DEĞİL: o çağrı her mesh'in
+ * kutusunu DÜNYA matrisiyle çarpıp yeniden eksen-hizalı kutuya çevirir. Model
+ * döndürülmüşse (Sketchfab dışa aktarımları neredeyse hep döndürülmüştür) bu
+ * kutu gerçek gövdeden KAT KAT büyük çıkar. Kullanıcının `comical_bomb.glb`
+ * modelinde XZ genişliği 3.63 ölçülüyordu; gerçek gövde çapı 1.96 — yani bomba
+ * 1.85 kat KÜÇÜK ölçeklenip elde "ufacık" kalıyordu ve avuçtan dışarı taşıyordu
+ * (oturma mesafesi sabit, gövde küçük). Burada köşeler tek tek okunur: ölçek,
+ * merkez ve ağız noktası gerçek geometriye göre hesaplanır.
  *
- * Çağıran, ebeveynsiz (dünya = yerel) bir klon geçirir — kutu bu yüzden
- * doğrudan model kökünün uzayındadır.
+ * NEDEN YALNIZCA ÜÇGENLERİN KULLANDIĞI KÖŞELER: bazı dışa aktarımlarda
+ * (Sketchfab bezier→mesh) yüzeyden kopuk, hiçbir üçgene bağlı olmayan köşeler
+ * kalır. `comical_bomb.glb`'de 1182 köşenin 595'i böyleydi ve yüzeyin dışına
+ * taşarak kutuyu şişiriyordu (Z aralığı −1.00…1.14; gerçek gövde −0.51…1.14).
+ * İndeks varsa yalnızca indeksin gösterdiği köşeler okunur.
  */
-function bodyBox(root: THREE.Object3D): THREE.Box3 | null {
+function bodyPoints(root: THREE.Object3D): THREE.Vector3[] {
   root.updateWorldMatrix(true, true);
-  const box = new THREE.Box3();
-  let any = false;
+  const out: THREE.Vector3[] = [];
+  const v = new THREE.Vector3();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -328,17 +343,157 @@ function bodyBox(root: THREE.Object3D): THREE.Box3 | null {
         ? [mesh.material]
         : [];
     if (list.some((m) => m && isFuseLikeName(m.name))) return;
-    box.expandByObject(mesh);
-    any = true;
+    const geo = mesh.geometry as THREE.BufferGeometry | undefined;
+    const pos = geo?.attributes?.position as THREE.BufferAttribute | undefined;
+    if (!geo || !pos) return;
+    const idx = geo.index;
+    const count = idx ? idx.count : pos.count;
+    // Örnekleme adımı: çok büyük modellerde kare başına maliyet patlamasın.
+    const step = Math.max(1, Math.ceil(count / MEASURE_VERT_LIMIT));
+    // Köşe BAŞINA BİR NOKTA: indeks tamponunda aynı köşe onlarca kez geçer
+    // (paylaşılan üçgenler). Tekrarlar ölçümü değil bandın "kaç nokta var?"
+    // kontrolünü bozar — bir bandın 2 gerçek köşesi 10 tekrarla dolu görünüp
+    // sahte bir yarıçap üretebilirdi.
+    const seen = new Set<number>();
+    for (let i = 0; i < count; i += step) {
+      const vi = idx ? idx.getX(i) : i;
+      if (seen.has(vi)) continue;
+      seen.add(vi);
+      v.fromBufferAttribute(pos, vi).applyMatrix4(mesh.matrixWorld);
+      out.push(v.clone());
+    }
   });
-  return any ? box : null;
+  return out;
 }
 
-/** Gövde genişliği (XZ) — yalnızca gövde mesh'lerinden; hiç bulunamazsa tüm model. */
+/**
+ * Gövdenin SIKI (köşe bazlı) sınır kutusu — model kökünün uzayında.
+ * `points` verilmişse yeniden taranmaz (aynı turda iki ölçüm yapılırken).
+ * Gövde mesh'i yoksa tüm modele düşülür (el asla ölçüsüz kalmaz).
+ */
+function tightBox(
+  root: THREE.Object3D,
+  points?: THREE.Vector3[],
+): THREE.Box3 {
+  const pts = points ?? bodyPoints(root);
+  if (!pts.length) return new THREE.Box3().setFromObject(root);
+  const box = new THREE.Box3();
+  for (const p of pts) box.expandByPoint(p);
+  return box;
+}
+
+/**
+ * Gövde genişliği (XZ) — SIKI köşe ölçümü; hiç bulunamazsa tüm model.
+ * Yalnızca gövde mesh'lerinden: YANA/UZAĞA uzanan bir fitil ya da kıvılcım XZ
+ * genişliğini şişirip bombayı olduğundan küçük ölçeklerdi.
+ */
 export function measureBodySpan(root: THREE.Object3D): number {
-  const box = bodyBox(root) ?? new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
+  // Gövde küresi ölçülebiliyorsa ÖLÇEK REFERANSI odur: avuçta oturma mesafesi
+  // (`BOMB_SEAT_OUT` = normalize edilmiş gövde yarıçapı, bkz. HandGrip) ile
+  // ölçek aynı referanstan gelirse bomba hangi model olursa olsun avuca değer.
+  // Kutu genişliği kullanılırsa boyun/kapak gibi parçalar referansı büyütüp
+  // bombayı avuçtan dışarı taşırır.
+  const ball = measureBodyBall(root);
+  if (ball) return ball.radius * 2;
+  const size = tightBox(root).getSize(new THREE.Vector3());
   return Math.max(size.x, size.z);
+}
+
+/**
+ * Gövde KÜRESİ ("en geniş kesit"): merkez + yarıçap, model kökünün uzayında.
+ *
+ * NEDEN KUTU MERKEZİ YETMEZ: bir bomba gövdesi + fitilden oluşur. Fitil tepeye
+ * doğru uzadığı için tüm gövdenin KUTU MERKEZİ, kürenin merkezinin ÜSTÜNDE
+ * kalır; bomba o noktadan avuca oturtulursa küre avucun İÇİNE gömülür (parmak
+ * uçları topun içinden geçer). `comical_bomb.glb`'de kutu merkezi (−0.017,
+ * 1.325, 0.310), kürenin merkezi ise (−0.017, 0.943, 0.366): arada 0.38 model
+ * birimi var — ölçek 0.1325 olduğu için bomba avuca 0.05 dünya birimi, yani
+ * YARIÇAPININ ~%38'i kadar gömülüyordu. Gözle de görülen "ele saplanmış"
+ * görüntü buydu.
+ *
+ * YÖNTEM: gövde köşeleri EN UZUN eksende bantlara ayrılır (bir bomba için bu
+ * eksen daima gövde+fitil yönüdür). Her bant için dik düzlemdeki SINIR KUTUSU
+ * ölçülür: yarı genişlikler `ru`, `rv` ve merkez kutunun ortasıdır. EN GENİŞ
+ * bant gövdenin ekvatorudur → yarıçapı gövde yarıçapı, merkezi gövde merkezidir.
+ *
+ * NEDEN AĞIRLIK MERKEZİ (ORTALAMA) DEĞİL, KUTU: model köşeleri düzgün dağılmaz
+ * — `comical_bomb.glb`'de yoğunluk fitil tarafında toplanmıştı ve ortalama
+ * tabanlı merkez her turda yukarı kayıyordu (y: 0.98 → 1.27 → 1.59). Kutu
+ * ortası yoğunluktan bağımsızdır ve bu modelde gerçek merkezi tam verir:
+ * merkez (−0.017, 0.943, 0.366), yarıçap 0.981 → çap 1.962 = modelin kendi X
+ * açıklığı.
+ *
+ * Yedek modelde de (küre + pirinç bilezikler + boyun/kapak) aynı yöntem gövde
+ * küresini bulur: en geniş bant ekvatordur, çap 2.08 çıkar — yani `HandGrip`'te
+ * belgelenen model uzayı sözleşmesiyle birebir uyuşur.
+ */
+export function measureBodyBall(root: THREE.Object3D): BodyBall | null {
+  const pts = bodyPoints(root);
+  if (pts.length < 16) return null;
+  const box = tightBox(root, pts);
+  const size = box.getSize(new THREE.Vector3());
+  // Dilim ekseni = en uzun eksen.
+  const axis = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
+  const a = axis;
+  const b = (axis + 1) % 3;
+  const c = (axis + 2) % 3;
+  const lo = box.min.getComponent(a);
+  const hi = box.max.getComponent(a);
+  const len = hi - lo;
+  if (!(len > 0)) return null;
+
+  const BANDS = 24;
+  // Bant başına dik düzlem sınır kutusu (tek geçişte toplanır).
+  type Band = { n: number; umin: number; umax: number; vmin: number; vmax: number; amin: number; amax: number };
+  const bands: (Band | null)[] = new Array(BANDS).fill(null);
+  /** Bir bandın "var olması" için gereken en az GERÇEK köşe sayısı: 2 köşeli
+   *  bir bant (ör. fitilin en tepesi) sahte bir ekvator yarıçapı üretmesin. */
+  const MIN_BAND_POINTS = 6;
+  for (const p of pts) {
+    const t = (p.getComponent(a) - lo) / len;
+    const i = Math.min(BANDS - 1, Math.max(0, Math.floor(t * BANDS)));
+    const u = p.getComponent(b);
+    const v = p.getComponent(c);
+    const av = p.getComponent(a);
+    const band = bands[i];
+    if (!band) {
+      bands[i] = {
+        n: 1,
+        umin: u,
+        umax: u,
+        vmin: v,
+        vmax: v,
+        amin: av,
+        amax: av,
+      };
+      continue;
+    }
+    band.n += 1;
+    if (u < band.umin) band.umin = u;
+    if (u > band.umax) band.umax = u;
+    if (v < band.vmin) band.vmin = v;
+    if (v > band.vmax) band.vmax = v;
+    if (av < band.amin) band.amin = av;
+    if (av > band.amax) band.amax = av;
+  }
+
+  let best: Band | null = null;
+  let bestRadius = 0;
+  for (const band of bands) {
+    if (!band || band.n < MIN_BAND_POINTS) continue;
+    const radius = Math.max((band.umax - band.umin) / 2, (band.vmax - band.vmin) / 2);
+    if (radius > bestRadius) {
+      bestRadius = radius;
+      best = band;
+    }
+  }
+  if (!best || !(bestRadius > 1e-6)) return null;
+
+  const center = new THREE.Vector3();
+  center.setComponent(a, (best.amin + best.amax) / 2);
+  center.setComponent(b, (best.umin + best.umax) / 2);
+  center.setComponent(c, (best.vmin + best.vmax) / 2);
+  return { center, radius: bestRadius };
 }
 
 /**
@@ -348,11 +503,14 @@ export function measureBodySpan(root: THREE.Object3D): number {
  * merkezidir. Modelin origin'i kürenin merkezinde DEĞİLSE (Blender'da pivot
  * tabana konmuşsa) bomba avucun dışına kaçar ya da içine gömülür. Bu yüzden
  * merkez ölçülür ve model buna göre kaydırılır — modele özel sabit gerekmez.
+ * Ölçülebilen bir gövde küresi varsa merkez ONUN merkezidir (bkz.
+ * `measureBodyBall`); aksi hâlde sıkı kutunun merkezine düşülür.
  */
 export function measureBodyCenter(root: THREE.Object3D): THREE.Vector3 {
-  const box = bodyBox(root) ?? new THREE.Box3().setFromObject(root);
+  const ball = measureBodyBall(root);
+  if (ball) return root.worldToLocal(ball.center.clone());
   // Ölçüm dünya uzayında yapılır; çağıran modelin KENDİ biriminde bekler.
-  const center = box.getCenter(new THREE.Vector3());
+  const center = tightBox(root).getCenter(new THREE.Vector3());
   return root.worldToLocal(center);
 }
 
@@ -438,7 +596,10 @@ export function findFuseAnchor(root: THREE.Object3D): THREE.Vector3 {
     return root.worldToLocal(single.getCenter(new THREE.Vector3()));
   }
 
-  const box = new THREE.Box3().setFromObject(root);
+  // Ad ipucu yok: ağız, gövdenin en üst noktasıdır (fünye daima yukarı bakar).
+  // SIKI kutu kullanılır: kaba kutu döndürülmüş modellerde tepeden taşar ve
+  // alev fünyenin ucunda değil havada yanardı.
+  const box = tightBox(root);
   return root.worldToLocal(
     new THREE.Vector3(
       (box.min.x + box.max.x) / 2,

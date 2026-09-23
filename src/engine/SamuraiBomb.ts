@@ -11,13 +11,26 @@
 //   el kemiği → `grip`  (kemik ölçeğini 1'e indirir; içindeki birim = dünya
 //                        birimi, art arda eklenen model dünya ölçeğinde durur)
 //             → `pivot` (model-uzayı offset'i: gövde avucun içine oturur)
-//             → model   (dünya genişliği `BOMB_TARGET_WORLD_SPAN`'a normalize)
+//             → model   (GÖVDE KÜRESİNİN çapı `BOMB_TARGET_WORLD_SPAN`'a
+//                        normalize; fitil/boyun ölçek referansı DEĞİLDİR)
+//
+// M O D E L   Ö L Ç Ü M Ü  (`BombFuseFlame`): ölçek, merkez, fünye yönü ve
+// ağız noktası modelin GERÇEK YÜZEY KÖŞELERİNDEN okunur. İki ayrıntı kritik:
+//
+//   · Kaba `Box3` YETMEZ. Döndürülmüş bir dışa aktarımda (Sketchfab) eksen-
+//     hizalı kutu, gövdeden kat kat büyük çıkar; kullanıcının modelinde XZ
+//     genişliği 3.63 ölçülüyordu, gerçek çap 1.96 → bomba 1.85 kat küçük
+//     ölçeklenip elde "ufacık" kalıyordu.
+//   · MERKEZ, gövde küresinin merkezidir — tüm parçaların kutu merkezi değil.
+//     Fitil/boyun yukarı uzadığı için kutu merkezi yukarı kayar ve bomba avuca
+//     yarım yarıçap gömülürdü (bkz. `measureBodyBall`).
 //
 // A V U Ç T A   O T U R M A  (`calibrateBombGrip`) — kullanıcı geri bildirimi:
 // "bomba avuca oturmak yerine ele saplanmış, yukarı fırlamış gibi duruyor".
 // Sebep: topun merkezi avuç MERKEZİNDE bırakılmıştı → kürenin yarısı elin
 // içinde kalıyor, parmaklar topun ortasından geçiyordu. Artık konum EL-YEREL
-// olarak avuç normali boyunca ~bir yarıçap dışarıdadır (bkz. BOMB_SEAT_OUT) ve
+// olarak avuç normali boyunca TAM BİR YARIÇAP dışarıdadır (bkz. BOMB_SEAT_OUT;
+// gövde yarıçapı normalize edilmiş hedefin yarısıdır, yani ikisi tutarlıdır) ve
 // fünye düz yukarı değil, gövdeden uzağa ~32° yatıktır (BOMB_TILT_OUT_DEG).
 //
 // Yönelim CANLI el pozundan türetilir (kemik adı ya da dosya bağımlı sabit
@@ -160,14 +173,19 @@ export function useSamuraiBomb(
     const mount = (source: THREE.Object3D) => {
       const model = SkeletonUtils.clone(source);
       model.updateMatrixWorld(true);
-      // Gövde genişliği (X/Z) hedefe normalize edilir; fünye serbest kalır.
-      // Fitil/kıvılcım mesh'leri ölçümden ÇIKARILIR (bkz. `measureBodySpan`):
-      // yana uzanan bir fitil kutuyu şişirip bombayı olduğundan küçük ölçekler.
+      // ÖLÇEK REFERANSI = GÖVDE KÜRESİNİN ÇAPI (ya da kutunun XZ genişliği).
+      // Fitil/kıvılcım mesh'leri ile üçgene bağlı olmayan "başıboş" köşeler
+      // ölçümden ÇIKARILIR (bkz. `measureBodySpan` / `bodyPoints`): yana uzanan
+      // bir fitil ya da yüzeyden kopuk köşeler kutuyu şişirip bombayı olduğundan
+      // küçük ölçekler. Avuçta oturma mesafesi de aynı referanstan türediği
+      // için (yarıçap) bomba hangi model olursa olsun avuca değer.
       //
       // ÜÇÜ DE ölçek uygulanmadan ÖNCE ölçülür (modelin kendi birimi).
       const span = measureBodySpan(model) || BOMB_MODEL_SPAN;
-      // Gövde merkezi: modelin origin'i kürenin merkezinde değilse (Blender'da
-      // pivot tabana konmuşsa) top avucun dışına kaçar ya da içine gömülür.
+      // Gövde merkezi = GÖVDE KÜRESİNİN merkezi. Modelin origin'i kürenin
+      // merkezinde değilse (Blender'da pivot tabana konmuşsa) top avucun dışına
+      // kaçar ya da içine gömülür; boyun/kapak yüzünden kutu merkezi de yukarı
+      // kayar — ikisi de bu ölçümle düzelir.
       const bodyCenter = measureBodyCenter(model);
       // Fünye yönü: ağız noktasından gövde merkezine giden vektörün tersi.
       const fuseDir = measureFuseDirection(model);

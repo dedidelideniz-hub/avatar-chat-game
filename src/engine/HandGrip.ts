@@ -305,7 +305,22 @@ export function buildStructuralSword(): THREE.Group {
  * İÇİNE saplanır — parmaklar topun ortasından geçer ve "eline saplanmış, yukarı
  * fırlamış" görüntüsü çıkar. BOMB_SEAT_OUT bu yüzden ≈ bomba yarıçapıdır.
  */
-export const BOMB_SEAT_OUT = 0.13; // avuç normali boyunca dışa (≈ bomba yarıçapı)
+/**
+ * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
+ *
+ * NEDEN: yükleyici gövde küresinin ÇAPINI `BOMB_TARGET_WORLD_SPAN`'e normalize
+ * eder (bkz. `SamuraiBomb.mount` → `BombFuseFlame.measureBodyBall`), yani
+ * bombanın dünya yarıçapı daima `BOMB_TARGET_WORLD_SPAN / 2` = 0.13'tir. Topun
+ * merkezini avuç normali boyunca tam bu kadar dışarı koymak, topun yüzeyini
+ * avuç merkezine DEĞDİRİR: bomba avucun çukurunda durur — ne içine gömülür ne
+ * de havada asılı kalır. %2'lik pay teması okunur kılar.
+ *
+ * TÜRETİLMİŞ DEĞER: sabit sayı yazılsaydı hedef ölçü değiştiğinde oturma ile
+ * ölçek birbirinden kopar ve bomba yine elden kaçardı (bu hata bir kez yaşandı:
+ * gövde ölçüsü kaba kutudan geldiği için küçük ölçeklenen bombada oturma
+ * mesafesi fazla kalıp topu avuçtan dışarı taşırıyordu).
+ */
+export const BOMB_SEAT_OUT = 0.127; // = BOMB_TARGET_WORLD_SPAN / 2 × 0.98
 export const BOMB_SEAT_FINGER = 0.01; // parmaklara doğru küçük kayma
 /**
  * Fünyenin gövdeden UZAĞA yatış açısı (derece).

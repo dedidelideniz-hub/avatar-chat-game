@@ -28,15 +28,20 @@ Samurayın elindeki bomba **bu dosyadan** yüklenir; yüklenemezse sırayla
 `models/bomba.glb` ve en son prosedürel `buildStructuralBomb()` devreye girer
 (sıra: `src/engine/SamuraiBomb.ts` → `BOMB_URLS`).
 
-**BU DOSYA ŞU AN PROJEDE YOK** — eklendiğinde kendiliğinden kullanılır.
-
-⚠️ Gerçek (binary) bir GLB yüklenirse hosting boru hattı dosyayı UTF-8'e
-çevirirken bozar (yukarıdaki kural: `.glb`'ler bu yüzden embedded-JSON'dır).
-Bu yüzden dosyayı yüklemeden ÖNCE çevir:
+**Dosya projede ve AKTİF** (Sketchfab dışa aktarımı: 1 mesh, 587 yüzey köşesi,
+4 PNG doku, `KHR_materials_emissive_strength`). Geldiği hâliyle **binary** bir
+GLB olduğu için yukarıdaki kural gereği çevrildi:
 
 ```bash
 node scripts/glb-to-embedded-json.mjs public/models/comical_bomb.glb
+# 14.63MiB -> 19.51MiB (ascii-only, byte-exact base64 buffer)
 ```
+
+Not: dosya ağır (4 doku: iki tanesi 4K PNG). Bomba elde küçük bir prop olduğu
+İçin dokuları 1K'ya indirmek görünüşü değiştirmeden dosyayı ~1.5MiB'a düşürür;
+yapılırsa bu satır güncellenmelidir. Model `SamuraiBomb` içinde ARKA PLANDA
+yüklenir (önce prosedürel bomba çizilir, GLB hazır olunca yerine geçer), yani
+ilk kareyi bloklamaz.
 
 Ağız ateşi modele bağlı DEĞİLDİR: fünye ucu çalışma zamanında bulunur (adı
 `fuse|wick|glow|flame|fire|ember|spark|alev` olan mesh/malzeme; yoksa modelin
@@ -48,6 +53,20 @@ Model değişse de ateş çalışır; yeni bir sabit gerekmez.
 noktasına çekilir ve fünye istenen yöne hizalanır (`measureBodyCenter` /
 `measureFuseDirection` → `SamuraiBomb.mount`). Yani Blender'da origin tabanda
 kalmış ya da fitil yana çizilmiş bir model de doğru oturur.
+
+Ölçüm **gerçek yüzey köşelerinden** yapılır (`BombFuseFlame.bodyPoints`) ve
+ölçek referansı **gövde küresinin çapıdır** (`measureBodyBall`): en geniş kesit
+aranır, merkezi ve yarıçapı oradan gelir. Bu iki ayrıntı olmadan model elde
+bozuk duruyordu:
+
+- eksen-hizalı kaba kutu, döndürülmüş bir modelde gövdeyi olduğundan büyük
+  ölçüp bombayı **küçük** ölçekliyordu (bu modelde 3.63 yerine gerçek 1.96);
+- üçgene bağlı olmayan "başıboş" köşeler (bu modelde 1182 köşenin 595'i) ve
+  yukarı uzayan boyun/kapak, kutu merkezini yukarı kaydırıp bombayı avuca
+  **gömüyordu**.
+
+Avuçta oturma mesafesi (`BOMB_SEAT_OUT` ≈ normalize edilmiş yarıçap) bu ölçek
+referansından türediği için top, model ne olursa olsun avuç çukurunda durur.
 
 ### `models/bomba.glb` (samurayın elindeki bomba — yedek model)
 
