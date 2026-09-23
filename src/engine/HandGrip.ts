@@ -316,6 +316,22 @@ export const BOMB_SEAT_FINGER = 0.06; // avuçtan öne, kavrayan parmakların hi
 /** Ek dünya boşluğu: bombanın yüzeyi avuç/parmaktan ayrık ve seçilir kalsın. */
 export const BOMB_PALM_CLEARANCE = 0.045;
 /**
+ * Bombanın gövde silüetinden dışarı taşınması (dünya birimi, yatay).
+ *
+ * NEDEN: yerleştirme avuç NORMALİ boyunca yapıldığında, o eksen rig'e göre
+ * gövdeye/içe dönebiliyor ve bomba elin ya da bacağın içine düşüyordu (elde
+ * tutulmuyor, gövdeye yapışmış gibi okunuyordu). MOBA karakterlerinde prop her
+ * zaman silüetin DIŞINDA durur; bu yüzden avuç çukurundan çıkan öteleme artık
+ * karakter merkezinden ele giden dışa yön boyunca uygulanır.
+ *
+ * KÜÇÜK tutulur: asıl düzeltme YÖN'dür. Mesafeyi büyütmek bombanın el ile
+ * temasını koparır ve "havada asılı" görüntü çıkarır (topun yüzeyi avuca
+ * değmeli); bu yalnızca el mesh'inin küreye girmemesi için ince bir paydır.
+ */
+export const BOMB_CARRY_OUT = 0.03;
+/** Hafif yukarı kaldırma — kalça/bacak hizasından ayrışsın. */
+export const BOMB_CARRY_LIFT = 0.02;
+/**
  * Fünyenin gövdeden UZAĞA yatış açısı (derece).
  *
  * Düz yukarı bakan bir fünye, tepe kamerasında kısalır ve uç detayları
@@ -374,9 +390,9 @@ export const BOMB_SEAT_OUT = BOMB_TARGET_WORLD_SPAN * 0.5 + BOMB_PALM_CLEARANCE;
  *
  * NEDEN AYRI: alev bomba büyüdükçe birebir büyümemeli. Gerçekte fitil alevinin
  * boyu fitilin boyudur, bombanın çapı değil; `createFuseFlame` alevi `span`
- * katlarıyla kurduğu için bomba çapı (0.42) doğrudan verilseydi alev 0.53
- * birime çıkar (karakterin ~%36'sı) ve eli/omuzu kapatırdı. 0.20 = bomba
- * büyütmesine kısmen eşlik eden (0.16 → 1.25×), yine de görüşü kapatmayan ölçü.
+ * katlarıyla kurduğu için bomba çapı (0.32) doğrudan verilseydi alev eli ve
+ * omzu kapatacak kadar büyürdü. 0.13, gövdeden küçük kalan ve fünye ucunda
+ * okunabilen ölçüdür.
  */
 export const BOMB_FLAME_SPAN = 0.13;
 /** Fitil ucunun kendinden ışıma şiddeti (bloom'u besler, ekranı sislemez). */
@@ -390,7 +406,7 @@ export const BOMB_FUSE_EMISSIVE = 2.6;
  * siyah kısımlarda hiç görünmezdi (emissive = renk × doku).
  *
  * ŞİDDET NEDEN BU KADAR DÜŞÜK: amaç ateş/parlama değil, uzaktan okunurluk.
- * 0.22'de bomba kendi rengiyle okunur, karanlık çalılıkta kaybolmaz, gece
+ * 0.12'de bomba kendi rengiyle okunur, karanlık çalılıkta kaybolmaz, gece
  * atmosferinde "yanıyor" gibi görünmez. Gövde ışığını asıl taşıyan şey
  * `createBombAura` (kızıl-turuncu hâle + zayıf nokta ışığı + kor parçacıkları)
  * ve fünye alevidir.
@@ -408,19 +424,44 @@ export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
  * parmak yönünde (+Y) küçük bir kayma. KEMİK uzayında olduğu için el/kol her
  * hareket ettiğinde top avuçla birlikte gider (kamera açısından bağımsız).
  */
-export function bombSeatLocal(hand: THREE.Object3D): THREE.Vector3 {
+export function bombSeatLocal(
+  hand: THREE.Object3D,
+  /** Dünyada "gövdeden uzağa" yönü (bkz. `calibrateBombGrip`). */
+  outwardWorld?: THREE.Vector3 | null,
+): THREE.Vector3 {
   hand.updateWorldMatrix(true, false);
   const worldScale = hand.getWorldScale(new THREE.Vector3());
   const palm = palmCenterLocal(hand);
-  // Convert each world-space clearance with its matching local axis scale.
-  // Dividing both offsets by one averaged/max scale under-pushes the bomb when
-  // the hand bone is non-uniformly scaled (the exact case that made it clip).
-  const scaleY = Math.max(Math.abs(worldScale.y), 1e-6);
-  const scaleZ = Math.max(Math.abs(worldScale.z), 1e-6);
+  const handQuat = handWorldQuat(hand);
+
+  // Dışa yön: çağıran verirse onu kullan (karakter merkezinden ele giden yön),
+  // yoksa avuç normalinin yatay bileşenine düş. Sabit bir eksen ASLA
+  // kullanılmaz — rig'ler farklı yönlerde çizilmiş olabilir.
+  const dir =
+    outwardWorld && outwardWorld.lengthSq() > 1e-8
+      ? outwardWorld.clone().normalize()
+      : new THREE.Vector3(0, 0, 1).applyQuaternion(handQuat).setY(0);
+  if (dir.lengthSq() < 1e-8) dir.set(1, 0, 0);
+  dir.normalize();
+
+  // Dünya ötelemesi: avuç çukurundan dışa (yarıçap + pay) ve hafif yukarı.
+  const worldOffset = dir
+    .multiplyScalar(BOMB_SEAT_OUT + BOMB_CARRY_OUT)
+    .add(new THREE.Vector3(0, BOMB_CARRY_LIFT, 0));
+
+  // Dünya ötelemesini EL-YEREL birime çevir: önce el rotasyonunun tersi,
+  // sonra eksen bazlı dünya ölçeği (tek bir ortalama ölçek, ölçekli kemiklerde
+  // eksik kalır ve bomba yine ele gömülür).
+  const local = worldOffset.applyQuaternion(handQuat.clone().invert());
+  const s = new THREE.Vector3(
+    Math.max(Math.abs(worldScale.x), 1e-6),
+    Math.max(Math.abs(worldScale.y), 1e-6),
+    Math.max(Math.abs(worldScale.z), 1e-6),
+  );
   return new THREE.Vector3(
-    palm.x,
-    palm.y + BOMB_SEAT_FINGER / scaleY,
-    palm.z + BOMB_SEAT_OUT / scaleZ,
+    palm.x + local.x / s.x,
+    palm.y + local.y / s.y + BOMB_SEAT_FINGER / s.y,
+    palm.z + local.z / s.z,
   );
 }
 
@@ -450,10 +491,6 @@ export function calibrateBombGrip(
 ): void {
   hand.updateWorldMatrix(true, false);
 
-  // 1) Avuçta oturma (el-yerel; konum kemik uzayında).
-  grip.position.copy(bombSeatLocal(hand));
-
-  // 2) Yönelim: dünya yukarısı → gövdeden uzağa doğru yatır.
   const handQuat = handWorldQuat(hand);
   const handPos = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
   const outward = new THREE.Vector3();
@@ -469,6 +506,10 @@ export function calibrateBombGrip(
   }
   if (outward.lengthSq() < 1e-8) outward.set(1, 0, 0);
   outward.normalize();
+
+  // 1) Avuçta oturma: avuç çukurundan DIŞA (gövdeden uzağa) — bomba elin ve
+  // gövdenin içinde kalmaz, MOBA prop'u gibi silüetin dışında durur.
+  grip.position.copy(bombSeatLocal(hand, outward));
 
   const tilt = THREE.MathUtils.degToRad(BOMB_TILT_OUT_DEG);
   const fuse = new THREE.Vector3(0, 1, 0)

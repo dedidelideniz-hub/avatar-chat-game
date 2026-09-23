@@ -28,10 +28,12 @@
 // A V U Ç T A   O T U R M A  (`calibrateBombGrip`) — kullanıcı geri bildirimi:
 // "bomba avuca oturmak yerine ele saplanmış, yukarı fırlamış gibi duruyor".
 // Sebep: topun merkezi avuç MERKEZİNDE bırakılmıştı → kürenin yarısı elin
-// içinde kalıyor, parmaklar topun ortasından geçiyordu. Artık konum EL-YEREL
-// olarak avuç normali boyunca TAM BİR YARIÇAP dışarıdadır (bkz. BOMB_SEAT_OUT;
-// gövde yarıçapı normalize edilmiş hedefin yarısıdır, yani ikisi tutarlıdır) ve
-// fünye düz yukarı değil, gövdeden uzağa ~32° yatıktır (BOMB_TILT_OUT_DEG).
+// içinde kalıyor, parmaklar topun ortasından geçiyordu. Şimdi konum EL-YEREL
+// olarak avuç çukurundan GÖVDEDEN UZAĞA doğru bir yarıçap + ince pay kadar
+// dışarıdadır (bkz. `bombSeatLocal` / BOMB_CARRY_OUT): avuç normali bazı
+// rig'lerde gövdeye döndüğü için bomba ele gömülüyordu; dışa yön referansı
+// prop'u karakterin silüetinin dışında tutar. Fünye de düz yukarı değil,
+// gövdeden uzağa ~38° yatıktır (BOMB_TILT_OUT_DEG).
 //
 // Yönelim CANLI el pozundan türetilir (kemik adı ya da dosya bağımlı sabit
 // yok): dünya yukarısı referans alınıp el-yerel dondurulur, yani kol salınsa
