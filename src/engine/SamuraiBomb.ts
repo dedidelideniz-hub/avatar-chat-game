@@ -164,7 +164,10 @@ export function useSamuraiBomb(
   useEffect(() => {
     if (!clone || !isBombSkin(skinUrl)) return;
     clone.updateWorldMatrix(true, true);
-    const hand = findBone(clone, "MAIN_HAND") ?? rightHandBone(clone);
+    // Resolve the actual wrist/hand bone first. The registry's broad MAIN_HAND
+    // aliases can match `RightHandIndex1` on some Mixamo exports, which places
+    // the bomb on a finger bone and makes both the palm offset and grip pose wrong.
+    const hand = rightHandBone(clone) ?? findBone(clone, "MAIN_HAND");
     if (!hand) return;
 
     const boneScale = Math.max(handBoneMaxScale(hand), 1e-9);

@@ -312,7 +312,9 @@ export function buildStructuralSword(): THREE.Group {
  * İÇİNE saplanır — parmaklar topun ortasından geçer ve "eline saplanmış, yukarı
  * fırlamış" görüntüsü çıkar. BOMB_SEAT_OUT bu yüzden ≈ bomba yarıçapıdır.
  */
-export const BOMB_SEAT_FINGER = 0.04; // parmaklara/karakterin önüne doğru görünür kayma
+export const BOMB_SEAT_FINGER = 0.06; // avuçtan öne, kavrayan parmakların hizasına
+/** Ek dünya boşluğu: bombanın yüzeyi avuç/parmaktan ayrık ve seçilir kalsın. */
+export const BOMB_PALM_CLEARANCE = 0.045;
 /**
  * Fünyenin gövdeden UZAĞA yatış açısı (derece).
  *
@@ -352,14 +354,13 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
 export const BOMB_MODEL_SPAN = 2.08;
 export const BOMB_TARGET_WORLD_SPAN = 0.32;
 /**
- * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
+ * Avuçtan dışarı oturma mesafesi — dünya yarıçapı + görünür boşluk.
  *
- * NEDEN: yükleyici gövde küresinin ÇAPINI `BOMB_TARGET_WORLD_SPAN`'e normalize
- * eder (bkz. `SamuraiBomb.mount` → `BombFuseFlame.measureBodyBall`), yani
- * bombanın dünya yarıçapı daima `BOMB_TARGET_WORLD_SPAN / 2`'dir. Topun
- * merkezini avuç normali boyunca tam bu kadar dışarı koymak, topun yüzeyini
- * avuç merkezine DEĞDİRİR: bomba avucun çukurunda durur — ne içine gömülür ne
- * de havada asılı kalır. %2'lik pay teması okunur kılar.
+ * Bomba çapı `BOMB_TARGET_WORLD_SPAN`'e normalize edilir (bkz. SamuraiBomb),
+ * dolayısıyla yarıçapı biliniyor. Yalnızca bir yarıçap kadar dışarı koymak,
+ * bombanın yüzeyini avuca tam değdiriyordu; küçük rig/kamera farkında elin içine
+ * girmiş gibi görünüyordu. `BOMB_PALM_CLEARANCE` ilavesi görünür bir aralık
+ * bırakır, `BOMB_SEAT_FINGER` ise gövdeyi kavrayan parmakların önüne alır.
  *
  * TÜRETİLMİŞ DEĞER (bu yüzden burada, hedef ölçüden SONRA tanımlı): sabit sayı
  * yazılsaydı hedef ölçü değiştiğinde oturma ile ölçek birbirinden kopar ve
@@ -367,7 +368,7 @@ export const BOMB_TARGET_WORLD_SPAN = 0.32;
  * geldiği için küçük ölçeklenen bombada oturma mesafesi fazla kalıp topu
  * avuçtan dışarı taşırıyordu).
  */
-export const BOMB_SEAT_OUT = BOMB_TARGET_WORLD_SPAN * 0.5 * 0.98;
+export const BOMB_SEAT_OUT = BOMB_TARGET_WORLD_SPAN * 0.5 + BOMB_PALM_CLEARANCE;
 /**
  * ALEVİN ölçek referansı — bomba genişliğinden BAĞIMSIZ.
  *
@@ -408,12 +409,18 @@ export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
  * hareket ettiğinde top avuçla birlikte gider (kamera açısından bağımsız).
  */
 export function bombSeatLocal(hand: THREE.Object3D): THREE.Vector3 {
-  const boneScale = handBoneMaxScale(hand);
+  hand.updateWorldMatrix(true, false);
+  const worldScale = hand.getWorldScale(new THREE.Vector3());
   const palm = palmCenterLocal(hand);
+  // Convert each world-space clearance with its matching local axis scale.
+  // Dividing both offsets by one averaged/max scale under-pushes the bomb when
+  // the hand bone is non-uniformly scaled (the exact case that made it clip).
+  const scaleY = Math.max(Math.abs(worldScale.y), 1e-6);
+  const scaleZ = Math.max(Math.abs(worldScale.z), 1e-6);
   return new THREE.Vector3(
     palm.x,
-    palm.y + BOMB_SEAT_FINGER / boneScale,
-    palm.z + BOMB_SEAT_OUT / boneScale,
+    palm.y + BOMB_SEAT_FINGER / scaleY,
+    palm.z + BOMB_SEAT_OUT / scaleZ,
   );
 }
 
