@@ -22,6 +22,7 @@ import { useRef } from "react";
 import * as THREE from "three";
 import {
   BOLT_VFX,
+  BOMB_PALETTE,
   CHAR_HUD,
   COLD_FLAME,
   isFireballProj,
@@ -31,9 +32,18 @@ import {
   type BattleProj,
 } from "./shared";
 import { FIREBALL_RANGE_PX, MAX_RANGE_PX, rangeFade } from "./skillshot";
+// 🧨 Yerdeki bomba tuzakları: mermi havuzu arenanın "atılmış mühimmat"
+// katmanıdır, tuzaklar da o katmana aittir — bu yüzden aynı <group> içinde
+// çizilirler (Arena3D'nin JSX'i düzenleme penceresinin dışında kaldığı için
+// ayrı bir üst katman eklenemiyor). Bileşen prop almaz: listeyi paylaşılan
+// `bombTrapState`ten okur (bkz. bombKit).
+import { BombTrapPool } from "./BombTrapPool";
 
 /** Aynı anda ekranda çizilecek en fazla ateş topu (süper). */
 const FLAME_POOL = 4;
+/** Aynı anda havada olabilecek en fazla FIRLATILMIŞ BOMBA (samuray ultisi).
+ *  İki taraf da atabilir; ulti şarjı yavaş dolduğu için 4 fazlasıyla yeter. */
+const BOMB_POOL = 4;
 /** Ateş küresi başına alev dili sayısı. */
 const TONGUES = 5;
 /** Ateş küresi başına yükselen buz kırıntısı sayısı. */
@@ -82,16 +92,29 @@ export function ProjectilePool({
   const flameEmbers = useRef<(THREE.Mesh | null)[][]>([]);
   const flameTrails = useRef<(THREE.Mesh | null)[]>([]);
 
+  // 🧨 Fırlatılan bomba havuzu (samuray ultisi) — ateş topundan AYRI görünüm:
+  // demir gövde + pirinç bilezik + yanan fitil ucu + sıcak uçuş izi.
+  const bombRoots = useRef<(THREE.Group | null)[]>([]);
+  const bombSpins = useRef<(THREE.Group | null)[]>([]);
+  const bombSparks = useRef<(THREE.Mesh | null)[]>([]);
+  const bombTrails = useRef<(THREE.Mesh | null)[]>([]);
+  const bombGrounds = useRef<(THREE.Mesh | null)[]>([]);
+
   useFrame((state) => {
     const list = projsRef.current;
     const time = state.clock.elapsedTime;
     let flameSlot = 0;
     let boltSlot = 0;
+    let bombSlot = 0;
 
     for (let i = 0; i < PROJ_POOL; i++) {
       const p = list[i];
-      const flame = isFireballProj(p); // süper: Ateş Topu
-      const normal = !!p && !flame;
+      // Bomba, `explodeR` taşıdığı için `isFireballProj` tarafından da
+      // yakalanır: ayrım BURADA ve ÖNCE yapılmalıdır, yoksa bomba soğuk alev
+      // küresi olarak çizilir (sıcak patlayıcı kimliği kaybolurdu).
+      const bomb = !!p && p.bomb === true;
+      const flame = !bomb && isFireballProj(p); // süper: Ateş Topu
+      const normal = !!p && !flame && !bomb;
       const pal = p
         ? COLD_FLAME.bolt[p.owner === "player" ? "player" : "enemy"]
         : null;
@@ -393,8 +416,57 @@ export function ProjectilePool({
           );
         }
       }
+
+      // ── 🧨 Fırlatılan bomba (samuray ultisi): demir gövde + yanan fitil ──
+      if (bomb && p) {
+        const si = bombSlot++;
+        if (si < BOMB_POOL) {
+          const bRoot = bombRoots.current[si];
+          const spin = bombSpins.current[si];
+          const spark = bombSparks.current[si];
+          const trailEl = bombTrails.current[si];
+          const groundEl = bombGrounds.current[si];
+          if (bRoot) {
+            const fade = rangeFade(p.travelled, FIREBALL_RANGE_PX);
+            bRoot.visible = fade > 0.04;
+            bRoot.scale.setScalar(fade);
+            bRoot.position.set(p.x / S, MUZZLE.up, p.y / S);
+          }
+          // Bomba havada TAKLA atarak döner (mermi gibi namlu doğrultusunda
+          // gitmez): "atılan bir cisim" olduğu ilk bakışta okunsun.
+          if (spin) {
+            spin.rotation.x = time * 5.2 + i * 0.7;
+            spin.rotation.z = time * 3.4 + i;
+          }
+          if (spark) {
+            const beat = 0.7 + 0.3 * Math.sin(time * 22 + i);
+            spark.scale.setScalar(beat);
+            (spark.material as THREE.MeshBasicMaterial).opacity =
+              0.6 + 0.4 * beat;
+          }
+          if (trailEl) {
+            const sp = Math.hypot(p.vx, p.vy) || 1;
+            const dx = p.vx / sp;
+            const dz = p.vy / sp;
+            const len = Math.min(0.9 * CHAR_HUD, sp * 0.05 * CHAR_HUD);
+            trailEl.position.set(-dx * len * 0.55, 0, -dz * len * 0.55);
+            trailEl.scale.set(len, 0.05 * CHAR_HUD, 0.05 * CHAR_HUD);
+            trailEl.rotation.y = Math.atan2(-dz, dx);
+            (trailEl.material as THREE.MeshBasicMaterial).opacity =
+              0.35 + 0.2 * Math.sin(time * 16 + i);
+          }
+          if (groundEl) {
+            (groundEl.material as THREE.MeshBasicMaterial).opacity =
+              0.22 + 0.1 * Math.sin(time * 7 + i * 1.3);
+          }
+        }
+      }
     }
 
+    for (let i = bombSlot; i < BOMB_POOL; i++) {
+      const root = bombRoots.current[i];
+      if (root && root.visible) root.visible = false;
+    }
     for (let i = flameSlot; i < FLAME_POOL; i++) {
       const root = flameRoots.current[i];
       if (root) root.visible = false;
@@ -407,6 +479,9 @@ export function ProjectilePool({
 
   return (
     <group>
+      {/* 🧨 Samurayın yere bıraktığı bombalar (fitil + tehlike diski) */}
+      <BombTrapPool />
+
       {/* ══ "Güçlü Vuruş" ana mermisi — antik büyülü soğuk alev oku ══ */}
       {Array.from({ length: PROJ_POOL }).map((_, i) => (
         <group
@@ -643,6 +718,101 @@ export function ProjectilePool({
               depthWrite={false}
             />
           </mesh>
+        </group>
+      ))}
+
+      {/* ══ 🧨 Fırlatılan bomba — demir gövde + pirinç bilezik + yanan fitil ══ */}
+      {Array.from({ length: BOMB_POOL }).map((_, i) => (
+        <group
+          key={`bomb-${i}`}
+          visible={false}
+          ref={(el) => {
+            bombRoots.current[i] = el;
+          }}
+        >
+          {/* zemindeki sıcak ışık lekesi — bomba da el hizasında uçar */}
+          <mesh
+            ref={(el) => {
+              bombGrounds.current[i] = el;
+            }}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.05 - MUZZLE.up, 0]}
+            raycast={() => null}
+          >
+            <circleGeometry args={[0.17 * CHAR_HUD, 20]} />
+            <meshBasicMaterial
+              color={BOMB_PALETTE.flame}
+              transparent
+              opacity={0.24}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* uçuş izi: sıcak, kısa bir barut dumanı/alev şeridi */}
+          <mesh
+            ref={(el) => {
+              bombTrails.current[i] = el;
+            }}
+            raycast={() => null}
+          >
+            <boxGeometry args={[1, 1, 1]} />
+            <meshBasicMaterial
+              color={BOMB_PALETTE.trail}
+              transparent
+              opacity={0.45}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+
+          <group
+            ref={(el) => {
+              bombSpins.current[i] = el;
+            }}
+          >
+            {/* demir gövde */}
+            <mesh raycast={() => null}>
+              <sphereGeometry args={[0.105 * CHAR_HUD, 16, 12]} />
+              <meshStandardMaterial
+                color={BOMB_PALETTE.iron}
+                metalness={0.72}
+                roughness={0.36}
+                emissive="#12161c"
+                emissiveIntensity={0.3}
+              />
+            </mesh>
+            {/* pirinç bilezik (bombayı eldeki modelle aynı dil yapar) */}
+            <mesh raycast={() => null}>
+              <torusGeometry
+                args={[0.105 * CHAR_HUD, 0.016 * CHAR_HUD, 6, 22]}
+              />
+              <meshStandardMaterial
+                color={BOMB_PALETTE.brass}
+                metalness={0.85}
+                roughness={0.28}
+                emissive="#6d4c0d"
+                emissiveIntensity={0.3}
+              />
+            </mesh>
+            {/* yanan fitil ucu — havada nabız atar */}
+            <mesh
+              ref={(el) => {
+                bombSparks.current[i] = el;
+              }}
+              position={[0, 0.15 * CHAR_HUD, 0]}
+              raycast={() => null}
+            >
+              <sphereGeometry args={[0.045 * CHAR_HUD, 10, 8]} />
+              <meshBasicMaterial
+                color={BOMB_PALETTE.spark}
+                transparent
+                opacity={0.85}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </mesh>
+          </group>
         </group>
       ))}
 

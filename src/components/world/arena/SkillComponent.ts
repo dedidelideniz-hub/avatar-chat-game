@@ -21,10 +21,22 @@ import {
   ATK_CD,
   BUSH_REVEAL_MS,
   faceAimYaw,
-  isSamuraiFighter,
+  hasBombKit,
+  hasUltimateKit,
   startAttackAnim,
   type BattleFighter,
 } from "@/components/world/Arena3D";
+// 🧨 Bomba kiti (samuray): yere tuzak (normal yetenek) + bomba fırlatma (ulti).
+// Kurallar `arena/bombKit`te tek kaynakta; burada yalnız "kim, ne zaman"
+// bağlanır (diğer yeteneklerde olduğu gibi).
+import {
+  BOMB_REFILL_S,
+  BOMB_THROW_BLAST_PX,
+  BOMB_THROW_DAMAGE,
+  BOMB_THROW_SPEED,
+  BOMB_ULT_S,
+  bombTrapPoint,
+} from "./bombKit";
 import type { SoundName } from "@/lib/sounds";
 import type { VfxBus } from "./VFXComponent";
 import {
@@ -40,13 +52,22 @@ import {
 /** Işın (isik) yeteneğinin ulaşabildiği en uzak mesafe (px). */
 export const BEAM_MAX_LEN = 560;
 /** Süper yetenek çeşitleri — tabloda dönen dallar. */
-export type SuperKind = "beam" | "dash" | "heal" | "fireball" | "pierce";
+export type SuperKind =
+  | "beam"
+  | "dash"
+  | "heal"
+  | "fireball"
+  | "pierce"
+  /** 🧨 Samuray: süper yuva yere bomba tuzağı bıraktı. */
+  | "bombTrap";
 /** Mermi seçenekleri (spawn adaptörüne aynen geçirilir). */
 export interface ProjOpts {
   r?: number;
   pierce?: boolean;
   speed?: number;
   explodeR?: number;
+  /** 🧨 Fırlatılan bomba mermisi (sıcak patlayıcı görünümü + barut patlaması). */
+  bomb?: boolean;
 }
 
 /**
@@ -63,6 +84,12 @@ export interface SkillHost {
     dmg: number,
     opts?: ProjOpts,
   ) => void;
+  /**
+   * 🧨 Yere bomba tuzağı bırakıldı (samurayın süper yeteneği). Arena tuzağı
+   * kendi listesine ekler; hasar/patlama anını arena simüle eder
+   * (bkz. `arena/bombKit` → `stepBombTraps`).
+   */
+  placeTrap: (caster: BattleFighter, x: number, y: number) => void;
   /**
    * Işın ateşlendi — HER ZAMAN çağrılır (isabet etmese de). Böylece PvP karşı
    * cihaza ışını iletebilir, bot arenası yalnızca isabette hasar uygular.
@@ -133,7 +160,9 @@ export function tickSuperPassive(
  * skini kullanır; diğer dövüşçülerde çağrı hiçbir şey yapmaz.
  */
 export function gainUltCharge(f: BattleFighter, amt: number): void {
-  if (!isSamuraiFighter(f)) return;
+  // Ultisi olan HER kit şarj kazanır: Kraliyet Savaşçısı (yer yarığı) ve
+  // Samuray (bomba fırlatma). Diğer dövüşçülerde çağrı hiçbir şey yapmaz.
+  if (!hasUltimateKit(f)) return;
   f.samuraiCharge = Math.min(1, f.samuraiCharge + amt);
 }
 
@@ -292,6 +321,18 @@ export function castSuper(
   caster.castFxT = 1;
   host.sound("super", { volume: 0.9 });
   host.vfx.smoke(caster.x, caster.y - 20, 4, 80);
+  // 🧨 SAMURAY: süper yuva bombayı YERE TUZAK olarak bırakır.
+  //
+  // Skine bağlı olduğu için yetenek tablosundan ÖNCE döner: samuray hangi
+  // süper yeteneği takmış olursa olsun elindeki şey bombadır — kitin kimliği
+  // budur (elinde bomba tutan karakterin ateş topu atması anlamsız olurdu).
+  if (hasBombKit(caster)) {
+    const point = bombTrapPoint(caster, dir);
+    host.placeTrap(caster, point.x, point.y);
+    // Bomba elden çıktı: bir an el boş görünür, sonra yenisi hazır olur.
+    caster.bombHiddenT = BOMB_REFILL_S;
+    return { kind: "bombTrap" };
+  }
   switch (caster.ability.id) {
     case "isik":
       castBeam(caster, enemy, dir, host);
@@ -339,29 +380,72 @@ export function castUltimate(
   if (
     !permitted ||
     caster.hp <= 0 ||
-    !isSamuraiFighter(caster) ||
+    !hasUltimateKit(caster) ||
     caster.samuraiCharge < 1 ||
     caster.samuraiUltT > 0 ||
+    (caster.bombThrowT ?? 0) > 0 ||
     // Yakın dövüşle çakışmasın: kılıç aynı anda iki pozu süremez.
     caster.meleeT > 0
   )
     return null;
   const aim = planAim(caster, enemy, host);
   caster.samuraiCharge = 0;
-  // İz, ulti salınımının kendi sayacıyla (samuraiUltT) çizilir; ek tetik yok.
   caster.castFxT = 0;
-  caster.samuraiUltT = 0.82;
-  caster.samuraiUltHit = false;
   caster.facing = aim.x >= 0 ? 1 : -1;
   caster.vy = Math.abs(aim.y) > 0.5 ? (aim.y > 0 ? 1 : -1) : 0;
   // 🎯 Ulti boyunca gövde tam hedef açısına kilitlenir: facing/vy 4 yöne
-  // yuvarlandığı için çaprazdaki hedefe kılıç savrulması düzelir.
-  faceAimYaw(caster, aim.x, aim.y, 0.82);
+  // yuvarlandığı için çaprazdaki hedefe atış savrulması düzelir.
+  faceAimYaw(caster, aim.x, aim.y, BOMB_ULT_S);
   host.sound("super", { volume: 1, rate: 0.72 });
   host.vfx.ring(caster.x, caster.y, 90, "#fbbf24", 0.55);
   host.vfx.smoke(caster.x, caster.y, 5, 100);
+
+  if (hasBombKit(caster)) {
+    // 🧨 BOMBA FIRLATMA. Yere vuruş YOKTUR: karakter bombayı savurur, mermi
+    // ELDEN AYRILMA eşiğinde doğar (`BOMB_RELEASE_AT`). Zamanlama sahne
+    // döngüsünde akar (bkz. `bombThrowT`), böylece kılıç izi/yer yarığı
+    // katmanlarına hiç dokunulmaz.
+    caster.bombThrowT = BOMB_ULT_S;
+    caster.bombThrowHit = false;
+    host.onUltStart?.(caster);
+    return aim;
+  }
+
+  // İz, ulti salınımının kendi sayacıyla (samuraiUltT) çizilir; ek tetik yok.
+  caster.samuraiUltT = 0.82;
+  caster.samuraiUltHit = false;
   host.onUltStart?.(caster);
   return aim;
+}
+
+/**
+ * 🧨 FIRLATILAN BOMBA — samuray ultisinin "bırakma" anı.
+ *
+ * Ulti zamanlayıcısı (`bombThrowT`) sahne döngüsünde akar ve eşiğe gelince
+ * bu fonksiyon çağrılır. Bomba, DİĞER MERMİLERLE AYNI havuzdan çıkar (uçuş,
+ * menzil sınırı, çarpışma ve patlama mantığı hazır) ama `bomb` bayrağıyla:
+ * görseli demir gövde + yanan fitil, patlaması sıcak barut (bkz.
+ * `ProjectilePool`, `VfxBus.bombBlast`).
+ *
+ * `aim` verilmezse menzil kuralı çözülür (bot); oyuncu tarafı nişanını
+ * geçirir, böylece "hangi yöne savurdum" beklentisi birebir karşılanır.
+ */
+export function fireBombThrow(
+  caster: BattleFighter,
+  enemy: BattleFighter,
+  host: SkillHost,
+  aim?: AimDir,
+): void {
+  const dir = aim ?? planAim(caster, enemy, host);
+  host.spawn(caster, rangePoint(caster, dir), BOMB_THROW_DAMAGE, {
+    bomb: true,
+    r: 20,
+    speed: BOMB_THROW_SPEED,
+    explodeR: BOMB_THROW_BLAST_PX,
+  });
+  // Bomba elden çıktı: el bir an boş kalır (görsel geri bildirim).
+  caster.bombHiddenT = BOMB_REFILL_S;
+  host.sound("whoosh", { volume: 0.7, rate: 0.85 });
 }
 
 export interface UltCrackPath {

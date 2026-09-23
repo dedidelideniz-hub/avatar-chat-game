@@ -101,6 +101,11 @@ export interface BattleProj {
   travelled: number;
   pierce: boolean;
   explodeR?: number;
+  /** 🧨 SAMURAY ULTİSİ — FIRLATILAN BOMBA.
+   *  `explodeR` taşıdığı için normalde "Ateş Topu" sayılırdı (soğuk alev
+   *  küresi); bu bayrak görseli ve patlamayı SICAK bomba paletine çevirir
+   *  (bkz. `ProjectilePool`, `createVfxBus().bombBlast`). */
+  bomb?: boolean;
 }
 
 export type BattleFx =
@@ -317,6 +322,91 @@ export function pushColdFlameFx(
       maxTtl: life,
       grow: r * 0.7 + Math.random() * 26,
       color: i % 2 === 0 ? COLD_FLAME.wispA : COLD_FLAME.wispB,
+    });
+  }
+}
+
+/** 🧨 Bomba paleti — FIRLATILAN bomba mermisi ve patlaması.
+ *
+ * Neden ayrı: arenadaki her mermi bilinçli olarak "soğuk alev büyüsü"
+ * paletini kullanır (bkz. `COLD_FLAME`). Bomba bu dilin DIŞINDA olmalıdır —
+ * elinde barut taşıyan bir karakterin attığı şey büyü değil, patlayıcıdır;
+ * oyuncu iki tehdidi renkten ayırt edebilsin diye sıcak demir/ateş tonları.
+ */
+export const BOMB_PALETTE = {
+  iron: "#2b2f38", // demir gövde
+  brass: "#c9952f", // pirinç bilezik
+  spark: "#ffd166", // yanan fitil ucu
+  flame: "#ff8a2b", // alev çekirdeği
+  trail: "#ffb347", // uçuş izi
+  ring: "#ffa53d", // patlama halkası
+  blast: "#ff5a1f", // patlama çekirdeği
+  smoke: "#6b6b6b", // barut dumanı
+} as const;
+
+/**
+ * 🧨 BARUT PATLAMASI (bomba tuzağı + fırlatılan bomba) — sıcak VFX.
+ *
+ * Soğuk alev patlamasından (`pushColdFlameFx`) bilinçli olarak AYRIDIR:
+ * oyuncu "büyü" ile "patlayıcı"yı tek bakışta ayırabilmelidir. Bu yüzden:
+ *   · hızlı sönen geniş bir şok halkası (patlamanın ayak izi),
+ *   · `burst` — 3D patlama havuzu SABİT TURUNCU bir küre çizer; büyünün onu
+ *     kullanmama sebebi (bkz. `pushColdFlameFx` notu) burada tam tersine
+ *     döner: barut patlaması için doğru görüntü odur.
+ *   · alev pufları (kısa, sıcak) + iri barut dumanı (uzun, koyu).
+ * Görsel yarıçap hasar yarıçapından KÜÇÜKTÜR (aynı `FIREBALL_VFX_SCALE`
+ * kuralı): gerçek hasar alanını zemin halkası ve tuzakta kurulunca görünen
+ * tehlike diski anlatır; patlama katmanı görüşü kapatmasın diye sıkı tutulur.
+ */
+export function pushBombBlastFx(
+  add: (fx: BattleFx) => void,
+  x: number,
+  y: number,
+  damageR: number,
+): void {
+  const r = damageR * FIREBALL_VFX_SCALE;
+  add({
+    kind: "ring",
+    x,
+    y,
+    ttl: 0.44,
+    maxTtl: 0.44,
+    grow: r * 1.15,
+    color: BOMB_PALETTE.ring,
+  });
+  add({
+    kind: "burst",
+    x,
+    y,
+    ttl: 0.36,
+    maxTtl: 0.36,
+    grow: r * 0.8,
+    color: BOMB_PALETTE.blast,
+  });
+  // Alev pufları: sıcak, kısa ömürlü (patlamanın ilk yarısı).
+  for (let i = 0; i < 7; i++) {
+    const life = 0.24 + Math.random() * 0.2;
+    add({
+      kind: "smoke",
+      x: x + (Math.random() - 0.5) * r * 0.7,
+      y: y + (Math.random() - 0.5) * r * 0.7,
+      ttl: life,
+      maxTtl: life,
+      grow: r * (0.5 + Math.random() * 0.4),
+      color: i % 2 === 0 ? BOMB_PALETTE.flame : BOMB_PALETTE.spark,
+    });
+  }
+  // Barut dumanı: koyu, uzun ömürlü — patlama geçtikten sonra da kalır.
+  for (let i = 0; i < 10; i++) {
+    const life = 0.7 + Math.random() * 0.6;
+    add({
+      kind: "smoke",
+      x: x + (Math.random() - 0.5) * r * 1.1,
+      y: y + (Math.random() - 0.5) * r * 1.1,
+      ttl: life,
+      maxTtl: life,
+      grow: r * (0.55 + Math.random() * 0.5),
+      color: i % 3 === 0 ? BOMB_PALETTE.smoke : "#4a4a4a",
     });
   }
 }

@@ -13,6 +13,8 @@ import {
   BUSH_REVEAL_MS,
   applyHitReaction,
   faceAimYaw,
+  hasBombKit,
+  hasUltimateKit,
   isHiddenFrom,
   isSamuraiFighter,
   SAMURAI_ULTIMATE_DAMAGE,
@@ -68,6 +70,7 @@ import {
   castSuper,
   castUltimate,
   emitUltCrack,
+  fireBombThrow,
   gainUltCharge,
   planAim,
   planBasicAttack,
@@ -75,6 +78,18 @@ import {
   tickSuperPassive,
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
+// 🧨 Bomba kiti (samuray): yere bırakılan tuzağın fitili/tetigi burada akar,
+// ölçüler ve kural `arena/bombKit`te tek kaynaktadır.
+import {
+  BOMB_RELEASE_AT,
+  BOMB_TRAP_BLAST_PX,
+  BOMB_TRAP_DAMAGE,
+  BOMB_ULT_S,
+  bindBombTraps,
+  makeBombTrap,
+  stepBombTraps,
+  type BombTrap,
+} from "@/components/world/arena/bombKit";
 // ⚔️ MeleeComponent — Kraliyet Savaşçısı yakın dövüşü (3. yetenek):
 // kısa menzil, sol/sağ çapraz kesişler ve rakibin üstüne atlayan bitirici.
 import {
@@ -200,6 +215,10 @@ function newFighter(
     samuraiCharge: 0,
     samuraiUltT: 0,
     samuraiUltHit: false,
+    // 🧨 Bomba kiti (samuray): başta hazır, elde bomba var.
+    bombThrowT: 0,
+    bombThrowHit: false,
+    bombHiddenT: 0,
     // Yakın dövüş (Kraliyet Savaşçısı 3. yetenek): başta hazır.
     meleeT: 0,
     meleeCd: 0,
@@ -428,7 +447,10 @@ export default function BattleScene({
       const f = player.current;
       if (kind === "ult")
         return (
-          isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0
+          hasUltimateKit(f) &&
+          f.samuraiCharge >= 1 &&
+          f.samuraiUltT <= 0 &&
+          (f.bombThrowT ?? 0) <= 0
         );
       return f.superCharge >= 1;
     },
@@ -437,6 +459,12 @@ export default function BattleScene({
   const keysRef = useRef(new Set<string>());
   const projs = useRef<BattleProj[]>([]);
   const fxs = useRef<BattleFx[]>([]);
+  // 🧨 Samurayın yere bıraktığı bombalar (fitil + tetik + patlama). Simülasyon
+  // ve hasar burada; çizim `ProjectilePool` içindeki `BombTrapPool`da.
+  const traps = useRef<BombTrap[]>([]);
+  // Çizim katmanı listeyi prop almaz: paylaşılan mutable duruma bağlanır
+  // (`aimState` ile aynı desen). Sahne sökülünce bağ çözülür.
+  useEffect(() => bindBombTraps(traps.current), []);
   const resultRef = useRef<"win" | "lose" | null>(null);
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
@@ -546,6 +574,7 @@ export default function BattleScene({
     sc: 0,
     atkReady: true,
     samurai: false,
+    bomb: false,
     hidden: false,
   });
   mobaLiveRef.current = {
@@ -559,6 +588,9 @@ export default function BattleScene({
     sc: hud.sc,
     atkReady: hud.atkReady,
     samurai: isSamuraiFighter(player.current),
+    // 🧨 Bomba kiti ayrı bir bayrak: samurayın ULTİ yuvası vardır ama YAKIN
+    // DÖVÜŞ yuvası yoktur (o yuva kılıç taşıyan Kraliyet Savaşçısınındır).
+    bomb: hasBombKit(player.current),
     hidden: hud.hidden,
   };
   useEffect(
@@ -712,6 +744,8 @@ export default function BattleScene({
       pierce?: boolean;
       speed?: number;
       explodeR?: number;
+      /** 🧨 Fırlatılan bomba: sıcak demir gövde + barut patlaması. */
+      bomb?: boolean;
     } = {},
   ) => {
     const dx = tx - owner.x;
@@ -747,6 +781,7 @@ export default function BattleScene({
       travelled: 0,
       pierce: opts.pierce ?? false,
       explodeR: opts.explodeR,
+      bomb: opts.bomb,
     });
   };
 
@@ -817,10 +852,13 @@ export default function BattleScene({
   const explodeAt = (pr: BattleProj) => {
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
+    // 🧨 Fırlatılan bomba: barut patlaması (sıcak, tozlu) — soğuk alev
+    // büyüsünden KASITLI olarak farklı, iki tehdit tek bakışta ayrılsın.
+    if (pr.bomb) vfx.bombBlast(pr.x, pr.y, r);
     // Ateş Topu: fiziksel turuncu ateş yerine antik büyüyle harmanlanmış
     // ruhani / soğuk alev patlaması. Hasar yarıçapı (r) aynı kalır; bloom
     // VFX katmanında aynı karede tetiklenir.
-    vfx.coldFlame(pr.x, pr.y, r);
+    else vfx.coldFlame(pr.x, pr.y, r);
     const target = pr.owner === "player" ? bot.current : player.current;
     const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
     if (dist < r) {
@@ -829,6 +867,22 @@ export default function BattleScene({
         target,
         pr.dmg,
       );
+    }
+  };
+
+  /**
+   * 🧨 TUZAK PATLAMASI (bot arenası). Patlama anını simülasyon (`stepBombTraps`)
+   * karara bağlar; hasar ve görsel burada uygulanır:
+   *   · VFX/ses HER durumda (tuzak boşa patlasa da barut patlar),
+   *   · hasar yalnızca karşı taraf patlama yarıçapı içindeyse.
+   */
+  const blastTrap = (trap: BombTrap) => {
+    vfx.bombBlast(trap.x, trap.y, BOMB_TRAP_BLAST_PX);
+    playSound("explode", { volume: 0.95, rate: 0.9 + Math.random() * 0.25 });
+    const attacker = trap.owner === "player" ? player.current : bot.current;
+    const target = trap.owner === "player" ? bot.current : player.current;
+    if (Math.hypot(target.x - trap.x, target.y - trap.y) < BOMB_TRAP_BLAST_PX) {
+      damageEnemy(attacker, target, BOMB_TRAP_DAMAGE);
     }
   };
 
@@ -859,6 +913,14 @@ export default function BattleScene({
         dmg,
         opts,
       ),
+    // 🧨 Bombayı yere bırak: fitil ve tetik `stepBombTraps`te akar. Bırakma
+    // sesi atıştan ayırt edilebilsin diye alçak perdeli bir hışırtı.
+    placeTrap: (caster, x, y) => {
+      traps.current.push(
+        makeBombTrap(caster === player.current ? "player" : "bot", x, y),
+      );
+      playSound("whoosh", { volume: 0.5, rate: 0.7 });
+    },
     // Işın her durumda çizilir; bot arenasında hasar yalnızca isabette işler.
     onBeam: (caster, enemy, _aim, _len, hit) => {
       if (hit) damageEnemy(caster, enemy, 300);
@@ -1112,6 +1174,72 @@ export default function BattleScene({
         p.meleeT = 0;
         p.meleeStrikes = 0;
       }
+      // 🧨 BOMBA FIRLATMA (samuray ultisi): hazırlık akarken karakter hareket
+      // edebilir (savurma pozu kilitlenmez) — Kraliyet ultisinin aksine burada
+      // salınım yok, yalnızca bomba elden bırakılır.
+      if ((p.bombThrowT ?? 0) > 0) {
+        p.bombThrowT = Math.max(0, (p.bombThrowT ?? 0) - dt);
+        const release = 1 - p.bombThrowT / BOMB_ULT_S;
+        if (!p.bombThrowHit && release >= BOMB_RELEASE_AT) {
+          p.bombThrowHit = true;
+          // Nişan kuralı Kraliyet ultisiyle aynı: menzil içinde düşman varsa
+          // ona kilit, yoksa gövdenin baktığı tam açı.
+          const locked = resolveAim(p, b, 0, 0, {
+            canLock: !isHiddenFrom(b, p),
+            preferLock: true,
+          });
+          fireBombThrow(p, b, skillHost, locked.locked ? locked : bodyDir(p));
+        }
+      }
+      // 🧨 Bomba elden çıktıktan sonra elin boş kaldığı süre (görsel geri
+      // bildirim) — süre bitince yeni bomba elde hazır olur.
+      if ((p.bombHiddenT ?? 0) > 0) {
+        p.bombHiddenT = Math.max(0, p.bombHiddenT - dt);
+      }
+
+      // 🧨 BOMBA TUZAKLARI: fitil, tetikleme ve patlama. Kural `bombKit`te tek
+      // kaynakta; hasar ve görsel burada uygulanır. Tuzak sahibi "player" ise
+      // hedefi bot, "bot" ise hedefi oyuncudur.
+      stepBombTraps(
+        traps.current,
+        dt,
+        (owner) => (owner === "player" ? b : p),
+        blastTrap,
+      );
+
+      // 🧨 BOMBA KİTİ — BOT: samuray skini giyen bot da bombasını kullanır.
+      // Tetik koşulları Kraliyet ultisi bloğuyla aynı ruhta: şarj dolu, hedef
+      // görünüyor, sarsılmıyor ve savaş sürüyor (`botCanSee` yerine aynı kural
+      // `isHiddenFrom` ile burada okunur — bot bloğu bunun altında kalıyor).
+      if ((b.bombHiddenT ?? 0) > 0) {
+        b.bombHiddenT = Math.max(0, b.bombHiddenT - dt);
+      }
+      if ((b.bombThrowT ?? 0) > 0) {
+        b.bombThrowT = Math.max(0, b.bombThrowT - dt);
+        const release = 1 - b.bombThrowT / BOMB_ULT_S;
+        if (!b.bombThrowHit && release >= BOMB_RELEASE_AT) {
+          b.bombThrowHit = true;
+          const ang = Math.atan2(p.y - b.y, p.x - b.x);
+          fireBombThrow(b, p, skillHost, {
+            x: Math.cos(ang),
+            y: Math.sin(ang),
+            locked: false,
+          });
+        }
+      } else if (
+        hasBombKit(b) &&
+        b.samuraiCharge >= 1 &&
+        b.samuraiUltT <= 0 &&
+        b.meleeT <= 0 &&
+        b.hitStunT <= 0 &&
+        b.hp > 0 &&
+        !isHiddenFrom(p, b) &&
+        startedRef.current &&
+        !resultRef.current
+      ) {
+        castUltimate(b, p, skillHost, true);
+      }
+
       if (p.samuraiUltT > 0) {
         p.samuraiUltT -= dt;
         const progress = 1 - Math.max(0, p.samuraiUltT) / 0.82;

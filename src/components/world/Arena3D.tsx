@@ -30,7 +30,7 @@ import {
   isRoyalWarriorSkin,
   useRoyalWarriorEffects,
 } from "@/engine/RoyalWarriorEffects";
-import { useSamuraiBomb } from "@/engine/SamuraiBomb";
+import { isBombSkin, useSamuraiBomb } from "@/engine/SamuraiBomb";
 import {
   applyBattleStance,
   findBattleStance,
@@ -208,6 +208,30 @@ export function isSamuraiFighter(fighter: BattleFighter): boolean {
   return isRoyalWarriorSkin(resolveSkinUrl(fighter.equipped));
 }
 
+/**
+ * 🧨 BOMBA KİTİ — samuray skini (`skin-samuray`) dövüşçüler.
+ *
+ * Kim listeye girdiği TEK yerdedir: `engine/SamuraiBomb` → `BOMB_SKIN_URLS`
+ * (bombayı ele takan katmanla aynı kapı). Böylece "bombayı tutan skin" ile
+ * "bomba yeteneklerini kullanan skin" asla ayrışmaz.
+ *
+ * Kit: NORMAL yetenek = yere bomba tuzağı, ULTİ = bomba fırlatma
+ * (bkz. `arena/bombKit` + `arena/SkillComponent`).
+ */
+export function hasBombKit(fighter: BattleFighter): boolean {
+  return isBombSkin(resolveSkinUrl(fighter.equipped));
+}
+
+/**
+ * ULTİ yuvası olan dövüşçüler. İki ayrı kit vardır ve ikisi de aynı ulti
+ * çubuğunu/butonunu kullanır (şarj yalnız savaşta dolar):
+ *   · Kraliyet Savaşçısı → iki elli yere vuruş (yer yarığı),
+ *   · Samuray           → bomba fırlatma.
+ */
+export function hasUltimateKit(fighter: BattleFighter): boolean {
+  return isSamuraiFighter(fighter) || hasBombKit(fighter);
+}
+
 export const SAMURAI_ULTIMATE_DAMAGE = 360;
 
 /** Vuruş sarsıntısının (hit-stun) üst sınırı — ulti gibi ağır vuruşlarda. */
@@ -357,6 +381,16 @@ export interface BattleFighter {
   /** Yere iki elle kılıç vurma animasyonunun kalan süresi. */
   samuraiUltT: number;
   samuraiUltHit: boolean;
+  /** 🧨 Elin BOŞ kaldığı süre (sn): bomba fırlatıldığında/bırakıldığında
+   *  bir an "elimde bomba yok" okunsun diye bomba katmanı bu süre boyunca
+   *  gizlenir (bkz. `GlbFighterBodyCore` → bombRef). */
+  bombHiddenT: number;
+  /** 🧨 Bomba fırlatma hazırlığının kalan süresi (sn, 0 = hazır). SAMURAY'a
+   *  özel: Kraliyet ultisinin `samuraiUltT` sayacından AYRIDIR, böylece kılıç
+   *  izi / yere vuruş katmanlarına hiç dokunulmaz. */
+  bombThrowT: number;
+  /** Bomba fırlatma hazırlığında bombayı elden bıraktım mı? (tek sefer tetik) */
+  bombThrowHit: boolean;
   /** ⚔️ Yakın dövüş (melee) salınımının kalan süresi (sn). 0 = hazır.
    *  Yalnızca Kraliyet Savaşçısı kullanır; süre boyunca karakter köklenir. */
   meleeT: number;
@@ -639,7 +673,9 @@ function GlbFighterBodyCore({
   );
   // 🧨 Samuray: elinde bomba. Kraliyet silahı katmanından BAĞIMSIZ çalışır
   // (farklı skin kapısı) — aynı el-kemiği zincirini ve kalibrasyonu kullanır.
-  useSamuraiBomb(clone, skinUrl);
+  // `bombRef` burada tutulur çünkü yetenekler bombayı elden ÇIKARIR: tuzak
+  // bırakırken ve bomba fırlatırken el bir an boş görünmelidir.
+  const { bombRef } = useSamuraiBomb(clone, skinUrl);
 
   // Normalize to FIGHTER_MODEL_H — her görünüm (varsayılan / Samuray /
   // Kraliyet Savaşçısı / Şövalye) aynı gövde boyuna gelir ve üstüne ortak
@@ -766,6 +802,12 @@ function GlbFighterBodyCore({
   const currentClip = useRef<"idle" | "walk">("idle");
   useFrame((_, dt) => {
     const f = fighter.current;
+    // 🧨 Bomba elden çıktığı sürece el boş görünür (`bombHiddenT`); süre
+    // bitince bomba geri gelir (yeni bomba hazır).
+    const hidden = (f.bombHiddenT ?? 0) > 0;
+    if (bombRef.current && bombRef.current.visible === hidden) {
+      bombRef.current.visible = !hidden;
+    }
     const dts = Math.max(dt, 1e-4);
     const movedX = f.x - previousPosition.current.x;
     const movedY = f.y - previousPosition.current.y;

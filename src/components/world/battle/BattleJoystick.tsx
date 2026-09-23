@@ -14,6 +14,7 @@ import {
 import {
   MobaArenaChrome,
   MobaMeleeAction,
+  MobaUltAction,
 } from "@/components/world/moba/MobaHud";
 // 🧪 Otomatik QA paneli (test botu + teşhis + FPS). Bu katman iki arenada da
 // takılı olduğu için panel buradan render edilir.
@@ -124,6 +125,10 @@ export function BattleJoystick({
           dosyalarındaki küme JSX'i araç penceresinin dışında kalıyor.
           Dokunuş yine sahnenin `actions.melee()` eylemine gider. */}
       <MobaMeleeAction storeKey={stickRef} />
+      {/* 🧨 Samurayın ulti düğmesi (bomba fırlatma): Kraliyet ultisi sahne
+          dosyalarında yaşadığı, samurayınki orada çizilmediği için buradan
+          bindirilir. Yalnız bomba kitinde görünür (live.bomb). */}
+      <MobaUltAction storeKey={stickRef} />
       <QaPanel />
       <div
         ref={baseRef}

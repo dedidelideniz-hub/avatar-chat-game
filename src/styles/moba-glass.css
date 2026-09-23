@@ -447,6 +447,22 @@ button.moba-melee-action:not(.is-ready) .moba-melee-pct {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
+   🧨 SAMURAY ULTİ DÜĞMESİ (bomba fırlatma)
+
+   Doku, boyut ve `is-ready` durumu yakın dövüş düğmesiyle PAYLAŞILIR
+   (bkz. yukarıdaki `.moba-melee-action` bloğu): ikisi de başparmağın çizdiği
+   aynı yayın parçasıdır. Burada yalnız KONUM bir kademe yukarı alınır, yoksa
+   iki düğme üst üste biner (samurayda yakın dövüş düğmesi zaten gizlidir,
+   ama kural bağımsız kalsın). Seçici fazladan bir sınıf taşıdığı için
+   özgüllük yeterlidir — sıraya bağlı değildir.
+   ══════════════════════════════════════════════════════════════════════ */
+button.moba-melee-action.moba-ult-action.moba-ult-action {
+  bottom: calc(
+    max(40px, calc(env(safe-area-inset-bottom, 0px) + 12px)) + 116px + 74px
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    🛡️ KULE AKTİVASYON İSTEMİ
 
    Oyuncu HARİTANIN KENDİ ORİJİNAL kulesine yaklaştığında ekranında beliren

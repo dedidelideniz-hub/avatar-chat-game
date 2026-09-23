@@ -20,6 +20,8 @@ import {
   ATK_CD,
   BUSH_REVEAL_MS,
   applyHitReaction,
+  hasBombKit,
+  hasUltimateKit,
   isHiddenFrom,
   isSamuraiFighter,
   SAMURAI_ULTIMATE_DAMAGE,
@@ -34,6 +36,19 @@ import {
   type BattleProj,
 } from "@/components/world/Arena3D";
 import { hitsRockCollision } from "@/components/world/BattleMapModel";
+// 🧨 Bomba kiti (samuray): yere tuzak (normal yetenek) + bomba fırlatma
+// (ulti). Kurallar `arena/bombKit`te; PvP'de tuzak ve patlamalar karşı cihaza
+// OLAY olarak gider (maker-side hasar deseni: `explode` ile aynı).
+import {
+  BOMB_RELEASE_AT,
+  BOMB_TRAP_BLAST_PX,
+  BOMB_TRAP_DAMAGE,
+  BOMB_ULT_S,
+  bindBombTraps,
+  makeBombTrap,
+  stepBombTraps,
+  type BombTrap,
+} from "@/components/world/arena/bombKit";
 // 🏃 MovementComponent — zemin kontrolü, kapsül çarpışması, pürüzsüz kayma.
 import {
   ARENA_H,
@@ -51,6 +66,7 @@ import {
   castSuper,
   castUltimate,
   emitUltCrack,
+  fireBombThrow,
   gainUltCharge,
   planAim,
   planBasicAttack,
@@ -171,6 +187,8 @@ type PvpEvent =
       r: number;
       dmg: number;
       hit: boolean;
+      /** 🧨 Fırlatılan bomba: patlama soğuk alev değil, sıcak baruttur. */
+      bomb?: boolean;
     }
   | {
       id: string;
@@ -183,6 +201,19 @@ type PvpEvent =
       hit: boolean;
     }
   | { id: string; type: "samuraiStart"; facing: number; vy: number }
+  // 🧨 Bomba kiti: rakibin yere bıraktığı tuzak (kendi ekranımızda görünsün)
+  // ve patlaması. Tuzak hasarı `bombBlast` ile gelir; tuzak OLAYI yalnızca
+  // konum taşır (fitil/tetik her iki cihazda yerel simüle edilir).
+  | { id: string; type: "bombTrap"; x: number; y: number }
+  | {
+      id: string;
+      type: "bombBlast";
+      x: number;
+      y: number;
+      r: number;
+      dmg: number;
+      hit: boolean;
+    }
   // ⚔️ Yakın dövüş: başlangıç (rakip ekranında da animasyon oynasın) ve
   // her vuruşun hasarı (atıcı tarafı belirler, hedef uygular).
   | {
@@ -262,6 +293,10 @@ function newFighter(
     samuraiCharge: 0,
     samuraiUltT: 0,
     samuraiUltHit: false,
+    // 🧨 Bomba kiti (samuray): başta hazır, elde bomba var.
+    bombThrowT: 0,
+    bombThrowHit: false,
+    bombHiddenT: 0,
     // Yakın dövüş (Kraliyet Savaşçısı 3. yetenek).
     meleeT: 0,
     meleeCd: 0,
@@ -361,6 +396,10 @@ export default function PvpBattleScene({
   // Resolve the local spawn after the asynchronous GLB mask is available.
   const spawnResolvedRef = useRef(false);
 
+  // 🧨 Yerdeki bomba tuzakları (kendi + rakibin). Simülasyon/her hasar burada;
+  // çizim `ProjectilePool` içindeki `BombTrapPool`da (paylaşılan mutable liste).
+  const traps = useRef<BombTrap[]>([]);
+  useEffect(() => bindBombTraps(traps.current), []);
   const ownProjs = useRef<PvpProj[]>([]);
   const remoteProjs = useRef(new Map<string, PvpProj>());
   const projs = useRef<BattleProj[]>([]); // merged render list
@@ -389,6 +428,7 @@ export default function PvpBattleScene({
         travelled: 0,
         pierce: false,
         explodeR: undefined,
+        bomb: false,
       })),
     [],
   );
@@ -449,7 +489,10 @@ export default function PvpBattleScene({
       const f = player.current;
       if (kind === "ult")
         return (
-          isSamuraiFighter(f) && f.samuraiCharge >= 1 && f.samuraiUltT <= 0
+          hasUltimateKit(f) &&
+          f.samuraiCharge >= 1 &&
+          f.samuraiUltT <= 0 &&
+          (f.bombThrowT ?? 0) <= 0
         );
       return f.superCharge >= 1;
     },
@@ -514,6 +557,7 @@ export default function PvpBattleScene({
     sc: 0,
     atkReady: true,
     samurai: false,
+    bomb: false,
     hidden: false,
   });
   mobaLiveRef.current = {
@@ -527,6 +571,8 @@ export default function PvpBattleScene({
     sc: hud.sc,
     atkReady: hud.atkReady,
     samurai: isSamuraiFighter(player.current),
+    // 🧨 Bomba kiti ayrı bayrak: samurayın ULTİ'si vardır, yakın dövüşü yoktur.
+    bomb: hasBombKit(player.current),
     hidden: hud.hidden,
   };
   useEffect(
@@ -634,12 +680,24 @@ export default function PvpBattleScene({
         damageMe(ev.dmg);
         break;
       case "explode": {
-        // Ateş Topu: soğuk / ruhani alev patlaması (fiziksel ateş değil).
         b.castFxT = 1;
-        vfx.coldFlame(ev.x, ev.y, ev.r);
+        // 🧨 Fırlatılan bomba sıcak barutla, Ateş Topu soğuk alevle patlar.
+        if (ev.bomb) vfx.bombBlast(ev.x, ev.y, ev.r);
+        else vfx.coldFlame(ev.x, ev.y, ev.r);
         if (ev.hit) damageMe(ev.dmg);
         break;
       }
+      case "bombTrap":
+        // Rakip bomba tuzağı bıraktı: kendi ekranımızda da fitil yansın.
+        // `remote` işareti hasarın YEREL uygulanmasını engeller (hasar
+        // tuzağı kuran tarafın `bombBlast` olayıyla gelir — çift sayım yok).
+        traps.current.push(makeBombTrap("bot", ev.x, ev.y, true));
+        break;
+      case "bombBlast":
+        // Rakibin tuzağı patladı: aynı görsel + onun belirlediği hasar.
+        vfx.bombBlast(ev.x, ev.y, ev.r);
+        if (ev.hit) damageMe(ev.dmg);
+        break;
       case "samuraiStart":
         // Rakip ultiye başladı: kendi ekranımızda da aynı animasyon oynasın.
         b.samuraiUltT = 0.82;
@@ -755,6 +813,7 @@ export default function PvpBattleScene({
       obj.travelled = pr.travelled;
       obj.pierce = pr.pierce;
       obj.explodeR = pr.explodeR;
+      obj.bomb = !!pr.bomb;
       obj.seenTick = tick;
     }
     for (const [id, obj] of live) {
@@ -829,15 +888,53 @@ export default function PvpBattleScene({
   const explodeAt = (pr: PvpProj) => {
     const r = pr.explodeR ?? 130;
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
-    // Ateş Topu: fiziksel turuncu ateş yerine antik büyü / soğuk alev.
-    // Hasar yarıçapı (r) aynı kalır — sadece görsel küçülür.
-    vfx.coldFlame(pr.x, pr.y, r);
+    // 🧨 Fırlatılan bomba barutla, Ateş Topu soğuk alevle patlar.
+    // Hasar yarıçapı (r) aynı kalır — sadece görsel değişir.
+    if (pr.bomb) vfx.bombBlast(pr.x, pr.y, r);
+    else vfx.coldFlame(pr.x, pr.y, r);
     const b = bot.current;
     const hit = Math.hypot(b.x - pr.x, b.y - pr.y) < r;
-    pushEvent({ type: "explode", x: pr.x, y: pr.y, r, dmg: pr.dmg, hit });
+    pushEvent({
+      type: "explode",
+      x: pr.x,
+      y: pr.y,
+      r,
+      dmg: pr.dmg,
+      hit,
+      bomb: pr.bomb,
+    });
     if (hit) {
       floatText(b.x, b.y - 8, `-${pr.dmg}`, "#fbbf24");
       hitRemote(pr.dmg);
+      gainUltCharge(player.current, ULT_CHARGE_DEAL);
+    }
+  };
+
+  /**
+   * 🧨 YEREL TUZAK PATLAMASI (PvP).
+   *
+   * Görsel HER durumda patlar (barut boşa gitmez). Hasar ise YALNIZCA kendi
+   * bıraktığım tuzak için hesaplanır ve karşı cihaza olay olarak gider;
+   * rakibin tuzağı (`remote`) burada yalnızca çizilir — hasarı onun kendi
+   * `bombBlast` olayı taşır, yoksa iki kez düşerdi.
+   */
+  const blastTrapLocal = (trap: BombTrap) => {
+    vfx.bombBlast(trap.x, trap.y, BOMB_TRAP_BLAST_PX);
+    playSound("explode", { volume: 0.95, rate: 0.9 + Math.random() * 0.25 });
+    if (trap.remote) return;
+    const b = bot.current;
+    const hit = Math.hypot(b.x - trap.x, b.y - trap.y) < BOMB_TRAP_BLAST_PX;
+    pushEvent({
+      type: "bombBlast",
+      x: trap.x,
+      y: trap.y,
+      r: BOMB_TRAP_BLAST_PX,
+      dmg: BOMB_TRAP_DAMAGE,
+      hit,
+    });
+    if (hit) {
+      floatText(b.x, b.y - 8, `-${BOMB_TRAP_DAMAGE}`, "#fbbf24");
+      hitRemote(BOMB_TRAP_DAMAGE);
       gainUltCharge(player.current, ULT_CHARGE_DEAL);
     }
   };
@@ -865,6 +962,13 @@ export default function PvpBattleScene({
         floatText(enemy.x, enemy.y - 8, "-300", "#fbbf24");
         hitRemote(300);
       }
+    },
+    // 🧨 Bombayı yere bırak: tuzağı yerel listeye ekle VE karşı cihaza haber
+    // ver (o da fitili kendi ekranında yaksın).
+    placeTrap: (_caster, x, y) => {
+      traps.current.push(makeBombTrap("player", x, y));
+      pushEvent({ type: "bombTrap", x, y });
+      playSound("whoosh", { volume: 0.5, rate: 0.7 });
     },
     canLock: (enemy, caster) => !isHiddenFrom(enemy, caster),
     // Ulti başlangıcı karşı cihaza da gider: rakip aynı yöne döner.
@@ -1029,6 +1133,34 @@ export default function PvpBattleScene({
       const p = player.current;
       const b = bot.current;
       if (resultRef.current) return;
+
+      // 🧨 BOMBA FIRLATMA (samuray ultisi): hazırlık akarken hareket serbest.
+      // Bomba mermisi diğer mermilerle AYNI ağ yolundan gider (snapshot), yani
+      // karşı cihazda da uçarken görünür.
+      if ((p.bombThrowT ?? 0) > 0) {
+        p.bombThrowT = Math.max(0, p.bombThrowT - dt);
+        const release = 1 - p.bombThrowT / BOMB_ULT_S;
+        if (!p.bombThrowHit && release >= BOMB_RELEASE_AT) {
+          p.bombThrowHit = true;
+          const locked = resolveAim(p, b, 0, 0, {
+            canLock: true,
+            preferLock: true,
+          });
+          fireBombThrow(p, b, skillHost, locked.locked ? locked : bodyDir(p));
+        }
+      }
+      if ((p.bombHiddenT ?? 0) > 0) {
+        p.bombHiddenT = Math.max(0, p.bombHiddenT - dt);
+      }
+      // 🧨 TUZAKLAR: fitil, tetikleme ve patlama. Rakibin tuzakları da aynı
+      // listede akar (hasarı onların olayı taşır — bkz. blastTrapLocal).
+      stepBombTraps(
+        traps.current,
+        dt,
+        (owner) => (owner === "player" ? b : p),
+        blastTrapLocal,
+      );
+
       if (isSamuraiFighter(p)) {
         // Ulti zamanla dolmaz: yalnız savaşta dolar (bkz. `damageMe` /
         // `gainUltCharge` çağrıları) ve bar ancak %100'de kullanılabilir.

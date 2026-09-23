@@ -165,6 +165,12 @@ export interface MobaHudLive {
   sc: number;
   atkReady: boolean;
   samurai: boolean;
+  /**
+   * 🧨 BOMBA KİTİ (samuray): normal yetenek yere bomba tuzağı, ulti bomba
+   * fırlatma. AYRI bir bayraktır çünkü Kraliyet Savaşçısı ile yalnızca ULTİ
+   * yuvasını paylaşır: yakın dövüş (kılıç) yuvası samurayda YOKTUR.
+   */
+  bomb: boolean;
   /** Bush gizlenmesi: oyuncu görünmezken HUD rozetini açar. */
   hidden: boolean;
 }
@@ -678,6 +684,95 @@ export function MobaMeleeAction({ storeKey }: { storeKey: object }) {
   );
 }
 
+/**
+ * 🧨 SAMURAY ULTİ DÜĞMESİ — bomba fırlatma.
+ *
+ * NEDEN BURADA: Kraliyet Savaşçısı'nın ulti düğmesi sahne dosyalarında
+ * (`battle-hud-ult`) yaşar ve orada YALNIZ kraliyet kiti çizilir. Samurayın
+ * bombası o düğmede görünmez; kendi düğmesi HUD katmanında verilir. Aynı
+ * `actions.samuraiSuper()` eylemini çağırır, aynı şarj değerini okur, yani
+ * yeni bir kural/hasar yolu AÇMAZ.
+ *
+ * Görünürlük `live.bomb` (bomba kiti) + maç fazı; yakın dövüş düğmesiyle
+ * (MobaMeleeAction) aynı dil, bir kademe yukarıda durur.
+ */
+export function MobaUltAction({ storeKey }: { storeKey: object }) {
+  const store = useMobaStore(storeKey);
+  const btn = useRef<HTMLButtonElement>(null);
+  const ring = useRef<SVGCircleElement>(null);
+  const pct = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!store) return;
+    let raf = 0;
+    const tick = () => {
+      const l = store.live.current;
+      const p = store.player.current;
+      const charge = Math.max(0, Math.min(1, p.samuraiCharge));
+      const busy = p.samuraiUltT > 0 || (p.bombThrowT ?? 0) > 0;
+      const ready = charge >= 1 && !busy;
+      if (btn.current) {
+        // `hidden` React tarafında sabit tutulur: bu bileşen yeniden çizmez,
+        // bayrağı kare döngüsü yazar.
+        btn.current.hidden = !(l.bomb && l.phase === "fight");
+        toggleClass(btn.current, "is-ready", ready);
+      }
+      writeRing(ring.current, charge);
+      writeText(pct.current, ready ? "" : `${Math.round(charge * 100)}%`);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [store]);
+
+  if (!store) return null;
+  return (
+    <button
+      ref={btn}
+      type="button"
+      hidden
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        store.actions?.current.samuraiSuper();
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+      aria-label="Ulti — bomba fırlatma"
+      /* melee-action sınıfı yerleşimi/dokusu paylaşılır; `moba-ult-action`
+         yalnızca konumu bir kademe yukarı taşır (bkz. moba-glass.css). */
+      className="moba-melee-action moba-ult-action pointer-events-auto"
+    >
+      <span className="moba-slot-icon moba-melee-face" aria-hidden>
+        <Bomb size={24} strokeWidth={2.3} />
+      </span>
+      <span ref={pct} className="moba-melee-pct" />
+      <svg viewBox="0 0 36 36" className="moba-slot-ring">
+        <circle
+          cx={18}
+          cy={18}
+          r={RING_R}
+          fill="none"
+          stroke="rgba(255,255,255,0.16)"
+          strokeWidth={2.6}
+        />
+        <circle
+          ref={ring}
+          cx={18}
+          cy={18}
+          r={RING_R}
+          fill="none"
+          stroke="#fb923c"
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeDasharray={RING_C}
+          strokeDashoffset={0}
+          transform="rotate(-90 18 18)"
+        />
+      </svg>
+    </button>
+  );
+}
+
 function MobaChromeInner({ store }: { store: MobaHudStore }) {
   const { meta, live, score } = store;
   // ── HUD düğümleri (rAF döngüsü doğrudan bunlara yazar) ──
@@ -731,9 +826,10 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
   // ── Nadiren değişen bayraklar (React state: kare başına çizim yok) ──
   const [phase, setPhase] = useState(live.current.phase);
   const [samurai, setSamurai] = useState(live.current.samurai);
+  const [bomb, setBomb] = useState(live.current.bomb);
   const [hidden, setHidden] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
-  const flags = useRef({ phase, samurai, hidden, intro: false });
+  const flags = useRef({ phase, samurai, bomb, hidden, intro: false });
 
   useEffect(() => {
     let raf = 0;
@@ -910,6 +1006,10 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
       if (flags.current.samurai !== l.samurai) {
         flags.current.samurai = l.samurai;
         setSamurai(l.samurai);
+      }
+      if (flags.current.bomb !== l.bomb) {
+        flags.current.bomb = l.bomb;
+        setBomb(l.bomb);
       }
       if (flags.current.hidden !== l.hidden) {
         flags.current.hidden = l.hidden;
@@ -1240,11 +1340,22 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
               />
             </svg>
             <span className="moba-slot-icon">
-              <AbilityIcon emoji={meta.playerEmoji} size={22} />
+              {/* 🧨 Samurayın süper yuvası HER ZAMAN bombadır: hangi süper
+                  yetenek takılı olursa olsun karakter yere bomba bırakır
+                  (bkz. SkillComponent → castSuper), ikon da bunu söylemeli. */}
+              {bomb ? (
+                <Bomb size={22} strokeWidth={2.3} />
+              ) : (
+                <AbilityIcon emoji={meta.playerEmoji} size={22} />
+              )}
             </span>
           </div>
-          {samurai && (
-            <div ref={ultSlot} className="moba-slot" title="Kraliyet ultisi">
+          {(samurai || bomb) && (
+            <div
+              ref={ultSlot}
+              className="moba-slot"
+              title={samurai ? "Kraliyet ultisi" : "Bomba fırlatma (ulti)"}
+            >
               <svg viewBox="0 0 36 36" className="moba-slot-ring">
                 <circle
                   cx={18}
@@ -1269,7 +1380,12 @@ function MobaChromeInner({ store }: { store: MobaHudStore }) {
                 />
               </svg>
               <span className="moba-slot-icon">
-                <Crown size={24} strokeWidth={2.3} />
+                {/* Samurayın ultisi bomba fırlatmadır, tacı yoktur. */}
+                {bomb ? (
+                  <Bomb size={24} strokeWidth={2.3} />
+                ) : (
+                  <Crown size={24} strokeWidth={2.3} />
+                )}
               </span>
             </div>
           )}
