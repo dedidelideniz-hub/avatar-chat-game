@@ -305,7 +305,7 @@ export function buildStructuralSword(): THREE.Group {
  * İÇİNE saplanır — parmaklar topun ortasından geçer ve "eline saplanmış, yukarı
  * fırlamış" görüntüsü çıkar. BOMB_SEAT_OUT bu yüzden ≈ bomba yarıçapıdır.
  */
-export const BOMB_SEAT_FINGER = 0.01; // parmaklara doğru küçük kayma
+export const BOMB_SEAT_FINGER = 0.04; // parmaklara/karakterin önüne doğru görünür kayma
 /**
  * Fünyenin gövdeden UZAĞA yatış açısı (derece).
  *
@@ -313,7 +313,7 @@ export const BOMB_SEAT_FINGER = 0.01; // parmaklara doğru küçük kayma
  * görünmez; ayrıca karakterin silüetiyle çakışır. 30-35° dışa yatış, fünyeyi
  * gövdeden ayırıp kameraya yan gösterir (MOBA'ların standart çözümü).
  */
-export const BOMB_TILT_OUT_DEG = 32;
+export const BOMB_TILT_OUT_DEG = 38;
 /**
  * Bomba tutulurken parmak pozu: kapalı yumruk DEĞİL, topu S A R A N avuç.
  * Yumrukta parmaklar topun içine kıvrılır; ~0.45 katsayısı parmakları topun
@@ -326,29 +326,27 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
  * Model uzayı: gövde merkezi ORİJİN'de, gövde çapı 2.08 birim (üretilen
  * `public/models/bomba.glb` ile birebir aynı — ekseni 2.08, yüksekliği 2.74).
  *
- * HEDEF DÜNYA ÇAPI = 0.42 birim (gövde küresinin çapı).
+ * HEDEF DÜNYA ÇAPI = 0.84 birim (önceki 0.42 ölçünün 2×'si).
  *
  * NEDEN GERÇEKÇİ ÖLÇÜ (0.26) BIRAKILDI: kuş bakışı (top-down) MOBA/aksiyon
  * oyunlarında elde taşınan silah/bomba kasten gerçek boyutundan BÜYÜK
  * çizilir; oyuncu prop'u karakterin gövdesi, eli ve zemin karmaşasından
  * ayırt edebilmelidir. 0.26 birim ≈ 1.48 birimlik savaşçının %18'i kadardı ve
- * 55° izometrik kamerada elde "leke" gibi kalıyordu. 0.42 = 1.6× büyütme:
- * karakter boyunun ~%28'i — tepeden bakışta net okunur, çizgi film bombası
- * oranında durur, karakteri kapatmaz.
+ * 55° izometrik kamerada elde "leke" gibi kalıyordu. 0.84 = önceki ölçeğin
+ * 2×'si: top-down açıdan belirgin okunur; avuç dışına türetilmiş offset ile
+ * çıkar ve fitili gövdeden uzağa yatırılır.
  *
  * NEDEN TAM 0.42: elde tutulan bomba, FIRLATILAN ve YERE BIRAKILAN bombayla
- * aynı cisim olmalı. Mermi/tuzak katmanları gövde yarıçapını `0.105 × CHAR_HUD`
- * ile kurar (bkz. `arena/ProjectilePool`, `arena/BombTrapPool`); CHAR_HUD = 2
- * olduğu için yarıçap 0.21, yani çap 0.42. Bu sabit oraya eşitlenerek üç
- * görünüm tek ölçüye bağlandı — elde büyük, havada küçük bir bomba olmaz.
+ * aynı cisim olmalı. Fırlatılan/tuzak bombaları kendi oyun ölçülerini kullanır;
+ * elde tutulan model ise okunurluk için bilerek 2× büyütülür. Yetenek
+ * animasyonlarında tutulan prop ile mermi boyutu ayrı olabilir.
  *
- * ÜST SINIR: 0.5 birimin üstünde prop karakterin gövdesini ve kadraji kapatmaya
- * başlar (Wild Rift / LoL Mobile prop ölçüleri de ~1.5-2× bandında kalır);
- * bu yüzden 2× (0.52) yerine 1.6× seçildi. Daha büyüğü istenirse tek yer
- * burasıdır — ölçek, avuçta oturma mesafesi ve alev ölçeği bunu izler.
+ * ÜST SINIR: 1.05 birim civarında (2.5×) eldeki prop gövdenin büyük bölümünü
+ * kapatmaya başlayabilir. Değeri 0.84'te (2×) tutuyoruz; model ölçeği,
+ * avuçtan dışarı oturma mesafesi ve aura yarıçapı aynı hedef ölçüyü izler.
  */
 export const BOMB_MODEL_SPAN = 2.08;
-export const BOMB_TARGET_WORLD_SPAN = 0.42;
+export const BOMB_TARGET_WORLD_SPAN = 0.84;
 /**
  * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
  *

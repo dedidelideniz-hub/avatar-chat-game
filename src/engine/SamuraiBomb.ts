@@ -64,6 +64,7 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
 import { findBone } from "./EquipmentRegistry";
+import { prepareHeldEquipment } from "./HeldEquipment";
 import {
   BOMB_BODY_EMISSIVE,
   BOMB_BODY_EMISSIVE_COLOR,
@@ -153,8 +154,9 @@ export function useSamuraiBomb(
   const flameRef = useRef<FuseFlame | null>(null);
   /** Gövde hâlesi — kuş bakışı okunurluk katmanı (aynı yaşam döngüsü). */
   const auraRef = useRef<BombAura | null>(null);
-  const frames = useRef(0);
-  const calibrated = useRef(false);
+  const frames = useRef(0);    const calibrated = useRef(false);
+  // Per-instance material clones are disposed when the attached model is replaced/unmounted.
+  const equippedMaterials = useRef<THREE.Material[]>([]);
   // GLB arka planda hazır olduğunda katmanı yeniden kurar (yapısal → GLB geçişi).
   const [ready, setReady] = useState(0);
 
@@ -196,7 +198,12 @@ export function useSamuraiBomb(
       // Fünye yönü: ağız noktasından gövde merkezine giden vektörün tersi.
       const fuseDir = measureFuseDirection(model);
       const chain = grip.scale.x * boneScale * pivot.scale.x || 1;
-      model.scale.setScalar(BOMB_TARGET_WORLD_SPAN / (span * chain));
+      const prepared = prepareHeldEquipment(model, {
+        targetWorldSpan: BOMB_TARGET_WORLD_SPAN,
+        sourceSpan: span,
+        parentWorldScale: chain,
+      });
+      equippedMaterials.current = prepared.materials;
       model.position.set(0, 0, 0);
       // Pivot: gövde merkezini kapsayıcının orijinine çek ve modelin fünyesini
       // +Y'ye hizala. `calibrateBombGrip` fünyeyi +Y varsayar; modelin fitili
@@ -258,6 +265,8 @@ export function useSamuraiBomb(
       flameRef.current = null;
       auraRef.current?.dispose();
       auraRef.current = null;
+      for (const material of equippedMaterials.current) material.dispose();
+      equippedMaterials.current = [];
       for (const child of [...pivot.children]) pivot.remove(child);
       pivot.add(model);
 
@@ -314,6 +323,8 @@ export function useSamuraiBomb(
       flameRef.current = null;
       auraRef.current?.dispose();
       auraRef.current = null;
+      for (const material of equippedMaterials.current) material.dispose();
+      equippedMaterials.current = [];
       if (bombRef.current === grip) bombRef.current = null;
       if (handRef.current === hand) handRef.current = null;
     };
