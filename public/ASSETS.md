@@ -59,8 +59,13 @@ node scripts/build-bomba-glb.mjs
 
 Model uzayı sözleşmesi (runtime bu uzayı bilir, `src/engine/HandGrip.ts`):
 **gövde merkezi orijinde, gövde çapı 2.08 birim, fünye +Y yönünde, yanan uç
-y ≈ 1.62.** Ölçek runtime'da dünya boyuna normalize edilir (hedef: 0.14 birim →
-elin ölçüsü, bkz. `BOMB_TARGET_WORLD_SPAN`). Malzeme adları sabittir:
+y ≈ 1.62.** Ölçek runtime'da dünya boyuna normalize edilir. Hedef **0.26 birim**
+(`BOMB_TARGET_WORLD_SPAN`) — savaşçı ≈1.5 arena birimi olduğu için bu, karakter
+boyunun ~%17'si: MOBA kamerasında elde taşınan prop'un okunması için gereken
+ölçü. Normalizasyon **gövde** genişliğine göre yapılır; fitil/kıvılcım
+mesh'leri ölçümden çıkarılır (`measureBodySpan`), yoksa yana uzanan bir fitil
+kutuyu şişirip bombayı olduğundan küçük ölçeklerdi. Fitil alevinin ölçeği
+ayrıdır ve bomba büyüse de artmaz: `BOMB_FLAME_SPAN` = 0.16. Malzeme adları sabittir:
 `BombaBody`, `BombaBrass`, `BombaFuse`, `BombaFuseGlow` (fitil ucu runtime'da bu
 adla bulunup `emissiveIntensity` yükseltilir). Dosya yüklenemezse aynı uzayda
 üretilen prosedürel `buildStructuralBomb()` devreye girer — el boş kalmaz.

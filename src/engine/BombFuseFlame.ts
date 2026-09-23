@@ -314,6 +314,37 @@ export const isFuseLikeName = (name: string): boolean => FUSE_RE.test(name);
  * Dönen nokta model köküne GÖRELİDİR: çağıran onu modelin ölçeğiyle çarparak
  * kapsayıcı uzayına taşır (bkz. `SamuraiBomb.mount`).
  */
+/**
+ * Gövde genişliği (XZ) — YALNIZCA gövde mesh'lerinden.
+ *
+ * NEDEN: ölçek normalizasyonu "gövde kaç birim?" sorusuna dayanır. Tüm modelin
+ * kutusu kullanılırsa, YANA/UZAĞA uzanan bir fitil ya da kıvılcım XZ genişliğini
+ * şişirir ve bomba olduğundan küçük ölçeklenir (ekranda "ufacık" görünür).
+ * Bu yüzden fitil/ateş olduğu anlaşılan parçalar ölçümden çıkarılır; hiç
+ * gövde bulunamazsa tüm modele düşülür.
+ */
+export function measureBodySpan(root: THREE.Object3D): number {
+  root.updateWorldMatrix(true, true);
+  const box = new THREE.Box3();
+  let any = false;
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (isFuseLikeName(o.name)) return;
+    const list = Array.isArray(mesh.material)
+      ? mesh.material
+      : mesh.material
+        ? [mesh.material]
+        : [];
+    if (list.some((m) => m && isFuseLikeName(m.name))) return;
+    box.expandByObject(mesh);
+    any = true;
+  });
+  if (!any) box.setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  return Math.max(size.x, size.z);
+}
+
 export function findFuseAnchor(root: THREE.Object3D): THREE.Vector3 {
   root.updateWorldMatrix(true, true);
 

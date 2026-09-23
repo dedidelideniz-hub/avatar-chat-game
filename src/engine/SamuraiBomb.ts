@@ -49,6 +49,7 @@ import {
   BOMB_CONTAINER_MODEL_POS,
   BOMB_CONTAINER_MODEL_ROT,
   BOMB_CONTAINER_MODEL_SCALE,
+  BOMB_FLAME_SPAN,
   BOMB_FUSE_EMISSIVE,
   BOMB_FUSE_MATERIAL,
   BOMB_GRIP_POS,
@@ -65,6 +66,7 @@ import {
   createFuseFlame,
   findFuseAnchor,
   isFuseLikeName,
+  measureBodySpan,
   type FuseFlame,
 } from "./BombFuseFlame";
 
@@ -149,11 +151,10 @@ export function useSamuraiBomb(
     const mount = (source: THREE.Object3D) => {
       const model = SkeletonUtils.clone(source);
       model.updateMatrixWorld(true);
-      const size = new THREE.Box3()
-        .setFromObject(model)
-        .getSize(new THREE.Vector3());
-      // Gövde genişliği (X/Z) hedefe normalize edilir; fünye yüksekliği serbest.
-      const span = Math.max(size.x, size.z) || BOMB_MODEL_SPAN;
+      // Gövde genişliği (X/Z) hedefe normalize edilir; fünye serbest kalır.
+      // Fitil/kıvılcım mesh'leri ölçümden ÇIKARILIR (bkz. `measureBodySpan`):
+      // yana uzanan bir fitil kutuyu şişirip bombayı olduğundan küçük ölçekler.
+      const span = measureBodySpan(model) || BOMB_MODEL_SPAN;
       const chain = grip.scale.x * boneScale * pivot.scale.x || 1;
       model.scale.setScalar(BOMB_TARGET_WORLD_SPAN / (span * chain));
       model.position.set(0, 0, 0);
@@ -192,8 +193,9 @@ export function useSamuraiBomb(
       for (const child of [...pivot.children]) pivot.remove(child);
       pivot.add(model);
 
-      // Alev modelin fünye ucunda durur; bomba boyuyla ölçeklenir.
-      const flame = createFuseFlame(BOMB_TARGET_WORLD_SPAN);
+      // Alev modelin fünye ucunda durur; bomba genişliğinden bağımsız, kendi
+      // ölçeğiyle kurulur (fitil alevi bomba çapıyla büyümez).
+      const flame = createFuseFlame(BOMB_FLAME_SPAN);
       flame.group.position.copy(anchor);
       pivot.add(flame.group);
       flameRef.current = flame;

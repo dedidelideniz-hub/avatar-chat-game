@@ -288,13 +288,15 @@ export function buildStructuralSword(): THREE.Group {
 export const BOMB_GRIP_POS: [number, number, number] = [0, 11.72, 0]; // yumruk merkezi (kılıçla aynı ölçüm)
 /**
  * MODEL OFFSET'İ — dünya birimi (kapsayıcı kemik ölçeğini söndürdüğü için
- * içindeki 1 birim = 1 dünya birimi). +0.02: gövde merkezi avucun İÇİNDE
- * kalır, yalnızca biraz yukarı alınır ki yumruk bombayı tam ortadan kavrasın,
- * parmakların üstünde de görünsün. (Samuray rig'i ölçümü: avuç derinliği
- * 0.058, parmak boğumu 0.034 dünya birimi — 0.12'lik bir kaydırma bombayı
- * avucun bir buçuk boyu havaya kaldırıp "havada duran top" gibi gösteriyordu.)
+ * içindeki 1 birim = 1 dünya birimi).
+ *
+ * Gövde merkezi avucun merkezinde durur (kavrama noktası tam orasıdır); +0.04
+ * onu bir tık yukarı alır ki top yumruğun ÜSTÜNDE oturuyormuş gibi okunsun.
+ * Daha büyük bir kaydırma (0.12) bombayı avucun bir buçuk boyu havaya kaldırıp
+ * "havada duran top" gibi gösteriyordu — boyut büyütüldükten sonra da bu
+ * ayarın küçük kalması gerekir, çünkü bomba artık elin tamamından büyük.
  */
-export const BOMB_CONTAINER_MODEL_POS: [number, number, number] = [0, 0.02, 0];
+export const BOMB_CONTAINER_MODEL_POS: [number, number, number] = [0, 0.04, 0];
 export const BOMB_CONTAINER_MODEL_ROT: [number, number, number] = [0, 0, 0];
 export const BOMB_CONTAINER_MODEL_SCALE = 1;
 
@@ -302,14 +304,31 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
  * Model uzayı: gövde merkezi ORİJİN'de, gövde çapı 2.08 birim (üretilen
  * `public/models/bomba.glb` ile birebir aynı — ekseni 2.08, yüksekliği 2.74).
  *
- * HEDEF DÜNYA GENİŞLİĞİ = 0.14 birim. Bu, Samuray rig'inden ÖLÇÜLEREK
- * seçildi (kemik dünya ölçeği 0.00437): avuç derinliği 0.058, parmak boğumu
- * 0.034, yani elin tamamı ≈0.08-0.09 birim. 0.14'lük bomba avucu ~%70 taşar
- * — "kavranmış" okunur; daha büyüğü (0.19) elin iki katı olup top gibi
- * duruyordu, daha küçüğü parmakların içinde kayboluyordu.
+ * HEDEF DÜNYA GENİŞLİĞİ = 0.26 birim.
+ *
+ * NEDEN 0.14 DEĞİL: ilk sürüm avuç ölçüsünden (palm center 0.051, parmak
+ * boğumu 0.034 → el ≈0.15 dünya birimi) yola çıkıp "elin tamamı ≈0.09"
+ * varsayımıyla 0.14 seçmişti. Ölçüm eksikti — 0.09 yalnızca elin kalınlığı;
+ * elin tamamı yaklaşık 0.15'tir. Sonuç, ekranda bozuk para büyüklüğünde bir
+ * toptu ve kullanıcı "bomba ufacık kalmış" dedi.
+ *
+ * Doğru referans AVCU DEĞİL KARAKTER: savaşçı ≈1.5 arena birimi. MOBA kamera
+ * mesafesinde elde taşınan bir prop'un okunması için karakter boyunun ~%15-18'i
+ * gerekir → 0.22-0.27. 0.26 seçildi: karakterin başından biraz büyük, çizgi
+ * film bombası oranında, kameradan net okunur. Daha küçüğü elde "leke" gibi
+ * kaybolur; 0.35+ ise karakteri kapatmaya başlar.
  */
 export const BOMB_MODEL_SPAN = 2.08;
-export const BOMB_TARGET_WORLD_SPAN = 0.14;
+export const BOMB_TARGET_WORLD_SPAN = 0.26;
+/**
+ * ALEVİN ölçek referansı — bomba genişliğinden BAĞIMSIZ ve daha küçük.
+ *
+ * NEDEN AYRI: alev bomba büyüdükçe büyümemeli. Gerçekte fitil alevinin boyu
+ * fitilin boyudur, bombanın çapı değil; ayrıca `createFuseFlame` alevi `span`
+ * katlarıyla kurduğu için 0.26 verilseydi alev 0.33 birime çıkar (karakterin
+ * ~%22'si) ve eli/omuzu kapatırdı. 0.16 = okunur ama görüşü kapatmayan ölçü.
+ */
+export const BOMB_FLAME_SPAN = 0.16;
 /** Fitil ucunun kendinden ışıma şiddeti (bloom'u besler, ekranı sislemez). */
 export const BOMB_FUSE_EMISSIVE = 2.6;
 /** Model/üretilen dosyada fitil ucunu taşıyan malzeme adı. */
