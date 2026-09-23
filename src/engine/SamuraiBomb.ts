@@ -56,6 +56,19 @@
 // hem `comical_bomb.glb` hem `bomba.glb` hem prosedürel yedek aynı kuralla
 // yanar — modele özel sabit yok.
 //
+// 🤹 CANLI TUTUŞ (`engine/BombJuggle`): bomba elde sabit durmaz — TUT → AT →
+// YAKALA ritmiyle sağ ve sol el arasında durmadan atılır (tutuşta avuca oturur,
+// uçuşta yay çizip takla atar, yakalanınca hafifçe ezilir). Konum her karede İKİ
+// EL KEMİĞİNİN dünya konumundan türetilir, yani kolları sallayan animasyon
+// klibi ne yaparsa atış da ona uyar; ayrı bir animasyon klibi gerekmez.
+//
+// Yönelim de iki elin KENDİ kalibrasyonundan gelir ve uçuş boyunca aralarında
+// yumuşakça geçer: fünye sağ elde sağa, sol elde sola yatar (tek taban
+// kullanılsaydı fünye top sola geçtiğinde gövdenin üstüne devrilirdi). Kavrama
+// pozu ve parmak geometrisi de İKİ elde kurulur, böylece top hangi ele
+// geçerse geçsin "kavranmış" görünür. Sol el bulunamazsa katman sessizce eski
+// hâline (elde sabit tutuş) döner.
+//
 // Parmaklar: `applyFingerGrip` + `buildFingerMeshes` ile kapalı yumruk kurulur,
 // bomba gerçekten "kavranmış" görünür (bu rig'te parmak geometrisi yok).
 //
@@ -83,8 +96,12 @@ import {
   buildStructuralBomb,
   calibrateBombGrip,
   handBoneMaxScale,
+  handWorldQuat,
+  leftHandBone,
+  palmHoldPoint,
   rightHandBone,
 } from "./HandGrip";
+import { sampleBombJuggle, type JuggleSample } from "./BombJuggle";
 import {
   createBombAura,
   createFuseFlame,
@@ -160,6 +177,43 @@ export function useSamuraiBomb(
   const calibrated = useRef(false);
   // Per-instance material clones are disposed when the attached model is replaced/unmounted.
   const equippedMaterials = useRef<THREE.Material[]>([]);
+  /** 🤹 Atış animasyonu: zamanlayıcı, iki el ve yeniden kullanılan geçici vektörler. */
+  const otherHandRef = useRef<THREE.Object3D | null>(null);
+  const boneScaleRef = useRef(1);
+  const juggleTime = useRef(0);
+  /**
+   * Kalibrasyonun bulduğu taban yönelim, ELE GÖRE saklanır; takla bu tabanın
+   * üzerine bindirilir. Dünya yönelimi saklansaydı karakter döndüğünde fünye
+   * eski dünya yönünde kalırdı (gövdeyle birlikte dönmesi gerekir).
+   *
+   * İKİ EL için ayrı ayrı tutulur: "fünye gövdeden uzağa yatsın" kuralı sağ ve
+   * sol el için ZIT yönlere denk gelir (sağ elde sağa, sol elde sola). Tek bir
+   * taban kullanmak, top sol ele geçtiğinde fünyeyi gövdenin üstüne devirirdi.
+   */
+  const baseQuatRef = useRef(new THREE.Quaternion());
+  const baseLeftQuatRef = useRef(new THREE.Quaternion());
+  const juggle = useRef<JuggleSample>({
+    position: new THREE.Vector3(),
+    tossT: 0,
+    spinAngle: 0,
+    spinAxis: new THREE.Vector3(1, 0, 0),
+    squash: 1,
+    handMix: 0,
+    holding: true,
+    direction: 1,
+  });
+  const scratch = useRef({
+    a: new THREE.Vector3(),
+    b: new THREE.Vector3(),
+    aOut: new THREE.Vector3(),
+    bOut: new THREE.Vector3(),
+    pull: new THREE.Vector3(),
+    spin: new THREE.Quaternion(),
+    desired: new THREE.Quaternion(),
+    rightBase: new THREE.Quaternion(),
+    leftBase: new THREE.Quaternion(),
+    flip: new THREE.Quaternion(),
+  });
   // GLB arka planda hazır olduğunda katmanı yeniden kurar (yapısal → GLB geçişi).
   const [ready, setReady] = useState(0);
 
@@ -171,6 +225,8 @@ export function useSamuraiBomb(
     // the bomb on a finger bone and makes both the palm offset and grip pose wrong.
     const hand = rightHandBone(clone) ?? findBone(clone, "MAIN_HAND");
     if (!hand) return;
+    // Karşı el: atışın hedefi. Bulunamazsa aşağıdaki kare döngüsü atışı atlar.
+    const otherHand = leftHandBone(clone) ?? findBone(clone, "OFF_HAND");
 
     const boneScale = Math.max(handBoneMaxScale(hand), 1e-9);
     const grip = new THREE.Group();
@@ -312,17 +368,36 @@ export function useSamuraiBomb(
     hand.add(grip);
     bombRef.current = grip;
     handRef.current = hand;
+    otherHandRef.current = otherHand;
+    boneScaleRef.current = boneScale;
     frames.current = 0;
     calibrated.current = false;
+    juggleTime.current = 0;
 
     // Parmak pozu: yumruk DEĞİL, topu saran avuç (bkz. `BOMB_FINGER_GRIP`).
     // Kapalı yumrukta parmak uçları topun İÇİNE kıvrılıyordu.
-    applyFingerGrip(clone, BOMB_FINGER_GRIP);
-    const fingers = buildFingerMeshes(clone);
+    //
+    // İKİ ele de uygulanır: bomba sağ↔sol el arasında gezdiği için topun
+    // bulunduğu el "kavrıyor" görünmezse (parmaklar açık kalırsa) top elde
+    // değil, elin yanında duran bir küre gibi okunur.
+    applyFingerGrip(clone, BOMB_FINGER_GRIP, hand);
+    const fingers = buildFingerMeshes(clone, hand);
+    if (otherHand) {
+      applyFingerGrip(clone, BOMB_FINGER_GRIP, otherHand);
+      fingers.push(...buildFingerMeshes(clone, otherHand));
+    }
 
     // İlk kareyi de doğru göster: kalibrasyon 20. karede (idle klibi oturunca)
-    // tazelenir, ama ilk 0.33 sn boyunca bomba elde savrulmasın.
-    calibrateBombGrip(hand, grip, clone);
+    // tazelenir, ama ilk 0.33 sn boyunca bomba elde savrulmasın. İki elin tabanı
+    // da aynı pozdan okunur (bkz. `baseQuatRef`).
+    baseQuatRef.current
+      .copy(handWorldQuat(hand).invert())
+      .multiply(calibrateBombGrip(hand, grip, clone));
+    if (otherHand) {
+      baseLeftQuatRef.current
+        .copy(handWorldQuat(otherHand).invert())
+        .multiply(calibrateBombGrip(otherHand, grip, clone));
+    }
 
     return () => {
       grip.removeFromParent();
@@ -335,6 +410,7 @@ export function useSamuraiBomb(
       equippedMaterials.current = [];
       if (bombRef.current === grip) bombRef.current = null;
       if (handRef.current === hand) handRef.current = null;
+      if (otherHandRef.current === otherHand) otherHandRef.current = null;
     };
   }, [clone, skinUrl, ready]);
 
@@ -347,11 +423,70 @@ export function useSamuraiBomb(
     auraRef.current?.update(dt);
     const grip = bombRef.current;
     const hand = handRef.current;
-    if (!grip || !hand || calibrated.current) return;
-    frames.current += 1;
-    if (frames.current < 20) return;
-    calibrateBombGrip(hand, grip, clone);
-    calibrated.current = true;
+    if (!grip || !hand) return;
+
+    // İlk 20 kare: idle klibi oturana kadar elde sabit dur (kalibrasyon).
+    if (!calibrated.current) {
+      frames.current += 1;
+      if (frames.current < 20) return;
+      baseQuatRef.current
+        .copy(handWorldQuat(hand).invert())
+        .multiply(calibrateBombGrip(hand, grip, clone));
+      // Sol elin tabanı da AYNI karede tazelenir: iki yönelim farklı pozlardan
+      // okunursa top el değiştirirken fünye sıçrar.
+      if (otherHandRef.current) {
+        baseLeftQuatRef.current
+          .copy(handWorldQuat(otherHandRef.current).invert())
+          .multiply(calibrateBombGrip(otherHandRef.current, grip, clone));
+      }
+      calibrated.current = true;
+    }
+
+    const other = otherHandRef.current;
+    if (!other) return; // tek elli rig: kalibre edilmiş sabit tutuş kalır
+
+    const t = scratch.current;
+    const handQuat = handWorldQuat(hand);
+
+    // Atışın iki ucu: ellerin AVUÇ merkezleri, elde tutuş ötelemesiyle birlikte
+    // (aynı geometri el tutuşuyla paylaşılır — bkz. `palmHoldPoint`).
+    palmHoldPoint(hand, clone, t.a, t.aOut);
+    palmHoldPoint(other, clone, t.b, t.bOut);
+    // Yol gövdenin İÇİNDEN geçmesin: yay, iki elin ortasından dışa doğru bükülür.
+    //
+    // DİKKAT: eller gövdenin iki YANINDA dururken dışa yönler birbirini götürür
+    // (sağ el +X, sol el −X) ve bükülme YÖNSÜZ kalır. O durumda bükülme hiç
+    // uygulanmaz; sabit bir "ileri" ekseni varsaymak yayı gövdenin içine ya da
+    // arkasına savururdu. Topu gövdenin önünden geçiren şey zaten yayın
+    // YÜKSEKLİĞİDİR (bkz. `JUGGLE_ARC`): top ellerin üstünden, göğüs hizasından
+    // aşar. Bükülme yalnız kollar asimetrikken (yürüyüş salınımı) devreye girer.
+    const pull = t.pull.copy(t.aOut).add(t.bOut);
+    if (pull.lengthSq() > 0.09) pull.normalize();
+    else pull.set(0, 0, 0);
+
+    juggleTime.current += dt;
+    const sample = sampleBombJuggle(t.a, t.b, pull, juggleTime.current, juggle.current);
+
+    // Konum: dünya → kapsayıcının parent'ı (sağ el) yerel uzayı.
+    grip.position.copy(sample.position);
+    hand.worldToLocal(grip.position);
+
+    // Yönelim: HER elin kendi tabanı DÜNYA uzayına çevrilir, sonra topun hangi
+    // elde olduğuna göre (`handMix`) aralarında yumuşak geçiş yapılır. Böylece
+    // fünye sol eldeyken de gövdeden UZAĞA (sola) yatar; takla ise DÜNYA
+    // uzayında bindirilir (bomba uçtuğu yöne yuvarlanır) ve sonuç sağ elin
+    // yerel uzayına çevrilir — kapsayıcı o elin çocuğudur.
+    t.rightBase.copy(handQuat).multiply(baseQuatRef.current);
+    t.leftBase.copy(handWorldQuat(other)).multiply(baseLeftQuatRef.current);
+    t.desired.copy(t.rightBase).slerp(t.leftBase, sample.handMix);
+    t.spin.setFromAxisAngle(sample.spinAxis, sample.spinAngle);
+    t.desired.premultiply(t.spin);
+    t.flip.copy(handQuat).invert();
+    grip.quaternion.copy(t.flip).multiply(t.desired);
+
+    // Yakalama ezilmesi: kapsayıcı ölçeği dünya normalizasyonunu taşıdığı için
+    // squash doğrudan buraya bindirilir (bomba havada hafifçe esner).
+    grip.scale.setScalar((BOMB_CONTAINER_MODEL_SCALE / boneScaleRef.current) * sample.squash);
   });
 
   return { bombRef };

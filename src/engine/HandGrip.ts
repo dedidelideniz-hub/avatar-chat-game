@@ -113,6 +113,23 @@ export function rightHandBone(clone: THREE.Object3D): THREE.Object3D | null {
   return hand;
 }
 
+/** Sol el kemiği — `rightHandBone`'un aynası. Bomba sağ↔sol el arasında
+ *  atıldığı için iki el de gerekir; ad eşleşmesi ve parmak filtresi aynıdır. */
+export function leftHandBone(clone: THREE.Object3D): THREE.Object3D | null {
+  let hand: THREE.Object3D | null = null;
+  clone.traverse((o) => {
+    if (hand || !(o as THREE.Bone).isBone) return;
+    const n = o.name.toLowerCase();
+    if (
+      n === "mixamoriglefthand" ||
+      (n.startsWith("mixamoriglefthand") && !/thumb|index|middle|ring|pinky/.test(n))
+    ) {
+      hand = o;
+    }
+  });
+  return hand;
+}
+
 /** Suffix-tolerant finger-joint bones under one hand bone. End joints
  *  ("…_end") are excluded — they carry no geometry. */
 export function fingerBonesOf(hand: THREE.Object3D): THREE.Object3D[] {
@@ -180,9 +197,17 @@ const fingerRest = new WeakMap<THREE.Object3D, THREE.Euler>();
  *
  * `scale` shrinks the pose for items a closed fist would clip through
  * (the bomb is held in a cupped hand — see `BOMB_FINGER_GRIP`).
+ *
+ * `handBone` verilirse o el pozlanır. Bomba artık sağ↔sol el arasında
+ * atıldığı için İKİ elin de kavrama pozunda olması gerekir; verilmezse eski
+ * davranış korunur (yalnız sağ el — kılıç katmanı bunu kullanır).
  */
-export function applyFingerGrip(clone: THREE.Object3D, scale = 1): void {
-  const hand = rightHandBone(clone);
+export function applyFingerGrip(
+  clone: THREE.Object3D,
+  scale = 1,
+  handBone?: THREE.Object3D | null,
+): void {
+  const hand = handBone ?? rightHandBone(clone);
   if (!hand) return;
   for (const bone of fingerBonesOf(hand)) {
     let rest = fingerRest.get(bone);
@@ -313,8 +338,22 @@ export function buildStructuralSword(): THREE.Group {
  * fırlamış" görüntüsü çıkar. BOMB_SEAT_OUT bu yüzden ≈ bomba yarıçapıdır.
  */
 export const BOMB_SEAT_FINGER = 0.06; // avuçtan öne, kavrayan parmakların hizasına
-/** Ek dünya boşluğu: bombanın yüzeyi avuç/parmaktan ayrık ve seçilir kalsın. */
-export const BOMB_PALM_CLEARANCE = 0.045;
+/**
+ * Oturma mesafesi — bomba YARIÇAPININ katı (dünya birimi).
+ *
+ * NEDEN "YARIÇAP + BOŞLUK" DEĞİL: önceki sürüm topu avuç merkezinden
+ * `yarıçap + 0.045 (boşluk) + 0.03 (dışa)` kadar uzağa koyuyordu. Toplam
+ * 0.235 birim, 0.16 yarıçaplı bir top için ~1.5 yarıçap eder ve ekran
+ * görüntüsünde topun yüzeyi elle hiç temas etmiyordu: karakterin yanında
+ * HAVADA ASILI bir küre gibi okunuyordu ("eliyle bomba hiç bağdaşmıyor").
+ * 1.02 katında topun yüzeyi parmak/avuç dokusunun birkaç milim İÇİNE girer;
+ * MOBA prop'larında doğru okunan temas budur — boşluk değil, hafif iç içe
+ * geçme "kavranmış" hissi verir.
+ *
+ * Ölçekle AYNI referanstan türediği için (hedef çap) top hangi model olursa
+ * olsun avuca aynı oranda oturur (bkz. `BOMB_SEAT_OUT`).
+ */
+export const BOMB_SEAT_RADIUS_FRAC = 1.02;
 /**
  * Bombanın gövde silüetinden dışarı taşınması (dünya birimi, yatay).
  *
@@ -328,9 +367,9 @@ export const BOMB_PALM_CLEARANCE = 0.045;
  * temasını koparır ve "havada asılı" görüntü çıkarır (topun yüzeyi avuca
  * değmeli); bu yalnızca el mesh'inin küreye girmemesi için ince bir paydır.
  */
-export const BOMB_CARRY_OUT = 0.03;
+export const BOMB_CARRY_OUT = 0.012;
 /** Hafif yukarı kaldırma — kalça/bacak hizasından ayrışsın. */
-export const BOMB_CARRY_LIFT = 0.02;
+export const BOMB_CARRY_LIFT = 0.012;
 /**
  * Fünyenin gövdeden UZAĞA yatış açısı (derece).
  *
@@ -370,13 +409,18 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
 export const BOMB_MODEL_SPAN = 2.08;
 export const BOMB_TARGET_WORLD_SPAN = 0.32;
 /**
- * Avuçtan dışarı oturma mesafesi — dünya yarıçapı + görünür boşluk.
+ * Avuçtan dışarı oturma mesafesi — bomba YARIÇAPINDAN türetilir.
  *
  * Bomba çapı `BOMB_TARGET_WORLD_SPAN`'e normalize edilir (bkz. SamuraiBomb),
- * dolayısıyla yarıçapı biliniyor. Yalnızca bir yarıçap kadar dışarı koymak,
- * bombanın yüzeyini avuca tam değdiriyordu; küçük rig/kamera farkında elin içine
- * girmiş gibi görünüyordu. `BOMB_PALM_CLEARANCE` ilavesi görünür bir aralık
- * bırakır, `BOMB_SEAT_FINGER` ise gövdeyi kavrayan parmakların önüne alır.
+ * dolayısıyla yarıçapı biliniyor ve öteleme hep aynı oranda kalır.
+ *
+ * İKİ UÇ ARASINDAKİ DENGE (ikisi de ekran görüntüsüyle doğrulandı):
+ *   · ÇOK KÜÇÜK → top avucun/parmakların İÇİNE gömülür, "ele saplanmış" okunur.
+ *   · ÇOK BÜYÜK → topun yüzeyi elle hiç temas etmez, karakterin yanında HAVADA
+ *     ASILI bir küre gibi okunur ("eliyle bomba hiç bağdaşmıyor").
+ * 1.02 yarıçap + `BOMB_CARRY_OUT` bu ikisinin ortasıdır: topun yüzeyi avuca
+ * DEĞER, gövdeye doğru hafifçe oturur. `BOMB_SEAT_FINGER` ise topu avucun
+ * içinden kavrayan parmakların hizasına taşır.
  *
  * TÜRETİLMİŞ DEĞER (bu yüzden burada, hedef ölçüden SONRA tanımlı): sabit sayı
  * yazılsaydı hedef ölçü değiştiğinde oturma ile ölçek birbirinden kopar ve
@@ -384,7 +428,8 @@ export const BOMB_TARGET_WORLD_SPAN = 0.32;
  * geldiği için küçük ölçeklenen bombada oturma mesafesi fazla kalıp topu
  * avuçtan dışarı taşırıyordu).
  */
-export const BOMB_SEAT_OUT = BOMB_TARGET_WORLD_SPAN * 0.5 + BOMB_PALM_CLEARANCE;
+export const BOMB_SEAT_OUT =
+  BOMB_TARGET_WORLD_SPAN * 0.5 * BOMB_SEAT_RADIUS_FRAC; // = 0.1632
 /**
  * ALEVİN ölçek referansı — bomba genişliğinden BAĞIMSIZ.
  *
@@ -417,12 +462,78 @@ export const BOMB_BODY_EMISSIVE_COLOR = "#ff4d16";
 /** Model/üretilen dosyada fitil ucunu taşıyan malzeme adı. */
 export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
 
+/** `palmHoldPoint` için modül düzeyinde geçici vektörler (kare başına çöp yok). */
+const handWorldScratchA = new THREE.Vector3();
+const handWorldScratchB = new THREE.Vector3();
+const handWorldScratchC = new THREE.Vector3();
+
+/**
+ * Bir elin AVUÇ merkezini DÜNYA uzayında, elde tutuş ötelemesiyle birlikte
+ * döndürür:
+ *
+ *   avuç merkezi → parmak yönünde `BOMB_SEAT_FINGER` → gövdeden dışa
+ *   `BOMB_SEAT_OUT + BOMB_CARRY_OUT` → hafif yukarı `BOMB_CARRY_LIFT`.
+ *
+ * NEDEN AYRI: hem kalibrasyon (tek el, el-yerel — `bombSeatLocal`) hem de atış
+ * animasyonu (iki el, dünya uzayı) AYNI tutuş geometrisini kullanmalıdır; aksi
+ * hâlde bomba elden ele geçerken konum atlar (aynı topun iki farklı yerde
+ * durması gibi). Bu yüzden iki fonksiyon bilerek aynı sabitleri ve aynı sırayı
+ * uygular — birini değiştiren diğerini de değiştirmelidir.
+ * `palmCenterLocal` kemik ORİJİNİ değil avuçtur (kemik orijini bilekte kalır ve
+ * bomba bileğe yapışık görünür).
+ *
+ * `outOutward` verilirse elin gövdeden dışa yönü (birim vektör) oraya yazılır;
+ * atış yayının bükülmesi iki elin bu yönlerinin ortalamasından bulunur.
+ */
+export function palmHoldPoint(
+  hand: THREE.Object3D,
+  reference: THREE.Object3D,
+  outPoint: THREE.Vector3,
+  outOutward?: THREE.Vector3 | null,
+): THREE.Vector3 {
+  hand.updateWorldMatrix(true, false);
+  reference.updateWorldMatrix(true, false);
+  outPoint.copy(palmCenterLocal(hand));
+  hand.localToWorld(outPoint);
+
+  // Parmak yönü (el-yerel +Y) dünya uzayında: topu avucun içinden kavrayan
+  // parmakların hizasına taşır. `bombSeatLocal` da aynı kaydırmayı yapar.
+  // Doğrudan matrixWorld'in 2. kolonu okunur (kemik yerel +Y = parmak yönü,
+  // Mixamo standardı) — `handWorldQuat` gibi kuantarnyon kurmaya gerek yok.
+  handWorldScratchC.setFromMatrixColumn(hand.matrixWorld, 1).normalize();
+  outPoint.addScaledVector(handWorldScratchC, BOMB_SEAT_FINGER);
+
+  // Dışa yön: kökten EL KEMİĞİNE giden yatay yön — kalibrasyonun
+  // (`calibrateBombGrip`) kullandığı referansın AYNISI. Avuç noktasından
+  // ölçmek, parmak kaydırması yüzünden birkaç derece sapıyordu ve top elden ele
+  // geçerken (kalibrasyon ↔ atış animasyonu) küçük bir konum atlaması yaratırdı.
+  const refPos = handWorldScratchA.setFromMatrixPosition(reference.matrixWorld);
+  const handPos = handWorldScratchC.setFromMatrixPosition(hand.matrixWorld);
+  const outward = handWorldScratchB.copy(handPos).sub(refPos).setY(0);
+  if (outward.lengthSq() > 1e-8) {
+    outward.normalize();
+    outPoint.addScaledVector(outward, BOMB_SEAT_OUT + BOMB_CARRY_OUT);
+  }
+  outPoint.y += BOMB_CARRY_LIFT;
+  outOutward?.copy(outward);
+  return outPoint;
+}
+
 /**
  * Bombayı avuçta taşıyan nokta — el-yerel (kemik birimi) konum.
  *
- * Avuç merkezinden avuç normali (+Z) boyunca `BOMB_SEAT_OUT` kadar dışa,
- * parmak yönünde (+Y) küçük bir kayma. KEMİK uzayında olduğu için el/kol her
- * hareket ettiğinde top avuçla birlikte gider (kamera açısından bağımsız).
+ * Avuç merkezinden parmak yönünde (+Y) `BOMB_SEAT_FINGER`, dışa yönde
+ * `BOMB_SEAT_OUT + BOMB_CARRY_OUT` ve hafif yukarı `BOMB_CARRY_LIFT` kadar
+ * ötelenir. KEMİK uzayında olduğu için el/kol her hareket ettiğinde top avuçla
+ * birlikte gider (kamera açısından bağımsız).
+ *
+ * Dışa yön avuç normalinden DEĞİL, karakter merkezinden ele giden yönden
+ * gelir: bu rig'te avuç normali gövdeye dönük olduğu için topu bacağın/karının
+ * içine sokuyordu (bkz. `calibrateBombGrip`).
+ *
+ * `palmHoldPoint` bunun DÜNYA uzayındaki eşidir ve AYNI sabitleri aynı sırayla
+ * uygular (atış animasyonu onu kullanır) — biri değişirse diğeri de değişmeli,
+ * yoksa top elden ele geçerken konum atlar.
  */
 export function bombSeatLocal(
   hand: THREE.Object3D,
@@ -483,12 +594,16 @@ export function bombSeatLocal(
  * dışa = yatayda kökten ele giden yön. Kol tam gövdenin önündeyse (yatay sapma
  * yok) avuç normalinin yatay bileşenine düşülür — sabit/sahte bir eksen
  * kullanılmaz.
+ *
+ * DÖNÜŞ DEĞERİ: hesaplanan "istenen dünya yönelimi" de döner. Bomba elde sabit
+ * durmadığı için (bkz. `engine/BombJuggle`) takla atarken bu taban yönelimin
+ * korunması gerekir; çağıran onu saklar ve üzerine taklayı bindirir.
  */
 export function calibrateBombGrip(
   hand: THREE.Object3D,
   grip: THREE.Object3D,
   reference?: THREE.Object3D | null,
-): void {
+): THREE.Quaternion {
   hand.updateWorldMatrix(true, false);
 
   const handQuat = handWorldQuat(hand);
@@ -530,6 +645,7 @@ export function calibrateBombGrip(
 
   grip.quaternion.copy(handQuat).invert().multiply(desired);
   grip.updateMatrixWorld(true);
+  return desired;
 }
 
 /**
@@ -666,9 +782,15 @@ export function markHandJoints(clone: THREE.Object3D): THREE.Group | null {
  * finger chain.
  *
  * Returns the created meshes (caller adds them to the cleanup list).
+ *
+ * `handBone` verilirse o el için kurulur (bomba her iki elde de gezdiği için
+ * iki el de parmak geometrisi ister); verilmezse yalnız sağ el.
  */
-export function buildFingerMeshes(clone: THREE.Object3D): THREE.Mesh[] {
-  const hand = rightHandBone(clone);
+export function buildFingerMeshes(
+  clone: THREE.Object3D,
+  handBone?: THREE.Object3D | null,
+): THREE.Mesh[] {
+  const hand = handBone ?? rightHandBone(clone);
   if (!hand) return [];
   const glove = new THREE.MeshStandardMaterial({
     color: "#6b4527", roughness: 0.75, metalness: 0.08,
