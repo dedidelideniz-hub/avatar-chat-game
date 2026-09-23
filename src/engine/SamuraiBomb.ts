@@ -65,6 +65,8 @@ import { useFrame } from "@react-three/fiber";
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
 import { findBone } from "./EquipmentRegistry";
 import {
+  BOMB_BODY_EMISSIVE,
+  BOMB_BODY_EMISSIVE_COLOR,
   BOMB_CONTAINER_MODEL_SCALE,
   BOMB_FINGER_GRIP,
   BOMB_FLAME_SPAN,
@@ -81,12 +83,14 @@ import {
   rightHandBone,
 } from "./HandGrip";
 import {
+  createBombAura,
   createFuseFlame,
   findFuseAnchor,
   isFuseLikeName,
   measureBodyCenter,
   measureBodySpan,
   measureFuseDirection,
+  type BombAura,
   type FuseFlame,
 } from "./BombFuseFlame";
 
@@ -147,6 +151,8 @@ export function useSamuraiBomb(
   const handRef = useRef<THREE.Object3D | null>(null);
   /** Fünye ucundaki canlı alev (model her değiştiğinde yeniden kurulur). */
   const flameRef = useRef<FuseFlame | null>(null);
+  /** Gövde hâlesi — kuş bakışı okunurluk katmanı (aynı yaşam döngüsü). */
+  const auraRef = useRef<BombAura | null>(null);
   const frames = useRef(0);
   const calibrated = useRef(false);
   // GLB arka planda hazır olduğunda katmanı yeniden kurar (yapısal → GLB geçişi).
@@ -225,6 +231,17 @@ export function useSamuraiBomb(
           if (m.name === BOMB_FUSE_MATERIAL || isFuseLikeName(m.name)) {
             m.emissiveIntensity = BOMB_FUSE_EMISSIVE;
             m.toneMapped = false;
+          } else if (m.emissive && !m.emissiveMap) {
+            // 🧨 GÖVDE IŞIMASI (okunurluk): kendi emissive DOKUSU olmayan
+            // malzemelere zayıf sıcak bir taban verilir, böylece bomba kuş
+            // bakışı kadrajda/karakterin silüeti içinde kaybolmaz (bkz.
+            // HandGrip → BOMB_BODY_EMISSIVE). Dokulu modelde (comical_bomb)
+            // ışımayı modelin kendi dokusu + `emissive_strength` taşır; oraya
+            // düz renk yazmak emissive = renk × doku olduğu için siyah
+            // kısımlarda hiç görünmezdi. `toneMapped` ELLENMEZ: gövde ateş
+            // değil, yalnız hafif kendinden aydınlık kalmalı.
+            m.emissive.set(BOMB_BODY_EMISSIVE_COLOR);
+            m.emissiveIntensity = BOMB_BODY_EMISSIVE;
           }
         }
       });
@@ -236,9 +253,11 @@ export function useSamuraiBomb(
         .multiplyScalar(model.scale.x)
         .applyQuaternion(align);
 
-      // Önceki alev ve model varsa (yapısal → GLB) tek seferde değiştir.
+      // Önceki alev/hâle ve model varsa (yapısal → GLB) tek seferde değiştir.
       flameRef.current?.dispose();
       flameRef.current = null;
+      auraRef.current?.dispose();
+      auraRef.current = null;
       for (const child of [...pivot.children]) pivot.remove(child);
       pivot.add(model);
 
@@ -248,6 +267,14 @@ export function useSamuraiBomb(
       flame.group.position.copy(anchor);
       pivot.add(flame.group);
       flameRef.current = flame;
+
+      // 🧨 GÖVDE HÂLESİ: pivot ORİJİNİ tam olarak ölçülen gövde merkezidir
+      // (pivot konumu −gövde merkezi kadar kaydırılır), yani hâle ek offset
+      // gerektirmez. Ölçüsü normalize edilmiş DÜNYA yarıçapından gelir; kapsayıcı
+      // uzayı (grip) dünya biriminde olduğu için doğrudan karşılaştırılabilir.
+      const aura = createBombAura(BOMB_TARGET_WORLD_SPAN / 2);
+      pivot.add(aura.group);
+      auraRef.current = aura;
     };
 
     mount(bombCache ?? buildStructuralBomb());
@@ -285,6 +312,8 @@ export function useSamuraiBomb(
       for (const seg of fingers) seg.removeFromParent();
       flameRef.current?.dispose();
       flameRef.current = null;
+      auraRef.current?.dispose();
+      auraRef.current = null;
       if (bombRef.current === grip) bombRef.current = null;
       if (handRef.current === hand) handRef.current = null;
     };
@@ -294,8 +323,9 @@ export function useSamuraiBomb(
   // kez (ilk kare doğru olsun), sonra 20. karede TAZELENİR — idle klibi o an
   // oturmuş olur (kılıç kalibrasyonuyla aynı zamanlama).
   useFrame((_, dt) => {
-    // Ateş her karede canlı kalır (titreme, kor parçacıkları, ışık).
+    // Ateş ve gövde hâlesi her karede canlı kalır (titreme, ışık, nabız).
     flameRef.current?.update(dt);
+    auraRef.current?.update(dt);
     const grip = bombRef.current;
     const hand = handRef.current;
     if (!grip || !hand || calibrated.current) return;

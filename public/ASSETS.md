@@ -84,13 +84,22 @@ node scripts/build-bomba-glb.mjs
 
 Model uzayı sözleşmesi (runtime bu uzayı bilir, `src/engine/HandGrip.ts`):
 **gövde merkezi orijinde, gövde çapı 2.08 birim, fünye +Y yönünde, yanan uç
-y ≈ 1.62.** Ölçek runtime'da dünya boyuna normalize edilir. Hedef **0.26 birim**
-(`BOMB_TARGET_WORLD_SPAN`) — savaşçı ≈1.5 arena birimi olduğu için bu, karakter
-boyunun ~%17'si: MOBA kamerasında elde taşınan prop'un okunması için gereken
-ölçü. Normalizasyon **gövde** genişliğine göre yapılır; fitil/kıvılcım
+y ≈ 1.62.** Ölçek runtime'da gövde küresine göre normalize edilir. Hedef
+**0.42 birim** (`BOMB_TARGET_WORLD_SPAN` — fırlatılan/tuzak bombayla aynı ölçü:
+`0.105 × CHAR_HUD` × 2) — savaşçı ≈1.48 arena birimi olduğu için bu, karakter
+boyunun ~%28'i: kuş bakışı (top-down) oyunlarda elde taşınan
+prop **kasten** gerçek ölçüsünden ~1.6× büyük çizilir, yoksa oyuncu onu
+karakterin silüeti ve zemin karmaşasında ayırt edemez (önceki 0.26 = %18'lik
+"gerçekçi" ölçü tam bu yüzden elde okunmuyordu). Normalizasyon **gövde
+küresinin çapına** göre yapılır (bkz. yukarıdaki ölçüm notları); fitil/kıvılcım
 mesh'leri ölçümden çıkarılır (`measureBodySpan`), yoksa yana uzanan bir fitil
-kutuyu şişirip bombayı olduğundan küçük ölçeklerdi. Fitil alevinin ölçeği
-ayrıdır ve bomba büyüse de artmaz: `BOMB_FLAME_SPAN` = 0.16. Malzeme adları sabittir:
+kutuyu şişirip bombayı olduğundan küçük ölçeklerdi. Avuçta oturma mesafesi bu
+yarıçaptan türediği için ölçü değişse de bomba avuca tam oturur. Fitil alevinin
+ölçeği ayrıdır ve bomba büyüdükçe birebir büyümez: `BOMB_FLAME_SPAN` = 0.20.
+Bombada ayrıca iki okunurluk katmanı vardır: fünye ucunda canlı alev
+(`createFuseFlame`) ve gövdede kızıl-turuncu hâle + zayıf nokta ışığı
+(`createBombAura`) — ikisi de dokudan bağımsız, modele sabit gömülmez.
+Malzeme adları sabittir:
 `BombaBody`, `BombaBrass`, `BombaFuse`, `BombaFuseGlow` (fitil ucu runtime'da bu
 adla bulunup `emissiveIntensity` yükseltilir). Dosya yüklenemezse aynı uzayda
 üretilen prosedürel `buildStructuralBomb()` devreye girer — el boş kalmaz.

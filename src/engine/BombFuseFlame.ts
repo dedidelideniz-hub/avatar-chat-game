@@ -291,6 +291,117 @@ export function createFuseFlame(span: number): FuseFlame {
   return { group, update, dispose };
 }
 
+/* ------------------------ gövde hâlesi (okunurluk) ------------------------ */
+
+export interface BombAura {
+  /** Gövde merkezine oturtulacak kapsayıcı (dünya biriminde). */
+  group: THREE.Group;
+  update(dt: number): void;
+  dispose(): void;
+}
+
+/**
+ * Gövde hâlesi — elde tutulan bombayı kuş bakışı kamerada OKUNUR kılan sıcak
+ * kızıl-turuncu ışıma katmanı.
+ *
+ * NEDEN GEREKLİ: 55° izometrik kamerada el, kol ve gövde aynı renk ailesinde
+ * üst üste biner; bomba yalnızca kendi dokusuyla ayrışıyordu ve karakterin
+ * silüeti içinde kayboluyordu. MoBA/aksiyon oyunlarında elde taşınan prop'a
+ * bu yüzden HER ZAMAN hafif bir "aura" verilir: prop kadrajın neresinde olursa
+ * olsun zeminden ve karakterden ayrışır.
+ *
+ * KATMANLAR (hepsi additif — ışık yayar, görüşü kapatmaz):
+ *   · HALO: gövdenin ~3 katı geniş, çok soluk kızıl dış parıltı (asıl okunurluk
+ *     bunu sağlar: kameranın bombayı FARKETMESİ),
+ *   · ÇEKİRDEK: gövdenin ~1.6 katı, daha parlak turuncu iç parıltı,
+ *   · NOKTASAL IŞIK: kızıl-turuncu, kısa menzilli — yalnız eli ve bombanın
+ *     kendi yüzeyini ısıtır; haritayı/zeminı boyamaz (menzil = yarıçap × 8).
+ *
+ * NABIZ: nefes gibi yavaş (≈2.2 sn) açılıp kapanır — "canlı ama dikkat
+ * dağıtmayan" denge. `prefers-reduced-motion` açıksa genlik %25'e düşer
+ * (fünye aleviyle aynı kural).
+ *
+ * ÖLÇÜ: tüm boyutlar bombayı DÜNYA YARIÇAPINDAN (radius) türetilir; çağıran
+ * kapsayıcı (bkz. `SamuraiBomb` → `pivot`) dünya birimindedir, yani ölçek
+ * değişse de (skin/ölçü ayarı) hâle bombayla birlikte doğru kalır.
+ */
+export function createBombAura(radius: number): BombAura {
+  const tex = makeFlameTexture();
+  const motion = prefersReducedMotion() ? 0.25 : 1;
+
+  const group = new THREE.Group();
+  group.renderOrder = 8;
+  group.userData.isEquipment = true;
+
+  const mats: THREE.SpriteMaterial[] = [];
+  const mk = (color: string, opacity: number): THREE.SpriteMaterial => {
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      depthTest: false, // gövdenin içinden de okunsun (elde kapanmasın)
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    mats.push(mat);
+    return mat;
+  };
+
+  const haloMat = mk("#ff2d0a", 0.13);
+  const halo = new THREE.Sprite(haloMat);
+  const coreMat = mk("#ff7a1e", 0.2);
+  const core = new THREE.Sprite(coreMat);
+  for (const s of [halo, core]) {
+    s.raycast = () => {};
+    s.frustumCulled = false;
+    s.renderOrder = 8;
+    s.userData.isEquipment = true;
+    group.add(s);
+  }
+
+  // Nokta ışığı: fünye aleviyle aynı ölçek kuralı (bkz. createFuseFlame →
+  // LIGHT_INTENSITY yorumu): r155+ fiziksel birimlerde ışıma = şiddet / mesafe².
+  // Prop elin İÇİNDE olduğu için şiddet küçük tutulur; aksi hâlde avuç ve kol
+  // güneşten parlak patlar.
+  const LIGHT_INTENSITY = 0.02;
+  const light = new THREE.PointLight("#ff4d16", LIGHT_INTENSITY, radius * 8, 2);
+  light.userData.isEquipment = true;
+  group.add(light);
+
+  let time = Math.random() * 10;
+
+  const update = (dt: number) => {
+    time += Math.min(dt, 1 / 30);
+    // İki farklı hızda sinüs: tek sinüs "mekanik" okunurdu (fünye aleviyle
+    // aynı gerekçe). Genlik `motion` ile kısılır (reduced-motion).
+    const pulse =
+      1 +
+      (Math.sin(time * 2.85) * 0.5 + Math.sin(time * 4.7 + 1.3) * 0.5) *
+        0.12 *
+        motion;
+
+    halo.scale.setScalar(radius * 3.1 * pulse);
+    haloMat.opacity = 0.11 * pulse + 0.04 * motion;
+    core.scale.setScalar(radius * 1.65 * pulse);
+    coreMat.opacity = 0.17 * pulse + 0.05 * motion;
+    light.intensity = LIGHT_INTENSITY * (0.75 + 0.45 * pulse);
+  };
+
+  const dispose = () => {
+    group.removeFromParent();
+    group.clear();
+    for (const m of mats) m.dispose();
+    light.dispose();
+  };
+
+  // İlk kareyi hemen uygula (hâle bir kare boyunca sıfır ölçekte kalmasın).
+  update(1 / 60);
+
+  return { group, update, dispose };
+}
+
 /* ------------------------- ağız (fünye) noktası --------------------------- */
 
 /** Fünye/ateş taşıyan düğümleri tanıyan ad kalıbı (malzeme veya mesh adı). */

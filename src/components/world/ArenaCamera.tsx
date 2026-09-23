@@ -77,8 +77,18 @@ const FOV_L = 44; // yatayda aynı aile: basık görüntü oluşmaz
 // yani 2×) ve artık kadrajı kendisi dolduruyor; bu yüzden takip mesafesi
 // ESKİ değerine alındı — harita bağlamı (lane + yan arazi) korunur, karakter
 // görünen yüksekliğin ~%22'si olur. 4 birimlik menzil çemberi %61'de kalır.
-const DIST_P = 7.8; // görünen yükseklik ≈ 2·7.8·tan23° ≈ 6.6 birim
-const DIST_L = 8.3; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·8.3·tan22° ≈ 6.7)
+//
+// İKİNCİ KEZ YAKINLAŞTIRILDI (7.8 → 6.7 / 8.3 → 7.2): kullanıcı geri
+// bildirimi — "karakterin ÜSTÜNDEKİ aksiyonu daha rahat görmek istiyorum".
+// Elde tutulan bomba, fırlatılan mermi ve fünye alevi karakterin göğüs/omuz
+// hizasında olup bitiyor; 7.8 birimde bunlar karakterin silüetiyle aynı ekran
+// bölgesine sıkışıyordu. Yeni çerçevede görünen yükseklik ≈ 5.7 birim:
+//   · dövüşçü ekran yüksekliğinin ~%26'sı,
+//   · 4 birimlik menzil çemberi %70 (hâlâ kadraja sığıyor — nişan okunurluğu
+//     korunur, bkz. SkillshotIndicator),   · el/omuz hizası artık karakterden
+//     ayrı okunuyor.
+const DIST_P = 6.7; // görünen yükseklik ≈ 2·6.7·tan23° ≈ 5.7 birim
+const DIST_L = 7.2; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·7.2·tan22° ≈ 5.8)
 // PITCH YÜKSELTİLDİ (49° / 46° → 56.7° / 55.3°): kamera "çökük" okunuyordu,
 // karakter öne doğru yatık duruyor ve ön yüzü fazla görünüyordu. MOBA
 // kamerası tepeden daha dik bakar (Wild Rift ~55°); pitch yükselince zemin ve
@@ -87,10 +97,11 @@ const DIST_L = 8.3; // yatayda aynı dikey ölçek (FOV 44° ≈ 2·8.3·tan22°
 // çerçeveleme aynı kalır, karakter ekranda eskisi kadar büyüktür).
 const EL_P = 0.99; // ~56.7° — dikey mod
 const EL_L = 0.965; // ~55.3° — yatayda aynı dik izometrik aile
-// Harita kenar payı: kamera hedefi bu kadar içeride kalsın. Yakın kamerada
-// görünür yarı-yükseklik ≈ 3.3 birim olduğu için pay da yükseltildi —
-// böylece harita kenarında ekranın boşluğa taşması engellenir.
-const CLAMP_P = 3.0;
+// Harita kenar payı: kamera hedefi bu kadar içeride kalsın. Pay, görünür
+// yarı-yükseklikle birlikte ölçeklenir (yarı-yükseklik ≈ 2.85 birim → 2.6):
+// böylece harita kenarında ekranın boşluğa taşması engellenir ve kamera
+// karakteri fazla geriden takip etmez.
+const CLAMP_P = 2.6;
 // The -90° map runs its lane from the red base (~z 2) to the blue base
 // (~z 20) diagonally, so landscape must let the camera follow the player the
 // whole way; only a thin margin keeps it from leaving the island outright.
@@ -103,7 +114,13 @@ const LOOK_L = 0.8;
 // hizasına değil üst gövdesine kilitlenir. Odak, karakter ölçeğiyle AYNI adımı
 // izler: dünya boyu 0.60 → 0.72 olduğu için hedef de 0.60 → 0.72 çıktı, yani
 // kamera merkezi karakterin hemen üstünde kalmaya devam eder.
-const LOOK_Y = 0.78;
+//
+// BİR TIK DAHA YUKARI (0.78 → 0.86): "karakterin üstündeki aksiyon" isteği.
+// Kamera bu noktaya BAKTIĞI için hedefi yükseltmek karakteri ekranda hafifçe
+// AŞAĞI indirir ve üstünde boş kadraj açar — elde bomba, fünye alevi, ulti
+// hazırlığı ve kafanın üstünden geçen mermiler bu boşlukta okunur. Ölçü, gövde
+// boyunun ~%10'u kadar: karakter kadrajın merkezinden kopmaz.
+const LOOK_Y = 0.86;
 // Fog: dense dark haze in landscape so anything at/behind the map edge melts
 // into the background instead of reading as "island floating in space".
 // Volkanik MOBA paleti: dikey modda da gökyüzü artık gündüz mavisi değil,

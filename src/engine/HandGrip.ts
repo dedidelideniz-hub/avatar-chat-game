@@ -305,22 +305,6 @@ export function buildStructuralSword(): THREE.Group {
  * İÇİNE saplanır — parmaklar topun ortasından geçer ve "eline saplanmış, yukarı
  * fırlamış" görüntüsü çıkar. BOMB_SEAT_OUT bu yüzden ≈ bomba yarıçapıdır.
  */
-/**
- * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
- *
- * NEDEN: yükleyici gövde küresinin ÇAPINI `BOMB_TARGET_WORLD_SPAN`'e normalize
- * eder (bkz. `SamuraiBomb.mount` → `BombFuseFlame.measureBodyBall`), yani
- * bombanın dünya yarıçapı daima `BOMB_TARGET_WORLD_SPAN / 2` = 0.13'tir. Topun
- * merkezini avuç normali boyunca tam bu kadar dışarı koymak, topun yüzeyini
- * avuç merkezine DEĞDİRİR: bomba avucun çukurunda durur — ne içine gömülür ne
- * de havada asılı kalır. %2'lik pay teması okunur kılar.
- *
- * TÜRETİLMİŞ DEĞER: sabit sayı yazılsaydı hedef ölçü değiştiğinde oturma ile
- * ölçek birbirinden kopar ve bomba yine elden kaçardı (bu hata bir kez yaşandı:
- * gövde ölçüsü kaba kutudan geldiği için küçük ölçeklenen bombada oturma
- * mesafesi fazla kalıp topu avuçtan dışarı taşırıyordu).
- */
-export const BOMB_SEAT_OUT = 0.127; // = BOMB_TARGET_WORLD_SPAN / 2 × 0.98
 export const BOMB_SEAT_FINGER = 0.01; // parmaklara doğru küçük kayma
 /**
  * Fünyenin gövdeden UZAĞA yatış açısı (derece).
@@ -342,33 +326,75 @@ export const BOMB_CONTAINER_MODEL_SCALE = 1;
  * Model uzayı: gövde merkezi ORİJİN'de, gövde çapı 2.08 birim (üretilen
  * `public/models/bomba.glb` ile birebir aynı — ekseni 2.08, yüksekliği 2.74).
  *
- * HEDEF DÜNYA GENİŞLİĞİ = 0.26 birim.
+ * HEDEF DÜNYA ÇAPI = 0.42 birim (gövde küresinin çapı).
  *
- * NEDEN 0.14 DEĞİL: ilk sürüm avuç ölçüsünden (palm center 0.051, parmak
- * boğumu 0.034 → el ≈0.15 dünya birimi) yola çıkıp "elin tamamı ≈0.09"
- * varsayımıyla 0.14 seçmişti. Ölçüm eksikti — 0.09 yalnızca elin kalınlığı;
- * elin tamamı yaklaşık 0.15'tir. Sonuç, ekranda bozuk para büyüklüğünde bir
- * toptu ve kullanıcı "bomba ufacık kalmış" dedi.
+ * NEDEN GERÇEKÇİ ÖLÇÜ (0.26) BIRAKILDI: kuş bakışı (top-down) MOBA/aksiyon
+ * oyunlarında elde taşınan silah/bomba kasten gerçek boyutundan BÜYÜK
+ * çizilir; oyuncu prop'u karakterin gövdesi, eli ve zemin karmaşasından
+ * ayırt edebilmelidir. 0.26 birim ≈ 1.48 birimlik savaşçının %18'i kadardı ve
+ * 55° izometrik kamerada elde "leke" gibi kalıyordu. 0.42 = 1.6× büyütme:
+ * karakter boyunun ~%28'i — tepeden bakışta net okunur, çizgi film bombası
+ * oranında durur, karakteri kapatmaz.
  *
- * Doğru referans AVCU DEĞİL KARAKTER: savaşçı ≈1.5 arena birimi. MOBA kamera
- * mesafesinde elde taşınan bir prop'un okunması için karakter boyunun ~%15-18'i
- * gerekir → 0.22-0.27. 0.26 seçildi: karakterin başından biraz büyük, çizgi
- * film bombası oranında, kameradan net okunur. Daha küçüğü elde "leke" gibi
- * kaybolur; 0.35+ ise karakteri kapatmaya başlar.
+ * NEDEN TAM 0.42: elde tutulan bomba, FIRLATILAN ve YERE BIRAKILAN bombayla
+ * aynı cisim olmalı. Mermi/tuzak katmanları gövde yarıçapını `0.105 × CHAR_HUD`
+ * ile kurar (bkz. `arena/ProjectilePool`, `arena/BombTrapPool`); CHAR_HUD = 2
+ * olduğu için yarıçap 0.21, yani çap 0.42. Bu sabit oraya eşitlenerek üç
+ * görünüm tek ölçüye bağlandı — elde büyük, havada küçük bir bomba olmaz.
+ *
+ * ÜST SINIR: 0.5 birimin üstünde prop karakterin gövdesini ve kadraji kapatmaya
+ * başlar (Wild Rift / LoL Mobile prop ölçüleri de ~1.5-2× bandında kalır);
+ * bu yüzden 2× (0.52) yerine 1.6× seçildi. Daha büyüğü istenirse tek yer
+ * burasıdır — ölçek, avuçta oturma mesafesi ve alev ölçeği bunu izler.
  */
 export const BOMB_MODEL_SPAN = 2.08;
-export const BOMB_TARGET_WORLD_SPAN = 0.26;
+export const BOMB_TARGET_WORLD_SPAN = 0.42;
 /**
- * ALEVİN ölçek referansı — bomba genişliğinden BAĞIMSIZ ve daha küçük.
+ * Avuçtaki OTURMA MESAFESİ — gövde YARIÇAPI kadar (dünya birimi).
  *
- * NEDEN AYRI: alev bomba büyüdükçe büyümemeli. Gerçekte fitil alevinin boyu
- * fitilin boyudur, bombanın çapı değil; ayrıca `createFuseFlame` alevi `span`
- * katlarıyla kurduğu için 0.26 verilseydi alev 0.33 birime çıkar (karakterin
- * ~%22'si) ve eli/omuzu kapatırdı. 0.16 = okunur ama görüşü kapatmayan ölçü.
+ * NEDEN: yükleyici gövde küresinin ÇAPINI `BOMB_TARGET_WORLD_SPAN`'e normalize
+ * eder (bkz. `SamuraiBomb.mount` → `BombFuseFlame.measureBodyBall`), yani
+ * bombanın dünya yarıçapı daima `BOMB_TARGET_WORLD_SPAN / 2`'dir. Topun
+ * merkezini avuç normali boyunca tam bu kadar dışarı koymak, topun yüzeyini
+ * avuç merkezine DEĞDİRİR: bomba avucun çukurunda durur — ne içine gömülür ne
+ * de havada asılı kalır. %2'lik pay teması okunur kılar.
+ *
+ * TÜRETİLMİŞ DEĞER (bu yüzden burada, hedef ölçüden SONRA tanımlı): sabit sayı
+ * yazılsaydı hedef ölçü değiştiğinde oturma ile ölçek birbirinden kopar ve
+ * bomba elden kaçardı — bu hata bir kez yaşandı (gövde ölçüsü kaba kutudan
+ * geldiği için küçük ölçeklenen bombada oturma mesafesi fazla kalıp topu
+ * avuçtan dışarı taşırıyordu).
  */
-export const BOMB_FLAME_SPAN = 0.16;
+export const BOMB_SEAT_OUT = BOMB_TARGET_WORLD_SPAN * 0.5 * 0.98;
+/**
+ * ALEVİN ölçek referansı — bomba genişliğinden BAĞIMSIZ.
+ *
+ * NEDEN AYRI: alev bomba büyüdükçe birebir büyümemeli. Gerçekte fitil alevinin
+ * boyu fitilin boyudur, bombanın çapı değil; `createFuseFlame` alevi `span`
+ * katlarıyla kurduğu için bomba çapı (0.42) doğrudan verilseydi alev 0.53
+ * birime çıkar (karakterin ~%36'sı) ve eli/omuzu kapatırdı. 0.20 = bomba
+ * büyütmesine kısmen eşlik eden (0.16 → 1.25×), yine de görüşü kapatmayan ölçü.
+ */
+export const BOMB_FLAME_SPAN = 0.2;
 /** Fitil ucunun kendinden ışıma şiddeti (bloom'u besler, ekranı sislemez). */
 export const BOMB_FUSE_EMISSIVE = 2.6;
+/**
+ * GÖVDEYE kendinden ışıma (emissive) tabanı — bombanın elde "dikkat çekmesi".
+ *
+ * Kime uygulanır: yalnızca emissive DOKUSU OLMAYAN malzemelere (prosedürel
+ * yedek + `bomba.glb`). Dokulu modelde (comical_bomb.glb) ışımayı doku + modelin
+ * kendi `KHR_materials_emissive_strength` değeri taşır; oraya yazılan düz renk
+ * siyah kısımlarda hiç görünmezdi (emissive = renk × doku).
+ *
+ * ŞİDDET NEDEN BU KADAR DÜŞÜK: amaç ateş/parlama değil, uzaktan okunurluk.
+ * 0.22'de bomba kendi rengiyle okunur, karanlık çalılıkta kaybolmaz, gece
+ * atmosferinde "yanıyor" gibi görünmez. Gövde ışığını asıl taşıyan şey
+ * `createBombAura` (kızıl-turuncu hâle + zayıf nokta ışığı + kor parçacıkları)
+ * ve fünye alevidir.
+ */
+export const BOMB_BODY_EMISSIVE = 0.22;
+/** Gövde emissive rengi — sıcak kızıl-turuncu (fünye aleviyle aynı aile). */
+export const BOMB_BODY_EMISSIVE_COLOR = "#ff4d16";
 /** Model/üretilen dosyada fitil ucunu taşıyan malzeme adı. */
 export const BOMB_FUSE_MATERIAL = "BombaFuseGlow";
 
