@@ -18,10 +18,22 @@
 // uzayında fünye +Y olduğu için bomba dünyada fünyesi yukarı duracak şekilde
 // avuçta kalır — yürürken/ulti sırasında kol salınsa bile sapıtlamaz.
 //
-// GÖRSEL MODEL: `public/models/bomba.glb` (bu projede modeller saf ASCII JSON
-// glTF olarak durur — bkz. `public/ASSETS.md`; üretici:
-// `scripts/build-bomba-glb.mjs`). Dosya yüklenene kadar ve dosya yoksa
-// `buildStructuralBomb()` prosedürel modeli kullanılır → el asla boş kalmaz.
+// GÖRSEL MODEL: önce `public/models/comical_bomb.glb`, yüklenemezse
+// `public/models/bomba.glb`, o da yoksa `buildStructuralBomb()` prosedürel
+// modeli. Sıra önemli: kullanıcının eklediği model her zaman kazanır, ama
+// dosya eksik/bozuk olduğunda el asla boş kalmaz.
+//
+// Bu projede modeller saf ASCII JSON glTF olarak durur (bkz.
+// `public/ASSETS.md`): hosting boru hattı dosyaları UTF-8'e çevirdiği için
+// gerçek binary GLB bozulur. Elde binary bir GLB varsa önce çevrilmelidir:
+// `node scripts/glb-to-embedded-json.mjs public/models/comical_bomb.glb`.
+//
+// 🔥 AĞIZ ATEŞİ: modelin fünye ucunda ÇALIŞMA ZAMANINDA kurulan canlı alev
+// (`engine/BombFuseFlame`) — titreyen 4 katmanlı alev, kopan kor parçacıkları
+// ve fünye ucundan ışık veren titrek nokta ışığı. Ağız noktası modelden
+// otomatik bulunur (fünye/ateş adlı mesh-malzeme, yoksa modelin tepesi), yani
+// hem `comical_bomb.glb` hem `bomba.glb` hem prosedürel yedek aynı kuralla
+// yanar — modele özel sabit yok.
 //
 // Parmaklar: `applyFingerGrip` + `buildFingerMeshes` ile kapalı yumruk kurulur,
 // bomba gerçekten "kavranmış" görünür (bu rig'te parmak geometrisi yok).
@@ -49,8 +61,20 @@ import {
   handBoneScale,
   rightHandBone,
 } from "./HandGrip";
+import {
+  createFuseFlame,
+  findFuseAnchor,
+  isFuseLikeName,
+  type FuseFlame,
+} from "./BombFuseFlame";
 
-const BOMB_URL = "/models/bomba.glb";
+/**
+ * Bomba modelleri, ÖNCELİK SIRASIYLA. İlk yüklenen kullanılır:
+ *   1. `comical_bomb.glb` — kullanıcının eklediği asıl model,
+ *   2. `bomba.glb`        — projede üretilmiş yedek model,
+ *   3. (dosya yok)        — `buildStructuralBomb()` prosedürel model.
+ */
+const BOMB_URLS = ["/models/comical_bomb.glb", "/models/bomba.glb"] as const;
 
 /**
  * Bombayı elinde tutan skinler. Şimdilik YALNIZ Samuray: yeni bir skin isterse
@@ -73,6 +97,23 @@ let bombCache: THREE.Object3D | null = null;
 let bombLoading: Promise<void> | null = null;
 
 /**
+ * Modelleri sırayla dener; hepsi başarısız olursa `null` döner (çağıran
+ * prosedürel modele düşer). Her aday için ayrı uyarı basılır ki "neden yedek
+ * model görünüyor" sorusu konsoldan okunabilsin.
+ */
+async function loadBombScene(): Promise<THREE.Object3D | null> {
+  for (const url of BOMB_URLS) {
+    try {
+      const gltf = await bombLoader.loadAsync(url);
+      return gltf.scene;
+    } catch (e) {
+      console.warn(`[Samurai] bomba modeli yüklenemedi: ${url}`, e);
+    }
+  }
+  return null;
+}
+
+/**
  * Bomba katmanı. Döndürdüğü `bombRef` (kapsayıcı grup) yetenek katmanı için
  * açıktır: ulti fırlatılırken el boşalsın istenirse `visible` ile kapatılır.
  */
@@ -82,6 +123,8 @@ export function useSamuraiBomb(
 ): { bombRef: React.MutableRefObject<THREE.Group | null> } {
   const bombRef = useRef<THREE.Group | null>(null);
   const handRef = useRef<THREE.Object3D | null>(null);
+  /** Fünye ucundaki canlı alev (model her değiştiğinde yeniden kurulur). */
+  const flameRef = useRef<FuseFlame | null>(null);
   const frames = useRef(0);
   const calibrated = useRef(false);
   // GLB arka planda hazır olduğunda katmanı yeniden kurar (yapısal → GLB geçişi).
@@ -129,30 +172,41 @@ export function useSamuraiBomb(
           const m = entry as THREE.MeshStandardMaterial;
           // Fitil ucunun ışıması: GLB'de emissive kuvveti 1'in üstüne çıkamaz
           // (ekstra uzantı gerekir), bu yüzden malzeme ADIYLA hedeflenir.
-          if (m.name === BOMB_FUSE_MATERIAL) {
+          // Ad kalıbı kullanılır: `comical_bomb.glb` kendi adını taşıyabilir
+          // (Fuse/Glow/Flame…), prosedürel yedek ise `BombaFuseGlow`.
+          if (m.name === BOMB_FUSE_MATERIAL || isFuseLikeName(m.name)) {
             m.emissiveIntensity = BOMB_FUSE_EMISSIVE;
             m.toneMapped = false;
           }
         }
       });
-      // Önceki model varsa (yapısal → GLB) tek seferde değiştir.
+      // 🔥 Ağız ateşinin oturacağı nokta: model köküne GÖRELİ bulunur, sonra
+      // modelin ölçeğiyle çarpılıp kapsayıcı (dünya birimi) uzayına taşınır.
+      // Model henüz `pivot`a eklenmeden hesaplandığı için ölçek zinciri
+      // karışmaz; `pivot`ta kaydırma/döndürme yoksa nokta doğrudan geçerlidir.
+      const anchor = findFuseAnchor(model).multiplyScalar(model.scale.x);
+
+      // Önceki alev ve model varsa (yapısal → GLB) tek seferde değiştir.
+      flameRef.current?.dispose();
+      flameRef.current = null;
       for (const child of [...pivot.children]) pivot.remove(child);
       pivot.add(model);
+
+      // Alev modelin fünye ucunda durur; bomba boyuyla ölçeklenir.
+      const flame = createFuseFlame(BOMB_TARGET_WORLD_SPAN);
+      flame.group.position.copy(anchor);
+      pivot.add(flame.group);
+      flameRef.current = flame;
     };
 
     mount(bombCache ?? buildStructuralBomb());
     if (!bombCache && !bombLoading) {
-      bombLoading = bombLoader
-        .loadAsync(BOMB_URL)
-        .then((gltf) => {
-          bombCache = gltf.scene;
-          bombLoading = null;
-          setReady((n) => n + 1); // katmanı GLB ile yeniden kur
-        })
-        .catch((e) => {
-          console.warn("[Samurai] bomba GLB yüklenemedi, yapısal model:", e);
-          bombLoading = null;
-        });
+      bombLoading = loadBombScene().then((scene) => {
+        bombLoading = null;
+        if (!scene) return; // tüm adaylar düştü → prosedürel model kalır
+        bombCache = scene;
+        setReady((n) => n + 1); // katmanı GLB ile yeniden kur
+      });
     }
 
     grip.userData.isEquipment = true;
@@ -173,6 +227,8 @@ export function useSamuraiBomb(
     return () => {
       grip.removeFromParent();
       for (const seg of fingers) seg.removeFromParent();
+      flameRef.current?.dispose();
+      flameRef.current = null;
       if (bombRef.current === grip) bombRef.current = null;
       if (handRef.current === hand) handRef.current = null;
     };
@@ -180,7 +236,9 @@ export function useSamuraiBomb(
 
   // Kılıçla aynı kural: yönelim CANLI el pozundan bir kez kalibre edilir.
   // 20 kare beklenir ki idle klibi otursun (kılıç kalibrasyonuyla aynı zamanlama).
-  useFrame(() => {
+  useFrame((_, dt) => {
+    // Ateş her karede canlı kalır (titreme, kor parçacıkları, ışık).
+    flameRef.current?.update(dt);
     const grip = bombRef.current;
     const hand = handRef.current;
     if (!grip || !hand || calibrated.current) return;

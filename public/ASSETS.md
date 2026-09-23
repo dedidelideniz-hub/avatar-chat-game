@@ -22,7 +22,28 @@ Regenerate from a real GLB:
 node scripts/glb-to-embedded-json.mjs public/models/5v5_game_map.glb
 ```
 
-### `models/bomba.glb` (samurayın elindeki bomba)
+### `models/comical_bomb.glb` (samurayın elindeki bomba — birincil model)
+
+Samurayın elindeki bomba **bu dosyadan** yüklenir; yüklenemezse sırayla
+`models/bomba.glb` ve en son prosedürel `buildStructuralBomb()` devreye girer
+(sıra: `src/engine/SamuraiBomb.ts` → `BOMB_URLS`).
+
+**BU DOSYA ŞU AN PROJEDE YOK** — eklendiğinde kendiliğinden kullanılır.
+
+⚠️ Gerçek (binary) bir GLB yüklenirse hosting boru hattı dosyayı UTF-8'e
+çevirirken bozar (yukarıdaki kural: `.glb`'ler bu yüzden embedded-JSON'dır).
+Bu yüzden dosyayı yüklemeden ÖNCE çevir:
+
+```bash
+node scripts/glb-to-embedded-json.mjs public/models/comical_bomb.glb
+```
+
+Ağız ateşi modele bağlı DEĞİLDİR: fünye ucu çalışma zamanında bulunur (adı
+`fuse|wick|glow|flame|fire|ember|spark|alev` olan mesh/malzeme; yoksa modelin
+en üst noktası) ve oraya canlı alev kurulur — bkz. `src/engine/BombFuseFlame.ts`.
+Model değişse de ateş çalışır; yeni bir sabit gerekmez.
+
+### `models/bomba.glb` (samurayın elindeki bomba — yedek model)
 
 Bu dosya hazır bir GLB'den çevrilmedi, **üretildi**: `scripts/build-bomba-glb.mjs`
 bombayı üç.js geometrileriyle kurar (gövde + pirinç bilezikler + fitil + yanan uç),
