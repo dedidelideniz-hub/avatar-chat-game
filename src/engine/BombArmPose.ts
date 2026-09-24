@@ -32,11 +32,29 @@
 // neredeyse düz olduğu için gürültülü bir sonuç verirdi.
 //
 // KAPSAM: yalnızca görsel katman. Klip çalmaya devam eder (bacaklar/gövde
-// animasyonu bozulmaz); bu modül SADECE iki kol zincirini (üst kol + ön kol)
-// hedefler ve klibi kesmez — animasyon kemikleri yazdıktan SONRA çalışır.
+// animasyonu bozulmaz); bu modül SADECE iki kol zincirini (üst kol + ön kol) ve
+// kavrayan PARMAKLARI hedefler, klibi kesmez — animasyon kemikleri yazdıktan
+// SONRA çalışır.
+//
+// ✊ PARMAK KAVRAMASI (`applyFingerGrip`): `skin-samuray.glb`nin Idle/Walk/Run
+// klipleri parmak kemiklerini de (Index1-3, iki elde) sürmektedir. Kavrama pozu
+// bir kez, katman kurulurken verildiğinde ilk `mixer.update` onu siler — yani
+// eller bombayı tutmaz, açık parmaklı kalır ve top elde değil, elin ÖNÜNDE
+// duran bir küre gibi okunur. Bu yüzden kavrama HER KAREDE, animasyon kemikleri
+// yazdıktan sonra tazelenir (klibin parmak animasyonu bilinçli olarak ezilir:
+// hokkabazlık sırasında el sabit bir kavrama pozunda olmalıdır).
+//
+// Kavrama MİKTARI da fazdan sürülür: fırlatan el bırakıştan sonra açılır,
+// yakalayan el top gelirken açılır ve top avuca değdiği anda kapanır. Yani
+// parmaklar da top ve kol ile AYNI fazı okur (üçü ayrı ayrı senkronlanmaz).
 import * as THREE from "three";
 import { JUGGLE_HOLD_FRAC, type JuggleSample } from "./BombJuggle";
-import { leftHandBone, rightHandBone } from "./HandGrip";
+import {
+  BOMB_FINGER_GRIP,
+  applyFingerGrip,
+  leftHandBone,
+  rightHandBone,
+} from "./HandGrip";
 
 /** Model uzayında yukarı (karakter +Y üzerinde durur). */
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
@@ -81,6 +99,20 @@ const THROW_SPAN = 0.18;
 const THROW_RISE = 0.09;
 /** Uçuşun sonundan bu kadar önce yakalayan el uzanmaya başlar. */
 const APPROACH_START = 0.24;
+
+/* ── Parmak kavraması (atışla senkron) ──────────────────────────── */
+
+/** Bırakış/yakalama anında parmakların açılma oranı (taban kavramanın katı). */
+const GRIP_OPEN = 0.62;
+/** Fırlatan el: açılmanın bırakıştan sonra tamamlanma süresi (leg oranı). */
+const THROW_OPEN_RISE = 0.07;
+/** Açılmanın tepe noktası (bırakıştan sonra) ve sönme genişliği. */
+const THROW_OPEN_PEAK = 0.12;
+const THROW_OPEN_SPAN = 0.2;
+/** Yakalayan el: uçuşun sonundan bu kadar önce parmaklar açılmaya başlar. */
+const CATCH_OPEN_START = 0.3;
+/** Yakaladıktan sonra kapanışın tamamlanma süresi (tutuş oranı). */
+const CATCH_CLOSE_SPAN = 0.18;
 
 /** Dirsek yönü karışımı (aşağı / dışa / geriye), karakterin kendi eksenlerinde. */
 const POLE_DOWN = 0.6;
@@ -454,4 +486,20 @@ export function applyBombArmPose(
 
   solveArm(clone, rig.right, vTargetR);
   solveArm(clone, rig.left, vTargetL);
+
+  // ✊ PARMAKLAR: aynı fazdan sürülür. Fırlatan el bırakıştan hemen sonra
+  // açılır (tepe bırakışın ~%12'si kadar sonra, girişi rampalı olduğu için
+  // bırakış anında sıfırdan başlar → bir karede açılmaz), yakalayan el top
+  // yaklaşırken açılır ve tutuşun başında kapanır (tutuş başındaki değer
+  // uçuşun sonundaki değerle AYNI: 1 → döngü sınırında zıplama yok).
+  const throwOpen =
+    u > hf ? bump(u, hf + THROW_OPEN_PEAK, THROW_OPEN_SPAN) * smoothstep(hf, hf + THROW_OPEN_RISE, u) : 0;
+  const catchOpen =
+    u > hf
+      ? smoothstep(1 - CATCH_OPEN_START, 0.97, u)
+      : 1 - smoothstep(0, CATCH_CLOSE_SPAN, holdU);
+  const gripRight = BOMB_FINGER_GRIP * (1 - GRIP_OPEN * (fromIsRight ? throwOpen : catchOpen));
+  const gripLeft = BOMB_FINGER_GRIP * (1 - GRIP_OPEN * (fromIsRight ? catchOpen : throwOpen));
+  applyFingerGrip(clone, gripRight, rig.right.hand);
+  applyFingerGrip(clone, gripLeft, rig.left.hand);
 }
