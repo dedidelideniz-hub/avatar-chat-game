@@ -18,6 +18,13 @@
 // atış ile kol KENDİLİĞİNDEN senkron kalır — ayrı bir animasyon klibi, kemik
 // eğrisi ya da zaman çizelgesi yok.
 //
+// HEDEFLER OMUZDAN SÜRÜLÜR (`carryRight`/`carryLeft` ofsetleri): sabit bir
+// model noktası hedef olsaydı yürüyüşün dikey salınımı sırasında gövde
+// yaylanırken eller (ve onlara bağlı bomba) havada asılı kalırdı — "tepsi
+// taşıyan karakter" görüntüsü. Omuz her karede canlı okunur ve ölçülen avuç
+// ofseti ona eklenir: eller gövdeyle birlikte yaylanır, göğüs önü geometrisi
+// ise aynı kalır.
+//
 // NEDEN IK (sabit açı değil): hedef bir AÇI değil NOKTA'dır. Kemik eksenleri
 // rig'den rig'e değişir; "şu eksende +0.3 rad" bir modelde kolu kaldırır,
 // diğerinde burkar (aynı gerekçeyle `BattleStance` da açı yerine ölçüm yapar).
@@ -136,9 +143,21 @@ export interface BombArmChain {
 export interface BombArmRig {
   right: BombArmChain;
   left: BombArmChain;
-  /** Taşıma pozundaki el noktaları (model uzayı). */
+  /** Taşıma pozundaki el noktaları (model uzayı, ÖLÇÜM ANINDAKİ omuz pozisyonuna göre). */
   baseRight: THREE.Vector3;
   baseLeft: THREE.Vector3;
+  /**
+   * Taşıma noktasının OMUZ orijinine göre ofseti (model uzayı).
+   *
+   * NEDEN OFSET (sabit nokta değil): hedefler mutlak bir model noktası
+   * olsaydı gövde salındığında (yürüyüş dikey salınımı, nefes, öne eğilme)
+   * eller havada asılı kalır, bomba da onlarla birlikte sabit yükseklikte
+   * süzülen bir tepsi gibi okunurdu. Omuz her karede CANLI okunup ofset ona
+   * eklenir; böylece eller ve bomba gövdeyle birlikte yaylanır (kol boyu ve
+   * göğüs önü geometrisi ise değişmez — ofset ölçüm anındaki farktır).
+   */
+  carryRight: THREE.Vector3;
+  carryLeft: THREE.Vector3;
   /** Kol boyu (l1 + l2) — tüm ötelemeler bunun katı. */
   reach: number;
   /** Karakterin kendi ileri ekseni (model uzayı). */
@@ -156,6 +175,10 @@ const vElbow = new THREE.Vector3();
 const vTarget = new THREE.Vector3();
 const vTargetR = new THREE.Vector3();
 const vTargetL = new THREE.Vector3();
+const vShoulderR = new THREE.Vector3();
+const vShoulderL = new THREE.Vector3();
+const vCarryR = new THREE.Vector3();
+const vCarryL = new THREE.Vector3();
 const vBone = new THREE.Vector3();
 const vChild = new THREE.Vector3();
 const vNow = new THREE.Vector3();
@@ -405,11 +428,15 @@ export function findBombArmRig(clone: THREE.Object3D): BombArmRig | null {
         .addScaledVector(WORLD_UP, -reach * BASE_DOWN),
     );
 
+  const baseRight = baseOf(rightPos, 1);
+  const baseLeft = baseOf(leftPos, -1);
   return {
     right: chain(rightShoulder, rightUpper, rightFore, rightHand, rightL1, rightL2, 1),
     left: chain(leftShoulder, leftUpper, leftFore, leftHand, leftL1, leftL2, -1),
-    baseRight: baseOf(rightPos, 1),
-    baseLeft: baseOf(leftPos, -1),
+    baseRight,
+    baseLeft,
+    carryRight: baseRight.clone().sub(rightPos),
+    carryLeft: baseLeft.clone().sub(leftPos),
     reach,
     forward,
   };
@@ -473,14 +500,23 @@ export function applyBombArmPose(
   // Karşı fazlı hafif salınım: iki el aynı anda aynı yöne kaymasın (robotik durur).
   const sway = Math.sin(time * SWAY_SPEED) * SWAY_AMOUNT;
 
+  // Hedefler OMUZDAN türetilir: omuz canlı okunur (gövde salınımı/yürüyüş
+  // yaylanması) ve ölçülen avuç ofseti ona eklenir. Sabit bir model noktası
+  // kullanılsaydı gövde altında hareket ederken ellerle birlikte bomba da
+  // havada asılı kalırdı.
+  localPos(clone, rig.right.shoulder, vShoulderR);
+  localPos(clone, rig.left.shoulder, vShoulderL);
+  vCarryR.copy(rig.carryRight).add(vShoulderR);
+  vCarryL.copy(rig.carryLeft).add(vShoulderL);
+
   // DİKKAT: hedef vektörleri `solveArm` içindeki geçici vektörlerle
   // PAYLAŞILAMAZ (solveArm onların içini kullanır) — ayrı tamponlar.
   vTargetR
-    .copy(rig.baseRight)
+    .copy(vCarryR)
     .addScaledVector(rig.forward, (liftRight * LIFT_FORWARD + sway) * rig.reach)
     .addScaledVector(WORLD_UP, (liftRight * LIFT_UP - dipRight) * rig.reach);
   vTargetL
-    .copy(rig.baseLeft)
+    .copy(vCarryL)
     .addScaledVector(rig.forward, (liftLeft * LIFT_FORWARD - sway) * rig.reach)
     .addScaledVector(WORLD_UP, (liftLeft * LIFT_UP - dipLeft) * rig.reach);
 
