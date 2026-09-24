@@ -25,14 +25,31 @@
 // Sebep: eller gövdenin iki yanındadır ve düz çizgi tam gövdenin içinden geçer;
 // bomba karnın içinden geçiyormuş gibi görünürdü. `pull` yönü, karakterin
 // merkezinden dışa doğru verilir.
+//
+// ZAMANLAMA / KONUM AYRIMI (`sampleJuggleTiming`): kol pozunu süren katman
+// (`engine/BombArmPose`) için yalnızca FAZ bilgisi gerekir; uç noktalar ise
+// ancak kollar pozlandıktan sonra okunabilir. Bu yüzden faz hesabı ayrı bir
+// fonksiyona alındı: kol pozlanır → avuç noktaları okunur → konum onlardan
+// türetilir. İki fonksiyon aynı `time` ile çağrıldığı için bomba ile kol
+// daima aynı fazdadır (senkron bozulmaz).
 import * as THREE from "three";
 
-/** Topun bir elde BEKLEME süresi (sn) — yakalama ezilmesi bu sürede toparlanır. */
+/* * Topun bir elde BEKLEME süresi (sn) — yakalama ezilmesi bu sürede toparlanır. */
 export const JUGGLE_HOLD_S = 0.42;
 /** Havada geçen süre (sn). Kısa → telaşlı, uzun → ağır. */
 export const JUGGLE_TOSS_S = 0.58;
 /** Atış sırasında havada atılan tam tur (takla) sayısı. */
 export const JUGGLE_SPINS = 1;
+/**
+ * Bir bacağın (tutuş + atış) toplam süresi ve tutuşun bu süre içindeki oranı.
+ *
+ * Oran dışa açılır çünkü KOL POZU da bu iki fazın sınırında döner: fırlatan el
+ * bırakıştan sonra yükselir, yakalayan el tutuşun sonunda uzanır
+ * (bkz. `engine/BombArmPose`). Sabit bir sayı yazılsaydı süreler değiştiğinde
+ * kol ile top birbirinden kayardı.
+ */
+export const JUGGLE_LEG_S = JUGGLE_HOLD_S + JUGGLE_TOSS_S;
+export const JUGGLE_HOLD_FRAC = JUGGLE_HOLD_S / JUGGLE_LEG_S;
 /**
  * Yayın tepe yüksekliği (dünya birimi) — ellerin ÜSTÜNDEN, gövdenin önünden
  * geçmesini sağlayan şey budur (eller gövdenin iki yanındayken bükülme yönü
@@ -59,6 +76,12 @@ export interface JuggleSample {
   position: THREE.Vector3;
   /** Uçuşun hangi fazında olduğumuz (0 = atış anı, 1 = yakalama anı). */
   tossT: number;
+  /**
+   * Bacağın tamamı içindeki konum: 0 = tutuşun başı, `JUGGLE_HOLD_FRAC` =
+   * bırakış anı, 1 = yakalama anı. Kol pozunun faz anahtarıdır ve konumdan
+   * BAĞIMSIZDIR (uç noktalar bilinmeden de okunabilir).
+   */
+  legT: number;
   /** Takla açısı (radyan) ve ekseni. */
   spinAngle: number;
   spinAxis: THREE.Vector3;
@@ -76,6 +99,93 @@ export interface JuggleSample {
   direction: number;
 }
 
+/** Faz hesabının çıktısı — konumdan bağımsız tüm ölçüler. */
+interface JuggleTiming {
+  holding: boolean;
+  /** Tutuş fazının 0..1 ilerlemesi (tutuş değilse 0). */
+  holdU: number;
+  /** Uçuş ilerlemesi 0..1 (tutuşta 0). */
+  flightU: number;
+  /** Sönümlü (smoothstep) uçuş ilerlemesi — konum da bunu izler. */
+  eased: number;
+  /** true → bu bacak `from`dan `to`ya gider. */
+  forward: boolean;
+  /** Ezilme/gerilme katsayısı (1 = normal). */
+  squash: number;
+  /** Takla oranı 0..1 (tutuşta 1'e DONAR; 2π ≡ 0 olduğu için sıçrama olmaz). */
+  spinU: number;
+  legT: number;
+}
+
+/**
+ * Zamana göre faz çözümü — TEK doğruluk kaynağı. `sampleBombJuggle` ve
+ * `sampleJuggleTiming` bu fonksiyonun üstüne kurulur, böylece kol ile top aynı
+ * fazı okur (iki ayrı hesap bir gün ayrışıp senkronu bozamaz).
+ */
+function resolveTiming(time: number): JuggleTiming {
+  const cycle = JUGGLE_LEG_S * 2;
+  const wrapped = ((time % cycle) + cycle) % cycle;
+  const forward = wrapped < JUGGLE_LEG_S;
+  const phase = forward ? wrapped : wrapped - JUGGLE_LEG_S;
+
+  const holding = phase < JUGGLE_HOLD_S;
+  const holdU = holding ? THREE.MathUtils.clamp(phase / JUGGLE_HOLD_S, 0, 1) : 0;
+  /** Uçuş ilerlemesi — tutuş fazında 0 (top elde durur). */
+  const flightU = holding
+    ? 0
+    : THREE.MathUtils.clamp((phase - JUGGLE_HOLD_S) / JUGGLE_TOSS_S, 0, 1);
+  // Takla: tutuşta son değerde (2π) DONAR. 2π ≡ 0 olduğu için top el değiştirirken
+  // dönüş sıçramaz; her yeni atış sıfırdan başlar.
+  const spinU = holding ? 1 : flightU;
+
+  // Yumuşak iniş/kalkış (smoothstep): el ile temas anlarında hız sıfıra yakın,
+  // ortada hızlı — gerçek bir atışın hissidir (lineer hareket robotik durur).
+  const eased = flightU * flightU * (3 - 2 * flightU);
+
+  // Ezilme: yakalamadan sonra tutuş boyunca toparlanır; uçuşun iki ucunda
+  // (atış/yakalama) en yüksek, ortada hafif gerilme.
+  const catchAmt = holding
+    ? Math.max(0, 1 - phase / (JUGGLE_HOLD_S * HOLD_RECOVER))
+    : Math.max(0, 1 - (1 - flightU) / CATCH_WINDOW);
+  const squash =
+    1 -
+    JUGGLE_CATCH_SQUASH * catchAmt +
+    JUGGLE_FLIGHT_STRETCH * Math.sin(Math.PI * flightU);
+
+  return {
+    holding,
+    holdU,
+    flightU,
+    eased,
+    forward,
+    squash,
+    spinU,
+    legT: holding
+      ? holdU * JUGGLE_HOLD_FRAC
+      : JUGGLE_HOLD_FRAC + flightU * (1 - JUGGLE_HOLD_FRAC),
+  };
+}
+
+/**
+ * Yalnızca ZAMANLAMA alanlarını doldurur (konum ve iki el GEREKMEZ).
+ *
+ * Kol pozu katmanı bunu kullanır: avuç noktaları ancak kollar pozlandıktan
+ * sonra bilinebildiği için (bomba konumu onlardan türetilir) faz hesabı önce
+ * yapılmalıdır. Aynı `time` ile `sampleBombJuggle` çağrıldığında iki sonuç
+ * birebir aynı fazdadır.
+ */
+export function sampleJuggleTiming(time: number, out: JuggleSample): JuggleSample {
+  const t = resolveTiming(time);
+  out.legT = t.legT;
+  out.tossT = t.flightU;
+  out.holding = t.holding;
+  out.direction = t.forward ? 1 : -1;
+  out.handMix = t.forward ? t.eased : 1 - t.eased;
+  out.spinAngle = t.spinU * Math.PI * 2 * JUGGLE_SPINS;
+  out.squash = t.squash;
+  return out;
+}
+
 /**
  * Zamana göre atış fazını çözer. Döngü İKİ bacaktan oluşur (sağ→sol, sol→sağ),
  * yani bomba başladığı ele geri döner ve hareket kesintisiz görünür.
@@ -87,37 +197,22 @@ export function sampleBombJuggle(
   time: number,
   out: JuggleSample,
 ): JuggleSample {
-  const leg = JUGGLE_HOLD_S + JUGGLE_TOSS_S;
-  const cycle = leg * 2;
-  const wrapped = ((time % cycle) + cycle) % cycle;
-  const forward = wrapped < leg;
-  const phase = forward ? wrapped : wrapped - leg;
-
-  const holding = phase < JUGGLE_HOLD_S;
-  /** Uçuş ilerlemesi — tutuş fazında 0 (top elde durur). */
-  const flightU = holding
-    ? 0
-    : THREE.MathUtils.clamp((phase - JUGGLE_HOLD_S) / JUGGLE_TOSS_S, 0, 1);
-  // Takla: tutuşta son değerde (2π) DONAR. 2π ≡ 0 olduğu için top el değiştirirken
-  // dönüş sıçramaz; her yeni atış sıfırdan başlar.
-  const spinU = holding ? 1 : flightU;
+  const t = resolveTiming(time);
+  sampleJuggleTiming(time, out);
 
   // Gidiş-dönüş: ikinci bacakta uç noktalar YER DEĞİŞTİRİR, yoksa ikinci atış da
   // aynı yöne gider ve animasyon "geri sarma" gibi görünür.
-  const a = forward ? from : to;
-  const b = forward ? to : from;
+  const a = t.forward ? from : to;
+  const b = t.forward ? to : from;
 
-  // Yumuşak iniş/kalkış (smoothstep): el ile temas anlarında hız sıfıra yakın,
-  // ortada hızlı — gerçek bir atışın hissi budur (lineer hareket robotik durur).
-  const eased = flightU * flightU * (3 - 2 * flightU);
-  out.position.lerpVectors(a, b, eased);
-  out.position.y += Math.sin(Math.PI * flightU) * JUGGLE_ARC;
-  out.position.addScaledVector(pull, Math.sin(Math.PI * flightU) * JUGGLE_BEND);
+  out.position.lerpVectors(a, b, t.eased);
+  out.position.y += Math.sin(Math.PI * t.flightU) * JUGGLE_ARC;
+  out.position.addScaledVector(pull, Math.sin(Math.PI * t.flightU) * JUGGLE_BEND);
 
   // Tutuşta top avuca iyice oturur: küçük bir "yerleşme" hareketi (yakalayınca
   // hafif yukarı, sonra oturur) — statik duruş hissini kırar.
-  if (holding) {
-    out.position.y += Math.sin(Math.PI * (phase / JUGGLE_HOLD_S)) * 0.014;
+  if (t.holding) {
+    out.position.y += Math.sin(Math.PI * t.holdU) * 0.014;
   }
 
   // Takla: bomba UÇTUĞU YÖNE doğru yuvarlanır. Eksen, gidiş yönüne ve dünyaya
@@ -129,23 +224,5 @@ export function sampleBombJuggle(
   out.spinAxis.crossVectors(UP, tmpDir);
   if (out.spinAxis.lengthSq() < 1e-8) out.spinAxis.set(1, 0, 0);
   out.spinAxis.normalize();
-  out.direction = forward ? 1 : -1;
-  out.spinAngle = spinU * Math.PI * 2 * JUGGLE_SPINS;
-
-  // Ezilme: yakalamadan sonra tutuş boyunca toparlanır; uçuşun iki ucunda
-  // (atış/yakalama) en yüksek, ortada hafif gerilme.
-  const catchAmt = holding
-    ? Math.max(0, 1 - phase / (JUGGLE_HOLD_S * HOLD_RECOVER))
-    : Math.max(0, 1 - (1 - flightU) / CATCH_WINDOW);
-  out.squash =
-    1 -
-    JUGGLE_CATCH_SQUASH * catchAmt +
-    JUGGLE_FLIGHT_STRETCH * Math.sin(Math.PI * flightU);
-
-  // Yönelim geçişi konumla AYNI eğriyi izler: top uçarken fünye bir elin
-  // yatışından diğerininkine yumuşakça geçer (slerp çağıranda yapılır).
-  out.handMix = forward ? eased : 1 - eased;
-  out.holding = holding;
-  out.tossT = flightU;
   return out;
 }

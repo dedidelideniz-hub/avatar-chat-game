@@ -577,54 +577,49 @@ export function bombSeatLocal(
 }
 
 /**
- * Bomba kapsayıcısını CANLI el pozundan hizalar (kılıç kalibrasyonunun bomba
- * karşılığı). İki parçalıdır ve ikisi de el-yerel olarak saklanır, yani kol
- * salındığında top elden kaymaz:
- *
- *  1. **Konum** (`bombSeatLocal`): top avucun çukuruna oturur.
- *  2. **Yönelim**: fünye düz yukarı değil, gövdeden UZAĞA `BOMB_TILT_OUT_DEG`
- *     kadar yatık durur; ayrıca fünyenin kendi eğimi (model +X) dışa bakar.
- *
- * Kapsayıcının DÜNYA yönelimi sabitlenir (kılıçta bıçağın dikey kalmasıyla
- * aynı kural): dünya yukarısını referans alan bir taban kurulur ve el-yerel
- * olarak dondurulur, böylece ayakta/yürürken fünye daima okunur bir yönde
- * kalır. Ölçeğe DOKUNMAZ (dev kılıç regresyonunun dersi).
- *
- * `reference`, "dışa" yönünü türetmek için kullanılan karakter köküdür (klon):
- * dışa = yatayda kökten ele giden yön. Kol tam gövdenin önündeyse (yatay sapma
- * yok) avuç normalinin yatay bileşenine düşülür — sabit/sahte bir eksen
- * kullanılmaz.
- *
- * DÖNÜŞ DEĞERİ: hesaplanan "istenen dünya yönelimi" de döner. Bomba elde sabit
- * durmadığı için (bkz. `engine/BombJuggle`) takla atarken bu taban yönelimin
- * korunması gerekir; çağıran onu saklar ve üzerine taklayı bindirir.
+ * "Gövdeden uzağa" yatay yön (birim vektör): kökten EL KEMİĞİNE bakar.
+ * Kol tam gövdenin önündeyse (yatay sapma yok) avuç normalinin yatay
+ * bileşenine düşer — sabit/sahte bir eksen ASLA kullanılmaz.
  */
-export function calibrateBombGrip(
+function outwardOf(
   hand: THREE.Object3D,
-  grip: THREE.Object3D,
+  reference: THREE.Object3D | null | undefined,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  const handQuat = handWorldQuat(hand);
+  out.set(0, 0, 0);
+  if (reference) {
+    reference.updateWorldMatrix(true, false);
+    const handPos = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+    const refPos = new THREE.Vector3().setFromMatrixPosition(reference.matrixWorld);
+    out.set(handPos.x - refPos.x, 0, handPos.z - refPos.z);
+  }
+  if (out.lengthSq() < 1e-6) {
+    out.set(0, 0, 1).applyQuaternion(handQuat);
+    out.y = 0;
+  }
+  if (out.lengthSq() < 1e-8) out.set(1, 0, 0);
+  return out.normalize();
+}
+
+/**
+ * Bombayı tutarken İSTENEN DÜNYA yönelimi: fünye düz yukarı değil, gövdeden
+ * uzağa `BOMB_TILT_OUT_DEG` kadar yatıktır; fünyenin kendi eğimi (model +X) de
+ * dışa bakar.
+ *
+ * NEDEN AYRI ve NEDEN HER KARE ÇAĞRILABİLİR: kol pozunu artık `BombArmPose`
+ * IK ile sürüyor, yani elin dönüşü kare kare değişiyor. Yönelim elin ALTINA
+ * el-yerel dondurulsaydı fünye elin dönüşüyle birlikte savrulur ve top-down
+ * kamerada okunmaz hâle gelirdi. Bu yüzden fünye DÜNYA yönelimine kilitlenir ve
+ * çağıran bunu her karede yeniden hesaplayabilir (uydurma sabit eksen yok;
+ * yön yine ölçülen `outward`tan gelir). Kapsayıcıya DOKUNMAZ.
+ */
+export function bombGripWorldQuat(
+  hand: THREE.Object3D,
   reference?: THREE.Object3D | null,
 ): THREE.Quaternion {
   hand.updateWorldMatrix(true, false);
-
-  const handQuat = handWorldQuat(hand);
-  const handPos = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
-  const outward = new THREE.Vector3();
-  if (reference) {
-    reference.updateWorldMatrix(true, false);
-    const refPos = new THREE.Vector3().setFromMatrixPosition(reference.matrixWorld);
-    outward.set(handPos.x - refPos.x, 0, handPos.z - refPos.z);
-  }
-  if (outward.lengthSq() < 1e-6) {
-    // Kol gövdenin tam önünde/altında: avuç normalinin yatay bileşenini kullan.
-    outward.set(0, 0, 1).applyQuaternion(handQuat);
-    outward.y = 0;
-  }
-  if (outward.lengthSq() < 1e-8) outward.set(1, 0, 0);
-  outward.normalize();
-
-  // 1) Avuçta oturma: avuç çukurundan DIŞA (gövdeden uzağa) — bomba elin ve
-  // gövdenin içinde kalmaz, MOBA prop'u gibi silüetin dışında durur.
-  grip.position.copy(bombSeatLocal(hand, outward));
+  const outward = outwardOf(hand, reference, new THREE.Vector3());
 
   const tilt = THREE.MathUtils.degToRad(BOMB_TILT_OUT_DEG);
   const fuse = new THREE.Vector3(0, 1, 0)
@@ -639,11 +634,38 @@ export function calibrateBombGrip(
   if (xAxis.lengthSq() < 1e-8) xAxis.set(1, 0, 0).addScaledVector(fuse, -fuse.x);
   xAxis.normalize();
   const zAxis = new THREE.Vector3().crossVectors(xAxis, fuse).normalize();
-  const desired = new THREE.Quaternion().setFromRotationMatrix(
+  return new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(xAxis, fuse, zAxis),
   );
+}
 
-  grip.quaternion.copy(handQuat).invert().multiply(desired);
+/**
+ * Bomba kapsayıcısını CANLI el pozundan hizalar (kılıç kalibrasyonunun bomba
+ * karşılığı). İki parçalıdır ve ikisi de el-yerel olarak saklanır, yani kol
+ * salındığında top elden kaymaz:
+ *
+ *  1. **Konum** (`bombSeatLocal`): top avucun çukuruna oturur.
+ *  2. **Yönelim** (`bombGripWorldQuat`): fünye gövdeden uzağa yatık, okunur.
+ *
+ * `reference`, "dışa" yönünü türetmek için kullanılan karakter köküdür (klon).
+ *
+ * DÖNÜŞ DEĞERİ: hesaplanan "istenen dünya yönelimi" de döner. Bomba elde sabit
+ * durmadığı için (bkz. `engine/BombJuggle`) çağıran onu kullanır.
+ */
+export function calibrateBombGrip(
+  hand: THREE.Object3D,
+  grip: THREE.Object3D,
+  reference?: THREE.Object3D | null,
+): THREE.Quaternion {
+  hand.updateWorldMatrix(true, false);
+
+  // 1) Avuçta oturma: avuç çukurundan DIŞA (gövdeden uzağa) — bomba elin ve
+  // gövdenin içinde kalmaz, MOBA prop'u gibi silüetin dışında durur.
+  grip.position.copy(bombSeatLocal(hand, outwardOf(hand, reference, new THREE.Vector3())));
+
+  // 2) Yönelim: fünye okunur dünyada kalsın.
+  const desired = bombGripWorldQuat(hand, reference);
+  grip.quaternion.copy(handWorldQuat(hand)).invert().multiply(desired);
   grip.updateMatrixWorld(true);
   return desired;
 }

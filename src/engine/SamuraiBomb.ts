@@ -58,9 +58,18 @@
 //
 // 🤹 CANLI TUTUŞ (`engine/BombJuggle`): bomba elde sabit durmaz — TUT → AT →
 // YAKALA ritmiyle sağ ve sol el arasında durmadan atılır (tutuşta avuca oturur,
-// uçuşta yay çizip takla atar, yakalanınca hafifçe ezilir). Konum her karede İKİ
-// EL KEMİĞİNİN dünya konumundan türetilir, yani kolları sallayan animasyon
-// klibi ne yaparsa atış da ona uyar; ayrı bir animasyon klibi gerekmez.
+// uçuşta yay çizip takla atar, yakalanınca hafifçe ezilir).
+//
+// 🤹 KOL HAREKETİ (`engine/BombArmPose`): bombanın konumu el kemiklerinden
+// türetildiği için, ellerin NEREDE olduğu atışın nerede görüneceğini belirler.
+// Idle klibi kolları kalça hizasında bıraktığı için ilk sürümde top iki SABİT
+// elin arasında süzülen bir küre gibi okunuyordu (kullanıcı geri bildirimi:
+// "bomba oynuyor fakat kolları oynamıyor"). Artık her karede iki kol da
+// hedeflenen el noktalarına iki-kemik IK ile getirilir; hedefler aynı
+// `BombJuggle` fazından sürülür (fırlatan el bırakıştan sonra yükselir,
+// yakalayan el top gelirken uzanır, tutan el topu göğüs önünde taşır). Sıra
+// ŞART: önce kol pozlanır, SONRA avuç noktaları okunur — böylece top kolu bir
+// kare geriden takip etmez ve atış ile kol kendiliğinden senkron kalır.
 //
 // Yönelim de iki elin KENDİ kalibrasyonundan gelir ve uçuş boyunca aralarında
 // yumuşakça geçer: fünye sağ elde sağa, sol elde sola yatar (tek taban
@@ -91,6 +100,7 @@ import {
   BOMB_MODEL_SPAN,
   BOMB_TARGET_WORLD_SPAN,
   applyFingerGrip,
+  bombGripWorldQuat,
   bombSeatLocal,
   buildFingerMeshes,
   buildStructuralBomb,
@@ -101,7 +111,8 @@ import {
   palmHoldPoint,
   rightHandBone,
 } from "./HandGrip";
-import { sampleBombJuggle, type JuggleSample } from "./BombJuggle";
+import { sampleBombJuggle, sampleJuggleTiming, type JuggleSample } from "./BombJuggle";
+import { applyBombArmPose, findBombArmRig, type BombArmRig } from "./BombArmPose";
 import {
   createBombAura,
   createFuseFlame,
@@ -173,28 +184,18 @@ export function useSamuraiBomb(
   const flameRef = useRef<FuseFlame | null>(null);
   /** Gövde hâlesi — kuş bakışı okunurluk katmanı (aynı yaşam döngüsü). */
   const auraRef = useRef<BombAura | null>(null);
-  const frames = useRef(0);
-  const calibrated = useRef(false);
   // Per-instance material clones are disposed when the attached model is replaced/unmounted.
   const equippedMaterials = useRef<THREE.Material[]>([]);
   /** 🤹 Atış animasyonu: zamanlayıcı, iki el ve yeniden kullanılan geçici vektörler. */
   const otherHandRef = useRef<THREE.Object3D | null>(null);
   const boneScaleRef = useRef(1);
   const juggleTime = useRef(0);
-  /**
-   * Kalibrasyonun bulduğu taban yönelim, ELE GÖRE saklanır; takla bu tabanın
-   * üzerine bindirilir. Dünya yönelimi saklansaydı karakter döndüğünde fünye
-   * eski dünya yönünde kalırdı (gövdeyle birlikte dönmesi gerekir).
-   *
-   * İKİ EL için ayrı ayrı tutulur: "fünye gövdeden uzağa yatsın" kuralı sağ ve
-   * sol el için ZIT yönlere denk gelir (sağ elde sağa, sol elde sola). Tek bir
-   * taban kullanmak, top sol ele geçtiğinde fünyeyi gövdenin üstüne devirirdi.
-   */
-  const baseQuatRef = useRef(new THREE.Quaternion());
-  const baseLeftQuatRef = useRef(new THREE.Quaternion());
+  /** 🤹 Kol zinciri (iki-kemik IK) — bomba konumu bu pozlandıktan SONRA okunur. */
+  const armRigRef = useRef<BombArmRig | null>(null);
   const juggle = useRef<JuggleSample>({
     position: new THREE.Vector3(),
     tossT: 0,
+    legT: 0,
     spinAngle: 0,
     spinAxis: new THREE.Vector3(1, 0, 0),
     squash: 1,
@@ -370,8 +371,6 @@ export function useSamuraiBomb(
     handRef.current = hand;
     otherHandRef.current = otherHand;
     boneScaleRef.current = boneScale;
-    frames.current = 0;
-    calibrated.current = false;
     juggleTime.current = 0;
 
     // Parmak pozu: yumruk DEĞİL, topu saran avuç (bkz. `BOMB_FINGER_GRIP`).
@@ -387,17 +386,18 @@ export function useSamuraiBomb(
       fingers.push(...buildFingerMeshes(clone, otherHand));
     }
 
-    // İlk kareyi de doğru göster: kalibrasyon 20. karede (idle klibi oturunca)
-    // tazelenir, ama ilk 0.33 sn boyunca bomba elde savrulmasın. İki elin tabanı
-    // da aynı pozdan okunur (bkz. `baseQuatRef`).
-    baseQuatRef.current
-      .copy(handWorldQuat(hand).invert())
-      .multiply(calibrateBombGrip(hand, grip, clone));
-    if (otherHand) {
-      baseLeftQuatRef.current
-        .copy(handWorldQuat(otherHand).invert())
-        .multiply(calibrateBombGrip(otherHand, grip, clone));
-    }
+    // 🤹 KOL ZİNCİRİ: bomba iki elin arasında atıldığı için kolların da
+    // hedeflenen noktalara gitmesi gerekir (bkz. `engine/BombArmPose`). Ölçüm
+    // BURADA, model henüz dinlenme pozundayken yapılır: kol boyları ve yan
+    // eksen klibin pozundan bağımsızdır, dinlenme pozunda ise omuzlar daha
+    // güvenilir okunur. Zincir eksikse `null` kalır ve katman eski davranışına
+    // (kollar klibe göre, bomba iki el arasında) döner — bomba kaybolmaz.
+    armRigRef.current = otherHand ? findBombArmRig(clone) : null;
+
+    // İlk kareyi de doğru göster: kapsayıcı avuca kalibre edilir. Yönelim zaten
+    // her karede tazelendiği için (bkz. kare döngüsü) burada ölçülen şey
+    // yalnızca ilk karenin KONUMUDUR.
+    calibrateBombGrip(hand, grip, clone);
 
     return () => {
       grip.removeFromParent();
@@ -411,12 +411,15 @@ export function useSamuraiBomb(
       if (bombRef.current === grip) bombRef.current = null;
       if (handRef.current === hand) handRef.current = null;
       if (otherHandRef.current === otherHand) otherHandRef.current = null;
+      armRigRef.current = null;
     };
   }, [clone, skinUrl, ready]);
 
-  // Kılıçla aynı kural: yönelim CANLI el pozundan kalibre edilir. Kurulumda bir
-  // kez (ilk kare doğru olsun), sonra 20. karede TAZELENİR — idle klibi o an
-  // oturmuş olur (kılıç kalibrasyonuyla aynı zamanlama).
+  // Kılıçla aynı kural: yönelim CANLI el pozundan türetilir. Farkı: kol pozunu
+  // artık `BombArmPose` IK ile her karede sürdüğü için elin dönüşü sürekli
+  // değişir; taban yönelim de bu yüzden HER KAREDE yeniden hesaplanır. (Eskiden
+  // 20. karede bir kez tazeleniyordu ve ilk 20 kare boyunca top kalibrasyonsuz
+  // konumda kalıp o karede sıçrıyordu.)
   useFrame((_, dt) => {
     // Ateş ve gövde hâlesi her karede canlı kalır (titreme, ışık, nabız).
     flameRef.current?.update(dt);
@@ -425,27 +428,29 @@ export function useSamuraiBomb(
     const hand = handRef.current;
     if (!grip || !hand) return;
 
-    // İlk 20 kare: idle klibi oturana kadar elde sabit dur (kalibrasyon).
-    if (!calibrated.current) {
-      frames.current += 1;
-      if (frames.current < 20) return;
-      baseQuatRef.current
-        .copy(handWorldQuat(hand).invert())
-        .multiply(calibrateBombGrip(hand, grip, clone));
-      // Sol elin tabanı da AYNI karede tazelenir: iki yönelim farklı pozlardan
-      // okunursa top el değiştirirken fünye sıçrar.
-      if (otherHandRef.current) {
-        baseLeftQuatRef.current
-          .copy(handWorldQuat(otherHandRef.current).invert())
-          .multiply(calibrateBombGrip(otherHandRef.current, grip, clone));
-      }
-      calibrated.current = true;
+    const other = otherHandRef.current;
+    const t = scratch.current;
+
+    // 🤹 Faz TEK yerden ilerler: kol pozu ile bomba aynı zamanı okumak zorunda,
+    // yoksa top kolu bir kare geriden takip eder.
+    juggleTime.current += dt;
+
+    // 🤹 ÖNCE KOLLAR, SONRA TOP: bombanın konumu avuç noktalarından türetildiği
+    // için, kollar BU KAREDE pozlanmadan uç noktalar bilinemez. Kol pozuna
+    // yalnızca faz alanları gerekir (`sampleJuggleTiming`), yani konumdan önce
+    // çağrılabilir.
+    const armRig = armRigRef.current;
+    if (armRig && other) {
+      applyBombArmPose(
+        clone,
+        armRig,
+        sampleJuggleTiming(juggleTime.current, juggle.current),
+        juggleTime.current,
+      );
     }
 
-    const other = otherHandRef.current;
     if (!other) return; // tek elli rig: kalibre edilmiş sabit tutuş kalır
 
-    const t = scratch.current;
     const handQuat = handWorldQuat(hand);
 
     // Atışın iki ucu: ellerin AVUÇ merkezleri, elde tutuş ötelemesiyle birlikte
@@ -464,20 +469,24 @@ export function useSamuraiBomb(
     if (pull.lengthSq() > 0.09) pull.normalize();
     else pull.set(0, 0, 0);
 
-    juggleTime.current += dt;
     const sample = sampleBombJuggle(t.a, t.b, pull, juggleTime.current, juggle.current);
 
     // Konum: dünya → kapsayıcının parent'ı (sağ el) yerel uzayı.
     grip.position.copy(sample.position);
     hand.worldToLocal(grip.position);
 
-    // Yönelim: HER elin kendi tabanı DÜNYA uzayına çevrilir, sonra topun hangi
-    // elde olduğuna göre (`handMix`) aralarında yumuşak geçiş yapılır. Böylece
-    // fünye sol eldeyken de gövdeden UZAĞA (sola) yatar; takla ise DÜNYA
-    // uzayında bindirilir (bomba uçtuğu yöne yuvarlanır) ve sonuç sağ elin
+    // Yönelim: HER el için İSTENEN dünya yönelimi ayrı ayrı hesaplanır (fünye
+    // gövdeden uzağa yatar; sağ elde sağa, sol elde sola — tek taban top sola
+    // geçtiğinde fünyeyi gövdenin üstüne devirirdi), sonra topun hangi elde
+    // olduğuna göre (`handMix`) aralarında yumuşak geçiş yapılır. Takla ise
+    // DÜNYA uzayında bindirilir (bomba uçtuğu yöne yuvarlanır) ve sonuç sağ elin
     // yerel uzayına çevrilir — kapsayıcı o elin çocuğudur.
-    t.rightBase.copy(handQuat).multiply(baseQuatRef.current);
-    t.leftBase.copy(handWorldQuat(other)).multiply(baseLeftQuatRef.current);
+    //
+    // Kapsayıcıya DOKUNMAYAN bu hesaplama bilinçli: `calibrateBombGrip` de
+    // kapsayıcının KONUMUNU yazar, oysa konum biraz aşağıda atış eğrisinden
+    // geliyor.
+    t.rightBase.copy(bombGripWorldQuat(hand, clone));
+    t.leftBase.copy(bombGripWorldQuat(other, clone));
     t.desired.copy(t.rightBase).slerp(t.leftBase, sample.handMix);
     t.spin.setFromAxisAngle(sample.spinAxis, sample.spinAngle);
     t.desired.premultiply(t.spin);
