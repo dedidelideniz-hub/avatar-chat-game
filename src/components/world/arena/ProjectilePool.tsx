@@ -18,8 +18,13 @@
 // Havuzlar ayrıdır: bir görünümü değiştirmek diğerini etkilemez.
 import { useFrame } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import {
+  createBombInstance,
+  subscribeBombSource,
+  type BombInstance,
+} from "@/engine/BombModel";
 import {
   BOLT_VFX,
   BOMB_PALETTE,
@@ -93,14 +98,47 @@ export function ProjectilePool({
   const flameTrails = useRef<(THREE.Mesh | null)[]>([]);
 
   // 🧨 Fırlatılan bomba havuzu (samuray ultisi) — ateş topundan AYRI görünüm:
-  // demir gövde + pirinç bilezik + yanan fitil ucu + sıcak uçuş izi.
+  // samurayın ELİNDEKİ modelin birebir aynısı (`engine/BombModel`) + canlı fünye
+  // alevi + sıcak uçuş izi. Model örnekleri imperatif takılır (bkz. aşağıdaki
+  // etki): havuz her kare yeniden çizilmez, yalnız konum/dönüş yazılır.
   const bombRoots = useRef<(THREE.Group | null)[]>([]);
   const bombSpins = useRef<(THREE.Group | null)[]>([]);
-  const bombSparks = useRef<(THREE.Mesh | null)[]>([]);
   const bombTrails = useRef<(THREE.Mesh | null)[]>([]);
   const bombGrounds = useRef<(THREE.Mesh | null)[]>([]);
+  /** Slotlara takılı bomba örnekleri (alevleri her kare ilerler). */
+  const bombInstances = useRef<BombInstance[]>([]);
+  // GLB arka planda gelince örnekler yeniden kurulur (yapısal → GLB geçişi).
+  const [bombModelReady, setBombModelReady] = useState(0);
 
-  useFrame((state) => {
+  // `load: false` — 20 MB'lık modeli havuz başlatmaz. Samuray sahnede varsa onun
+  // katmanı yüklemeyi zaten başlatır ve haber bize de gelir; yoksa zaten hiç
+  // uçan bomba olmaz (bkz. `engine/BombModel` → `subscribeBombSource`).
+  useEffect(
+    () => subscribeBombSource(() => setBombModelReady((n) => n + 1), { load: false }),
+    [],
+  );
+
+  // 🧨 Elindeki bombanın AYNISI uçuşta: ölçü/merkez/fünye hizası ve alev
+  // `engine/BombModel`ten gelir, yani havadaki cisim eldekinden farklı
+  // görünemez. Nokta IŞIĞI burada KAPATILIR: aynı anda dört bomba uçabiliyor ve
+  // her nokta ışığı sahnedeki TÜM malzemelerin maliyetini artırır — uçuşu
+  // okunur kılan şey zaten sıcak iz ve zemindeki ışık lekesi.
+  useEffect(() => {
+    const mounted: BombInstance[] = [];
+    for (const spin of bombSpins.current) {
+      if (!spin) continue;
+      const instance = createBombInstance({ flame: true, flameLight: false });
+      spin.add(instance.root);
+      mounted.push(instance);
+    }
+    bombInstances.current = mounted;
+    return () => {
+      bombInstances.current = [];
+      for (const instance of mounted) instance.dispose();
+    };
+  }, [bombModelReady]);
+
+  useFrame((state, dt) => {
     const list = projsRef.current;
     const time = state.clock.elapsedTime;
     let flameSlot = 0;
@@ -423,7 +461,6 @@ export function ProjectilePool({
         if (si < BOMB_POOL) {
           const bRoot = bombRoots.current[si];
           const spin = bombSpins.current[si];
-          const spark = bombSparks.current[si];
           const trailEl = bombTrails.current[si];
           const groundEl = bombGrounds.current[si];
           if (bRoot) {
@@ -438,12 +475,8 @@ export function ProjectilePool({
             spin.rotation.x = time * 5.2 + i * 0.7;
             spin.rotation.z = time * 3.4 + i;
           }
-          if (spark) {
-            const beat = 0.7 + 0.3 * Math.sin(time * 22 + i);
-            spark.scale.setScalar(beat);
-            (spark.material as THREE.MeshBasicMaterial).opacity =
-              0.6 + 0.4 * beat;
-          }
+          // Fünye alevi canlı kalır (titreme, kor parçacıkları, ışık yok).
+          bombInstances.current[si]?.update(dt);
           if (trailEl) {
             const sp = Math.hypot(p.vx, p.vy) || 1;
             const dx = p.vx / sp;
@@ -721,7 +754,7 @@ export function ProjectilePool({
         </group>
       ))}
 
-      {/* ══ 🧨 Fırlatılan bomba — demir gövde + pirinç bilezik + yanan fitil ══ */}
+      {/* ══ 🧨 Fırlatılan bomba — samurayın ELİNDEKİ modelin aynısı + yanan fitil ══ */}
       {Array.from({ length: BOMB_POOL }).map((_, i) => (
         <group
           key={`bomb-${i}`}
@@ -765,54 +798,12 @@ export function ProjectilePool({
             />
           </mesh>
 
+          {/* dönen gövde: uçuşta takla atan GERÇEK bomba modeli buraya takılır */}
           <group
             ref={(el) => {
               bombSpins.current[i] = el;
             }}
-          >
-            {/* demir gövde */}
-            <mesh raycast={() => null}>
-              <sphereGeometry args={[0.105 * CHAR_HUD, 16, 12]} />
-              <meshStandardMaterial
-                color={BOMB_PALETTE.iron}
-                metalness={0.72}
-                roughness={0.36}
-                emissive="#12161c"
-                emissiveIntensity={0.3}
-              />
-            </mesh>
-            {/* pirinç bilezik (bombayı eldeki modelle aynı dil yapar) */}
-            <mesh raycast={() => null}>
-              <torusGeometry
-                args={[0.105 * CHAR_HUD, 0.016 * CHAR_HUD, 6, 22]}
-              />
-              <meshStandardMaterial
-                color={BOMB_PALETTE.brass}
-                metalness={0.85}
-                roughness={0.28}
-                emissive="#6d4c0d"
-                emissiveIntensity={0.3}
-              />
-            </mesh>
-            {/* yanan fitil ucu — havada nabız atar */}
-            <mesh
-              ref={(el) => {
-                bombSparks.current[i] = el;
-              }}
-              position={[0, 0.15 * CHAR_HUD, 0]}
-              raycast={() => null}
-            >
-              <sphereGeometry args={[0.045 * CHAR_HUD, 10, 8]} />
-              <meshBasicMaterial
-                color={BOMB_PALETTE.spark}
-                transparent
-                opacity={0.85}
-                blending={THREE.AdditiveBlending}
-                depthWrite={false}
-                toneMapped={false}
-              />
-            </mesh>
-          </group>
+          />
         </group>
       ))}
 

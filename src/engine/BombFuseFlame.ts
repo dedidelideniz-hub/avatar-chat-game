@@ -74,8 +74,31 @@ export interface FuseFlame {
   group: THREE.Group;
   /** Kare başına ilerletir (`dt` saniye). */
   update(dt: number): void;
+  /**
+   * Alev tonunu TEHLİKEYE kaydırır (0 = amber/normal, 1 = kırmızı/alarm).
+   * Yere bırakılan tuzakta fitil yanarken kullanılır: alev amberden kırmızıya
+   * döner ("bu şey patlamak üzere") — ekstra ışık/mesh eklemeden, yalnız renk
+   * ve parlaklıkla. Elde taşınan bomba 0'da bırakır (hep sıcak amber).
+   */
+  setAlert(amount: number): void;
   dispose(): void;
 }
+
+/** Alevin normal (amber) ve alarm (kırmızı) tonları — `setAlert` aralarında geçer. */
+const FLAME_CALM = {
+  halo: "#ff5c12",
+  body: "#ff8a1e",
+  tongue: "#ffd25a",
+  core: "#fff3c4",
+  light: "#ff7a1e",
+} as const;
+const FLAME_ALERT = {
+  halo: "#ff2408",
+  body: "#ff3a12",
+  tongue: "#ff8a3c",
+  core: "#ffd0a0",
+  light: "#ff2a10",
+} as const;
 
 interface Ember {
   sprite: THREE.Sprite;
@@ -92,8 +115,16 @@ interface Ember {
 /**
  * Bomba ağzı için canlı alev kurar. `span` = bombanın dünya genişliği
  * (samuray bombası için `BOMB_TARGET_WORLD_SPAN`) — tüm ölçüler bundan türer.
+ *
+ * `options.light: false` → fünye ışığı kurulmaz. Havuzlarda (yere konan tuzak,
+ * uçan bomba) aynı anda onlarca alev olabildiği için her birine nokta ışığı
+ * eklemek sahnedeki TÜM malzemelerin maliyetini artırırdı; orada okunurluğu
+ * zaten kurulma halkası/tehlike diski ve uçuş izi taşıyor.
  */
-export function createFuseFlame(span: number): FuseFlame {
+export function createFuseFlame(
+  span: number,
+  options?: { light?: boolean },
+): FuseFlame {
   const tex = makeFlameTexture();
   const motion = prefersReducedMotion() ? 0.25 : 1;
   const baseY = 0.1 * span; // alevin dip kotu (fünye ucunun hemen üstü)
@@ -152,9 +183,14 @@ export function createFuseFlame(span: number): FuseFlame {
   // eli bembeyaz yakardı. 0.014, tam elin üstünde güneşle yarışan sıcak bir
   // parıltı verir.
   const LIGHT_INTENSITY = 0.014;
-  const light = new THREE.PointLight("#ff7a1e", LIGHT_INTENSITY, span * 6, 2);
-  light.userData.isEquipment = true;
-  group.add(light);
+  const light =
+    options?.light === false
+      ? null
+      : new THREE.PointLight("#ff7a1e", LIGHT_INTENSITY, span * 6, 2);
+  if (light) {
+    light.userData.isEquipment = true;
+    group.add(light);
+  }
 
   // Kor parçacıkları (alevden kopan minik kıvılcımlar).
   const embers: Ember[] = [];
@@ -192,6 +228,23 @@ export function createFuseFlame(span: number): FuseFlame {
   let flick = 1;
   let target = 1;
   let nextPick = 0;
+  /** Tehlike tonu 0..1 (`setAlert`) — renk geçişi kare başına buradan okunur. */
+  let alert = 0;
+  // Kare başına ayırma yapmamak için ton çiftleri BİR KEZ kurulur.
+  const calm = {
+    halo: new THREE.Color(FLAME_CALM.halo),
+    body: new THREE.Color(FLAME_CALM.body),
+    tongue: new THREE.Color(FLAME_CALM.tongue),
+    core: new THREE.Color(FLAME_CALM.core),
+    light: new THREE.Color(FLAME_CALM.light),
+  };
+  const danger = {
+    halo: new THREE.Color(FLAME_ALERT.halo),
+    body: new THREE.Color(FLAME_ALERT.body),
+    tongue: new THREE.Color(FLAME_ALERT.tongue),
+    core: new THREE.Color(FLAME_ALERT.core),
+    light: new THREE.Color(FLAME_ALERT.light),
+  };
 
   /** Bir kor parçacığını alevin dibinde yeniden doğurur. */
   const respawn = (e: Ember) => {
@@ -255,9 +308,23 @@ export function createFuseFlame(span: number): FuseFlame {
     // Sprite'ı kendi ekseninde yatırmak "yalayan alev" okuması verir.
     tongueMat.rotation = Math.sin(time * 7.9) * 0.22 * motion;
 
+    // 🔴 TEHLİKE TONU: alarm arttıkça tüm katmanlar amberden kırmızıya kayar ve
+    // alev biraz daha parlar ("fitil kısaldı" okuması). Elde taşınan bombada
+    // `alert` 0 kaldığı için hiçbir şey değişmez.
+    if (alert > 0) {
+      haloMat.color.copy(calm.halo).lerp(danger.halo, alert);
+      bodyMat.color.copy(calm.body).lerp(danger.body, alert);
+      tongueMat.color.copy(calm.tongue).lerp(danger.tongue, alert);
+      coreMat.color.copy(calm.core).lerp(danger.core, alert);
+    }
+
     // Işık: titremeyle birlikte nefes alır.
-    light.intensity = LIGHT_INTENSITY * (0.6 + 0.8 * f) * (1 - 0.35 * amp);
-    light.position.set(0, baseY + span * 0.3, 0);
+    if (light) {
+      light.color.copy(calm.light).lerp(danger.light, alert);
+      light.intensity =
+        LIGHT_INTENSITY * (0.6 + 0.8 * f) * (1 - 0.35 * amp) * (1 + 0.7 * alert);
+      light.position.set(0, baseY + span * 0.3, 0);
+    }
 
     // Kor parçacıkları: yükselir, hafifçe salınır, söner.
     for (const e of embers) {
@@ -278,17 +345,21 @@ export function createFuseFlame(span: number): FuseFlame {
     }
   };
 
+  const setAlert = (amount: number) => {
+    alert = THREE.MathUtils.clamp(amount, 0, 1);
+  };
+
   const dispose = () => {
     group.removeFromParent();
     group.clear();
     for (const m of mats) m.dispose();
-    light.dispose();
+    light?.dispose();
   };
 
   // İlk kareyi hemen uygula (alev bir kare boyunca sıfır ölçekte kalmasın).
   update(1 / 60);
 
-  return { group, update, dispose };
+  return { group, update, setAlert, dispose };
 }
 
 /* ------------------------ gövde hâlesi (okunurluk) ------------------------ */

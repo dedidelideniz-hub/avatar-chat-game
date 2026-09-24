@@ -39,10 +39,13 @@
 // yok): dünya yukarısı referans alınıp el-yerel dondurulur, yani kol salınsa
 // bile fünye okunur bir yönde kalır; konum ise avuçla birlikte gider.
 //
-// GÖRSEL MODEL: önce `public/models/comical_bomb.glb`, yüklenemezse
-// `public/models/bomba.glb`, o da yoksa `buildStructuralBomb()` prosedürel
-// modeli. Sıra önemli: kullanıcının eklediği model her zaman kazanır, ama
-// dosya eksik/bozuk olduğunda el asla boş kalmaz.
+// GÖRSEL MODEL + ILIK ÖLÇÜ/HİZA: `engine/BombModel`ten gelir (TEK kaynak).
+// Bomba oyunun üç yerinde göründüğü için (elde / havada / yerde) normalizasyon,
+// malzeme ve fünye alevi orada bir kez yazılır; bu modül yalnız KONUM ve
+// YÖNELİM ile ilgilenir. Model seçimi de oradadır: önce kullanıcının
+// `public/models/comical_bomb.glb`si, sonra `bomba.glb`, o da yoksa prosedürel
+// yedek — yani el hiçbir koşulda boş kalmaz. GLB arka planda gelirse katman
+// `subscribeBombSource` ile yeniden kurulur.
 //
 // Bu projede modeller saf ASCII JSON glTF olarak durur (bkz.
 // `public/ASSETS.md`): hosting boru hattı dosyaları UTF-8'e çevirdiği için
@@ -105,24 +108,15 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
 import { findBone } from "./EquipmentRegistry";
-import { prepareHeldEquipment } from "./HeldEquipment";
 import {
-  BOMB_BODY_EMISSIVE,
-  BOMB_BODY_EMISSIVE_COLOR,
   BOMB_CONTAINER_MODEL_SCALE,
   BOMB_FINGER_GRIP,
-  BOMB_FLAME_SPAN,
-  BOMB_FUSE_EMISSIVE,
-  BOMB_FUSE_MATERIAL,
-  BOMB_MODEL_SPAN,
   BOMB_TARGET_WORLD_SPAN,
   applyFingerGrip,
   bombGripWorldQuat,
   bombSeatLocal,
   buildFingerMeshes,
-  buildStructuralBomb,
   calibrateBombGrip,
   handBoneMaxScale,
   handWorldQuat,
@@ -139,24 +133,10 @@ import {
   type BombArmRig,
 } from "./BombArmPose";
 import {
-  createBombAura,
-  createFuseFlame,
-  findFuseAnchor,
-  isFuseLikeName,
-  measureBodyCenter,
-  measureBodySpan,
-  measureFuseDirection,
-  type BombAura,
-  type FuseFlame,
-} from "./BombFuseFlame";
-
-/**
- * Bomba modelleri, ÖNCELİK SIRASIYLA. İlk yüklenen kullanılır:
- *   1. `comical_bomb.glb` — kullanıcının eklediği asıl model,
- *   2. `bomba.glb`        — projede üretilmiş yedek model,
- *   3. (dosya yok)        — `buildStructuralBomb()` prosedürel model.
- */
-const BOMB_URLS = ["/models/comical_bomb.glb", "/models/bomba.glb"] as const;
+  createBombInstance,
+  subscribeBombSource,
+  type BombInstance,
+} from "./BombModel";
 
 /**
  * Bombayı elinde tutan skinler. Şimdilik YALNIZ Samuray: yeni bir skin isterse
@@ -166,34 +146,6 @@ const BOMB_SKIN_URLS = new Set<string>(["/models/skin-samuray.glb"]);
 
 export const isBombSkin = (skinUrl: string | null | undefined): boolean =>
   !!skinUrl && BOMB_SKIN_URLS.has(skinUrl);
-
-/** Bomba GLB'si Meshopt ile sıkıştırılmış olabilir; decoder three-stdlib'de. */
-const bombLoader = (() => {
-  const loader = new GLTFLoader();
-  loader.setMeshoptDecoder(MeshoptDecoder());
-  return loader;
-})();
-
-/** Yüklenen bomba sahnesi (tüm dövüşçüler paylaşır) + uçuştaki yükleme. */
-let bombCache: THREE.Object3D | null = null;
-let bombLoading: Promise<void> | null = null;
-
-/**
- * Modelleri sırayla dener; hepsi başarısız olursa `null` döner (çağıran
- * prosedürel modele düşer). Her aday için ayrı uyarı basılır ki "neden yedek
- * model görünüyor" sorusu konsoldan okunabilsin.
- */
-async function loadBombScene(): Promise<THREE.Object3D | null> {
-  for (const url of BOMB_URLS) {
-    try {
-      const gltf = await bombLoader.loadAsync(url);
-      return gltf.scene;
-    } catch (e) {
-      console.warn(`[Samurai] bomba modeli yüklenemedi: ${url}`, e);
-    }
-  }
-  return null;
-}
 
 /**
  * 🧨 Aksiyona giriş harmanının süresi (sn).
@@ -268,12 +220,12 @@ export function useSamuraiBomb(
 ): { bombRef: React.MutableRefObject<THREE.Group | null> } {
   const bombRef = useRef<THREE.Group | null>(null);
   const handRef = useRef<THREE.Object3D | null>(null);
-  /** Fünye ucundaki canlı alev (model her değiştiğinde yeniden kurulur). */
-  const flameRef = useRef<FuseFlame | null>(null);
-  /** Gövde hâlesi — kuş bakışı okunurluk katmanı (aynı yaşam döngüsü). */
-  const auraRef = useRef<BombAura | null>(null);
-  // Per-instance material clones are disposed when the attached model is replaced/unmounted.
-  const equippedMaterials = useRef<THREE.Material[]>([]);
+  /**
+   * Elde tutulan bomba örneği (model + alev + hâle). Kurulum/ölçü/normalizasyon
+   * `engine/BombModel`te tek kaynaktan gelir; burada yalnız yaşam döngüsü
+   * tutulur ve her karede `update(dt)` çağrılır.
+   */
+  const instanceRef = useRef<BombInstance | null>(null);
   /** 🤹 Atış animasyonu: zamanlayıcı, iki el ve yeniden kullanılan geçici vektörler. */
   const otherHandRef = useRef<THREE.Object3D | null>(null);
   const boneScaleRef = useRef(1);
@@ -348,130 +300,26 @@ export function useSamuraiBomb(
     grip.position.copy(bombSeatLocal(hand));
     // Kemik ölçeğini söndür: kapsayıcı içindeki 1 birim = 1 dünya birimi.
     grip.scale.setScalar(BOMB_CONTAINER_MODEL_SCALE / boneScale);
-    // `pivot` MODEL-UZAYI düzeltmesidir (gövde merkezi → orijin, fünye → +Y).
-    // Değerleri model ölçülerek `mount` içinde kurulur.
-    const pivot = new THREE.Group();
-    grip.add(pivot);
 
-    const mount = (source: THREE.Object3D) => {
-      const model = SkeletonUtils.clone(source);
-      model.updateMatrixWorld(true);
-      // ÖLÇEK REFERANSI = GÖVDE KÜRESİNİN ÇAPI (ya da kutunun XZ genişliği).
-      // Fitil/kıvılcım mesh'leri ile üçgene bağlı olmayan "başıboş" köşeler
-      // ölçümden ÇIKARILIR (bkz. `measureBodySpan` / `bodyPoints`): yana uzanan
-      // bir fitil ya da yüzeyden kopuk köşeler kutuyu şişirip bombayı olduğundan
-      // küçük ölçekler. Avuçta oturma mesafesi de aynı referanstan türediği
-      // için (yarıçap) bomba hangi model olursa olsun avuca değer.
-      //
-      // ÜÇÜ DE ölçek uygulanmadan ÖNCE ölçülür (modelin kendi birimi).
-      const span = measureBodySpan(model) || BOMB_MODEL_SPAN;
-      // Gövde merkezi = GÖVDE KÜRESİNİN merkezi. Modelin origin'i kürenin
-      // merkezinde değilse (Blender'da pivot tabana konmuşsa) top avucun dışına
-      // kaçar ya da içine gömülür; boyun/kapak yüzünden kutu merkezi de yukarı
-      // kayar — ikisi de bu ölçümle düzelir.
-      const bodyCenter = measureBodyCenter(model);
-      // Fünye yönü: ağız noktasından gövde merkezine giden vektörün tersi.
-      const fuseDir = measureFuseDirection(model);
-      // `grip` kemiğin en büyük world-axis ölçeğinin tersini taşır; bu çarpım
-      // parent zincirini ~1 dünya ölçeğine indirger ve kemik ölçeğinin prop'u
-      // tekrar büyütmesini önler.
-      const chain = grip.scale.x * boneScale * pivot.scale.x || 1;
-      const prepared = prepareHeldEquipment(model, {
-        targetWorldSpan: BOMB_TARGET_WORLD_SPAN,
-        sourceSpan: span,
-        parentWorldScale: chain,
-      });
-      for (const material of equippedMaterials.current) material.dispose();
-      equippedMaterials.current = prepared.materials;
-      model.position.set(0, 0, 0);
-      // Pivot: gövde merkezini kapsayıcının orijinine çek ve modelin fünyesini
-      // +Y'ye hizala. `calibrateBombGrip` fünyeyi +Y varsayar; modelin fitili
-      // yana/eğik çizilmişse bile bomba doğru yönde durur.
-      const align = new THREE.Quaternion().setFromUnitVectors(
-        fuseDir,
-        new THREE.Vector3(0, 1, 0),
-      );
-      pivot.quaternion.copy(align);
-      pivot.position
-        .copy(bodyCenter)
-        .multiplyScalar(model.scale.x)
-        .applyQuaternion(align)
-        .negate();
-      model.traverse((o) => {
-        o.userData.isEquipment = true;
-        // Sahne frustum culling'i kapatılır: kemik animasyonunda model
-        // ekrandan bir an silinmesin (kılıç katmanıyla aynı kural).
-        o.frustumCulled = false;
-        const mesh = o as THREE.Mesh;
-        const list = Array.isArray(mesh.material)
-          ? mesh.material
-          : mesh.material
-            ? [mesh.material]
-            : [];
-        for (const entry of list) {
-          const m = entry as THREE.MeshStandardMaterial;
-          // Fitil ucunun ışıması: GLB'de emissive kuvveti 1'in üstüne çıkamaz
-          // (ekstra uzantı gerekir), bu yüzden malzeme ADIYLA hedeflenir.
-          // Ad kalıbı kullanılır: `comical_bomb.glb` kendi adını taşıyabilir
-          // (Fuse/Glow/Flame…), prosedürel yedek ise `BombaFuseGlow`.
-          if (m.name === BOMB_FUSE_MATERIAL || isFuseLikeName(m.name)) {
-            m.emissiveIntensity = BOMB_FUSE_EMISSIVE;
-            m.toneMapped = false;
-          } else if (m.emissive && !m.emissiveMap) {
-            // 🧨 GÖVDE IŞIMASI (okunurluk): kendi emissive DOKUSU olmayan
-            // malzemelere zayıf sıcak bir taban verilir, böylece bomba kuş
-            // bakışı kadrajda/karakterin silüeti içinde kaybolmaz (bkz.
-            // HandGrip → BOMB_BODY_EMISSIVE). Dokulu modelde (comical_bomb)
-            // ışımayı modelin kendi dokusu + `emissive_strength` taşır; oraya
-            // düz renk yazmak emissive = renk × doku olduğu için siyah
-            // kısımlarda hiç görünmezdi. `toneMapped` ELLENMEZ: gövde ateş
-            // değil, yalnız hafif kendinden aydınlık kalmalı.
-            m.emissive.set(BOMB_BODY_EMISSIVE_COLOR);
-            m.emissiveIntensity = BOMB_BODY_EMISSIVE;
-          }
-        }
-      });
-      // 🔥 Ağız ateşinin oturacağı nokta: fünyenin yanan ucu. Model köküne
-      // GÖRELİ bulunur, gövde merkezine göre kaydırılır (pivot o kadar kaydı)
-      // ve pivot rotasyonundan geçirilerek kapsayıcı uzayına taşınır.
-      const anchor = findFuseAnchor(model)
-        .sub(bodyCenter)
-        .multiplyScalar(model.scale.x)
-        .applyQuaternion(align);
-
-      // Önceki alev/hâle ve model varsa (yapısal → GLB) tek seferde değiştir.
-      flameRef.current?.dispose();
-      flameRef.current = null;
-      auraRef.current?.dispose();
-      auraRef.current = null;
-      for (const child of [...pivot.children]) pivot.remove(child);
-      pivot.add(model);
-
-      // Alev modelin fünye ucunda durur; bomba genişliğinden bağımsız, kendi
-      // ölçeğiyle kurulur (fitil alevi bomba çapıyla büyümez).
-      const flame = createFuseFlame(BOMB_FLAME_SPAN);
-      flame.group.position.copy(anchor);
-      pivot.add(flame.group);
-      flameRef.current = flame;
-
-      // 🧨 GÖVDE HÂLESİ: pivot ORİJİNİ tam olarak ölçülen gövde merkezidir
-      // (pivot konumu −gövde merkezi kadar kaydırılır), yani hâle ek offset
-      // gerektirmez. Ölçüsü normalize edilmiş DÜNYA yarıçapından gelir; kapsayıcı
-      // uzayı (grip) dünya biriminde olduğu için doğrudan karşılaştırılabilir.
-      const aura = createBombAura(BOMB_TARGET_WORLD_SPAN / 2);
-      pivot.add(aura.group);
-      auraRef.current = aura;
+    /**
+     * Bombayı avuca takar. Ölçü/merkez/fünye hizası ve ağız alevi
+     * `engine/BombModel`te kurulur (uçan bomba ve yerdeki tuzak da AYNI örneği
+     * kullanır, yani üç yerde tek bir cisim görünür). Kapsayıcı uzayı dünya
+     * biriminde olduğu için model DOĞRUDAN `grip`e girer — eski `pivot` katmanı
+     * artık gereksiz: aynı işi örneğin kendi kökü yapıyor.
+     */
+    const mount = () => {
+      instanceRef.current?.dispose();
+      const instance = createBombInstance({ flame: true, aura: true });
+      grip.add(instance.root);
+      instanceRef.current = instance;
     };
 
-    mount(bombCache ?? buildStructuralBomb());
-    if (!bombCache && !bombLoading) {
-      bombLoading = loadBombScene().then((scene) => {
-        bombLoading = null;
-        if (!scene) return; // tüm adaylar düştü → prosedürel model kalır
-        bombCache = scene;
-        setReady((n) => n + 1); // katmanı GLB ile yeniden kur
-      });
-    }
+    mount();
+    // GLB arka planda hazır olduğunda katman yeniden kurulur (yapısal → GLB
+    // geçişi). Kaynak zaten yüklüyse abonelik boş döner: örnek doğrudan GLB'den
+    // kurulmuştur, gereksiz yeniden kurulum yapılmaz.
+    const unsubscribeSource = subscribeBombSource(() => setReady((n) => n + 1));
 
     grip.userData.isEquipment = true;
     grip.traverse((o) => {
@@ -512,14 +360,11 @@ export function useSamuraiBomb(
     calibrateBombGrip(hand, grip, clone);
 
     return () => {
+      unsubscribeSource();
       grip.removeFromParent();
       for (const seg of fingers) seg.removeFromParent();
-      flameRef.current?.dispose();
-      flameRef.current = null;
-      auraRef.current?.dispose();
-      auraRef.current = null;
-      for (const material of equippedMaterials.current) material.dispose();
-      equippedMaterials.current = [];
+      instanceRef.current?.dispose();
+      instanceRef.current = null;
       if (bombRef.current === grip) bombRef.current = null;
       if (handRef.current === hand) handRef.current = null;
       if (otherHandRef.current === otherHand) otherHandRef.current = null;
@@ -534,8 +379,7 @@ export function useSamuraiBomb(
   // konumda kalıp o karede sıçrıyordu.)
   useFrame((_, dt) => {
     // Ateş ve gövde hâlesi her karede canlı kalır (titreme, ışık, nabız).
-    flameRef.current?.update(dt);
-    auraRef.current?.update(dt);
+    instanceRef.current?.update(dt);
     const grip = bombRef.current;
     const hand = handRef.current;
     if (!grip || !hand) return;

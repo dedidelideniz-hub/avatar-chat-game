@@ -6,10 +6,13 @@
 // yapmaz (projeksiyon/efekt havuzlarıyla aynı desen).
 //
 // Bir tuzak ne anlatmalı:
-//   · YERDE DURAN BOMBA — koyu demir gövde + pirinç bilezik (eldeki bombayla
-//     aynı dil, "bu benim bombam" okunsun), tepe sinde yanan fitil ucu.
-//   · FİTİL — uç, fitil yandıkça HIZLANAN bir nabızla parlar; tuzak
-//     kurulduğunda (fuse = 0) nabız sabitlenir ve renk kırmızıya kayar.
+//   · YERDE DURAN BOMBA — samurayın ELİNDEKİ ve HAVADA UÇAN modelin BİREBİR
+//     aynısı (`engine/BombModel`): gövde küre merkezi zemine oturur, fünye
+//     yukarı bakar. Oyuncunun okuması gereken şey "bu benim bombam, buraya
+//     bıraktım" — bu yüzden ayrı bir prosedürel küre ÇİZİLMEZ.
+//   · FİTİL — alev modele canlı olarak kurulur (titrer, kor parçacıkları
+//     saçar); fitil yandıkça alev amberden KIRMIZIYA kayar (`setAlert`) ve
+//     kurulduğunda (fuse = 0) tam tehlike tonunda sabitlenir.
 //   · KURULMA HALKASI — zeminde büyüyen bir halka fitilin ilerlemesini
 //     gösterir (0 → tam yarıçap). Oyuncu "ne zaman hazır olacak" okur.
 //   · TEHLİKE DİSKİ — yalnız tuzak KURULUYKEN görünen soluk sıcak disk;
@@ -23,8 +26,14 @@
 // (bkz. `bombKit.bindBombTraps`) — bu bileşen prop almaz, her kare paylaşılan
 // mutable listeyi okur (`aimState` ile aynı desen).
 import { useFrame } from "@react-three/fiber";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import {
+  createBombInstance,
+  subscribeBombSource,
+  type BombInstance,
+} from "@/engine/BombModel";
+import { BOMB_TARGET_WORLD_SPAN } from "@/engine/HandGrip";
 import { S } from "./shared";
 import {
   BOMB_TRAP_ARM_S,
@@ -35,12 +44,8 @@ import {
 /** Aynı anda çizilecek en fazla tuzak (iki taraf toplamı). */
 const TRAP_SLOTS = 6;
 
-/** Demir gövde / pirinç bilezik — eldeki bombayla aynı palet. */
-const IRON = "#2b2f38";
-const BRASS = "#c9952f";
-/** Fitil ucu: yanarken amber, kurulduğunda kırmızı (tehlike). */
-const SPARK_ARMING = "#ffb347";
-const SPARK_ARMED = "#ff4d2d";
+/** Gövde küresinin yarıçapı — tuzak tam bu kadar yukarıda durur (zemine oturur). */
+const BOMB_REST_Y = BOMB_TARGET_WORLD_SPAN / 2;
 /** Kurulma halkası ve tehlike diski. */
 const RING = "#ffa53d";
 const DANGER = "#ff5a1f";
@@ -50,11 +55,43 @@ const TRIGGER_UNITS = BOMB_TRAP_TRIGGER_PX / S;
 
 export function BombTrapPool() {
   const roots = useRef<(THREE.Group | null)[]>([]);
-  const sparks = useRef<(THREE.Mesh | null)[]>([]);
+  const bodies = useRef<(THREE.Group | null)[]>([]);
   const rings = useRef<(THREE.Mesh | null)[]>([]);
   const discs = useRef<(THREE.Mesh | null)[]>([]);
+  /** Slotlara takılı bomba örnekleri (alevleri her kare ilerler). */
+  const bodies2Instances = useRef<BombInstance[]>([]);
+  // GLB arka planda gelince örnekler yeniden kurulur (yapısal → GLB geçişi).
+  const [bombModelReady, setBombModelReady] = useState(0);
 
-  useFrame((state) => {
+  // `load: false` — yüklemeyi samurayın kendi katmanı başlatır (bkz. havuzların
+  // ortak kuralı: `engine/BombModel` → `subscribeBombSource`).
+  useEffect(
+    () => subscribeBombSource(() => setBombModelReady((n) => n + 1), { load: false }),
+    [],
+  );
+
+  // 🧨 Tuzak da samurayın SİLAHIDIR: yerde duran cisim eldeki/havadaki modelin
+  // birebir aynısıdır (`engine/BombModel`). Fünye alevi NOKTA IŞIĞIYLA kurulur —
+  // yerdeki bomba karanlık zeminde kendi kendine parlamalı; aynı anda en fazla
+  // birkaç tuzak olur (havuz 6 slot) ve görünmeyen slotların ışığı sahneye hiç
+  // girmez (three.js görünmez nesneleri çizim listesine almaz).
+  useEffect(() => {
+    const mounted: BombInstance[] = [];
+    for (const body of bodies.current) {
+      if (!body) continue;
+      const instance = createBombInstance({ flame: true });
+      body.add(instance.root);
+      instance.root.position.y = BOMB_REST_Y;
+      mounted.push(instance);
+    }
+    bodies2Instances.current = mounted;
+    return () => {
+      bodies2Instances.current = [];
+      for (const instance of mounted) instance.dispose();
+    };
+  }, [bombModelReady]);
+
+  useFrame((state, dt) => {
     const traps = bombTrapState.traps;
     const time = state.clock.elapsedTime;
 
@@ -78,12 +115,14 @@ export function BombTrapPool() {
         ? 0.55 + 0.45 * Math.sin(time * 8)
         : 0.25 + 0.75 * Math.abs(Math.sin(time * (3 + 12 * k)));
 
-      const spark = sparks.current[i];
+      const spark = bodies2Instances.current[i];
       if (spark) {
-        spark.scale.setScalar(0.7 + 0.6 * pulse);
-        const mat = spark.material as THREE.MeshBasicMaterial;
-        mat.color.set(armed ? SPARK_ARMED : SPARK_ARMING);
-        mat.opacity = 0.55 + 0.45 * pulse;
+        // 🔥 Fünye alevi modelin ÜSTÜNDE canlıdır: fitil kısaldıkça alev
+        // amberden kırmızıya kayar, büyür ve kor parçacıkları saçar — "bu şey
+        // patlamak üzere" okuması tek bir renk/mesh eklemeden gelir.
+        spark.update(dt);
+        spark.flame?.setAlert(armed ? 1 : k * 0.85);
+        spark.flame?.group.scale.setScalar(0.62 + 0.38 * k + 0.05 * pulse);
       }
 
       const ring = rings.current[i];
@@ -92,7 +131,7 @@ export function BombTrapPool() {
         const scale = Math.max(0.12, k);
         ring.scale.setScalar(scale);
         const mat = ring.material as THREE.MeshBasicMaterial;
-        mat.color.set(armed ? SPARK_ARMED : RING);
+        mat.color.set(armed ? DANGER : RING);
         mat.opacity = armed ? 0.35 + 0.25 * pulse : 0.25 + 0.5 * k;
       }
 
@@ -160,50 +199,14 @@ export function BombTrapPool() {
             />
           </mesh>
 
-          {/* gövde: hafif yere gömülü demir küre */}
-          <mesh position={[0, 0.17, 0]} raycast={() => null}>
-            <sphereGeometry args={[0.2, 16, 12]} />
-            <meshStandardMaterial
-              color={IRON}
-              metalness={0.72}
-              roughness={0.35}
-              emissive="#12161c"
-              emissiveIntensity={0.3}
-            />
-          </mesh>
-          {/* pirinç bilezik */}
-          <mesh
-            rotation={[Math.PI / 2, 0, 0]}
-            position={[0, 0.17, 0]}
-            raycast={() => null}
-          >
-            <torusGeometry args={[0.2, 0.028, 6, 22]} />
-            <meshStandardMaterial
-              color={BRASS}
-              metalness={0.85}
-              roughness={0.28}
-              emissive="#6d4c0d"
-              emissiveIntensity={0.3}
-            />
-          </mesh>
-          {/* fitil ucu — tuzak kurulunca kırmızıya kayar */}
-          <mesh
+          {/* 🧨 ELDEKİ MODELİN AYNISI — samurayın bombası. Örnek imperatif
+              takılır (bkz. yukarıdaki etki); konum yalnız dikeyde kayar:
+              gövde küresinin merkezi zeminden bir yarıçap yukarıda durur. */}
+          <group
             ref={(el) => {
-              sparks.current[i] = el;
+              bodies.current[i] = el;
             }}
-            position={[0, 0.44, 0]}
-            raycast={() => null}
-          >
-            <sphereGeometry args={[0.07, 10, 8]} />
-            <meshBasicMaterial
-              color={SPARK_ARMING}
-              transparent
-              opacity={0.9}
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-              toneMapped={false}
-            />
-          </mesh>
+          />
         </group>
       ))}
     </group>
