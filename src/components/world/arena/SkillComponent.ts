@@ -30,12 +30,12 @@ import {
 // Kurallar `arena/bombKit`te tek kaynakta; burada yalnız "kim, ne zaman"
 // bağlanır (diğer yeteneklerde olduğu gibi).
 import {
+  BOMB_PLACE_S,
   BOMB_REFILL_S,
   BOMB_THROW_BLAST_PX,
   BOMB_THROW_DAMAGE,
   BOMB_THROW_SPEED,
   BOMB_ULT_S,
-  bombTrapPoint,
 } from "./bombKit";
 import type { SoundName } from "@/lib/sounds";
 import type { VfxBus } from "./VFXComponent";
@@ -327,10 +327,12 @@ export function castSuper(
   // süper yeteneği takmış olursa olsun elindeki şey bombadır — kitin kimliği
   // budur (elinde bomba tutan karakterin ateş topu atması anlamsız olurdu).
   if (hasBombKit(caster)) {
-    const point = bombTrapPoint(caster, dir);
-    host.placeTrap(caster, point.x, point.y);
-    // Bomba elden çıktı: bir an el boş görünür, sonra yenisi hazır olur.
-    caster.bombHiddenT = BOMB_REFILL_S;
+    // Bomba HEMEN yere konmaz: önce bırakma animasyonu oynar (karakter elindeki
+    // bombayı indirir, parmaklarını açar ve top ayağının dibine düşer), tuzak
+    // `BOMB_PLACE_DROP_AT` anında doğar (`placeBombTrap`). Aksi hâlde ekranda
+    // aynı anda iki bomba olurdu: yerde duran tuzak + elde duran bomba.
+    caster.bombPlaceT = BOMB_PLACE_S;
+    caster.bombPlaceHit = false;
     return { kind: "bombTrap" };
   }
   switch (caster.ability.id) {
@@ -367,6 +369,27 @@ export function castSuper(
 /* ---------------------------------- ulti --------------------------------- */
 
 /**
+ * 🧨 YERE BIRAKILAN BOMBA — samurayın NORMAL yeteneğinin "bırakma" anı.
+ *
+ * Bırakma animasyonu (`bombPlaceT`) `BOMB_PLACE_DROP_AT` eşiğini aştığında
+ * sahne döngüsü bu fonksiyonu çağırır. Tuzak, karakterin O ANKİ konumuna konur:
+ *
+ *   · Bomba bu karakterin SİLAHI ve eliyle yere bırakılır — animasyonda elin
+ *     açıldığı nokta ayağın dibidir (bkz. `engine/BombArmPose`). Tuzak nişan
+ *     yönünde uzağa konsaydı bomba elden çıkıp ISINLANMIŞ gibi görünürdü.
+ *   · Konum çağıranın verdiği sabit bir nokta değil, canlı `caster` konumudur:
+ *     animasyon sırasında karakter köklenir (bkz. sahne döngüsü), yani topun
+ *     düştüğü yer ile tuzağın doğduğu yer aynı karede birebir aynıdır.
+ *
+ * Bomba elden çıktığı için el bir an boş kalır (`bombHiddenT`), sonra yenisi
+ * hazır olur — fırlatmayla aynı görsel geri bildirim.
+ */
+export function placeBombTrap(caster: BattleFighter, host: SkillHost): void {
+  host.placeTrap(caster, caster.x, caster.y);
+  caster.bombHiddenT = BOMB_REFILL_S;
+}
+
+/**
  * Samuray 2. ultisi. Gövde nişan yönüne döner (yatay: facing, dikey: vy) →
  * kılıç ve yarık aynı yöne gider. Yön sırası: nişan > menzil içi düşman >
  * bakış yönü. Uygun değilse `null` döner.
@@ -383,7 +406,12 @@ export function castUltimate(
     !hasUltimateKit(caster) ||
     caster.samuraiCharge < 1 ||
     caster.samuraiUltT > 0 ||
+    // 🧨 Bomba kitinde iki yetenek de AYNI kolları sürer: biri akarken
+    // diğeri başlarsa poz birbirini ezer ve bomba fırlatma animasyonu hiç
+    // görünmez (kemik katmanı yere bırakmayı önceler). Süreler kısa olduğu
+    // için bu kapı yalnız oynanış sırasında tutarlılığı korur.
     (caster.bombThrowT ?? 0) > 0 ||
+    (caster.bombPlaceT ?? 0) > 0 ||
     // Yakın dövüşle çakışmasın: kılıç aynı anda iki pozu süremez.
     caster.meleeT > 0
   )

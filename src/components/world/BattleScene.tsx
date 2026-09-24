@@ -72,6 +72,7 @@ import {
   emitUltCrack,
   fireBombThrow,
   gainUltCharge,
+  placeBombTrap,
   planAim,
   planBasicAttack,
   tickCooldown,
@@ -79,8 +80,11 @@ import {
   type SkillHost,
 } from "@/components/world/arena/SkillComponent";
 // 🧨 Bomba kiti (samuray): yere bırakılan tuzağın fitili/tetigi burada akar,
-// ölçüler ve kural `arena/bombKit`te tek kaynaktadır.
+// ölçüler ve kural `arena/bombKit`te tek kaynaktır. Yere bırakma animasyonunun
+// süresi/eşiği de buradan okunur (tuzak, top yere DEĞDİĞİ karede doğar).
 import {
+  BOMB_PLACE_DROP_AT,
+  BOMB_PLACE_S,
   BOMB_RELEASE_AT,
   BOMB_TRAP_BLAST_PX,
   BOMB_TRAP_DAMAGE,
@@ -215,9 +219,12 @@ function newFighter(
     samuraiCharge: 0,
     samuraiUltT: 0,
     samuraiUltHit: false,
-    // 🧨 Bomba kiti (samuray): başta hazır, elde bomba var.
+    // 🧨 Bomba kiti (samuray): başta hazır, elde bomba var. `bombPlaceT` yere
+    // bırakma ANİMASYONU, `bombHiddenT` ise bombanın elde olmadığı süredir.
     bombThrowT: 0,
     bombThrowHit: false,
+    bombPlaceT: 0,
+    bombPlaceHit: false,
     bombHiddenT: 0,
     // Yakın dövüş (Kraliyet Savaşçısı 3. yetenek): başta hazır.
     meleeT: 0,
@@ -450,7 +457,8 @@ export default function BattleScene({
           hasUltimateKit(f) &&
           f.samuraiCharge >= 1 &&
           f.samuraiUltT <= 0 &&
-          (f.bombThrowT ?? 0) <= 0
+          (f.bombThrowT ?? 0) <= 0 &&
+          (f.bombPlaceT ?? 0) <= 0
         );
       return f.superCharge >= 1;
     },
@@ -1166,6 +1174,14 @@ export default function BattleScene({
           emitFootstepDust(p, footTrack, p.x, p.y);
         }
       }
+      // 🧨 Yere bomba bırakma boyunca karakter KÖKLENİR: el bombayı indirip
+      // bırakırken karakter yürürse top ile tuzak farklı yerlere düşerdi
+      // (tuzak, topun yere değdiği karedeki konuma konur). Kısa bir köklenme
+      // (bkz. `BOMB_PLACE_S`) bu yüzden hem animasyonun hem kuralın şartıdır.
+      if ((p.bombPlaceT ?? 0) > 0) {
+        vx = 0;
+        vy = 0;
+      }
       // ── Vuruş sarsıntısı: ulti/ağır vuruş yiyen karakter bir an kontrolü
       // kaybeder; savrulma hareketi burada (çarpışma kontrollü) uygulanır. ──
       const pStunned = stepHitStun(p, dt, moveFighter);
@@ -1191,6 +1207,18 @@ export default function BattleScene({
           fireBombThrow(p, b, skillHost, locked.locked ? locked : bodyDir(p));
         }
       }
+      // 🧨 YERE BOMBA BIRAKMA (samurayın normal yeteneği): animasyon akarken
+      // karakter KÖKLENİR (aşağıda hareket girdisi sıfırlanır), böylece top tam
+      // ayağının dibine düşer. Tuzak, bombanın YERE DEĞDİĞİ karede doğar
+      // (`placeBombTrap`) — daha erken doğsaydı ekranda iki bomba olurdu.
+      if ((p.bombPlaceT ?? 0) > 0) {
+        p.bombPlaceT = Math.max(0, p.bombPlaceT - dt);
+        const drop = 1 - p.bombPlaceT / BOMB_PLACE_S;
+        if (!p.bombPlaceHit && drop >= BOMB_PLACE_DROP_AT) {
+          p.bombPlaceHit = true;
+          placeBombTrap(p, skillHost);
+        }
+      }
       // 🧨 Bomba elden çıktıktan sonra elin boş kaldığı süre (görsel geri
       // bildirim) — süre bitince yeni bomba elde hazır olur.
       if ((p.bombHiddenT ?? 0) > 0) {
@@ -1213,6 +1241,15 @@ export default function BattleScene({
       // `isHiddenFrom` ile burada okunur — bot bloğu bunun altında kalıyor).
       if ((b.bombHiddenT ?? 0) > 0) {
         b.bombHiddenT = Math.max(0, b.bombHiddenT - dt);
+      }
+      // 🧨 Botun yere bırakma animasyonu: aynı kural, tuzak yere değince doğar.
+      if ((b.bombPlaceT ?? 0) > 0) {
+        b.bombPlaceT = Math.max(0, b.bombPlaceT - dt);
+        const drop = 1 - b.bombPlaceT / BOMB_PLACE_S;
+        if (!b.bombPlaceHit && drop >= BOMB_PLACE_DROP_AT) {
+          b.bombPlaceHit = true;
+          placeBombTrap(b, skillHost);
+        }
       }
       if ((b.bombThrowT ?? 0) > 0) {
         b.bombThrowT = Math.max(0, b.bombThrowT - dt);

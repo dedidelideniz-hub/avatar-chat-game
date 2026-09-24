@@ -3,10 +3,18 @@
 // Samurayın elinde bomba tutar (bkz. `engine/SamuraiBomb`); bu modül o bombayı
 // OYUNA sokan taraftır ve iki yeteneği tanımlar:
 //
-//   · NORMAL YETENEK (süper yuvası) — **YERE BOMBA TUZAĞI**: nişan noktasına
-//     bir bomba bırakılır. Fitil `BOMB_TRAP_ARM_S` boyunca yanar, sonra tuzak
-//     KURULU olur ve düşman `BOMB_TRAP_TRIGGER_PX` kadar yaklaşınca patlar
-//     (yaklaşmazsa ömrü bitince kendiliğinden patlar).
+//   · NORMAL YETENEK (süper yuvası) — **YERE BOMBA TUZAĞI**: karakter elindeki
+//     bombayı YERE, durduğu yere bırakır (bkz. `BOMB_PLACE_S`). Fitil
+//     `BOMB_TRAP_ARM_S` boyunca yanar, sonra tuzak KURULU olur ve düşman
+//     `BOMB_TRAP_TRIGGER_PX` kadar yaklaşınca patlar (yaklaşmazsa ömrü bitince
+//     kendiliğinden patlar).
+//
+//     NEDEN AYAK UCU (eskiden nişan yönünde 3 birimdi): bomba bu karakterin
+//     SİLAHI ve eliyle bırakılır — animasyon (bkz. `engine/BombArmPose` →
+//     `applyBombActionPose`) elin yetiştiği yere kadar iner, el açılır ve top
+//     yere düşer. Tuzak 3 birim öteye düşseydi el bombanın 3 birim uzağında
+//     açılmış olurdu (bomba elden çıkıp ışınlanırdı); tuzak noktası bu yüzden
+//     karakterin KENDİ konumudur ve el ile yere konan top birebir oraya iner.
 //
 //   · ULTİ — **BOMBA FIRLATMA**: karakter bombayı nişan yönünde savurur;
 //     mermi menzil sonunda patlar ve `BOMB_THROW_BLAST_PX` yarıçapında hasar
@@ -19,14 +27,25 @@
 // kendi katmanında uygular. Böylece PvP ağ katmanı ile bot arenası ayrışırken
 // tuzak davranışı tek kaynaktan gelir.
 //
-// Ölçü birimi: oyun pikseli (sim uzayı). `MAX_RANGE_PX` = 200 px (4 birim)
-// olduğu için tuzak menzili (150 px) tam menzilin hemen içindedir — tuzak
-// "bir adım öne" bırakılır, haritanın öbür ucuna değil.
-import { S } from "./shared";
-import { MAX_RANGE_PX } from "./skillshot";
+// Ölçü birimi: oyun pikseli (sim uzayı). Tuzak artık nişan yönüne DEĞİL,
+// karakterin durduğu yere konur (el ile yere bırakılır — bkz. `BOMB_PLACE_S`).
 
-/** Tuzağın bırakılabileceği en uzak mesafe (px) — 3 birim. */
-export const BOMB_TRAP_RANGE_PX = 3 * S;
+// 🧨 Aksiyon çerçevesi TİPİ kemik katmanında tanımlıdır (tek kaynak): bu modül
+// onu yalnızca üretir. `import type` olduğu için çalışma zamanında bağımlılık
+// oluşmaz (React kancası taşıyan modül sim'e çekilmez).
+import type { BombActionFrame } from "@/engine/SamuraiBomb";
+
+/** 🧨 TUZAK BIRAKMA (samurayın normal yeteneği) animasyon süresi (sn).
+ *
+ *  Bu süre boyunca karakter bombayı eliyle yere indirir; tuzak listeye ancak
+ *  `BOMB_PLACE_DROP_AT` anında girer. NEDEN GECİKMELİ: tuzak hemen doğsaydı
+ *  ekranda AYNI ANDA iki bomba görünürdü (yere yeni konan tuzak + hâlâ elde
+ *  duran bomba). Zamanlama `bombThrowT` ile aynı deseni izler: süre sahne
+ *  döngüsünde akar, eşik aşılınca tuzak doğar (`BOMB_PLACE_DROP_AT`). */
+export const BOMB_PLACE_S = 0.95;
+/** Bombanın YERE DEĞDİĞİ ilerleme oranı (0..1) — tuzak tam bu anda doğar.
+ *  Yere değdikten sonra kalan süre elin geri çekilmesine aittir. */
+export const BOMB_PLACE_DROP_AT = 0.62;
 /** Fitil süresi (sn): bu süre boyunca tuzak KURULU DEĞİLDİR (yaklaşan patlatmaz). */
 export const BOMB_TRAP_ARM_S = 1.2;
 /** Kurulduktan sonra tuzak kaç saniye bekler (sonra kendiliğinden patlar). */
@@ -51,8 +70,20 @@ export const BOMB_ULT_S = 0.82;
 export const BOMB_RELEASE_AT = 0.62;
 /** Bomba elden çıktıktan (fırlatma/bırakma) sonra elin boş kaldığı süre (sn).
  *  Görsel geri bildirim: karakter bir an "elinde bomba yok" görünür, sonra
- *  yeni bomba hazır olur. Hem tuzak hem fırlatma aynı süreyi kullanır. */
-export const BOMB_REFILL_S = 1.2;
+ *  yeni bomba hazır olur. Hem tuzak hem fırlatma aynı süreyi kullanır.
+ *
+ *  SÜRE AKSİYONUN KUYRUĞUNA GÖRE SEÇİLİR (`0.55`): bu süre
+ *  aksiyonun bitişinden ÖNCE dolarsa, kemik katmanı hâlâ bombayı elden
+ *  çıkarılmış sayarken sahne onu geri getirir ve top elin havada dururken
+ *  belirir (kemik katmanı `visible`ı her kare kendi yazıyor — bkz.
+ *  `SamuraiBomb` kare döngüsü). Kalan pay = "boş el":
+ *    · fırlatma: bırakış 0.31 sn (`BOMB_ULT_S`×`BOMB_RELEASE_AT`),
+ *      geri geliş 0.31+0.55 = 0.86 → aksiyon bitişinden (0.82) 0.04 sn sonra,
+ *    · yere bırakma: yere değme 0.59 sn (`BOMB_PLACE_S`×`BOMB_PLACE_DROP_AT`),
+ *      geri geliş 0.59+0.55 = 1.14 → aksiyon bitişinden (0.95) 0.19 sn sonra.
+ *  Yani kol ne yaptıysa biter, el bir an boş kalır ve hokkabazlık SIFIRDAN
+ *  başlar (`juggleTime = 0`): yeni bomba elde dururken doğar. */
+export const BOMB_REFILL_S = 0.55;
 
 export type BombOwner = "player" | "bot";
 
@@ -114,13 +145,48 @@ export function makeBombTrap(
   };
 }
 
-/** Tuzak noktası: nişan yönünde, menzil sınırına kırpılmış mesafe. */
-export function bombTrapPoint(
-  from: { x: number; y: number },
-  dir: { x: number; y: number },
-): { x: number; y: number } {
-  const reach = Math.min(BOMB_TRAP_RANGE_PX, MAX_RANGE_PX);
-  return { x: from.x + dir.x * reach, y: from.y + dir.y * reach };
+/**
+ * Dövüşçünün bomba sayaçlarından kemik katmanının AKSİYON ÇERÇEVESİNİ çözer.
+ *
+ * KEMİK KATMANI SİMÜLASYONU BİLMEZ (`engine/SamuraiBomb` yalnızca "hangi
+ * hareket, ne kadar ilerledi" okur): bombanın elden çıktığı/kaybolduğu anlar
+ * buradan türetilir, yani poz ile oyun kuralı AYNI sabitleri okur. İki yerde
+ * ayrı eşik yazılsaydı bomba elden bir kare erken/geç çıkardı.
+ *
+ * SIRA ÖNEMLİ: uçan bomba (`throw`) ve yere bırakma (`place`) sürerken el boş
+ * duruşuna geçilmez; `bombHiddenT` YALNIZ aksiyonlar bittikten sonra okunur,
+ * yoksa poz kendi kendini keserdi.
+ *
+ * `out` verilirse çerçeve YENİDEN KULLANILIR (kare başına çöp yok; bu fonksiyon
+ * her kare, her dövüşçü için çağrılır).
+ */
+export function bombActionFor(
+  f: {
+    bombThrowT?: number;
+    bombPlaceT?: number;
+    bombHiddenT?: number;
+  },
+  out?: BombActionFrame,
+): BombActionFrame | null {
+  const place = f.bombPlaceT ?? 0;
+  const throwT = f.bombThrowT ?? 0;
+  if (place <= 0 && throwT <= 0 && (f.bombHiddenT ?? 0) <= 0) return null;
+  const frame = out ?? { kind: "empty", progress: 0 };
+  frame.release = undefined;
+  frame.land = undefined;
+  if (place > 0) {
+    frame.kind = "place";
+    frame.progress = 1 - place / BOMB_PLACE_S;
+    frame.land = BOMB_PLACE_DROP_AT;
+  } else if (throwT > 0) {
+    frame.kind = "throw";
+    frame.progress = 1 - throwT / BOMB_ULT_S;
+    frame.release = BOMB_RELEASE_AT;
+  } else {
+    frame.kind = "empty";
+    frame.progress = 0;
+  }
+  return frame;
 }
 
 /**

@@ -81,6 +81,25 @@
 // Parmaklar: `applyFingerGrip` + `buildFingerMeshes` ile kapalı yumruk kurulur,
 // bomba gerçekten "kavranmış" görünür (bu rig'te parmak geometrisi yok).
 //
+// 🧨 AKSIYONLAR (`readAction` girdisi): bomba bu karakterin SİLAHI olduğu için
+// iki yetenek de onu elden çıkarır ve ikisi de GÖRÜNÜR bir hareketle yapılır:
+//
+//   ▸ `throw` (ulti)  → kol geriye yukarı çekilir, kamçı gibi öne savrulur;
+//     bomba bırakış anında elden gizlenir ve mermi olarak uçar
+//     (`SkillComponent.fireBombThrow`).
+//   ▸ `place` (tuzak) → karakter öne eğilir, kol bombayı ayağının dibine
+//     indirir, parmaklar açılır ve top YERE DÜŞER; tuzak tam top yere değdiği
+//     karede doğar (bkz. `arena/bombKit` → `BOMB_PLACE_DROP_AT`).
+//   ▸ `empty`         → bomba elden çıktı, yenisi henüz hazır değil: eller
+//     taşıma noktasında gevşek durur (hokkabazlık OYNAMAMALI, yoksa karakter
+//     görünmez bir top çeviriyormuş gibi okunur).
+//
+// AKSİYON KAPISI DIŞARIDAN GELİR (`readAction`): bu modül simülasyonu bilmez
+// (sokak/pazar avatarları da bu katmanı kullanır ve onlarda yetenek yoktur).
+// Sahne, dövüşçünün sayaçlarından tek satırlık bir çerçeve geçirir; süre ve
+// eşikler tek kaynakta kalır. Aksiyon bitince hokkabazlık SIFIRDAN başlar
+// (`juggleTime = 0`), yani top elde dururken doğar — havada yakalanmaz.
+//
 // Hiçbiri oyun mantığına girmez: yalnızca görsel katman. Envanter, mağaza,
 // hasar ve ağ (PvP) katmanı etkilenmez.
 import { useEffect, useRef, useState } from "react";
@@ -112,7 +131,13 @@ import {
   rightHandBone,
 } from "./HandGrip";
 import { sampleBombJuggle, sampleJuggleTiming, type JuggleSample } from "./BombJuggle";
-import { applyBombArmPose, findBombArmRig, type BombArmRig } from "./BombArmPose";
+import {
+  PLACE_FALL_SPAN,
+  applyBombActionPose,
+  applyBombArmPose,
+  findBombArmRig,
+  type BombArmRig,
+} from "./BombArmPose";
 import {
   createBombAura,
   createFuseFlame,
@@ -171,12 +196,75 @@ async function loadBombScene(): Promise<THREE.Object3D | null> {
 }
 
 /**
+ * 🧨 Aksiyona giriş harmanının süresi (sn).
+ *
+ * Kısa tutulur: fırlatma savurmasının kendisi ~0.5 sn'dir, rampa onu yavaşlatmamalı
+ * ama kolun (ve topun) bir karede atlamasını da engellemeli. 0.14 sn ≈ 8 kare.
+ */
+const ACTION_INTRO_S = 0.14;
+
+/** Yere bırakılan bombanın duracağı noktayı hesaplarken kullanılan geçici. */
+const footScratch = new THREE.Vector3();
+
+/**
+ * 🧨 Yere bırakılan bombanın DURACAĞI dünya noktası.
+ *
+ * Yatayda karakterin KENDİ gövde ekseni (klonun dünya konumu), dikeyde ZEMİN +
+ * bomba yarıçapı. Zemin "model kökü y = 0" varsayımıyla değil, en alçak AYAK
+ * kemiğinden canlı okunur: gövde alçalıp yükselse de (duruş, eğilme) top yere
+ * doğru yere iner. Ayak kemiği bulunamayan rig'lerde klon konumunun yüksekliği
+ * referans alınır (top yine yerden kopmaz).
+ *
+ * Tuzak da karakterin konumuna konduğu için (`SkillComponent.placeBombTrap`)
+ * top ile tuzak AYNI noktada buluşur — aradaki fark bir karelik görünmez bir
+ * yer değiştirme bile yaratmaz.
+ */
+function groundHoldPoint(
+  clone: THREE.Object3D,
+  rig: BombArmRig,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  clone.getWorldPosition(out);
+  let ground = Number.POSITIVE_INFINITY;
+  for (const foot of rig.feet) {
+    foot.getWorldPosition(footScratch);
+    ground = Math.min(ground, footScratch.y);
+  }
+  out.y =
+    (Number.isFinite(ground) ? ground : out.y) + BOMB_TARGET_WORLD_SPAN / 2;
+  return out;
+}
+
+/**
+ * 🧨 Aksiyon çerçevesi — sahnenin kemik katmanına geçirdiği TEK girdi.
+ *
+ * Sahne bunu dövüşçünün sayaçlarından türetir (`arena/bombKit` →
+ * `bombActionFor`) ve bu modül oyun kurallarını hiç bilmez: yalnızca "hangi
+ * hareket, ne kadar ilerledi" bilgisiyle pozu ve bombanın konumunu sürer.
+ */
+export interface BombActionFrame {
+  /** "empty" → bomba elde değil (yenisi hazırlanıyor), eller boş durur. */
+  kind: "throw" | "place" | "empty";
+  /** Aksiyonun 0..1 ilerlemesi ("empty"de 0). */
+  progress: number;
+  /** Fırlatmada bombanın ELDEN ÇIKTIĞI ilerleme (mermi o anda doğar). */
+  release?: number;
+  /** Yere bırakmada bombanın YERE DEĞDİĞİ ilerleme (tuzak o anda doğar). */
+  land?: number;
+}
+
+/**
  * Bomba katmanı. Döndürdüğü `bombRef` (kapsayıcı grup) yetenek katmanı için
  * açıktır: ulti fırlatılırken el boşalsın istenirse `visible` ile kapatılır.
+ *
+ * `readAction` verilirse fırlatma / yere bırakma animasyonları da bu katman
+ * sürer (bkz. modül başlığı); verilmezse (sokak avatarları) yalnız hokkabazlık
+ * oynar ve davranış eskisiyle birebir aynıdır.
  */
 export function useSamuraiBomb(
   clone: THREE.Object3D,
   skinUrl: string | null | undefined,
+  readAction?: () => BombActionFrame | null,
 ): { bombRef: React.MutableRefObject<THREE.Group | null> } {
   const bombRef = useRef<THREE.Group | null>(null);
   const handRef = useRef<THREE.Object3D | null>(null);
@@ -190,6 +278,28 @@ export function useSamuraiBomb(
   const otherHandRef = useRef<THREE.Object3D | null>(null);
   const boneScaleRef = useRef(1);
   const juggleTime = useRef(0);
+  /**
+   * Poz içindeki hafif salınımın saati (`SWAY_SPEED`).
+   *
+   * Hokkabazlık zamanından AYRI akar: aksiyon başlarken `juggleTime` sıfıra
+   * döner (döngü tutuştan başlasın diye), ama salınım sıfırlansaydı eller
+   * aksiyona geçerken bir karede sıçrardı.
+   */
+  const swayTime = useRef(0);
+  /** 🧨 Aksiyon durumu: hangi hareket oynuyor, hangi el yapıyor, düşüş nerede başladı. */
+  const actionKind = useRef<BombActionFrame["kind"] | null>(null);
+  const actionRight = useRef(true);
+  const fallStarted = useRef(false);
+  const fallFrom = useRef(new THREE.Vector3());
+  /**
+   * 🧨 Aksiyona GİRİŞ harmanı: yetenek hokkabazlığın ortasında (el uzanmış,
+   * top havadayken) basılabilir. Aksiyonun ilk karelerinde eller ve bomba
+   * BULUNDUKLARI noktadan aksiyon pozuna akar; yoksa ikisi de ışınlanır.
+   */
+  const actionIntroT = useRef(0);
+  const actionFromR = useRef(new THREE.Vector3());
+  const actionFromL = useRef(new THREE.Vector3());
+  const bombFrom = useRef(new THREE.Vector3());
   /** 🤹 Kol zinciri (iki-kemik IK) — bomba konumu bu pozlandıktan SONRA okunur. */
   const armRigRef = useRef<BombArmRig | null>(null);
   const juggle = useRef<JuggleSample>({
@@ -209,6 +319,8 @@ export function useSamuraiBomb(
     aOut: new THREE.Vector3(),
     bOut: new THREE.Vector3(),
     pull: new THREE.Vector3(),
+    /** Yere bırakılan topun hedef noktası (aksiyon sırasında kullanılır). */
+    land: new THREE.Vector3(),
     spin: new THREE.Quaternion(),
     desired: new THREE.Quaternion(),
     rightBase: new THREE.Quaternion(),
@@ -430,22 +542,148 @@ export function useSamuraiBomb(
 
     const other = otherHandRef.current;
     const t = scratch.current;
+    const armRig = armRigRef.current;
+    // Salınım saati aksiyondan bağımsız akar (bkz. `swayTime`).
+    swayTime.current += dt;
+
+    // 🧨 AKSiYON KAPISI: yalnız kol zinciri ve iki el varsa aksiyon oynar;
+    // yoksa (tek elli rig) hokkabazlık eski hâlinde devam eder.
+    const action = armRig && other ? (readAction?.() ?? null) : null;
+    const kind = action?.kind ?? null;
+    if (kind !== actionKind.current) {
+      actionKind.current = kind;
+      // Bomba HANGİ elde ise o el fırlatır / yere koyar: hokkabazlık son
+      // turunda topu hangi ele bıraktıysa aksiyon oradan başlar (tutuş fazında
+      // `handMix` tam 0 ya da tam 1'dir — bkz. `BombJuggle`).
+      if (kind === "throw" || kind === "place") {
+        actionRight.current = juggle.current.handMix < 0.5;
+      }
+      fallStarted.current = false;
+      // Giriş harmanı: ellerin ve topun ŞU ANKİ noktaları mandallanır (bu
+      // karede poz henüz uygulanmadı, yani kemikler bir önceki karenin
+      // hokkabazlık pozunu taşır — harman tam o noktadan başlar).
+      actionIntroT.current = 0;
+      if (kind && armRig && other) {
+        palmHoldPoint(hand, clone, t.a, null);
+        actionFromR.current.copy(t.a);
+        clone.worldToLocal(actionFromR.current);
+        palmHoldPoint(other, clone, t.b, null);
+        actionFromL.current.copy(t.b);
+        clone.worldToLocal(actionFromL.current);
+        grip.getWorldPosition(bombFrom.current);
+      }
+      // Hokkabazlık TUTUŞTAN başlar: bomba geri geldiğinde elde dururken
+      // doğar, havada yakalanmaya çalışılmış gibi okunmaz ve döngü sınırında
+      // zıplama olmaz.
+      juggleTime.current = 0;
+    }
+    // Aksiyon sürerken harman zamanı ilerler (kısa bir rampa).
+    if (kind) actionIntroT.current += dt;
 
     // 🤹 Faz TEK yerden ilerler: kol pozu ile bomba aynı zamanı okumak zorunda,
-    // yoksa top kolu bir kare geriden takip eder.
-    juggleTime.current += dt;
+    // yoksa top kolu bir kare geriden takip eder. Aksiyon sırasında döngü
+    // durur — sıfırda bekler, aksiyon bitince oradan devam eder.
+    if (!kind) juggleTime.current += dt;
 
-    // 🤹 ÖNCE KOLLAR, SONRA TOP: bombanın konumu avuç noktalarından türetildiği
-    // için, kollar BU KAREDE pozlanmadan uç noktalar bilinemez. Kol pozuna
-    // yalnızca faz alanları gerekir (`sampleJuggleTiming`), yani konumdan önce
-    // çağrılabilir.
-    const armRig = armRigRef.current;
+    if (action && armRig && other) {
+      // 🧨 AKSİYON: hokkabazlık yerine tek seferlik hareket oynar.
+      const p = THREE.MathUtils.clamp(action.progress, 0, 1);
+      const intro = kind === "empty" ? 1 : Math.min(1, actionIntroT.current / ACTION_INTRO_S);
+      const isPlace = action.kind === "place";
+      // Bombanın ELDEN ÇIKTIĞI an: fırlatmada sim'in eşiği (`BOMB_RELEASE_AT`),
+      // yere bırakmada düşüşün başlangıcı — yere DEĞME anı sim'den (`land`) ve
+      // tuzak o karede doğuyor, aradaki süre düşüşün kendisidir.
+      const release = isPlace
+        ? Math.max(0.1, (action.land ?? 0.72) - PLACE_FALL_SPAN)
+        : (action.release ?? 0.62);
+      const right = actionRight.current;
+      const holder = right ? hand : other;
+
+      if (action.kind === "empty") {
+        // Bomba elde YOK: kollar hokkabazlığın TUTUŞ BAŞI pozunda durur
+        // (top çevirme yok, görünmez bir top çevrilmiş gibi okunmaz) ve
+        // bomba geri geldiğinde döngü sıfırdan, oradan devam eder.
+        applyBombActionPose(
+          clone,
+          armRig,
+          { kind: "empty", progress: 0, release: 0, right },
+          swayTime.current,
+        );
+        return;
+      }
+
+      // 🤹 ÖNCE KOLLAR, SONRA TOP — hokkabazlıkla aynı kural: bombanın konumu
+      // avuç noktasından türetildiği için kol pozlanmadan okunamaz.
+      applyBombActionPose(
+        clone,
+        armRig,
+        {
+          kind: action.kind,
+          progress: p,
+          release,
+          right,
+          intro,
+          from: { right: actionFromR.current, left: actionFromL.current },
+        },
+        swayTime.current,
+      );
+      palmHoldPoint(holder, clone, t.a, t.aOut);
+      // Giriş harmanı topu da kapsar: bomba, bulunduğu noktadan avuca akar
+      // (aksiyon başlarken top havadaysa elde değil, yolda görünür).
+      if (intro < 1) t.a.lerp(bombFrom.current, 1 - intro);
+
+      // Yönelim: bombayı tutan elin kalibrasyonu (fünye o elde okunur yatar).
+      t.desired.copy(bombGripWorldQuat(holder, clone));
+      t.flip.copy(handWorldQuat(hand)).invert();
+      grip.quaternion.copy(t.flip).multiply(t.desired);
+      grip.scale.setScalar(BOMB_CONTAINER_MODEL_SCALE / boneScaleRef.current);
+
+      if (p < release) {
+        // Bomba HÂLÂ ELDE: avuca oturur ve kolla birlikte savrulur.
+        grip.position.copy(t.a);
+        hand.worldToLocal(grip.position);
+        grip.visible = true;
+        return;
+      }
+
+      if (action.kind === "throw") {
+        // 🧨 Bomba elden ÇIKTI: mermi sim tarafında doğdu (bkz.
+        // `SkillComponent.fireBombThrow`). Elde tutulan model gizlenir, yoksa
+        // aynı top iki kez görünürdü (elde + uçarken).
+        grip.visible = false;
+        return;
+      }
+
+      // ── YERE BIRAKMA: DÜŞÜŞ ─────────────────────────────────────────
+      // Top, bırakıldığı noktadan ZEMİNE iner ve hız kazanır; yatayda
+      // karakterin gövde eksenine yerleşir (tuzak da oraya konur).
+      if (!fallStarted.current) {
+        fallStarted.current = true;
+        fallFrom.current.copy(t.a);
+      }
+      const land = action.land ?? 0.72;
+      const fall = THREE.MathUtils.clamp(
+        (p - release) / Math.max(1e-4, land - release),
+        0,
+        1,
+      );
+      groundHoldPoint(clone, armRig, t.land);
+      t.a.lerpVectors(fallFrom.current, t.land, fall * fall);
+      grip.position.copy(t.a);
+      hand.worldToLocal(grip.position);
+      // Top yere değdiği karede gizlenir: tuzak TAM o anda doğar (`placeBombTrap`).
+      grip.visible = p < land;
+      return;
+    }
+
+    // 🤹 HOKKABAZLIK: kol pozu faz alanlarından sürülür (konumdan önce
+    // çağrılabilir), sonra avuç noktaları okunur.
     if (armRig && other) {
       applyBombArmPose(
         clone,
         armRig,
         sampleJuggleTiming(juggleTime.current, juggle.current),
-        juggleTime.current,
+        swayTime.current,
       );
     }
 

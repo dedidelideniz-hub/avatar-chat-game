@@ -121,6 +121,66 @@ const CATCH_OPEN_START = 0.3;
 /** Yakaladıktan sonra kapanışın tamamlanma süresi (tutuş oranı). */
 const CATCH_CLOSE_SPAN = 0.18;
 
+/* ── 🧨 Tek seferlik aksiyonlar (fırlatma / yere bırakma) ─────────── */
+
+/** Fırlatma: hazırlık evresinin bitişi (aksiyon oranı). */
+const THROW_WINDUP_END = 0.34;
+/** Hazırlık: el omzun ARKASINDA ve YUKARISINDA (kol boyunun katı, taşıma noktasına eklenir). */
+const THROW_WINDUP_UP = 0.5;
+const THROW_WINDUP_BACK = 0.4;
+const THROW_WINDUP_OUT = 0.22;
+/** Bırakış: el önde, göğüs hizasının biraz üstünde (kol savrulur). */
+const THROW_RELEASE_FWD = 0.58;
+const THROW_RELEASE_UP = 0.2;
+const THROW_RELEASE_OUT = 0.06;
+/** Takip: el gövdeyi geçip aşağı savrulur (gerçek atışta kol boşluğa düşer). */
+const THROW_FOLLOW_FWD = 0.44;
+const THROW_FOLLOW_DOWN = 0.28;
+/**
+ * Takibin bittiği ve hokkabazlığın tutuş başına dönüşün başladığı an.
+ *
+ * ÖLÇÜMLE SEÇİLDİ: 0.86'da dönüş penceresi yalnızca ~0.11 sn kaliyordu ve kol
+ * kare başına 0.10 birim hareket ediyordu (hokkabazlığın kendi zirvesinin
+ * ~3 katı, "kol geri savruluyor" gibi okunur). 0.78'de dönüş 0.18 sn'ye
+ * çıkar, zirve 0.06 birime iner.
+ */
+const THROW_FOLLOW_END = 0.78;
+/** Boştaki kol hedefi gösterir (atış boyunca). */
+const THROW_AIM_FWD = 0.5;
+const THROW_AIM_UP = 0.08;
+/** Gövde: hazırlıkta geriye yaslanır, bırakışta öne kapanır (rad). */
+const THROW_LEAN_BACK = 0.13;
+const THROW_LEAN_FWD = 0.3;
+
+/** Yere bırakma: el omuzdan aşağı iner (erişim sınırına yakın) ve öne uzanır. */
+const PLACE_DOWN = 0.97;
+const PLACE_FWD = 0.28;
+const PLACE_OUT = 0.14;
+/**
+ * Elin TOPU BIRAKTIKTAN sonra geri yükselmeye başladığı an (düşüş oranı).
+ *
+ * NEDEN BIRAKIŞTAN HEMEN SONRA: el top yere inene kadar aşağıda beklemek
+ * zorunda değil — parmaklar açıldıktan sonra kol doğrulmaya başlayabilir. Bekleme
+ * zorlanınca geri çekilme penceresi ~0.15 sn'ye sıkışıyor ve kol kare başına
+ * 0.16 birim hareket ediyordu (ölçüldü; hokkabazlığın zirvesi ~0.04).
+ */
+const PLACE_STAND_AT = 0.5;
+/** Denge kolu: gövde eğilirken diğer kol geriye/dışa açılır. */
+const PLACE_BALANCE_BACK = 0.26;
+const PLACE_BALANCE_OUT = 0.1;
+const PLACE_BALANCE_UP = 0.06;
+/** Gövdenin öne eğilmesi (rad) — omurga zincirine dağıtılır. */
+const PLACE_BOW = 0.42;
+/**
+ * Bombanın ELDEN ÇIKIP YERE DEĞMESİ arasındaki süre (aksiyon oranı).
+ *
+ * Yere değme anı SİM'den gelir (`BombActionFrame.land`): tuzak tam o anda
+ * doğar ve elde tutulan bomba gizlenir. Bu sabit yalnızca düşüşün NE ZAMAN
+ * başlayacağını belirler — ikisi ayrı yerde yazılsaydı top yere değmeden tuzak
+ * doğar (iki bomba) ya da top havada asılı kalırdı.
+ */
+export const PLACE_FALL_SPAN = 0.26;
+
 /** Dirsek yönü karışımı (aşağı / dışa / geriye), karakterin kendi eksenlerinde. */
 const POLE_DOWN = 0.6;
 const POLE_OUT = 0.7;
@@ -162,6 +222,31 @@ export interface BombArmRig {
   reach: number;
   /** Karakterin kendi ileri ekseni (model uzayı). */
   forward: THREE.Vector3;
+  /**
+   * Yan eksen: SAĞ omuzdan SOL omuza bakar (model uzayı). "Dışa" yön her el
+   * için `sign * lateral`tir (sağ el +1, sol el -1) — taşıma noktasının
+   * hesabıyla aynı kural, böylece aksiyon pozları da gövdeden uzağa açılır.
+   */
+  lateral: THREE.Vector3;
+  /**
+   * Omurga zinciri KÖKTEN YUKARIYA (`Spine → Spine1 → Spine2`). Aksiyonlarda
+   * gövdeyi öne/geriye bükmek için kullanılır: tek kemik yerine zincire
+   * DAĞITILIR, yoksa omurga tek yerden kırılmış gibi görünür.
+   */
+  spineChain: THREE.Object3D[];
+  /** Omurga bükme ekseni (model uzayı) ve ÖLÇÜLEN işareti. */
+  bowAxis: THREE.Vector3;
+  bowSign: number;
+  /**
+   * Ayak/parmak kemikleri (varsa).
+   *
+   * NEDEN BURADA: yere bırakılan bombanın NEREYE düşeceğini bilmek için
+   * karakterin zemin yüksekliği gerekir (bomba yarıçapı kadar yukarıda durur).
+   * Zemin, "model kökü y = 0" varsayımıyla DEĞİL, en alçak ayak kemiğinin canlı
+   * dünya konumundan okunur — böylece gövde alçalıp yükselse de (duruş, eğilme)
+   * top yere doğru yere iner. Kemik bulunamazsa çağıran sabit bir zemine düşer.
+   */
+  feet: THREE.Object3D[];
 }
 
 /* ── Geçici vektörler (kare başına çöp yok) ─────────────────────── */
@@ -223,6 +308,9 @@ function parentWorldQuat(node: THREE.Object3D, out: THREE.Quaternion): THREE.Qua
   return out.setFromRotationMatrix(mBasis);
 }
 
+/** Gövde bükme işaretini ölçen deneme açısı (rad). */
+const PROBE_BOW = 0.32;
+
 /**
  * `bone`u, çocuğu `target` noktasına bakacak şekilde döndürür.
  *
@@ -262,6 +350,51 @@ function aimBone(
   qParent.premultiply(qModelRoot.invert());
   qLocal.copy(qParent).invert().multiply(qRot).multiply(qParent);
   bone.quaternion.premultiply(qLocal);
+}
+
+/**
+ * Kemiği MODEL uzayında bir eksen çevresinde döndürür.
+ *
+ * Klibin yazdığı poz EZİLMEZ, üstüne binilir: mixer her karede kemikleri
+ * yeniden yazdığı için premultiply edilen dönüş birikmez. `aimBone` ile AYNI
+ * eşleme kullanılır — model uzayındaki R dönüşü, kemiğin ebeveyn uzayına
+ * X = Qp⁻¹·R·Qp olarak taşınır (Qp = ebeveynin MODEL-uzayı yönelimi; klonun
+ * rotasyonu oyunda sürekli değiştiği için dünya uzayından çevrilir).
+ */
+function rotateBoneModel(
+  clone: THREE.Object3D,
+  bone: THREE.Object3D,
+  axisModel: THREE.Vector3,
+  angle: number,
+): void {
+  const parent = bone.parent;
+  if (!parent || !angle) return;
+  qRot.setFromAxisAngle(axisModel, angle);
+  parentWorldQuat(parent, qParent);
+  parentWorldQuat(clone, qModelRoot);
+  qParent.premultiply(qModelRoot.invert());
+  qLocal.copy(qParent).invert().multiply(qRot).multiply(qParent);
+  bone.quaternion.premultiply(qLocal);
+}
+
+/**
+ * Omurgayı model uzayında `axis` çevresinde `angle` kadar büker (pozitif =
+ * karakterin baktığı yöne doğru) ve açıyı zincire DAĞITIR: kök kemik en çok,
+ * uçtaki en az döner. Tek kemikten bükmek omurgayı ortadan kırılmış gibi
+ * gösterirdi; dağıtım hem ölçümde hem kare döngüsünde aynıdır.
+ */
+function applyBow(
+  clone: THREE.Object3D,
+  chain: THREE.Object3D[],
+  axis: THREE.Vector3,
+  angle: number,
+): void {
+  const n = chain.length;
+  if (!n || !angle) return;
+  const total = (n * (n + 1)) / 2;
+  for (let i = 0; i < n; i++) {
+    rotateBoneModel(clone, chain[i], axis, (angle * (n - i)) / total);
+  }
 }
 
 /**
@@ -430,6 +563,48 @@ export function findBombArmRig(clone: THREE.Object3D): BombArmRig | null {
 
   const baseRight = baseOf(rightPos, 1);
   const baseLeft = baseOf(leftPos, -1);
+
+  // ── OMURGA ZİNCİRİ: omzun ataları arasından "spine" adlı kemikler, kökten
+  // yukarıya sıralı. Ad kalıbı kullanılır (Mixamo `Spine/Spine1/Spine2`); hiç
+  // bulunamazsa gövde bükülmesi atlanır, aksiyonlar yalnız kollarla oynar.
+  const spineChain: THREE.Object3D[] = [];
+  for (let node: THREE.Object3D | null = rightUpper; node; node = node.parent) {
+    if ((node as THREE.Bone).isBone && cleanName(node.name).includes("spine")) {
+      spineChain.unshift(node);
+    }
+  }
+
+  // Ayak/parmak kemikleri: zemin referansı (bomba düşüşü kullanır).
+  const feet: THREE.Object3D[] = [];
+  clone.traverse((node) => {
+    if (!(node as THREE.Bone).isBone) return;
+    const name = cleanName(node.name);
+    if (name.includes("foot") || name.includes("toe") || name.includes("ankle")) {
+      feet.push(node);
+    }
+  });
+
+  // Gövde eğilme ekseni: yan eksen (sağ→sol). İŞARET VARSAYILMAZ, ÖLÇÜLÜR —
+  // aynı eksende ters yönde çizilmiş bir rig'de +açı gövdeyi geriye yatırırdı
+  // (bkz. `BattleStance` → `pickTarget`, aynı gerekçe). Deneme dönüşü omurga
+  // zincirine dağıtılır ve göğsün İLERİ gidip gitmediğine bakılır.
+  const bowAxis = lateral.clone();
+  let bowSign = 1;
+  if (spineChain.length) {
+    const chest = vA.clone().add(vB).multiplyScalar(0.5);
+    const saved = spineChain.map((bone) => bone.quaternion.clone());
+    applyBow(clone, spineChain, bowAxis, PROBE_BOW);
+    clone.updateMatrixWorld(true);
+    localPos(clone, rightShoulder, vA);
+    localPos(clone, leftShoulder, vB);
+    const probe = vA.add(vB).multiplyScalar(0.5).sub(chest);
+    bowSign = probe.dot(forward) >= 0 ? 1 : -1;
+    spineChain.forEach((bone, i) => bone.quaternion.copy(saved[i]));
+    clone.updateMatrixWorld(true);
+    localPos(clone, rightShoulder, vA);
+    localPos(clone, leftShoulder, vB);
+  }
+
   return {
     right: chain(rightShoulder, rightUpper, rightFore, rightHand, rightL1, rightL2, 1),
     left: chain(leftShoulder, leftUpper, leftFore, leftHand, leftL1, leftL2, -1),
@@ -439,6 +614,11 @@ export function findBombArmRig(clone: THREE.Object3D): BombArmRig | null {
     carryLeft: baseLeft.clone().sub(leftPos),
     reach,
     forward,
+    lateral,
+    spineChain,
+    bowAxis,
+    bowSign,
+    feet,
   };
 }
 
@@ -538,4 +718,215 @@ export function applyBombArmPose(
   const gripLeft = BOMB_FINGER_GRIP * (1 - GRIP_OPEN * (fromIsRight ? catchOpen : throwOpen));
   applyFingerGrip(clone, gripRight, rig.right.hand);
   applyFingerGrip(clone, gripLeft, rig.left.hand);
+}
+
+/* ── 🧨 AKSİYON POZU (fırlatma / yere bırakma / boş el) ───────────── */
+
+/**
+ * Tek seferlik aksiyonun kemik katmanına girdisi.
+ *
+ * Hokkabazlık (`applyBombArmPose`) SÜREKLİ bir döngüdür; bunlar ise başı ve
+ * sonu olan hareketlerdir — fırlatma (`throw`) ve yere bırakma (`place`)
+ * sırasında döngü tamamen durur, sonra temiz bir başlangıçtan (`juggleTime = 0`)
+ * devam eder. `empty` ise bomba elden çıktıktan sonraki ara hâldir: eller
+ * taşıma noktasında durur, çünkü karakter o an bomba TAŞIMAZ.
+ */
+export interface BombActionPoseInput {
+  kind: "throw" | "place" | "empty";
+  /** Aksiyonun 0..1 ilerlemesi. */
+  progress: number;
+  /** Bombanın ELDEN ÇIKTIĞI ilerleme (bırakış/toprağa bırakma anı). */
+  release: number;
+  /** true → bomba SAĞ elde, yani aksiyonu yapan el sağdır. */
+  right: boolean;
+  /**
+   * Aksiyona GİRİŞ harmanı: 0 = eski kol pozu, 1 = tam aksiyon pozu.
+   *
+   * NEDEN: yetenek hokkabazlığın ORTASINDA (top havadayken, el uzanmışken)
+   * basılabilir. Poz bir karede aksiyonun başlangıcına atlarsa kol ve bomba
+   * ışınlanmış gibi görünür; çağıran kısa bir rampa boyunca ellerin BULUNDUĞU
+   * noktayı (`from`) geçirir ve poz oradan aksiyona akar.
+   */
+  intro?: number;
+  /** `intro` harmanının başlangıç noktaları (model uzayı, `clone.worldToLocal`). */
+  from?: { right: THREE.Vector3; left: THREE.Vector3 } | null;
+}
+
+/** Hedef noktayı (ileri / yukarı / dışa) katsayılarından kurar — tahsis yok. */
+function setTarget(
+  out: THREE.Vector3,
+  base: THREE.Vector3,
+  rig: BombArmRig,
+  sign: number,
+  fwd: number,
+  up: number,
+  side: number,
+): void {
+  out
+    .copy(base)
+    .addScaledVector(rig.forward, fwd * rig.reach)
+    .addScaledVector(WORLD_UP, up * rig.reach)
+    .addScaledVector(rig.lateral, side * sign * rig.reach);
+}
+
+/**
+ * Fırlatma / yere bırakma / boş el pozunu uygular.
+ *
+ * NEDEN TEK FONKSİYON: üç hâl de aynı iki eli, aynı kavrama katmanını ve aynı
+ * gövde eğilmesini sürer; ayrı fonksiyonlara bölünseydi "hangi el tutuyor" ve
+ * "parmaklar hangi oranda kapalı" bilgisi üç yerde ayrı ayrı türetilirdi.
+ *
+ * SIRA ŞART (çağıran için de): kol pozlandıktan SONRA avuç noktaları okunur —
+ * bomba konumu elden türetiliyor (bkz. `SamuraiBomb` kare döngüsü).
+ */
+export function applyBombActionPose(
+  clone: THREE.Object3D,
+  rig: BombArmRig,
+  input: BombActionPoseInput,
+  time: number,
+): void {
+  const p = THREE.MathUtils.clamp(input.progress, 0, 1);
+  const release = THREE.MathUtils.clamp(input.release, 0.06, 0.96);
+  /** Aksiyonu yapan elin yan işareti (sağ +1 / sol -1) ve tersi. */
+  const holdSign = input.right ? 1 : -1;
+  const offSign = -holdSign;
+  const sway = Math.sin(time * SWAY_SPEED) * SWAY_AMOUNT;
+
+  // Hedefler ve kavramalar SKALER katsayı olarak toplanır (taşıma noktasına
+  // göre ileri/yukarı/dışa). NEDEN SKALER: aksiyonun sonunda eller hokkabazlığın
+  // TUTUŞ BAŞINA dönmek zorundadır (`endK`), yani iki farklı pozun aynı bazda
+  // harmanlanması gerekir; vektör tutulsaydı iki kez omuz/ofset hesabı yapılır
+  // ve harman yanlış bazda olurdu.
+  let fwdHold = 0;
+  let upHold = 0;
+  let outHold = 0;
+  let fwdOff = 0;
+  let upOff = 0;
+  let outOff = 0;
+  /** Tutan / boştaki elin kavrama oranı (1 = tam kavrama). */
+  let gripHold = 1;
+  let gripOff = 1;
+
+  // ── GÖVDE: önce eğilme, sonra kollar. Kolların hedefleri omuza GÖRE
+  // kurulduğu için eğilen gövdeyle birlikte inerler (ayrı bir telafi yok).
+  let bow = 0;
+  /** Sonda hokkabazlığın tutuş başına dönüş oranı (0 = aksiyon pozu). */
+  let endK = 1;
+
+  if (input.kind === "throw") {
+    // ── FIRLATMA ────────────────────────────────────────────────
+    // Hazırlıkta geriye yaslan, bırakışta öne kapan, takipte doğrul.
+    const windup = smoothstep(0, THROW_WINDUP_END, p);
+    const whip = smoothstep(THROW_WINDUP_END, release, p);
+    const follow = smoothstep(release, THROW_FOLLOW_END, p);
+    const settle = smoothstep(THROW_FOLLOW_END, 1, p);
+    bow =
+      ((1 - whip) * -THROW_LEAN_BACK * windup + whip * THROW_LEAN_FWD) *
+      (1 - settle);
+    endK = settle;
+    // Hedef, taşıma noktasından başlar ve üç anahtar noktayı sırayla geçer:
+    // hazırlık (arkada/yukarı) → bırakış (önde, tam kol) → takip (aşağı).
+    // Parçalı lerp'ler C0 sürekli olduğu için poz sıçramaz; her parçanın kendi
+    // yumuşatması hareketi kamçı gibi hızlandırır.
+    fwdHold = -THROW_WINDUP_BACK * windup;
+    upHold = THROW_WINDUP_UP * windup;
+    outHold = THROW_WINDUP_OUT * windup;
+    fwdHold = THREE.MathUtils.lerp(fwdHold, THROW_RELEASE_FWD, whip);
+    upHold = THREE.MathUtils.lerp(upHold, THROW_RELEASE_UP, whip);
+    outHold = THREE.MathUtils.lerp(outHold, THROW_RELEASE_OUT, whip);
+    if (p > release) {
+      fwdHold = THREE.MathUtils.lerp(fwdHold, THROW_FOLLOW_FWD, follow);
+      upHold = THREE.MathUtils.lerp(upHold, -THROW_FOLLOW_DOWN, follow);
+      outHold = THREE.MathUtils.lerp(outHold, THROW_RELEASE_OUT, follow);
+    }
+    // Boştaki kol HEDEFİ GÖSTERİR: atış boyunca nişan yönüne uzanır, takipte
+    // gevşer.
+    const point =
+      smoothstep(0, THROW_WINDUP_END, p) *
+      (1 - smoothstep(release, THROW_FOLLOW_END, p));
+    fwdOff = THROW_AIM_FWD * point;
+    upOff = THROW_AIM_UP * point;
+    // Tutan el bırakışta açılır, boştaki el işaret ederken gevşek kalır.
+    gripHold = 1 - GRIP_OPEN * smoothstep(release, release + 0.1, p);
+    gripOff = 1 - 0.55 * point;
+  } else if (input.kind === "place") {
+    // ── YERE BIRAKMA ────────────────────────────────────────────
+    // El omuzdan aşağı iner (erişimin sınırına kadar), parmaklar topu bırakır
+    // ve el geri çekilir. Kol yere TAM yetişemez (omuzun yerden yüksekliği kol
+    // boyundan fazladır); kalan boşluğu bombanın düşüşü kapatır (bkz.
+    // `SamuraiBomb` → düşüş eğrisi), yani top yine yere kadar iner.
+    // El, bırakışa kadar AŞAĞI iner (rampa tam bırakışta biter), sonra
+    // doğrulur; gövde de el ile birlikte kalkar.
+    const stand = Math.min(
+      0.96,
+      release + PLACE_FALL_SPAN * PLACE_STAND_AT,
+    );
+    const rise = 1 - smoothstep(stand, 1, p);
+    const down = smoothstep(0, release, p) * rise;
+    bow = PLACE_BOW * smoothstep(0, release, p) * rise;
+    // Top yere değdikten sonra "boş el" duruşuna yumuşak geçiş.
+    endK = smoothstep(stand, 1, p);
+    fwdHold = PLACE_FWD * down;
+    upHold = -PLACE_DOWN * down;
+    outHold = PLACE_OUT * down;
+    fwdOff = -PLACE_BALANCE_BACK * down;
+    upOff = PLACE_BALANCE_UP * down;
+    outOff = PLACE_BALANCE_OUT * down;
+    // Parmaklar bırakıştan biraz ÖNCE açılır (top elden düşmeye başlarken
+    // parmaklar açık olmalı), denge kolu hafifçe açılır.
+    gripHold = 1 - GRIP_OPEN * smoothstep(release - 0.1, release, p);
+    gripOff = 1 - 0.35 * down;
+  }
+
+  // ── SON HARMAN: aksiyon pozundan hokkabazlığın TUTUŞ BAŞINA ──────
+  // NEDEN: aksiyon bitince hokkabazlık `juggleTime = 0`dan, yani tutuşun ilk
+  // karesinden devam eder. O karede tutan el (sağ) `LIFT_FORWARD`/`LIFT_UP`
+  // kadar yukarı ve önde, boştaki el taşıma noktasında ve parmakları
+  // `1 - GRIP_OPEN` oranında açıktır. Bu harman olmasaydı kol, aksiyon bittiği
+  // karede bir anda 0.2 birim yukarı zıplardı.
+  // (`empty` bu harmanı endK = 1 ile baştan uygular: aksiyonun kendisi yoktur,
+  // yalnızca tutuş başı pozu ve salınım kalır.)
+  fwdHold = THREE.MathUtils.lerp(fwdHold, LIFT_FORWARD, endK);
+  upHold = THREE.MathUtils.lerp(upHold, LIFT_UP, endK);
+  outHold = THREE.MathUtils.lerp(outHold, 0, endK);
+  fwdOff = THREE.MathUtils.lerp(fwdOff, 0, endK);
+  upOff = THREE.MathUtils.lerp(upOff, 0, endK);
+  outOff = THREE.MathUtils.lerp(outOff, 0, endK);
+  gripHold = THREE.MathUtils.lerp(gripHold, 1, endK);
+  gripOff = THREE.MathUtils.lerp(gripOff, 1 - GRIP_OPEN, endK);
+  // Salınım: hokkabazlıkta olduğu gibi eller karşı fazlı nefes alır (aksiyon
+  // sırasında da sürer, yoksa poz "donuk" okunur ve bittiği karede sıçrardı).
+  fwdHold += sway;
+  fwdOff -= sway;
+
+  // Gövde eğilmesi: kollar pozlanmadan ÖNCE (hedefler omuza göre kurulur).
+  applyBow(clone, rig.spineChain, rig.bowAxis, rig.bowSign * bow);
+
+  // Omuzlar CANLI okunur (gövde eğilmesinden SONRA): hedefler gerçek omuz
+  // konumuna göre kurulur, yoksa eğilen gövdede eller geride kalırdı.
+  localPos(clone, rig.right.shoulder, vShoulderR);
+  localPos(clone, rig.left.shoulder, vShoulderL);
+  vCarryR.copy(rig.carryRight).add(vShoulderR);
+  vCarryL.copy(rig.carryLeft).add(vShoulderL);
+
+  if (input.right) {
+    setTarget(vTargetR, vCarryR, rig, holdSign, fwdHold, upHold, outHold);
+    setTarget(vTargetL, vCarryL, rig, offSign, fwdOff, upOff, outOff);
+  } else {
+    setTarget(vTargetL, vCarryL, rig, holdSign, fwdHold, upHold, outHold);
+    setTarget(vTargetR, vCarryR, rig, offSign, fwdOff, upOff, outOff);
+  }
+  // Giriş harmanı: hedefler, aksiyon başlarken ellerin BULUNDUĞU noktadan
+  // aksiyon pozuna akar (tek karede atlama olmaz).
+  const intro = THREE.MathUtils.clamp(input.intro ?? 1, 0, 1);
+  if (input.from && intro < 1) {
+    vTargetR.lerp(input.from.right, 1 - intro);
+    vTargetL.lerp(input.from.left, 1 - intro);
+  }
+  solveArm(clone, rig.right, vTargetR);
+  solveArm(clone, rig.left, vTargetL);
+  // ✊ Kavramalar: aksiyonu yapan el / boştaki el — sonda HOKKABAZLIK
+  // düzenine döner (hangi elle atılmış olursa olsun; döngü sağdan başlar).
+  applyFingerGrip(clone, BOMB_FINGER_GRIP * gripHold, input.right ? rig.right.hand : rig.left.hand);
+  applyFingerGrip(clone, BOMB_FINGER_GRIP * gripOff, input.right ? rig.left.hand : rig.right.hand);
 }

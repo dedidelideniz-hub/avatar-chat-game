@@ -30,7 +30,11 @@ import {
   isRoyalWarriorSkin,
   useRoyalWarriorEffects,
 } from "@/engine/RoyalWarriorEffects";
-import { isBombSkin, useSamuraiBomb } from "@/engine/SamuraiBomb";
+import {
+  isBombSkin,
+  useSamuraiBomb,
+  type BombActionFrame,
+} from "@/engine/SamuraiBomb";
 import {
   applyBattleStance,
   findBattleStance,
@@ -80,6 +84,7 @@ import type { MutableRefObject } from "react";
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ProjectilePool } from "./arena/ProjectilePool";
+import { bombActionFor } from "./arena/bombKit";
 import { applyBushTransparency } from "./arena/bushFade";
 import {
   drawBarSprite,
@@ -391,6 +396,14 @@ export interface BattleFighter {
   bombThrowT: number;
   /** Bomba fırlatma hazırlığında bombayı elden bıraktım mı? (tek sefer tetik) */
   bombThrowHit: boolean;
+  /** 🧨 Yere bırakma (tuzak) animasyonunun kalan süresi (sn, 0 = hazır).
+   *
+   *  Yetenek BAŞLARKEN kurulur ve animasyon bitene kadar akar; tuzak ancak
+   *  bombanın yere değdiği karede doğar (`bombPlaceHit`). Böylece tuzak ile
+   *  elden çıkan top aynı anda ekranda görünmez. */
+  bombPlaceT: number;
+  /** Yere bırakma animasyonunda tuzak doğdu mu? (tek sefer tetik) */
+  bombPlaceHit: boolean;
   /** ⚔️ Yakın dövüş (melee) salınımının kalan süresi (sn). 0 = hazır.
    *  Yalnızca Kraliyet Savaşçısı kullanır; süre boyunca karakter köklenir. */
   meleeT: number;
@@ -675,7 +688,16 @@ function GlbFighterBodyCore({
   // (farklı skin kapısı) — aynı el-kemiği zincirini ve kalibrasyonu kullanır.
   // `bombRef` burada tutulur çünkü yetenekler bombayı elden ÇIKARIR: tuzak
   // bırakırken ve bomba fırlatırken el bir an boş görünmelidir.
-  const { bombRef } = useSamuraiBomb(clone, skinUrl);
+  //
+  // 🧨 AKSİYON OKUYUCUSU: kemik katmanı oyun kurallarını bilmez; sayaçlardan
+  // türetilen tek satırlık çerçeve (`bombActionFor`) her kare okunur. Çerçeve
+  // NESNESİ yeniden kullanılır: kare başına çöp üretmemek için (`BombArmPose`
+  // de aynı kuralda). Okuma bir kare gecikmeli olabilir (salınım sırası: kemik
+  // katmanı sahneden önce çalışır) — 16 ms, gözle görülmez.
+  const bombAction = useRef<BombActionFrame>({ kind: "empty", progress: 0 });
+  const { bombRef } = useSamuraiBomb(clone, skinUrl, () =>
+    bombActionFor(fighter.current, bombAction.current),
+  );
 
   // Normalize to FIGHTER_MODEL_H — her görünüm (varsayılan / Samuray /
   // Kraliyet Savaşçısı / Şövalye) aynı gövde boyuna gelir ve üstüne ortak
@@ -847,10 +869,14 @@ function GlbFighterBodyCore({
     const meleeProgress = meleeActive
       ? 1 - Math.max(0, f.meleeT) / meleeDuration(f.meleeLeap)
       : 0;
+    // 🧨 Bomba aksiyonu (fırlatma / yere bırakma): kolları kemik katmanı
+    // (`BombArmPose`) sürer — duruş katmanı açık kalsaydı kendi kol hazırlık
+    // açısını yazardı ve atış pozu bozulurdu (duruş useFrame'i bu kareden SONRA
+    // çalıştığı için bayrak burada yazılır).
+    const bombActing = (f.bombThrowT ?? 0) > 0 || (f.bombPlaceT ?? 0) > 0;
     // Ulti/melee kemikleri kendisi sürerken duruş katmanı kapanır (duruş
-    // kemiklerini melee koluyla çakıştırmasın diye). Duruş useFrame'i bu
-    // kareden SONRA çalıştığı için bayrak burada yazılır.
-    stanceRig.suppressed = slamActive || meleeActive;
+    // kemiklerini melee koluyla çakıştırmasın diye).
+    stanceRig.suppressed = slamActive || meleeActive || bombActing;
     const g = groupRef.current;
     if ((slamActive || meleeActive) && g) {
       // Kılıç bıçağının el-lokal ekseni bir kez ölçülür (rig'e sabit yok).

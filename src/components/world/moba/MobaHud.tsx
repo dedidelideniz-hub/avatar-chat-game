@@ -709,7 +709,12 @@ export function MobaUltAction({ storeKey }: { storeKey: object }) {
       const l = store.live.current;
       const p = store.player.current;
       const charge = Math.max(0, Math.min(1, p.samuraiCharge));
-      const busy = p.samuraiUltT > 0 || (p.bombThrowT ?? 0) > 0;
+      // 🧨 Bomba kiti: ulti ya da yere bırakma animasyonu sürerken düğme
+      // "hazır" görünmez (ikisi de aynı kemik katmanını sürer).
+      const busy =
+        p.samuraiUltT > 0 ||
+        (p.bombThrowT ?? 0) > 0 ||
+        (p.bombPlaceT ?? 0) > 0;
       const ready = charge >= 1 && !busy;
       if (btn.current) {
         // `hidden` React tarafında sabit tutulur: bu bileşen yeniden çizmez,
