@@ -135,6 +135,7 @@ const mBasis = new THREE.Matrix4();
 const qRot = new THREE.Quaternion();
 const qParent = new THREE.Quaternion();
 const qLocal = new THREE.Quaternion();
+const qModelRoot = new THREE.Quaternion();
 
 const cleanName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -170,9 +171,19 @@ function parentWorldQuat(node: THREE.Object3D, out: THREE.Quaternion): THREE.Qua
 /**
  * `bone`u, çocuğu `target` noktasına bakacak şekilde döndürür.
  *
- * Matematik: b'nin dünya yönelimi Qp·q. İstenen, dünyada R (now → want) kadar
- * dönmüş hâli: R·Qp·q = Qp·X·q ⇒ X = Qp⁻¹·R·Qp. Yani dünya uzayındaki dönüş
- * ebeveyn uzayına eşlenir ve `premultiply` ile mevcut poZUN ÜSTÜNE biner.
+ * Matematik: b'nin MODEL-uzayı yönelimi Qp·q. İstenen, model uzayında R
+ * (now → want) kadar dönmüş hâli: R·Qp·q = Qp·X·q ⇒ X = Qp⁻¹·R·Qp. Yani MODEL
+ * uzayındaki dönüş ebeveyn uzayına eşlenir ve `premultiply` ile mevcut pozun
+ * ÜSTÜNE biner.
+ *
+ * ⚠️ EBEVEYN ROTASYONU MODEL UZAYINDA OLMALI. Hedefler ve ölçüler
+ * `localPos` ile klonun YEREL uzayında okunuyor; dönüşü dünya eksenlerinde
+ * uygulamak yalnızca klonun dünya rotasyonu birimken doğru olur. Oysa
+ * karakter kökü oyunda sürekli döner (yürüme yönü). Ölçüm: yaw = π/2 iken el
+ * olması gereken yerden 0.27 birim, yaw = π iken 0.88 birim sapıyordu (kol
+ * boyu 0.62) — yani kol, karakter döndüğü anda hedefin tersine savruluyordu
+ * ("kollar oynamıyor" geri bildiriminin kökü). Bu yüzden ebeveyn rotasyonu
+ * klonun kendi rotasyonuyla modele çevrilir: Qp_model = Qklon⁻¹ · Qp_dünya.
  */
 function aimBone(
   clone: THREE.Object3D,
@@ -191,6 +202,9 @@ function aimBone(
   vWant.normalize();
   qRot.setFromUnitVectors(vNow, vWant);
   parentWorldQuat(parent, qParent);
+  // Dünya → model: klonun saf rotasyonunun tersiyle soldan çarp.
+  parentWorldQuat(clone, qModelRoot);
+  qParent.premultiply(qModelRoot.invert());
   qLocal.copy(qParent).invert().multiply(qRot).multiply(qParent);
   bone.quaternion.premultiply(qLocal);
 }
