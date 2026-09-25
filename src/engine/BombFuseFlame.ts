@@ -11,6 +11,10 @@
 //     hedefe yumuşak yaklaşma. Sinüs tek başına "mekanik" okunurdu.
 //   · KOR PARÇACIKLARI — alevden kopup yükselen 3 minik additif kıvılcım;
 //     "canlı" hissini veren şey alevin titremesinden çok bunlardır.
+//   · FİTİL KIVILCIMLARI (SPARKLES) — fünye ucundan fışkıran minik turuncu/sarı
+//     nokta parçacıkları (bkz. `createFuseSparks`): elde taşınırken fitil
+//     HAFİFÇE saçar, tuzakta fitil kısaldıkça fışkırır ve bombanın yere
+//     değmesi/kurulma anı bir tutam kıvılcımla vurgulanır.
 //   · NOKTASAL IŞIK — fünye ucundan yumuşak turuncu ışık; eli ve bombanın
 //     üstünü aydınlatır. Menzili bomba boyuyla ölçeklenir (haritayı boyamaz).
 //
@@ -81,6 +85,12 @@ export interface FuseFlame {
    * ve parlaklıkla. Elde taşınan bomba 0'da bırakır (hep sıcak amber).
    */
   setAlert(amount: number): void;
+  /**
+   * TEK ATIM kıvılcım fışkırtması: bomba yere değdiğinde, tuzak kurulduğunda.
+   * Kıvılcımlar sabit havuzdan karşılanır (bkz. `SPARK_POOL`); `power` hızı ve
+   * boyu ölçekler (varsayılan 1).
+   */
+  burst(count: number, power?: number): void;
   dispose(): void;
 }
 
@@ -272,6 +282,12 @@ export function createFuseFlame(
     e.life = Math.random() * e.max; // başlangıçta dağınık fazlar
   }
 
+  // ⚡ FİTİL KIVILCIMLARI: fünye ucundan fışkıran minik nokta parçacıkları.
+  // Tek `Points` = tek çizim çağrısı (bkz. `createFuseSparks`); alevle AYNI
+  // kapsayıcıda durur, yani konumu/ölçeği alevden miras alınır.
+  const sparks = createFuseSparks(span);
+  group.add(sparks.group);
+
   const update = (dt: number) => {
     // Sekme arka plana düştüğünde alev ışınlanmasın.
     const d = Math.min(dt, 1 / 30);
@@ -353,23 +369,328 @@ export function createFuseFlame(
       const fade = 1 - k;
       e.mat.opacity = 0.9 * fade * fade;
     }
+
+    // ⚡ Kıvılcımlar: alevin üstünden kopup giden ateş parçaları. `alert`
+    // tuzakta 1'e çıkar → fitil kısaldıkça fışkırma SIKLAŞIR ve HIZLANIR;
+    // elde taşınan bomba 0'da bıraktığı için fitil yalnızca hafifçe saçar.
+    sparks.update(d, alert);
   };
 
   const setAlert = (amount: number) => {
     alert = THREE.MathUtils.clamp(amount, 0, 1);
   };
 
+  const burst = (count: number, power?: number) => sparks.burst(count, power);
+
   const dispose = () => {
     group.removeFromParent();
     group.clear();
     for (const m of mats) m.dispose();
+    sparks.dispose();
     light?.dispose();
   };
 
   // İlk kareyi hemen uygula (alev bir kare boyunca sıfır ölçekte kalmasın).
   update(1 / 60);
+  // Fünye ilk karede boş görünmesin: havada birkaç kıvılcım zaten olsun.
+  burst(4, 0.75);
 
-  return { group, update, setAlert, dispose };
+  return { group, update, setAlert, burst, dispose };
+}
+
+/* --------------------- fitil kıvılcımları (sparkles) ---------------------- */
+// Fünye ucundan kopup fışkıran minik turuncu/sarı ateş parçacıkları.
+//
+// NEDEN GEREKLİ: yanan bir fitilin en güçlü "canlı" okuması alevin titremesi
+// değil, kopup giden KIVILCIMLARDIR. Elde taşınan bombada fitil hafifçe saçar;
+// yere bırakılan tuzakta fitil kısaldıkça fışkırma sıklaşır ve hızlanır, yani
+// "birazdan patlar" bilgisi renkten bağımsız olarak HAREKETLE de verilir.
+//
+// NEDEN SPRITE DEĞİL `THREE.Points`: her sprite ayrı bir çizim çağrısıdır ve
+// aynı anda 11 bomba canlı olabiliyor (elde 1 + havada 4 + yerde 6). 14
+// sprite'lık bir kıvılcım bulutu kare başına 150'den fazla çizim çağrısı
+// eklerdi; nokta bulutu hepsini TEK çağrıda çizer (boyut/renk köşe
+// özniteliklerinden gelir).
+//
+// IŞIK YOK (bkz. `createFuseFlame` → "IŞIK SAYISI" notu): kıvılcımlar additif
+// katmandır; nokta ışığı eklemek yetenek anındaki donmayı geri getirirdi.
+//
+// NOT: kıvılcımın fade/renk/boyut animasyonu CPU'dadır (14 parçacık için
+// önemsiz), kırpma (twinkle) ise shader'dadır — böylece her kıvılcım kendi
+// ritminde parlar ama kare başına yalnız 3 küçük tampon güncellenir.
+
+/** Kıvılcım havuzu — kare başına CPU işi bu sayıyla SINIRLIDIR. */
+const SPARK_POOL = 14;
+/**
+ * Nokta boyutunu piksele çeviren referans ölçek:
+ * `piksel = dünyaÖlçüsü * (ölçek / mesafe)` (projedeki toz parçacıklarıyla
+ * aynı desen, bkz. `GroundCrack` → `DEFAULT_PIXEL_SCALE`). Arena kamerası
+ * yakın izometrik bir takip kamerasıdır (bkz. `ArenaCamera`); bomba kameradan
+ * ~7-10 birim uzakta durur ve ölçek buna göre seçildi.
+ */
+const SPARK_PIXEL_SCALE = 700;
+/**
+ * Kıvılcımın piksel boyutu kırpılır: uzaktaki bombanın kıvılcımı bir piksellik
+ * görünmez toza, çok yakındaki ise ekranı kaplayan bir beneğe dönüşmesin.
+ * Alt sınır ayrıca bloom eşiğini geçmesini garantiler (kıvılcım PARLAMALI).
+ */
+const SPARK_MIN_PX = 1.6;
+const SPARK_MAX_PX = 8;
+/** Saniyede doğan kıvılcım: elde taşınan sakin fünye → tuzakta yanan fitil. */
+const SPARK_RATE_CALM = 6;
+const SPARK_RATE_ALERT = 20;
+/** Yerçekimi (× span) ve hava direnci: kıvılcım bir yay çizer, sonra söner. */
+const SPARK_GRAVITY = 6.2;
+const SPARK_DRAG = 3.4;
+/** Kıvılcımın sıcak (yeni doğmuş) ve soğumuş ucu — `BOMB_PALETTE` ailesi. */
+const SPARK_HOT = "#fff2c0";
+const SPARK_WARM = "#ff6a14";
+
+const SPARK_VERT = `
+attribute float aSize;
+attribute float aAlpha;
+attribute float aAge;
+attribute float aSeed;
+uniform float uScale;
+uniform float uMinPx;
+uniform float uMaxPx;
+uniform float uTime;
+varying float vAlpha;
+varying float vAge;
+void main() {
+  // Her kıvılcım KENDİ ritminde kırpılır (aSeed): topluca sönseler tek bir
+  // "parçacık sistemi" gibi okunurlardı — alevin titremesiyle aynı gerekçe.
+  float twinkle = 0.55 + 0.45 * sin( uTime * ( 24.0 + aSeed * 30.0 ) + aSeed * 6.2831 );
+  vAlpha = aAlpha * twinkle;
+  vAge = aAge;
+  vec4 mv = modelViewMatrix * vec4( position, 1.0 );
+  gl_PointSize = clamp( aSize * ( uScale / max( -mv.z, 0.001 ) ), uMinPx, uMaxPx );
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+const SPARK_FRAG = `
+uniform vec3 uHot;
+uniform vec3 uWarm;
+varying float vAlpha;
+varying float vAge;
+void main() {
+  // Yuvarlak, yumuşak kenarlı nokta: ortası sıcak çekirdek, kenarı sönük
+  // (kare nokta "kesilmiş piksel" gibi dururdu).
+  float d = length( gl_PointCoord - 0.5 ) * 2.0;
+  float glow = 1.0 - smoothstep( 0.25, 1.0, d );
+  float core = 1.0 - smoothstep( 0.0, 0.45, d );
+  float a = glow * vAlpha;
+  if ( a < 0.01 ) discard;
+  // Renk SOĞUMAYI anlatır: yeni kopan kıvılcım beyaz-sıcak sarı, sonra
+  // turuncuya düşer. Parlaklık RENGE yazılır — additif karışımda alfa
+  // kırpılmasına takılmadan yanar (projedeki diğer additif katmanlarla aynı).
+  vec3 col = mix( uWarm, uHot, smoothstep( 0.55, 1.0, core ) * ( 1.0 - vAge * 0.75 ) );
+  gl_FragColor = vec4( col * ( 0.55 + 1.1 * core ), a );
+}
+`;
+
+/** Havuzdaki tek bir kıvılcımın durumu (kare başına ayırma yapılmaz). */
+interface SparkState {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  /** Kalan ömür ve toplam ömür (sn) — yaş `1 - life / max`. */
+  life: number;
+  max: number;
+  /** Doğduğu andaki dünya ölçüsü (boyut yaşla küçülür). */
+  size: number;
+}
+
+export interface FuseSparks {
+  /** Fünye ucuna oturtulacak nokta bulutu (dünya biriminde konumlanır). */
+  group: THREE.Points;
+  /** Kare başına ilerletir; `alert` (0..1) kıvılcım yoğunluğunu belirler. */
+  update(dt: number, alert: number): void;
+  /** Tek atım fışkırtma (yere değme, kurulma anı). */
+  burst(count: number, power?: number): void;
+  dispose(): void;
+}
+
+/**
+ * Fünye ucu için kıvılcım bulutu kurar. `span` = bombanın dünya genişliği
+ * ailesinden gelen fünye ölçüsü (bkz. `createFuseFlame`) — tüm hız/boyut/yükseklik
+ * değerleri bundan türer, dolayısıyla ölçek değişse de kıvılcım oransal kalır.
+ */
+export function createFuseSparks(span: number): FuseSparks {
+  // Hareket azaltma: kıvılcım SAYISI ve HIZI kısılır (fünye yine saçar).
+  const motion = prefersReducedMotion() ? 0.45 : 1;
+  const baseY = 0.1 * span; // alevin dip kotu — kıvılcım oradan kopar
+
+  const positions = new Float32Array(SPARK_POOL * 3);
+  const sizes = new Float32Array(SPARK_POOL);
+  const alphas = new Float32Array(SPARK_POOL);
+  const ages = new Float32Array(SPARK_POOL);
+  const seeds = new Float32Array(SPARK_POOL);
+  for (let i = 0; i < SPARK_POOL; i++) seeds[i] = Math.random();
+
+  const geometry = new THREE.BufferGeometry();
+  const attribute = (array: Float32Array, itemSize: number, dynamic: boolean) => {
+    const a = new THREE.BufferAttribute(array, itemSize);
+    if (dynamic) a.setUsage(THREE.DynamicDrawUsage);
+    return a;
+  };
+  geometry.setAttribute("position", attribute(positions, 3, true));
+  geometry.setAttribute("aSize", attribute(sizes, 1, true));
+  geometry.setAttribute("aAlpha", attribute(alphas, 1, true));
+  geometry.setAttribute("aAge", attribute(ages, 1, true));
+  geometry.setAttribute("aSeed", attribute(seeds, 1, false));
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uScale: { value: SPARK_PIXEL_SCALE },
+      uMinPx: { value: SPARK_MIN_PX },
+      uMaxPx: { value: SPARK_MAX_PX },
+      uHot: { value: new THREE.Color(SPARK_HOT) },
+      uWarm: { value: new THREE.Color(SPARK_WARM) },
+    },
+    vertexShader: SPARK_VERT,
+    fragmentShader: SPARK_FRAG,
+    transparent: true,
+    depthWrite: false,
+    // Additif + `toneMapped = false`: kıvılcım ışık yayar, görüşü kapatmaz ve
+    // bloom eşiğini geçer (alev katmanlarıyla aynı kural).
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  });
+
+  const group = new THREE.Points(geometry, material);
+  group.raycast = () => {};
+  group.frustumCulled = false;
+  group.renderOrder = 10; // alev katmanlarının üstünde çizilsin
+  group.userData.isEquipment = true;
+
+  const sparks: SparkState[] = [];
+  for (let i = 0; i < SPARK_POOL; i++) {
+    sparks.push({ x: 0, y: baseY, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 0 });
+  }
+
+  let time = Math.random() * 10;
+  let emit = 0;
+
+  /**
+   * Bir kıvılcımı doğurur. Yuva: önce ÖLÜ kıvılcım, yoksa EN YAŞLI olan (havuz
+   * sabit kalır — kare başına ayırma yok). `energy` hız/boyut/ömrü ölçekler:
+   * 1 = fünyeden doğan normal kıvılcım, 1.4× = tek-atım fışkırtma.
+   */
+  const spawn = (energy: number) => {
+    let index = -1;
+    let oldest = Infinity;
+    for (let i = 0; i < SPARK_POOL; i++) {
+      const life = sparks[i].life;
+      if (life <= 0) {
+        index = i;
+        break;
+      }
+      if (life < oldest) {
+        oldest = life;
+        index = i;
+      }
+    }
+    if (index < 0) index = 0;
+    const s = sparks[index];
+    const ang = Math.random() * Math.PI * 2;
+    const speed = span * (2.2 + Math.random() * 3.2) * energy * motion;
+    // Kopma noktası: fünye ucunun hemen üstü, kılcal saçılmayla.
+    const off = span * 0.06 * Math.random();
+    s.x = Math.cos(ang) * off;
+    s.z = Math.sin(ang) * off;
+    s.y = baseY + span * (0.1 + Math.random() * 0.16);
+    // Hız: dışa açılan koni + net bir yukarı pay (fünyeden fışkırma).
+    const out = 0.35 + Math.random() * 0.75;
+    s.vx = Math.cos(ang) * speed * out;
+    s.vz = Math.sin(ang) * speed * out;
+    s.vy = speed * (0.3 + Math.random() * 0.9);
+    s.max = s.life = (0.26 + Math.random() * 0.3) * (0.85 + 0.25 * energy);
+    s.size = span * (0.3 + Math.random() * 0.26) * (0.9 + 0.3 * energy);
+
+    const at = index * 3;
+    positions[at] = s.x;
+    positions[at + 1] = s.y;
+    positions[at + 2] = s.z;
+    sizes[index] = s.size;
+    alphas[index] = 0; // parlaklık ilk karede CPU'da hesaplanır
+    ages[index] = 0;
+  };
+
+  const update = (dt: number, alert: number) => {
+    const d = Math.min(dt, 1 / 30); // sekme arka planda kaldıysa ışınlanma olmasın
+    time += d;
+    material.uniforms.uTime.value = time;
+
+    // Doğum hızı: elde taşınan sakin fünye hafifçe saçar; tuzakta fitil
+    // kısaldıkça (`setAlert`) fışkırmaya döner. Kare başına doğum sınırlıdır
+    // ki uzun bir kare (takılma) kıvılcım patlamasına dönüşmesin.
+    const rate = (SPARK_RATE_CALM + (SPARK_RATE_ALERT - SPARK_RATE_CALM) * alert) * motion;
+    emit = Math.min(emit + rate * d, 3);
+    let born = 0;
+    while (emit >= 1 && born < 4) {
+      emit -= 1;
+      spawn(1 + 0.35 * alert);
+      born += 1;
+    }
+
+    for (let i = 0; i < SPARK_POOL; i++) {
+      const s = sparks[i];
+      if (s.life <= 0) {
+        alphas[i] = 0;
+        continue;
+      }
+      s.life -= d;
+      if (s.life <= 0) {
+        alphas[i] = 0;
+        continue;
+      }
+      // Fizik: hava direnci (hız hızla düşer) + yerçekimi (kıvılcım yay çizer).
+      const drag = Math.max(0, 1 - SPARK_DRAG * d);
+      s.vx *= drag;
+      s.vz *= drag;
+      s.vy = s.vy * drag - SPARK_GRAVITY * span * d;
+      s.x += s.vx * d;
+      s.y += s.vy * d;
+      s.z += s.vz * d;
+
+      const k = 1 - s.life / s.max; // 0 = yeni doğdu, 1 = sönmek üzere
+      const fade = 1 - k;
+      const at = i * 3;
+      positions[at] = s.x;
+      positions[at + 1] = s.y;
+      positions[at + 2] = s.z;
+      // Boyut yaşla küçülür (kıvılcım yakıtını bitiriyor); parlaklık doğar
+      // doğmaz yanar, sonra soğur — `pow` yerine çarpma (kare başına 14 kez).
+      sizes[i] = s.size * (1 - 0.6 * k);
+      ages[i] = k;
+      alphas[i] = Math.min(1, k * 8) * fade * (0.55 + 0.45 * fade);
+    }
+
+    geometry.attributes.position.needsUpdate = true;
+    geometry.attributes.aSize.needsUpdate = true;
+    geometry.attributes.aAlpha.needsUpdate = true;
+    geometry.attributes.aAge.needsUpdate = true;
+  };
+
+  /** Tek atım: boş yuvaya sığdığı kadar kıvılcım fışkırtır. */
+  const burst = (count: number, power = 1) => {
+    const n = Math.min(Math.max(0, count), SPARK_POOL);
+    for (let i = 0; i < n; i++) spawn(1.4 * power);
+  };
+
+  const dispose = () => {
+    group.removeFromParent();
+    geometry.dispose();
+    material.dispose();
+  };
+
+  return { group, update, burst, dispose };
 }
 
 /* ------------------------ gövde hâlesi (okunurluk) ------------------------ */

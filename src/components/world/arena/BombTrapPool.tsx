@@ -28,6 +28,11 @@
 //     anına doğru büyür ve kırmızıya kayar.
 //   · KOR PARÇACIKLARI — tuzak çevresinde yükselen küçük korlar; fitilin
 //     ilerlemesiyle hızlanır (hareket = okunurluk).
+//   · FİTİL KIVILCIMLARI (Sparkles) — fünye ucundan fışkıran turuncu/sarı minik
+//     nokta parçacıkları (`engine/BombFuseFlame` → `createFuseSparks`). Fitil
+//     kısaldıkça fışkırma SIKLAŞIR ve HIZLANIR; ayrıca bomba yere değdiğinde ve
+//     tuzak kurulduğunda TEK ATIM bir kıvılcım tutamı sıçrar (`burst`) — yani
+//     fitilin bittiği bilgisi renkten bağımsız olarak HAREKETLE de verilir.
 //   · TEHLİKE DİSKİ — yalnız tuzak KURULUYKEN görünen soluk sıcak disk;
 //     gerçek TETİK yarıçapına eşittir (`BOMB_TRAP_TRIGGER_PX`), yani düşmanın
 //     hangi mesafede patlatacağını dürüstçe gösterir.
@@ -188,11 +193,17 @@ export function BombTrapPool() {
       // Sim px → dünya: x/S yatay, y/S derinlik (arena ile aynı eşleme).
       root.position.set(trap.x / S, 0, trap.y / S);
 
+      // Tek-atım anları bu karede mi oldu? (Kıvılcım fışkırtması aşağıda,
+      // bombaya erişilebilen yerde tetiklenir.)
+      let landed = false;
+      let armedNow = false;
+
       // ⏱️ TEK-ATIM EFEKTLERİN TETİKLENMESİ — kimlik üzerinden (bkz. WeakSet
       // notu): liste sıkıştırıldığı için indeks güvenilir değildir.
       if (!seenTraps.has(trap)) {
         seenTraps.add(trap);
         landT.current[i] = 0; // bomba şu anda yere değdi
+        landed = true;
       } else if (landT.current[i] !== IDLE) {
         landT.current[i] += dt;
       }
@@ -200,6 +211,7 @@ export function BombTrapPool() {
         if (!armedTraps.has(trap)) {
           armedTraps.add(trap);
           popT.current[i] = 0; // fitil bitti: tuzak kuruldu
+          armedNow = true;
         } else if (popT.current[i] !== IDLE) {
           popT.current[i] += dt;
         }
@@ -260,6 +272,13 @@ export function BombTrapPool() {
         spark.flame?.group.scale.setScalar(
           (0.62 + 0.38 * k + 0.05 * pulse) * (0.9 + 0.1 * blink),
         );
+        // ⚡ KIVILCIM (Sparkles): fitil zaten kendi kıvılcımını saçar (bkz.
+        // `engine/BombFuseFlame` → `createFuseSparks`); bu iki çağrı TEK-ATIM
+        // anlarını vurgular — bomba yere değdiğinde sıçrayan kıvılcımlar
+        // bırakma hareketini, kuruldu anındaki fışkırma fitilin bittiğini
+        // HAREKETLE haber verir (renk + halkaya ek; ışık EKLEMEDEN).
+        if (landed) spark.flame?.burst(5, 0.6);
+        if (armedNow) spark.flame?.burst(8, 1);
       }
 
       const ring = rings.current[i];
