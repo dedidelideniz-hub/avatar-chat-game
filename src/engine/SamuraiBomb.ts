@@ -310,7 +310,16 @@ export function useSamuraiBomb(
      */
     const mount = () => {
       instanceRef.current?.dispose();
-      const instance = createBombInstance({ flame: true, aura: true });
+      // Nokta ışıkları KAPALI (varsayılan): bomba fırlatılırken `grip`
+      // gizlendiği için bombanın ışıkları sahnenin ışık SAYISINI değiştirir ve
+      // three.js arenadaki TÜM shader'ları yeniden derlerdi — ulti/yetenek
+      // anındaki donmanın kaynağı buydu. Ateş/hâle additif sprite'larla parlar.
+      const instance = createBombInstance({
+        flame: true,
+        aura: true,
+        flameLight: false,
+        auraLight: false,
+      });
       grip.add(instance.root);
       instanceRef.current = instance;
     };

@@ -71,15 +71,16 @@ export function BombTrapPool() {
   );
 
   // 🧨 Tuzak da samurayın SİLAHIDIR: yerde duran cisim eldeki/havadaki modelin
-  // birebir aynısıdır (`engine/BombModel`). Fünye alevi NOKTA IŞIĞIYLA kurulur —
-  // yerdeki bomba karanlık zeminde kendi kendine parlamalı; aynı anda en fazla
-  // birkaç tuzak olur (havuz 6 slot) ve görünmeyen slotların ışığı sahneye hiç
-  // girmez (three.js görünmez nesneleri çizim listesine almaz).
+  // birebir aynısıdır (`engine/BombModel`). Fünye alevi NOKTA IŞIĞI OLMADAN
+  // kurulur: tuzak doğunca/patlayınca görünür ışık sayısı değişir ve three.js
+  // arenadaki TÜM malzemeleri yeniden derlerdi (yetenek kullanımındaki donma).
+  // Okunurluğu additif alev/hâle katmanları, kurulma halkası ve tehlike diski
+  // taşır; alev bloom eşiğini geçtiği için karanlık zeminde de parlar.
   useEffect(() => {
     const mounted: BombInstance[] = [];
     for (const body of bodies.current) {
       if (!body) continue;
-      const instance = createBombInstance({ flame: true });
+      const instance = createBombInstance({ flame: true, flameLight: false });
       body.add(instance.root);
       instance.root.position.y = BOMB_REST_Y;
       mounted.push(instance);

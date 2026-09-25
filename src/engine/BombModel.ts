@@ -160,12 +160,15 @@ export interface BombInstanceOptions {
   /** Canlı fünye alevi (varsayılan AÇIK). */
   flame?: boolean;
   /**
-   * Alev nokta ışığı (varsayılan AÇIK). UÇAN bombada KAPATILIR: aynı anda dört
-   * bomba havada olabiliyor ve her nokta ışığı sahnedeki TÜM malzemelerin
-   * gölgelendirme maliyetini artırır; uçuşu okunur kılan şey zaten sıcak iz ve
-   * zemindeki ışık lekesi. Yerdeki tuzakta AÇIK kalır (tek tek ve sabit durur:
-   * karanlık zeminde kendi kendine parlaması gerekir) ve görünmeyen slotların
-   * ışığı sahneye hiç girmez (three.js görünmez nesneleri listeye almaz).
+   * Alev nokta ışığı (VARSAYILAN KAPALI). Bombanın nokta ışığı bilinçli olarak
+   * kapalıdır: three.js bir malzemenin shader programını sahnedeki ışık
+   * SAYISINA göre derler, dolayısıyla görünür bir ışık eklenip çıkınca (bomba
+   * elden çıkınca/gizlenince ya da yere tuzak doğunca) arenadaki TÜM malzemeler
+   * yeniden derlenir. Bu, tam yetenek/ulti kullanıldığı anda yüzlerce ms'lik
+   * bir donma olarak görünüyordu. Ateşi okunur kılan şey zaten additif sprite
+   * katmanları + `toneMapped = false` (bloom eşiğini geçerler); sahnenin
+   * şampiyon/kolon ışıkları eli zaten aydınlatır. Işık yine de istenirse
+   * yalnızca HİÇ gizlenmeyen bir örnekte `true` verilmelidir (sabit sayı).
    */
   flameLight?: boolean;
   /**
@@ -173,6 +176,8 @@ export interface BombInstanceOptions {
    * (karakterin silüeti içinde kaybolmasın); yerde/havada gereksiz maliyet.
    */
   aura?: boolean;
+  /** Hâle nokta ışığı (VARSAYILAN KAPALI) — `flameLight` ile aynı gerekçe. */
+  auraLight?: boolean;
   /** Gövde küresinin istenen DÜNYA çapı (varsayılan `BOMB_TARGET_WORLD_SPAN`). */
   worldSpan?: number;
 }
@@ -186,24 +191,71 @@ export interface BombInstanceOptions {
  * kalmaz) ve yükleme BURADAN başlatılmaz — tetikleme kararı çağıranındır
  * (bkz. `subscribeBombSource` → `load`).
  */
-export function createBombInstance(options: BombInstanceOptions = {}): BombInstance {
-  const worldSpan = options.worldSpan ?? BOMB_TARGET_WORLD_SPAN;
-  const model = SkeletonUtils.clone(bombSource ?? buildStructuralBomb());
-  model.updateMatrixWorld(true);
+/**
+ * Kaynak modelin ÖLÇÜLERİ (gövde genişliği, merkez, fünye yönü ve ağız
+ * noktası) — model kökünün KENDİ uzayında.
+ */
+interface BombSourceMetrics {
+  sourceSpan: number;
+  bodyCenter: THREE.Vector3;
+  fuseDir: THREE.Vector3;
+  fuseAnchor: THREE.Vector3;
+}
 
+/**
+ * Ölçüm önbelleği — KAYNAK başına BİR KEZ hesaplanır.
+ *
+ * NEDEN ÖNBELLEK: `SkeletonUtils.clone` geometriyi ve yerel dönüşümleri
+ * PAYLAŞIR, yani aynı kaynaktan türeyen tüm klonların ölçüleri birebir aynıdır.
+ * Önceden her örnek modelin tüm köşelerini yeniden tarıyordu (`bodyPoints`
+ * birkaç kez çağrılıyordu); GLB hazır olduğunda 11 örnek (el + 4 uçan bomba +
+ * 6 tuzak) aynı karede kurulduğu için bu tarama belirgin bir TAKILMA üretiyordu.
+ */
+const sourceMetricsCache = new WeakMap<THREE.Object3D, BombSourceMetrics>();
+
+/** Prosedürel yedek model TEK kez üretilir ve tüm örnekler bundan klonlanır. */
+let structuralSource: THREE.Object3D | null = null;
+function proceduralBombSource(): THREE.Object3D {
+  if (!structuralSource) structuralSource = buildStructuralBomb();
+  return structuralSource;
+}
+
+/**
+ * Kaynağın ölçülerini döndürür (önbellekten, yoksa hesaplayıp saklar).
+ * Kaynak hiç değişmez (GLB sahnesi ya da prosedürel yedek), dolayısıyla
+ * ölçümler yaşam boyu geçerlidir.
+ */
+function sourceMetrics(source: THREE.Object3D): BombSourceMetrics {
+  const cached = sourceMetricsCache.get(source);
+  if (cached) return cached;
+  source.updateWorldMatrix(true, true);
   // ÖLÇEK REFERANSI = GÖVDE KÜRESİNİN ÇAPI (ya da kutunun XZ genişliği).
   // Fitil/kıvılcım mesh'leri ile üçgene bağlı olmayan "başıboş" köşeler
   // ölçümden ÇIKARILIR (bkz. `measureBodySpan`): yana uzanan bir fitil ya da
   // yüzeyden kopuk köşeler kutuyu şişirip bombayı olduğundan küçük ölçekler.
-  //
-  // ÜÇÜ DE ölçek uygulanmadan ÖNCE ölçülür (modelin kendi birimi).
-  const sourceSpan = measureBodySpan(model) || BOMB_MODEL_SPAN;
-  const bodyCenter = measureBodyCenter(model);
-  const fuseDir = measureFuseDirection(model);
+  const metrics: BombSourceMetrics = {
+    sourceSpan: measureBodySpan(source) || BOMB_MODEL_SPAN,
+    bodyCenter: measureBodyCenter(source),
+    fuseDir: measureFuseDirection(source),
+    fuseAnchor: findFuseAnchor(source),
+  };
+  sourceMetricsCache.set(source, metrics);
+  return metrics;
+}
+
+export function createBombInstance(options: BombInstanceOptions = {}): BombInstance {
+  const worldSpan = options.worldSpan ?? BOMB_TARGET_WORLD_SPAN;
+  const source = bombSource ?? proceduralBombSource();
+  // Ölçüler kaynak başına bir kez (yukarıdaki önbellek); klon yalnız yapıyı
+  // kopyalar (geometri/malzeme paylaşılır, `prepareHeldEquipment` malzemeleri
+  // örnek başına klonlar ki paylaşılan kaynak bozulmasın).
+  const metrics = sourceMetrics(source);
+  const model = SkeletonUtils.clone(source);
+  model.updateMatrixWorld(true);
 
   const { modelScale, materials } = prepareHeldEquipment(model, {
     targetWorldSpan: worldSpan,
-    sourceSpan,
+    sourceSpan: metrics.sourceSpan,
     parentWorldScale: 1,
   });
 
@@ -241,10 +293,10 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
   // modelin bir noktasını `align * ((v − merkez) * ölçek)` konumuna taşır —
   // yani "gövde merkezi orijinde, fünye +Y'de".
   const align = new THREE.Quaternion().setFromUnitVectors(
-    fuseDir,
+    metrics.fuseDir,
     new THREE.Vector3(0, 1, 0),
   );
-  model.position.copy(bodyCenter).multiplyScalar(modelScale).negate();
+  model.position.copy(metrics.bodyCenter).multiplyScalar(modelScale).negate();
 
   const root = new THREE.Group();
   root.quaternion.copy(align);
@@ -260,11 +312,11 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
   if (options.flame !== false) {
     flame = createFuseFlame(
       BOMB_FLAME_SPAN * (worldSpan / BOMB_TARGET_WORLD_SPAN),
-      { light: options.flameLight !== false },
+      { light: options.flameLight === true },
     );
     flame.group.position
-      .copy(findFuseAnchor(model))
-      .sub(bodyCenter)
+      .copy(metrics.fuseAnchor)
+      .sub(metrics.bodyCenter)
       .multiplyScalar(modelScale);
     root.add(flame.group);
   }
@@ -272,7 +324,7 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
   // 🧨 Gövde hâlesi: orijin TAM gövde merkezi olduğu için offset gerekmez.
   let aura: BombAura | null = null;
   if (options.aura) {
-    aura = createBombAura(worldSpan / 2);
+    aura = createBombAura(worldSpan / 2, { light: options.auraLight === true });
     root.add(aura.group);
   }
 

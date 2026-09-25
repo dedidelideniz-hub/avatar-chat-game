@@ -116,10 +116,8 @@ interface Ember {
  * Bomba ağzı için canlı alev kurar. `span` = bombanın dünya genişliği
  * (samuray bombası için `BOMB_TARGET_WORLD_SPAN`) — tüm ölçüler bundan türer.
  *
- * `options.light: false` → fünye ışığı kurulmaz. Havuzlarda (yere konan tuzak,
- * uçan bomba) aynı anda onlarca alev olabildiği için her birine nokta ışığı
- * eklemek sahnedeki TÜM malzemelerin maliyetini artırırdı; orada okunurluğu
- * zaten kurulma halkası/tehlike diski ve uçuş izi taşıyor.
+ * `options.light: true` → fünye ucunda NOKTA IŞIĞI da kurulur (çok pahalı,
+ * bkz. aşağıdaki "IŞIK SAYISI" notu). VARSAYILAN KAPALI.
  */
 export function createFuseFlame(
   span: number,
@@ -174,8 +172,20 @@ export function createFuseFlame(
   const tongueMat = matOf(tongue);
   const coreMat = matOf(core);
 
-  // Nokta ışığı: fünye ucundan ışık verir, titrer. Menzil bomba boyuyla
-  // ölçeklenir — haritayı aydınlatmaz, yalnız eli/bombayı ısıtır.
+  // ⚠️ IŞIK SAYISI = KARE SÜRESİ. Aşağıdaki nokta ışığı VARSAYILAN OLARAK
+  // KURULMAZ ve bu bilinçli bir performans kararıdır:
+  //
+  //   · three.js shader programı, sahnedeki ışık SAYISINA göre derlenir.
+  //     Görünür bir nokta ışık eklenip çıkınca (bomba elden çıkınca, tuzak
+  //     doğunca/patlayınca) sayı değişir ve arenadaki TÜM malzemeler yeniden
+  //     derlenir. Bu, tam da yetenek/ulti kullanıldığı anda yüzlerce ms'lik
+  //     bir donma olarak görünür.
+  //   · Ateşi okunur kılan şey zaten ADDITIF sprite katmanlarıdır (bloom
+  //     eşiğini geçerler, `toneMapped = false`); gerçek ışık yalnızca yakın
+  //     yüzeyi ısıtır. Sahnedeki şampiyon/kolon ışıkları eli zaten aydınlatır.
+  //
+  // Işık yine de istenirse TEK bir örnekte açılabilir (anahtar açıkken ışık
+  // sayısı sabit kalır, çünkü o örnek hiç gizlenmez).
   //
   // ŞİDDET NEDEN BU KADAR KÜÇÜK: three r155+ fiziksel ışık birimleri kullanır
   // (ışıma = şiddet / mesafe²). Alev elin ~0.1 birim uzağında olduğu için
@@ -184,9 +194,9 @@ export function createFuseFlame(
   // parıltı verir.
   const LIGHT_INTENSITY = 0.014;
   const light =
-    options?.light === false
-      ? null
-      : new THREE.PointLight("#ff7a1e", LIGHT_INTENSITY, span * 6, 2);
+    options?.light === true
+      ? new THREE.PointLight("#ff7a1e", LIGHT_INTENSITY, span * 6, 2)
+      : null;
   if (light) {
     light.userData.isEquipment = true;
     group.add(light);
@@ -371,6 +381,16 @@ export interface BombAura {
   dispose(): void;
 }
 
+export interface BombAuraOptions {
+  /**
+   * Hâle nokta ışığı (VARSAYILAN KAPALI — bkz. `createFuseFlame` → "IŞIK
+   * SAYISI" notu): ışık sayısı değişince arenadaki tüm shader'lar yeniden
+   * derlenir ve bomba elden çıktığında/gizlendiğinde bu bir donma olarak
+   * görünür. Okunurluğu additif hâle sprite'ları zaten sağlar.
+   */
+  light?: boolean;
+}
+
 /**
  * Gövde hâlesi — elde tutulan bombayı kuş bakışı kamerada OKUNUR kılan sıcak
  * kızıl-turuncu ışıma katmanı.
@@ -396,7 +416,10 @@ export interface BombAura {
  * kapsayıcı (bkz. `SamuraiBomb` → `pivot`) dünya birimindedir, yani ölçek
  * değişse de (skin/ölçü ayarı) hâle bombayla birlikte doğru kalır.
  */
-export function createBombAura(radius: number): BombAura {
+export function createBombAura(
+  radius: number,
+  options?: BombAuraOptions,
+): BombAura {
   const tex = makeFlameTexture();
   const motion = prefersReducedMotion() ? 0.25 : 1;
 
@@ -432,14 +455,19 @@ export function createBombAura(radius: number): BombAura {
     group.add(s);
   }
 
-  // Nokta ışığı: fünye aleviyle aynı ölçek kuralı (bkz. createFuseFlame →
-  // LIGHT_INTENSITY yorumu): r155+ fiziksel birimlerde ışıma = şiddet / mesafe².
-  // Prop ele yakın olduğu için ışık kontrollü yükseltilir: bomba yüzeyinde ve
-  // elde hafif sıcak bir yansıma verir, fakat arenayı yıkayacak kadar güçlü değil.
+  // Nokta ışığı VARSAYILAN KAPALI (bkz. `createFuseFlame` → "IŞIK SAYISI"):
+  // hâle, bomba ELDEN ÇIKTIĞINDA/gizlendiğinde de kapanıp açılabiliyordu ve
+  // ışık sayısındaki her değişim arenadaki tüm shader'ları yeniden derletip
+  // kare atamasına (donmaya) yol açıyordu. Okunurluk additif sprite'lardan gelir.
   const LIGHT_INTENSITY = 0.018;
-  const light = new THREE.PointLight("#ff4d16", LIGHT_INTENSITY, radius * 8, 2);
-  light.userData.isEquipment = true;
-  group.add(light);
+  const light =
+    options?.light === true
+      ? new THREE.PointLight("#ff4d16", LIGHT_INTENSITY, radius * 8, 2)
+      : null;
+  if (light) {
+    light.userData.isEquipment = true;
+    group.add(light);
+  }
 
   let time = Math.random() * 10;
 
@@ -454,17 +482,17 @@ export function createBombAura(radius: number): BombAura {
         motion;
 
     halo.scale.setScalar(radius * 2.2 * pulse);
-    haloMat.opacity = 0.07 * pulse + 0.025 * motion;
+    haloMat.opacity = 0.09 * pulse + 0.03 * motion;
     core.scale.setScalar(radius * 1.3 * pulse);
-    coreMat.opacity = 0.11 * pulse + 0.025 * motion;
-    light.intensity = LIGHT_INTENSITY * (0.75 + 0.45 * pulse);
+    coreMat.opacity = 0.14 * pulse + 0.035 * motion;
+    if (light) light.intensity = LIGHT_INTENSITY * (0.75 + 0.45 * pulse);
   };
 
   const dispose = () => {
     group.removeFromParent();
     group.clear();
     for (const m of mats) m.dispose();
-    light.dispose();
+    light?.dispose();
   };
 
   // İlk kareyi hemen uygula (hâle bir kare boyunca sıfır ölçekte kalmasın).
