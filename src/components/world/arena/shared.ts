@@ -5,6 +5,12 @@
 // ortak parçalar burada toplandı. Arena3D bu isimleri yeniden dışa aktarır,
 // böylece mevcut `import ... from "@/components/world/Arena3D"` çağrıları
 // değişmeden çalışmaya devam eder.
+//
+// 💥 Barut patlamasının EK görsel katmanları (zemin şok dalgası diski, taş
+// parçaları, merkezdeki kılıç kesiği) ağır havuzlarını kendileri yönettiği için
+// `fxs` listesi yerine posta kutusuna yazılır: bkz. `./bombBlast` (yazan) ve
+// `./BombBlastVfx` (çizen).
+import { pushBombBlastEvent } from "./bombBlast";
 
 /** World px → 3D units.
  *  Enlarged battlefield: the whole 5v5 terrain is now spread over a much
@@ -342,6 +348,7 @@ export const BOMB_PALETTE = {
   ring: "#ffa53d", // patlama halkası
   blast: "#ff5a1f", // patlama çekirdeği
   smoke: "#6b6b6b", // barut dumanı
+  rock: "#4a4238", // savrulan taş parçaları (zeminden kopan kütle)
 } as const;
 
 /**
@@ -350,6 +357,10 @@ export const BOMB_PALETTE = {
  * Soğuk alev patlamasından (`pushColdFlameFx`) bilinçli olarak AYRIDIR:
  * oyuncu "büyü" ile "patlayıcı"yı tek bakışta ayırabilmelidir. Bu yüzden:
  *   · hızlı sönen geniş bir şok halkası (patlamanın ayak izi),
+ *   · zemin şok dalgası diski: ince torus halkasının anlatamadığı "havayı iten
+ *     basınç kütlesi" (saydam disk),
+ *   · taş parçaları ve merkezde anlık kılıç kesiği — patlamanın hem kütlesi
+ *     hem samuray kimliği (bkz. `pushBombBlastEvent` → `arena/BombBlastVfx`),
  *   · `burst` — 3D patlama havuzu SABİT TURUNCU bir küre çizer; büyünün onu
  *     kullanmama sebebi (bkz. `pushColdFlameFx` notu) burada tam tersine
  *     döner: barut patlaması için doğru görüntü odur.
@@ -397,6 +408,13 @@ export function pushBombBlastFx(
     grow: r * 0.8,
     color: BOMB_PALETTE.blast,
   });
+  // ══ ŞOK DALGASI · TAŞ PARÇALARI · KILIÇ KESİĞİ ══
+  // Bu üç katman `fxs` listesine GİRMEZ: şok dalgası diski, savrulan taş
+  // parçaları ve merkezdeki kesik izi KENDİ havuzlarını isteyen (uniform +
+  // fizik + örnekleme) katmanlardır ve hepsi tek bir bileşende toplanır
+  // (bkz. `arena/BombBlastVfx`). Buraya yalnızca "bir patlama oldu" bilgisi
+  // bırakılır — ölçüler ve ömürler o bileşenin içinde ayarlanır.
+  pushBombBlastEvent(x, y, r);
   // Alev pufları: sıcak, kısa ömürlü (patlamanın ilk yarısı).
   for (let i = 0; i < 7; i++) {
     const life = 0.24 + Math.random() * 0.2;

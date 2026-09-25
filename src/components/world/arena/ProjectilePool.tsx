@@ -18,7 +18,7 @@
 // Havuzlar ayrıdır: bir görünümü değiştirmek diğerini etkilemez.
 import { useFrame } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import {
   createBombInstance,
@@ -43,6 +43,14 @@ import { FIREBALL_RANGE_PX, MAX_RANGE_PX, rangeFade } from "./skillshot";
 // ayrı bir üst katman eklenemiyor). Bileşen prop almaz: listeyi paylaşılan
 // `bombTrapState`ten okur (bkz. bombKit).
 import { BombTrapPool } from "./BombTrapPool";
+// 💥 Patlamanın AĞIR görsel katmanları (zemin şok dalgası, taş parçaları,
+// merkezde kılıç kesik izi): kendi havuzlarını yönettikleri için ayrı bir
+// bileşende toplanır (bkz. `arena/BombBlastVfx`).
+import { BombBlastVfx } from "./BombBlastVfx";
+import { BOMB_THROW_BLAST_PX } from "./bombKit";
+// 🎏 Kavisli uçuş izi ve 🎯 yerdeki hedef göstergesi (motor katmanı).
+import { createBombTargetMark, BOMB_MARK_TINTS } from "@/engine/BombTargetMark";
+import { createBombTrailRibbon } from "@/engine/BombTrailRibbon";
 
 /** Aynı anda ekranda çizilecek en fazla ateş topu (süper). */
 const FLAME_POOL = 4;
@@ -57,6 +65,15 @@ const EMBERS = 3;
 const BOLT_TONGUES = 3;
 /** Namlu şimşeği yalnızca ilk slotlarda çizilir (aynı anda birkaç atış olur). */
 const MUZZLE_POOL = 8;
+
+/* 🌀 FIRLATMA DÖNÜŞÜ — bombanın havadaki taklası.
+ * Bırakışta hızlıdır (namludan çıkmış gibi değil, ELDEN ATILMIŞ gibi), hava
+ * direnciyle yavaşlar ve sonunda sakin bir yalpalamaya düşer. Sabit hızda
+ * dönen bir cisim "mekanik" okunur; yavaşlayan dönüş fiziği hissini veren
+ * şeydir (alevin titremesiyle aynı gerekçe: sabit = yapay). */
+const BOMB_SPIN_START = 26; // rad/sn — bırakış anındaki dönüş hızı
+const BOMB_SPIN_MIN = 9; // rad/sn — hava direnci tavanı (alt sınır)
+const BOMB_SPIN_DRAG = 24; // rad/sn² — dönüşün yavaşlama ivmesi
 
 /* Uçuş yönü hesaplarında kullanılan geçici nesneler (kare başına ayırma yok). */
 const UP = new THREE.Vector3(0, 1, 0);
@@ -109,6 +126,36 @@ export function ProjectilePool({
   const bombInstances = useRef<BombInstance[]>([]);
   // GLB arka planda gelince örnekler yeniden kurulur (yapısal → GLB geçişi).
   const [bombModelReady, setBombModelReady] = useState(0);
+
+  // 🎏 KAVİSLİ İZ ve 🎯 HEDEF GÖSTERGESİ — bomba başına birer örnek, havuz
+  // gibi ÖNCEDEN kurulur: uçuş sırasında hiçbir nesne/materyal yaratılmaz.
+  const ribbons = useMemo(
+    () => Array.from({ length: BOMB_POOL }, () => createBombTrailRibbon()),
+    [],
+  );
+  const marks = useMemo(
+    () =>
+      Array.from({ length: BOMB_POOL }, () =>
+        // Gösterge GERÇEK patlama yarıçapını anlatır (bkz. `bombKit`): oyuncu
+        // kendi hasar alanını patlamadan ÖNCE okur.
+        createBombTargetMark(BOMB_THROW_BLAST_PX / S),
+      ),
+    [],
+  );
+  /** 🌀 Slot başına dönüş durumu: yeni bomba algılanınca (kimlik değişimi) sıfırlanır. */
+  const spinState = useRef({
+    proj: new Array<BattleProj | null>(BOMB_POOL).fill(null),
+    phase: new Array<number>(BOMB_POOL).fill(0),
+    rate: new Array<number>(BOMB_POOL).fill(0),
+  });
+
+  useEffect(
+    () => () => {
+      for (const ribbon of ribbons) ribbon.dispose();
+      for (const mark of marks) mark.dispose();
+    },
+    [ribbons, marks],
+  );
 
   // `load: false` — 20 MB'lık modeli havuz başlatmaz. Samuray sahnede varsa onun
   // katmanı yüklemeyi zaten başlatır ve haber bize de gelir; yoksa zaten hiç
@@ -463,20 +510,63 @@ export function ProjectilePool({
           const spin = bombSpins.current[si];
           const trailEl = bombTrails.current[si];
           const groundEl = bombGrounds.current[si];
+          // Menzil sınırında sönme: bomba da mermi gibi menzil sonunda yok olur.
+          // `fade` hem gövdeyi hem ALTINDAKİ hedef göstergesini söndürür.
+          const fade = rangeFade(p.travelled, FIREBALL_RANGE_PX);
           if (bRoot) {
-            const fade = rangeFade(p.travelled, FIREBALL_RANGE_PX);
             bRoot.visible = fade > 0.04;
             bRoot.scale.setScalar(fade);
             bRoot.position.set(p.x / S, MUZZLE.up, p.y / S);
           }
-          // Bomba havada TAKLA atarak döner (mermi gibi namlu doğrultusunda
-          // gitmez): "atılan bir cisim" olduğu ilk bakışta okunsun.
+          // 🌀 DÖNME: bomba havada TAKLA atarak gider (mermi gibi namlu
+          // doğrultusunda değil): "atılan bir cisim" olduğu ilk bakışta
+          // okunsun. Dönüş ekseni UÇUŞ YÖNÜNE DİKtir — cisim ileri doğru
+          // yuvarlanır; üzerine hafif bir yalpalama (precession) biner.
+          const st = spinState.current;
+          if (st.proj[si] !== p) {
+            // Slot yeni bir bombaya geçti: dönüş sıfırdan, tam hızla başlar ve
+            // önceki uçuşun izi KESİLİR (yoksa eski izin son noktası ile yeni
+            // bomba arasında sahte bir şerit örülürdü).
+            st.proj[si] = p;
+            st.phase[si] = 0;
+            st.rate[si] = BOMB_SPIN_START;
+            ribbons[si]?.clear();
+          }
+          st.rate[si] = Math.max(BOMB_SPIN_MIN, st.rate[si] - BOMB_SPIN_DRAG * dt);
+          st.phase[si] += st.rate[si] * dt;
           if (spin) {
-            spin.rotation.x = time * 5.2 + i * 0.7;
-            spin.rotation.z = time * 3.4 + i;
+            const speed = Math.hypot(p.vx, p.vy) || 1;
+            dirVec.set(p.vx / speed, 0, p.vy / speed);
+            // Yerel +Y'yi uçuş yönüne çevir, sonra YEREL X ekseni etrafında
+            // döndür: takla tam uçuşa dik düzlemde olur.
+            dirQuat.setFromUnitVectors(UP, dirVec);
+            spin.quaternion.copy(dirQuat);
+            spin.rotateX(st.phase[si]);
+            spin.rotateY(st.phase[si] * 0.18);
           }
           // Fünye alevi canlı kalır (titreme, kor parçacıkları, ışık yok).
           bombInstances.current[si]?.update(dt);
+
+          // 🎯 HEDEF GÖSTERGESİ: bombanın ALTINDA, yerde. Beyaz hedef alanı
+          // (gerçek patlama yarıçapı) + içinde kırmızı tehlike halkası + yavaş
+          // dönen ninja sembolü. Uçuşun sonunda `fade` ile birlikte söner.
+          const mark = marks[si];
+          if (mark) {
+            mark.setTint(
+              p.owner === "player" ? BOMB_MARK_TINTS.player : BOMB_MARK_TINTS.enemy,
+            );
+            mark.setPose(p.x / S, p.y / S, fade);
+            mark.update(dt, time);
+          }
+
+          // 🎏 KAVİSLİ İZ: bombanın geçtiği konumlardan örülen şerit (koyu
+          // barut dumanı + sıcak çekirdek). Bomba yok olduktan sonra iz
+          // kendiliğinden dağılır — bu yüzden `follow` yalnız uçuşta çağrılır.
+          const ribbon = ribbons[si];
+          if (ribbon) {
+            ribbon.follow(p.x / S, MUZZLE.up, p.y / S);
+            ribbon.update(dt);
+          }
           if (trailEl) {
             const sp = Math.hypot(p.vx, p.vy) || 1;
             const dx = p.vx / sp;
@@ -499,6 +589,11 @@ export function ProjectilePool({
     for (let i = bombSlot; i < BOMB_POOL; i++) {
       const root = bombRoots.current[i];
       if (root && root.visible) root.visible = false;
+      // İz çağrılmadığı için artık uzamaz: noktalar yaşlanır, duman dağılır ve
+      // iz kendiliğinden silinir (patlamadan sonra havada asılı kalmasın).
+      ribbons[i].update(dt);
+      // Gösterge hemen kapanır (uçuş bitti = alan bitti).
+      marks[i].setPose(0, 0, 0);
     }
     for (let i = flameSlot; i < FLAME_POOL; i++) {
       const root = flameRoots.current[i];
@@ -514,6 +609,20 @@ export function ProjectilePool({
     <group>
       {/* 🧨 Samurayın yere bıraktığı bombalar (fitil + tehlike diski) */}
       <BombTrapPool />
+
+      {/* 💥 Patlamanın ağır katmanları: zemin şok dalgası, savrulan taşlar ve
+          merkezdeki kılıç kesik izi (kendi havuzlarını kendisi yönetir) */}
+      <BombBlastVfx />
+
+      {/* 🎏 Uçan bombaların KAVİSLİ izleri + 🎯 yerdeki hedef göstergeleri.
+          İz geometrisi DÜNYA uzayında yazıldığı için bomba köklerinin ALTINDA
+          değil burada durur (bomba dönüşüyle birlikte dönmesinler). */}
+      {ribbons.map((ribbon, i) => (
+        <primitive key={`bomb-trail-${i}`} object={ribbon.group} />
+      ))}
+      {marks.map((mark, i) => (
+        <primitive key={`bomb-mark-${i}`} object={mark.group} />
+      ))}
 
       {/* ══ "Güçlü Vuruş" ana mermisi — antik büyülü soğuk alev oku ══ */}
       {Array.from({ length: PROJ_POOL }).map((_, i) => (
