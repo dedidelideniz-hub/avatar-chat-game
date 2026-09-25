@@ -365,6 +365,11 @@ export function pushBombBlastFx(
   damageR: number,
 ): void {
   const r = damageR * FIREBALL_VFX_SCALE;
+  // ══ İKİ KADEMELİ ŞOK DALGASI ══
+  // İç halka patlamanın AYAK İZİDİR (hızlı, sıcak ton), dış halka havayı iten
+  // geniş toz dalgasıdır (yavaş, solgun — duman tonu). Tek halka zemine
+  // yapışık bir "disk" gibi okunuyordu; iki kademe patlamaya hacim ve
+  // derinlik verir ve hasar alanının dışındaki oyuncu da baskıyı hisseder.
   add({
     kind: "ring",
     x,
@@ -373,6 +378,15 @@ export function pushBombBlastFx(
     maxTtl: 0.44,
     grow: r * 1.15,
     color: BOMB_PALETTE.ring,
+  });
+  add({
+    kind: "ring",
+    x,
+    y,
+    ttl: 0.74,
+    maxTtl: 0.74,
+    grow: r * 2.05,
+    color: BOMB_PALETTE.smoke,
   });
   add({
     kind: "burst",
@@ -394,6 +408,22 @@ export function pushBombBlastFx(
       maxTtl: life,
       grow: r * (0.5 + Math.random() * 0.4),
       color: i % 2 === 0 ? BOMB_PALETTE.flame : BOMB_PALETTE.spark,
+    });
+  }
+  // Kor yağmuru: patlamanın DIŞINA saçılan, yerden yükselen küçük kıvılcımlar.
+  // NEDEN GEREKLİ: alev pufları 0.24-0.44 sn'de söner, barut dumanı hemen
+  // koyulaşır; aradaki "hâlâ sıcak" okumasını bu kıvılcımlar taşır. Küçük
+  // büyüme + kısa ömür → patlamanın kuyruğu uzar, görüş kapanmaz.
+  for (let i = 0; i < 5; i++) {
+    const life = 0.3 + Math.random() * 0.28;
+    add({
+      kind: "smoke",
+      x: x + (Math.random() - 0.5) * r * 1.5,
+      y: y + (Math.random() - 0.5) * r * 1.5,
+      ttl: life,
+      maxTtl: life,
+      grow: r * 0.16 + Math.random() * 10,
+      color: i % 2 === 0 ? BOMB_PALETTE.spark : BOMB_PALETTE.flame,
     });
   }
   // Barut dumanı: koyu, uzun ömürlü — patlama geçtikten sonra da kalır.

@@ -125,9 +125,17 @@ const CATCH_CLOSE_SPAN = 0.18;
 
 /** Fırlatma: hazırlık evresinin bitişi (aksiyon oranı). */
 const THROW_WINDUP_END = 0.34;
-/** Hazırlık: el omzun ARKASINDA ve YUKARISINDA (kol boyunun katı, taşıma noktasına eklenir). */
-const THROW_WINDUP_UP = 0.5;
-const THROW_WINDUP_BACK = 0.4;
+/**
+ * Hazırlık: el omzun ARKASINDA ve YUKARISINDA (kol boyunun katı, taşıma
+ * noktasına eklenir).
+ *
+ * NEDEN 0.58 (eskiden 0.50): bomba AĞIR bir cisimdir; hazırlıkta el göğüs
+ * hizasında kalırsa atış "avucu açıp bırakma" gibi okunur. Kol boyunun
+ * %58'i kadar yükselen el, bombayı baş hizasının üstüne çıkarır ve savurma
+ * için gerçek bir mesafe (dolayısıyla hız) kazandırır.
+ */
+const THROW_WINDUP_UP = 0.58;
+const THROW_WINDUP_BACK = 0.46;
 const THROW_WINDUP_OUT = 0.22;
 /** Bırakış: el önde, göğüs hizasının biraz üstünde (kol savrulur). */
 const THROW_RELEASE_FWD = 0.58;
@@ -135,7 +143,7 @@ const THROW_RELEASE_UP = 0.2;
 const THROW_RELEASE_OUT = 0.06;
 /** Takip: el gövdeyi geçip aşağı savrulur (gerçek atışta kol boşluğa düşer). */
 const THROW_FOLLOW_FWD = 0.44;
-const THROW_FOLLOW_DOWN = 0.28;
+const THROW_FOLLOW_DOWN = 0.34;
 /**
  * Takibin bittiği ve hokkabazlığın tutuş başına dönüşün başladığı an.
  *
@@ -151,6 +159,33 @@ const THROW_AIM_UP = 0.08;
 /** Gövde: hazırlıkta geriye yaslanır, bırakışta öne kapanır (rad). */
 const THROW_LEAN_BACK = 0.13;
 const THROW_LEAN_FWD = 0.3;
+/**
+ * 🌀 GÖVDE BURULMASI (twist) — atışı "düz itiş"ten ayıran hareket.
+ *
+ * NEDEN GEREKLİ: omurga yalnızca öne/geriye bükülünce (bow) atış iki boyutlu
+ * bir ittirme gibi okunuyordu. Gerçek bir savurmada gövde ATIŞ TARAFINA döner
+ * (kol kurulur), bırakışta ters yöne açılarak kolun savrulmasını taşır. Twist
+ * göğsü döndürdüğü için omuzları da taşır; kollar hedeflerini CANLI omuzdan
+ * aldığı için animasyon kendiliğinden senkron kalır — kola ayrı düzeltme yok.
+ *
+ * İŞARET: model uzayında +Y çevresindeki pozitif dönüş, bakış yönünü (+Z)
+ * karakterin SOLUNA (+X) çevirir. Sağ elle atışta hazırlık bu yüzden NEGATİF
+ * (gövde atış koluna döner), bırakış pozitiftir; sol elle atışta işaret
+ * `holdSign` ile aynalanır.
+ */
+const THROW_TWIST_BACK = 0.4;
+const THROW_TWIST_FWD = 0.48;
+/** Yere bırakmada gövdenin hafif dönüşü: el yere inerken omuz öne açılır. */
+const PLACE_TWIST = 0.22;
+/**
+ * Savurmanın "kamçı" üssü (hazırlık → bırakış geçişi).
+ *
+ * 1 = simetrik yumuşatma (kol yavaşça hızlanır, yavaşça durur). 2 = kol uzun
+ * süre KURULU kalır ve son anda boşalır: tepe açısal hız ~1.5 katına çıkar,
+ * yörünge (hangi noktalardan geçtiği) değişmez. `bow` de aynı eğriyi okur,
+ * böylece gövde kolu birebir takip eder.
+ */
+const WHIP_POW = 2;
 
 /** Yere bırakma: el omuzdan aşağı iner (erişim sınırına yakın) ve öne uzanır. */
 const PLACE_DOWN = 0.97;
@@ -169,8 +204,14 @@ const PLACE_STAND_AT = 0.5;
 const PLACE_BALANCE_BACK = 0.26;
 const PLACE_BALANCE_OUT = 0.1;
 const PLACE_BALANCE_UP = 0.06;
-/** Gövdenin öne eğilmesi (rad) — omurga zincirine dağıtılır. */
-const PLACE_BOW = 0.42;
+/**
+ * Gövdenin öne eğilmesi (rad) — omurga zincirine dağıtılır.
+ *
+ * 0.5 (eskiden 0.42): bomba yere bırakılırken karakterin üstten bakması, hem
+ * "bıraktığı yeri görüyor" okumasını verir hem de omzu alçalttığı için kolun
+ * yere yetişme payını büyütür (kalan boşluğu düşüş kapatır).
+ */
+const PLACE_BOW = 0.5;
 /**
  * Bombanın ELDEN ÇIKIP YERE DEĞMESİ arasındaki süre (aksiyon oranı).
  *
@@ -394,6 +435,31 @@ function applyBow(
   const total = (n * (n + 1)) / 2;
   for (let i = 0; i < n; i++) {
     rotateBoneModel(clone, chain[i], axis, (angle * (n - i)) / total);
+  }
+}
+
+/**
+ * Omurgayı model uzayında `axis` çevresinde BURAR (twist) ve ağırlığı YUKARI
+ * doğru ARTAN biçimde dağıtır: kalça neredeyse sabit kalır, burulmayı göğüs
+ * taşır.
+ *
+ * NEDEN `applyBow` İLE AYNI DAĞITIM DEĞİL: bow kök ağırlıklıdır (aşağıdan
+ * bükmek "belden eğilme" okuması verir). Twisted ise gövde kendi etrafında
+ * döner ve dönüşü taşıması gereken yer omuzlardır: kalçadan burulsaydı ayaklar
+ * da karakterle birlikte kaymış gibi görünürdü (yürüyüş klibi ayakları yere
+ * sabitler, üst gövde döner).
+ */
+function applyTwist(
+  clone: THREE.Object3D,
+  chain: THREE.Object3D[],
+  axis: THREE.Vector3,
+  angle: number,
+): void {
+  const n = chain.length;
+  if (!n || !angle) return;
+  const total = (n * (n + 1)) / 2;
+  for (let i = 0; i < n; i++) {
+    rotateBoneModel(clone, chain[i], axis, (angle * (i + 1)) / total);
   }
 }
 
@@ -810,6 +876,8 @@ export function applyBombActionPose(
   // ── GÖVDE: önce eğilme, sonra kollar. Kolların hedefleri omuza GÖRE
   // kurulduğu için eğilen gövdeyle birlikte inerler (ayrı bir telafi yok).
   let bow = 0;
+  /** Gövdenin kendi ekseni çevresindeki burulması (rad, model +Y). */
+  let twist = 0;
   /** Sonda hokkabazlığın tutuş başına dönüş oranı (0 = aksiyon pozu). */
   let endK = 1;
 
@@ -817,12 +885,21 @@ export function applyBombActionPose(
     // ── FIRLATMA ────────────────────────────────────────────────
     // Hazırlıkta geriye yaslan, bırakışta öne kapan, takipte doğrul.
     const windup = smoothstep(0, THROW_WINDUP_END, p);
-    const whip = smoothstep(THROW_WINDUP_END, release, p);
+    // Kamçı: kol uzun süre kurulu kalır, sonra boşalır (bkz. `WHIP_POW`).
+    const whip = Math.pow(smoothstep(THROW_WINDUP_END, release, p), WHIP_POW);
     const follow = smoothstep(release, THROW_FOLLOW_END, p);
     const settle = smoothstep(THROW_FOLLOW_END, 1, p);
     bow =
       ((1 - whip) * -THROW_LEAN_BACK * windup + whip * THROW_LEAN_FWD) *
       (1 - settle);
+    // Gövde: hazırlıkta atış koluna doğru DÖNER (kol kurulur), bırakışta
+    // açılıp ters yöne savrulur ve takip boyunca orada kalır; son harman
+    // (`settle`) burulmayı da sıfıra getirir, yoksa hokkabazlık başlarken
+    // gövde bir karede eski yönüne sıçrardı.
+    twist =
+      ((-(1 - whip) * THROW_TWIST_BACK * windup + whip * THROW_TWIST_FWD) *
+        (1 - settle)) *
+      holdSign;
     endK = settle;
     // Hedef, taşıma noktasından başlar ve üç anahtar noktayı sırayla geçer:
     // hazırlık (arkada/yukarı) → bırakış (önde, tam kol) → takip (aşağı).
@@ -864,6 +941,9 @@ export function applyBombActionPose(
     const rise = 1 - smoothstep(stand, 1, p);
     const down = smoothstep(0, release, p) * rise;
     bow = PLACE_BOW * smoothstep(0, release, p) * rise;
+    // Gövde hafifçe atış koluna döner: el yere inerken omuz öne açılır, karakter
+    // bombayı önüne bırakır gibi okunur. İşaret atış eliyle aynalanır.
+    twist = -PLACE_TWIST * down * holdSign;
     // Top yere değdikten sonra "boş el" duruşuna yumuşak geçiş.
     endK = smoothstep(stand, 1, p);
     fwdHold = PLACE_FWD * down;
@@ -901,6 +981,10 @@ export function applyBombActionPose(
 
   // Gövde eğilmesi: kollar pozlanmadan ÖNCE (hedefler omuza göre kurulur).
   applyBow(clone, rig.spineChain, rig.bowAxis, rig.bowSign * bow);
+  // Burulma bow ile AYNI sırada ve omuzlar okunmadan önce. Eksen model
+  // yukarısıdır (+Y): rig ters çizilmiş olsa bile "gövdeyi kendi etrafında
+  // döndür" anlamı değişmez; işaret atış eline (`holdSign`) bağlıdır.
+  applyTwist(clone, rig.spineChain, WORLD_UP, twist);
 
   // Omuzlar CANLI okunur (gövde eğilmesinden SONRA): hedefler gerçek omuz
   // konumuna göre kurulur, yoksa eğilen gövdede eller geride kalırdı.
