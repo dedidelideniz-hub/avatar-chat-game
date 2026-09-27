@@ -592,8 +592,12 @@ export function ProjectilePool({
       // İz çağrılmadığı için artık uzamaz: noktalar yaşlanır, duman dağılır ve
       // iz kendiliğinden silinir (patlamadan sonra havada asılı kalmasın).
       ribbons[i].update(dt);
-      // Gösterge hemen kapanır (uçuş bitti = alan bitti).
-      marks[i].setPose(0, 0, 0);
+      // Gösterge yerinde sönmeye başlar (uçuş bitti = alan bitti). `release`
+      // hedefi sıfırlar ama KONUMU KORUR (aksi halde işaret merkeze zıplardı);
+      // `update` alfa yumuşatmasını ilerletir — burada da çağrılmazsa işaret
+      // açık kalırdı.
+      marks[i].release();
+      marks[i].update(dt, time);
     }
     for (let i = flameSlot; i < FLAME_POOL; i++) {
       const root = flameRoots.current[i];

@@ -47,6 +47,9 @@ import {
   clearTowerScreenProjection,
   setTowerScreenProjection,
 } from "@/engine/BattleTowers";
+// 🎥 Patlama sarsıntısı: barut patlaması kamera hattına yazdığı ofseti burada
+// tüketiyoruz (bkz. `arena/bombBlast` → `stepCameraShake`).
+import { stepCameraShake } from "./arena/bombBlast";
 
 const S = 50; // px per 3D unit — must match Arena3D
 const ARENA_W = 34;
@@ -412,11 +415,17 @@ export function useArenaCamera(
       THREE.MathUtils.clamp(pz + centerNudge + lz, clamp, ARENA_D - clamp),
     );
     smoothed.current.lerp(target.current, Math.min(1, dt * smoothK));
-    camera.position.set(
-      smoothed.current.x,
-      smoothed.current.y + Math.sin(el) * dist,
-      smoothed.current.z + Math.cos(el) * dist,
-    );
-    camera.lookAt(smoothed.current.x, LOOK_Y, smoothed.current.z);
+
+    // --- 🎥 PATLAMA SARSINTISI -----------------------------------------
+    // Bomba patlaması kısa (0.2 sn), sönümlenen bir ofset bırakır. Ofset hem
+    // kamera KONUMUNA hem BAKIŞ noktasına aynı miktarda eklenir: görüntü
+    // dönmez, bütün hâlinde sarsılır (klasik camera shake). Sarsıntı yoksa
+    // dönen ofset paylaşılan sıfırdır — tahsis yok, davranış eskisiyle aynı.
+    const sh = stepCameraShake(dt);
+    const camX = smoothed.current.x + sh.x;
+    const camY = smoothed.current.y + Math.sin(el) * dist + sh.y;
+    const camZ = smoothed.current.z + Math.cos(el) * dist + sh.z;
+    camera.position.set(camX, camY, camZ);
+    camera.lookAt(camX, LOOK_Y + sh.y, camZ);
   });
 }

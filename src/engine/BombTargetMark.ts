@@ -73,7 +73,7 @@ const FRAGMENT_SHADER = /* glsl */ `
     if (r > outer) discard;
 
     float ang = atan(p.y, p.x);
-    float spin = uTime * 0.4; // yavaş dönüş: fark edilir ama göz yormaz
+    float spin = uTime * 0.62; // ılık dönüş: dinamik ama göz yormaz
 
     // 1) dönen kesikli bant — 36 ince ışın + 8 kalın tik
     float spokes = pow(0.5 + 0.5 * sin(ang * 36.0 + spin * 36.0), 6.0);
@@ -91,9 +91,13 @@ const FRAGMENT_SHADER = /* glsl */ `
     float cross = band(min(abs(p.x), abs(p.y)), uDanger * 0.012) *
       (1.0 - smoothstep(uDanger * 0.2, uDanger * 1.2, r)) * 0.8;
 
-    // 5) dışa atan nabız halkası (merkezden hedef sınırına doğru, tekrar eder)
-    float pulse = fract(uTime * 0.75);
-    float ringPulse = band(abs(r - uRing * pulse), uRing * 0.011) * (1.0 - pulse) * 0.7;
+    // 5) dışa atan nabız halkası (merkezden hedef sınırına doğru, tekrar eder).
+    // EASE-IN-OUT: ham fract doğrusal bir testere dişidir ve halka sıfırlanırken
+    // "zıplar"; smoothstep eğrisi halkayı önce hızlandırıp sonra yavaşlatır,
+    // parlaklık da sıfırlanma anında söndüğü için eklem görünmez.
+    float raw = fract(uTime * 0.9);
+    float pulse = raw * raw * (3.0 - 2.0 * raw);
+    float ringPulse = band(abs(r - uRing * pulse), uRing * 0.012) * (1.0 - raw) * 0.78;
 
     // 6) çok hafif alan dolgusu: bölgeyi belli eder, görüşü kapatmaz.
     float wash = (1.0 - smoothstep(uRing * 0.25, uRing, r)) * 0.05;
@@ -167,6 +171,11 @@ export interface BombTargetMark {
    * (uçuşun sonunda `rangeFade` ile sönmesi için).
    */
   setPose(x: number, z: number, intensity: number): void;
+  /**
+   * Görünürlüğü yumuşakça sıfıra indirir; KONUMU DEĞİŞTİRMEZ. Uçuş bittiğinde
+   * çağrılır: gösterge olduğu yerde söner (merkeze zıplamaz).
+   */
+  release(): void;
   /** Her karede: dönüş, nabız ve şiddet uygulaması. */
   update(dt: number, time: number): void;
   /** Oyuncu/düşman ayrımı (alan tonu). Tehlike halkası her zaman kırmızıdır. */
@@ -227,27 +236,53 @@ export function createBombTargetMark(radius: number): BombTargetMark {
     toneMapped: false,
   });
   const shuriken = new THREE.Sprite(shurikenMaterial);
-  shuriken.scale.setScalar(radius * 0.58);
+  /** Sembolün temel ölçeği: nabız bu değer etrafında salınır. */
+  const baseScale = radius * 0.58;
+  shuriken.scale.setScalar(baseScale);
   shuriken.position.y = 0.09;
   shuriken.raycast = () => {};
   shuriken.frustumCulled = false;
 
   group.add(disc, shuriken);
 
+  /** Hedef şiddeti (uçuşta 1, kaybolurken 0). Görünürlük bunu İZLEYEREK yumuşar. */
+  let target = 0;
+  let current = 0;
+
   const setPose = (x: number, z: number, intensity: number) => {
     group.position.set(x, 0, z);
-    const on = intensity > 0.01;
-    if (group.visible !== on) group.visible = on;
-    material.uniforms.uOpacity.value = intensity;
-    shurikenMaterial.opacity = 0.85 * intensity;
+    target = intensity;
+  };
+
+  // Sönme KONUMU KORUR: uçuş bitince gösterge yerinde dağılır, merkeze atlamaz.
+  const release = () => {
+    target = 0;
   };
 
   const update = (dt: number, time: number) => {
-    if (!group.visible) return;
+    // ALFA YUMUŞATMA: hedef şiddete üstel yaklaşma + hafif sine "nefesi".
+    // Böylece gösterge sertçe açılıp kapanmaz; görünürken de canlı kalır.
+    // Görünürlük kararı BURADADIR (setPose değil): kaybolma da yumuşak olur.
+    const approach = 1 - Math.exp(-dt * 10);
+    current += (target - current) * approach;
+    const breath = 0.9 + 0.1 * Math.sin(time * 2.0);
+    const visible = current * breath;
+    const on = visible > 0.01;
+    if (group.visible !== on) group.visible = on;
+    if (!on) return;
+
     material.uniforms.uTime.value = time;
-    material.uniforms.uGlow.value = 0.26 + 0.12 * Math.sin(time * 2.3);
-    // Sembol yavaş döner (yön duygusu): "hafif dönen" istek — hızlı değil.
-    shurikenMaterial.rotation += dt * 0.55;
+    material.uniforms.uOpacity.value = visible;
+    shurikenMaterial.opacity = 0.85 * visible;
+    // Işıma: ease-in-out bir sine nefesi (0.24 → 0.46 arası yumuşak salınım).
+    material.uniforms.uGlow.value =
+      0.24 + 0.22 * (0.5 + 0.5 * Math.sin(time * 1.9));
+    // Shuriken DİNAMİK döner: sabit tur yerine hızlanıp yavaşlayan bir oran
+    // (0.9 → 2.0 rad/sn) — ninja sembolü canlı okunur.
+    const rate = 0.9 + 1.1 * (0.5 + 0.5 * Math.sin(time * 1.7));
+    shurikenMaterial.rotation += dt * rate;
+    // Nabız atan ölçek: sembol nefes alıyormuş gibi hafifçe büyüyüp küçülür.
+    shuriken.scale.setScalar(baseScale * (1 + 0.08 * Math.sin(time * 2.6)));
   };
 
   const setTint = (color: string) => {
@@ -262,7 +297,7 @@ export function createBombTargetMark(radius: number): BombTargetMark {
     shurikenMaterial.dispose();
   };
 
-  return { group, setPose, update, setTint, dispose };
+  return { group, setPose, release, update, setTint, dispose };
 }
 
 /** Oyuncu/düşman bombası için hazır tonlar (çağıran `setTint`e verir). */

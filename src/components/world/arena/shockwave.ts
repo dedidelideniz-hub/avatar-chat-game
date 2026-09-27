@@ -51,7 +51,10 @@ const FRAGMENT_SHADER = /* glsl */ `
     if (a < 0.004) discard;
 
     // Additif karışımda parlaklık RENGE yazılır (alfa kırpılmasına takılmaz).
-    gl_FragColor = vec4(uColor * (0.7 + 0.9 * front + 0.25 * inner), a);
+    // Katsayılar YÜKSELTİLDİ (0.7/0.9 → 1.15/1.7): turuncu barut tonunun
+    // lineer parlaklığı düşüktür ve eski değerler bloom eşiğinin altında
+    // kalıyordu — dalganın ön cephesi artık gerçekten ışıyor (AAA patlama).
+    gl_FragColor = vec4(uColor * (1.15 + 1.7 * front + 0.35 * inner), a);
   }
 `;
 

@@ -66,6 +66,7 @@ void main() {
 const CORE_FRAG = /* glsl */ `
 uniform vec3 uHot;
 uniform vec3 uWarm;
+uniform float uTime;
 varying float vFade;
 varying float vHeat;
 void main() {
@@ -73,23 +74,39 @@ void main() {
   float h = vHeat * vHeat; // üs yerine çarpma (piksel başına ucuz)
   float a = vFade * ( 0.3 + 0.7 * vHeat );
   if ( a < 0.004 ) discard;
-  // Additif karışımda parlaklık RENGE yazılır (alfa kırpılmasına takılmaz).
-  gl_FragColor = vec4( mix( uWarm, uHot, h ) * ( 0.6 + 0.9 * vHeat ), a );
+  // SİNE NABZI: sıcak çekirdek sabit parlamaz — zamanla yumuşakça soluklanıp
+  // geri parlar (sert flicker yok). Parlaklık tabanı 0.6 → 0.78'e çıktı:
+  // turuncu tonların lineer parlaklığı bloom eşiğini geçsin (AAA ışıma).
+  float shimmer = 0.84 + 0.16 * sin( uTime * 5.7 );
+  gl_FragColor = vec4( mix( uWarm, uHot, h ) * ( 0.78 + 1.0 * vHeat ) * shimmer, a );
 }
 `;
 
 const SMOKE_FRAG = /* glsl */ `
 uniform vec3 uHead;
 uniform vec3 uTail;
+uniform float uTime;
 varying float vFade;
 varying float vHeat;
 void main() {
   // Duman taze uçta yoğun, kuyrukta dağılmış (genişlik zaten kuyrukta artıyor).
-  float a = vFade * ( 0.14 + 0.5 * vHeat );
+  // SİNE NEFESİ: alfa sert kenarla bitmez — kuyruğa doğru fazı kayan yumuşak
+  // bir sinüsle açılıp kapanır, yani duman "dağılıyor" gibi okunur.
+  float breathe = 0.78 + 0.22 * sin( uTime * 2.1 + vHeat * 4.0 );
+  float a = vFade * ( 0.14 + 0.5 * vHeat ) * breathe;
   if ( a < 0.004 ) discard;
   gl_FragColor = vec4( mix( uTail, uHead, vHeat ), a );
 }
 `;
+
+/**
+ * Yumuşatma eğrisi (smoothstep) — iki uçta türevi sıfırdır, yani iz/sönüm
+ * sert bir rampayla değil yavaşlayarak başlar ve yavaşlayarak biter.
+ */
+const smooth01 = (t: number): number => {
+  const c = t < 0 ? 0 : t > 1 ? 1 : t;
+  return c * c * (3 - 2 * c);
+};
 
 /** İzdeki tek örnek (nokta): konum + yaş. Kare başına ayırma yapılmaz. */
 interface TrailPoint {
@@ -169,6 +186,7 @@ export function createBombTrailRibbon(): BombTrailRibbon {
     uniforms: {
       uHead: { value: new THREE.Color(SMOKE_HEAD) },
       uTail: { value: new THREE.Color(SMOKE_TAIL) },
+      uTime: { value: 0 },
     },
     vertexShader: RIBBON_VERT,
     fragmentShader: SMOKE_FRAG,
@@ -184,6 +202,7 @@ export function createBombTrailRibbon(): BombTrailRibbon {
     uniforms: {
       uHot: { value: new THREE.Color(CORE_HOT) },
       uWarm: { value: new THREE.Color(CORE_WARM) },
+      uTime: { value: 0 },
     },
     vertexShader: RIBBON_VERT,
     fragmentShader: CORE_FRAG,
@@ -286,6 +305,9 @@ export function createBombTrailRibbon(): BombTrailRibbon {
   const update = (dt: number) => {
     const d = Math.min(dt, 1 / 20); // uzun karede iz kopmasın
     time += d;
+    // Sinüs nabzı/nefesi için ortak zaman (materyal başına uniform).
+    coreMaterial.uniforms.uTime.value = time;
+    smokeMaterial.uniforms.uTime.value = time;
 
     // 1) Yaşlanma + duman fiziği (çökme ve hafif yalpalama = kavis).
     let alive = 0;
@@ -332,14 +354,20 @@ export function createBombTrailRibbon(): BombTrailRibbon {
 
       // Sönüm: yaş + kuyruğa doğru incelme (kuyruk uçta sıfıra iner → kopma yok).
       const k = i / (SEGMENTS - 1);
-      const ageFade = Math.max(0, 1 - p.age / LIFE);
-      const fade = ageFade * (1 - k * k);
-      // Sıcaklık yalnız BAŞTA yüksek: kuyruk soğumuş dumandır.
-      const heat = Math.max(0, 1 - k * 1.35) * ageFade;
+      // ZAMANA BAĞLI YUMUŞAK SÖNÜM: doğrusal `1 - x` yerine iki uçta türevi
+      // sıfır olan eğriler (smoothstep/sine) kullanılır — böylece izin başı ve
+      // kuyruğu sert bir çizgiyle kesilmez, yumuşakça belirip dağılır.
+      const ageFade = smooth01(1 - p.age / LIFE);
+      const taper = smooth01(1 - k);
+      const fade = ageFade * taper;
+      // Sıcaklık yalnız BAŞTA yüksek, sonra sine ile yumuşakça soğur.
+      const heat = smooth01(1 - k * 1.35) * ageFade;
 
       // Çekirdek başta kalın, kuyrukta ince; duman tam tersi (dağılarak açılır).
-      const coreHalf = coreLayer.halfWidth * ageFade * (1 - k * 0.55);
-      const smokeHalf = smokeLayer.halfWidth * ageFade * (0.45 + 0.75 * k);
+      // Genişlikler de smoothstep ile yumuşatılır: şeridin dış hattı kırılmaz.
+      const coreHalf = coreLayer.halfWidth * ageFade * (1 - 0.55 * smooth01(k));
+      const smokeHalf =
+        smokeLayer.halfWidth * ageFade * (0.45 + 0.75 * smooth01(k));
       writeVertices(coreLayer, i, p.x, p.y, p.z, px, pz, coreHalf, fade, heat);
       writeVertices(smokeLayer, i, p.x, p.y, p.z, px, pz, smokeHalf, fade, heat);
     }
