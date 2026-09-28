@@ -2,13 +2,14 @@
  * VAELOS 3D GAME ENGINE — Coordinate Utilities
  *
  * Converts SVG 2D ↔ Three.js 3D.
- * SVG: x=0..1600, y=0..900 (top=0)
+ * SVG: x=0..MAP_W, y=0..MAP_H (y=0 en güney kenar, kuzey = büyük y)
  * 3D: x=centered, y=height, z=toward camera (positive = "south")
  */
-import { S, WORLD_WIDTH, WORLD_DEPTH } from "./constants";
+import { S, WORLD_WIDTH, WORLD_Z_MAX } from "./constants";
 
 const WORLD_CX = WORLD_WIDTH / 2;
-const WORLD_CZ = WORLD_DEPTH / 2;
+/** px katmanının y = 0 kenarı = haritanın en güney Z'si (`svgY` tersi). */
+const WORLD_CZ = WORLD_Z_MAX;
 
 /** SVG (x,y) → Three.js [x, y, z] (y=0 ground) */
 export function svgTo3D(svgX: number, svgY: number): [number, number, number] {

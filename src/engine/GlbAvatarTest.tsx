@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef, Component } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
 import { useGLTF, useAnimations } from "@react-three/drei";
-import { PLAYER_3D_HEIGHT, WORLD_DEPTH, WORLD_WIDTH, S } from "./constants";
+import { PLAYER_3D_HEIGHT, WORLD_Z_MAX, WORLD_WIDTH, S } from "./constants";
 
 /* ═══════════════════════════════════════════════════════════════
  * PHASE 1 — GLB AVATAR TEST PIPELINE  (developer-only)
@@ -48,10 +48,10 @@ const TEST_MODEL_URL =
 // import — tree-shaken out of the critical path until mounted).
 useGLTF.preload(TEST_MODEL_URL);
 
-/** Fixed test spot: east of spawn, on the road. SVG coords → world. */
-const TEST_SPAWN_SVG = { x: 950, y: 610 };
+/** Fixed test spot: west of spawn, on the road. SVG coords → world. */
+const TEST_SPAWN_SVG = { x: 950, y: 460 };
 const toWorldX = (svgX: number) => svgX / S - WORLD_WIDTH / 2;
-const toWorldZ = (svgY: number) => -(svgY / S - WORLD_DEPTH / 2);
+const toWorldZ = (svgY: number) => WORLD_Z_MAX - svgY / S;
 
 /** Yaw so the model faces the gameplay camera (+Z side). Tweak per model. */
 const MODEL_YAW = 0;

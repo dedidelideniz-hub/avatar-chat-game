@@ -19,10 +19,19 @@
 export const S = 50;
 
 // ─── WORLD SIZE ───
-// Harita büyütüldü: X 32 → 48, Z 18 → 26. SVG px katmanı (`src/lib/shop.ts`,
-// `src/lib/pathfinding.ts`) S = 50 ile türetilir: 48×50 = 2400 px, 26×50 = 1300 px.
-export const WORLD_WIDTH = 48;   // X: -24..+24
-export const WORLD_DEPTH = 26;   // Z: -13..+13
+// Harita kuzeye doğru büyütüldü: dükkanların ARKASINA ikinci bir cadde (arka
+// sokak) ve ana caddeyi ona bağlayan DİKEY ara sokaklar eklendi. Bu yüzden
+// harita artık Z = 0'a göre ortalanmış değil:
+//   · Z ekseni : WORLD_Z_MIN (-22, en kuzey) .. WORLD_Z_MAX (+6, en güney)
+//   · SVG px   : 1 birim = S px; y = 0 en GÜNEY kenardır →
+//                `svgY(z) = (WORLD_Z_MAX - z) * S` (bkz. `src/lib/shop.ts`)
+//   · harita   : 48×50 = 2400 px geniş · 28×50 = 1400 px yüksek
+// Dönüşümün sıfır noktası tek yerden yönetilir: `WORLD_Z_MAX`.
+export const WORLD_WIDTH = 48;    // X: -24..+24
+export const WORLD_Z_MIN = -22;   // en kuzey (uzak) kenar
+export const WORLD_Z_MAX = 6;     // en güney (yakın) kenar
+export const WORLD_DEPTH = WORLD_Z_MAX - WORLD_Z_MIN;          // 28
+export const WORLD_CENTER_Z = (WORLD_Z_MIN + WORLD_Z_MAX) / 2; // -8
 
 // ─── GROUND Y ───
 export const GROUND_Y = 0;
@@ -32,8 +41,9 @@ export const PLAYER_3D_WIDTH = 70 / S;   // 1.4
 export const PLAYER_3D_HEIGHT = 96 / S;  // 1.92
 
 // ─── SPAWN (SVG coordinates — for compatibility with World.tsx game loop) ───
-// Dünya merkezi (SVG 1200, 810) = X 0 · Z -3.2 → caddenin tam ortası.
-export const SPAWN_SVG = { x: 1200, y: 810 };
+// X 0 · Z -3.2 → ana caddenin tam ortası. px değerleri dönüşümden türetilir
+// (`svgX(0)` = 1200, `svgY(-3.2)` = 460) — harita büyüdüğünde elle güncellenmez.
+export const SPAWN_SVG = { x: (WORLD_WIDTH / 2) * S, y: (WORLD_Z_MAX + 3.2) * S };
 
 // ─── CAMERA ───
 export const CAMERA_ELEVATION = 0.87; // radians (~50°) — shows road + buildings
@@ -46,13 +56,20 @@ export const CAMERA_LERP_SPEED = 5;
 export const BUILDING_HEIGHT_SCALE = 0.025;
 
 // ─── ZONE BOUNDARIES (3D Z coordinates) ───
-// Güney şeritleri SABİT tutuldu (tezgâh/bank/çit verisi oraya bağlı), cadde
-// kuzeye doğru genişletildi: yürünebilir koridor 4.8 → 7.2 birim, kuzey çim
-// şeridi 1.2 → 4.0 birim oldu.
+// Ana cadde (kuzey çim şeridi + dükkanlar) aynen korundu; kuzeyine, dükkan
+// sırasının ARKASINA arka sokak + ikinci bina sırası eklendi.
 //
+//  Z = -21.9  ▓▓▓ Arka sıra binaların arka duvarı ▓▓▓
+//  Z = -20.1  ▓▓▓ Arka sıra binaların cephesi (OTEL, SİNEMA…) ▓▓▓
+//  Z = -17.4  ░░░ Arka çim (ağaç sırası) — sınır çiti hattı ░░░
+//  Z = -16.4  ─── Arka sokağın kuzey kaldırımı (lamba, çöp) ───
+//  Z = -14.0  ═══ ARKA CADDE (binaların arkası, 2.4 birim) ═══
+//  Z = -13.0  ─── Arka kaldırım (lamba, bank, durak) ───
+//  Z = -12.9  ▓▓▓ Dükkanların arka duvarı ▓▓▓
+//  Z = -10.9  ▓▓▓ Dükkan cepheleri ▓▓▓
 //  Z = -11.2  ░░░ Kuzey çim (akçaağaç sırası, çim öbekleri) ░░░
 //  Z = -7.2   ─── Kuzey kaldırım (lambalar, banklar, durak, çöp) ───
-//  Z = -5.2   ═══ Ana cadde / yaya yolu (genişledi: 2.4 → 4.0) ═══
+//  Z = -5.2   ═══ Ana cadde / yaya yolu ═══
 //  Z = -1.2   ─── Güney kaldırım (tezgâhlar, lambalar) ───
 //  Z = +0.0   ░░░ Güney çim + sınır çiti ░░░
 //  Z = +1.6   ─── Görünür alanın kenarı ───
@@ -69,7 +86,29 @@ export const ZONE = {
   southGrassTop: 0.0,
   southGrassBot: 1.6,
   edge: 2.4,
+  // ── binaların arkası (kuzey uzatma) ──
+  backWalkTop: -13.0,       // arka kaldırımın güney kenarı (dükkan arkalarına bitişik)
+  backWalkBot: -14.0,       // arka kaldırımın kuzey kenarı → asfalt başlar
+  backRoadTop: -14.0,
+  backRoadBot: -16.4,       // arka cadde (2.4 birim)
+  backNorthWalkTop: -16.4,
+  backNorthWalkBot: -17.4,  // arka caddenin kuzey kaldırımı
+  backGrassTop: -17.4,      // arka çim şeridi (güney kenar = sınır çiti hattı)
+  backGrassBot: -20.4,      // arka çim şeridi (kuzey kenar)
 } as const;
+
+/* ════════════════════════════════════════════════════════════
+   DİKEY ARA SOKAKLAR — "yollar yukarı aşağı çıksın"
+   Ana caddeyi kuzey-güney yönünde kesen ve dükkan bloklarının ARASINDAN
+   geçip arka caddeye ulaşan sokaklar. Güneyde güney çim şeridine doğru kısa
+   bir ağız bırakırlar (Z +4.0'a kadar), yani cadde iki yöne de devam eder.
+   ════════════════════════════════════════════════════════════ */
+/** Sokak merkezleri (X). Bina blokları bu X'lerin çevresinde boşluk bırakır. */
+export const SIDE_STREETS: number[] = [-16, 0, 16];
+/** Sokak genişliği (X, birim) — asfalt ve yürünebilir kolon aynı genişlikte. */
+export const SIDE_STREET_W = 2.8;
+/** Sokağın güney ucu (ana caddenin güneyine taşan ağız). */
+export const SIDE_STREET_SOUTH = 4.0;
 
 // ─── BUILDING DEFINITIONS ───
 export interface BuildingDef {
@@ -126,27 +165,58 @@ const SHOP_NAMES = [
 
 const SHOP_DETAILS = ["ac", "antenna", "tank", "vent"] as const;
 
-/** Dükkan dizisi: ilk dükkanın X'i ve dükkanlar arası mesafe (birim). */
-const SHOP_ROW_START_X = -(WORLD_WIDTH / 2) + 2; // -22
-const SHOP_ROW_STEP = 4;
+/**
+ * Dükkan cephe merkezleri (X). Sıra artık dört bloğa bölünmüş: aradaki
+ * boşluklar `SIDE_STREETS` sokak ağızlarıdır, yani dikey sokaklar dükkanların
+ * ARASINDAN geçer. Kenar bloklar dar (2.0), orta bloklar geniş (2.4).
+ */
+const SHOP_CENTERS = [
+  -21.4, -18.8,
+  // Orta bloğun sokağa bakan iki dükkanı 0.4 birim daha dışarıda: oyuncu
+  // (yarıçap 0.4) sokak kolonunun kenarında (X ±1.4) dükkan köşesine değmesin.
+  -13.0, -9.6, -6.2, -3.2,
+  3.2, 6.2, 9.6, 13.0,
+  18.8, 21.4,
+] as const;
+
+/** Arka caddenin kuzeyindeki ikinci bina sırası (cepheleri güneye bakar). */
+const BACK_CENTERS = [-13.0, -9.6, -6.2, -2.8, 2.8, 6.2, 9.6, 13.0] as const;
+const BACK_NAMES = [
+  "OTEL", "SİNEMA", "POSTANE", "KÜTÜPHANE",
+  "BELEDİYE", "SPOR", "SANAT EVİ", "KLİNİK",
+] as const;
 
 /**
- * 12 dükkan — caddenin kuzey cephesi boyunca eşit aralıkla. Genişlik/yükseklik/
- * kat/pencere/çatı detayı indekse göre döner; hepsi kuzey çim şeridinin
- * arkasında, cephe hattı `northGrassTop + 0.3`.
+ * Binalar İKİ sıra: (1) ana cadde boyunca 12 dükkan, (2) arka caddenin
+ * arkasında 8 bina. İki sıranın da cephesi güneye (kameraya) bakar; cephe
+ * hattı kendi çim şeridinin kuzey/arka kenarından 0.3 birim içeride durur.
  */
-export const BUILDINGS: BuildingDef[] = SHOP_NAMES.map((signText, i) => ({
-  x: SHOP_ROW_START_X + i * SHOP_ROW_STEP,
-  w: 2.2 + (i % 3) * 0.4,
-  h: 3.2 + (i % 3) * 0.6 + (i % 2) * 0.4,
-  d: 1.8 + (i % 2) * 0.2,
-  floors: 2 + (i % 2),
-  windows: 2 + ((i + 1) % 2),
-  frontZ: ZONE.northGrassTop + 0.3,
-  roofDetail: SHOP_DETAILS[i % SHOP_DETAILS.length],
-  ...SHOP_STYLES[i % SHOP_STYLES.length],
-  signText,
-}));
+export const BUILDINGS: BuildingDef[] = [
+  ...SHOP_CENTERS.map((x, i) => ({
+    x,
+    w: Math.abs(x) > 17 ? 2.0 : 2.4,
+    h: 3.2 + (i % 3) * 0.6 + (i % 2) * 0.4,
+    d: 1.8 + (i % 2) * 0.2,
+    floors: 2 + (i % 2),
+    windows: 2 + ((i + 1) % 2),
+    frontZ: ZONE.northGrassTop + 0.3,
+    roofDetail: SHOP_DETAILS[i % SHOP_DETAILS.length],
+    ...SHOP_STYLES[i % SHOP_STYLES.length],
+    signText: SHOP_NAMES[i],
+  })),
+  ...BACK_CENTERS.map((x, i) => ({
+    x,
+    w: 2.4,
+    h: 3.0 + (i % 3) * 0.7 + (i % 2) * 0.5,
+    d: 1.8,
+    floors: 2 + (i % 2),
+    windows: 2 + (i % 2),
+    frontZ: ZONE.backGrassBot + 0.3,
+    roofDetail: SHOP_DETAILS[(i + 2) % SHOP_DETAILS.length],
+    ...SHOP_STYLES[(i + 3) % SHOP_STYLES.length],
+    signText: BACK_NAMES[i],
+  })),
+];
 
 // ─── AĞAÇ SIRALARI (caddenin yeşillik şeritleri) ───
 // Ağaçlar artık tek tek elle değil, EŞİT ARALIKLI sıralar hâlinde dizilir:
@@ -161,17 +231,32 @@ export interface TreeRowDef {
   endX: number;
   /** Ağaçlar arası mesafe — sıra boyunca eşit. */
   spacing: number;
+  /** Bu X merkezlerinin `avoidRadius` çevresine ağaç dikilmez. */
+  avoidX?: readonly number[];
+  /** Kaçınılacak yarıçap (birim) — sokak ağızlarını boş bırakır. */
+  avoidRadius?: number;
 }
 
 /**
- * İki sıra. Güney sırası yarım aralık kaydırıldı (`startX` farkı):
- * karşılıklı ağaçlar tam hizada durunca ızgara yapay görünüyor, kaydırma
- * düzeni bozmadan doğallık katıyor.
+ * Dikey sokak ağızlarının çevresinde bırakılacak ağaç boşluğu (birim).
+ *
+ * Sıralar 4 birim adımla dizildiği için sokak merkezlerine en yakın ağaçlar
+ * ya TAM merkezde (0) ya 2 birim uzakta olur; bu eşik tam merkezdeki ağacı
+ * eler, 2 birimdeki komşuyu korur (2 - 0.4 = 1.6 > sokak yarı genişliği 1.4).
+ */
+export const TREE_AVOID_RADIUS = 1.6;
+
+/**
+ * Üç sıra. Güney sırası yarım aralık kaydırıldı (`startX` farkı): karşılıklı
+ * ağaçlar tam hizada durunca ızgara yapay görünüyor, kaydırma düzeni bozmadan
+ * doğallık katıyor. Tüm sıralar `SIDE_STREETS` ağızlarını boş bırakır.
  */
 export const TREE_ROWS: TreeRowDef[] = [
   // Kuzey sırası kuzey kaldırımın hemen arkasında (eski 0.5 birim ofset korundu).
-  { z: -7.7, startX: -22, endX: 22, spacing: 4 },
-  { z: 0.85, startX: -20, endX: 22, spacing: 4 },
+  { z: -7.7, startX: -22, endX: 22, spacing: 4, avoidX: SIDE_STREETS, avoidRadius: TREE_AVOID_RADIUS },
+  { z: 0.85, startX: -20, endX: 22, spacing: 4, avoidX: SIDE_STREETS, avoidRadius: TREE_AVOID_RADIUS },
+  // Arka çim şeridi — arka sıra binaların önü.
+  { z: -19.4, startX: -22, endX: 22, spacing: 4, avoidX: SIDE_STREETS, avoidRadius: TREE_AVOID_RADIUS },
 ];
 
 /* ════════════════════════════════════════════════════════════
@@ -210,7 +295,7 @@ export interface GrassGroundZoneDef {
  * zeminin hemen üstünde kaldığı için çim sadece yeşil alanlarda görünür.
  */
 export const GRASS_GROUND_ZONES: GrassGroundZoneDef[] = [
-  { x: 0, z: 0, w: WORLD_WIDTH + 4, d: WORLD_DEPTH + 4, y: GRASS_GROUND_Y },
+  { x: 0, z: WORLD_CENTER_Z, w: WORLD_WIDTH + 4, d: WORLD_DEPTH + 4, y: GRASS_GROUND_Y },
 ];
 
 /** Çim kümesi (GLB çim öbeği) dağıtım bölgesi. */
@@ -239,6 +324,13 @@ export const GRASS_CLUMP_ZONES: GrassClumpZoneDef[] = [
     density: 2.2,
     seed: 733,
   },
+  {
+    // Arka çim şeridi (binaların arkasındaki yeni şerit).
+    z: (ZONE.backGrassTop + ZONE.backGrassBot) / 2,
+    depth: ZONE.backGrassTop - ZONE.backGrassBot,
+    density: 2.0,
+    seed: 511,
+  },
 ];
 
 /**
@@ -266,7 +358,8 @@ export const LAMPS: LampDef[] = [
   { x: -21, z: -6.2 },
   { x: -14, z: -6.2 },
   { x: -7,  z: -6.2 },
-  { x: 0,   z: -6.2 },
+  // X 0 dikey sokağın ağzında kalır → lamba batıya kaydırıldı.
+  { x: -3,  z: -6.2 },
   { x: 7,   z: -6.2 },
   { x: 14,  z: -6.2 },
   { x: 21,  z: -6.2 },
@@ -277,6 +370,16 @@ export const LAMPS: LampDef[] = [
   { x: 6,   z: -0.4 },
   { x: 14,  z: -0.4 },
   { x: 21,  z: -0.4 },
+  // Arka kaldırım (bant: -13.0..-14.0, merkez -13.5)
+  { x: -20, z: -13.5 },
+  { x: -11, z: -13.5 },
+  { x: -3,  z: -13.5 },
+  { x: 5,   z: -13.5 },
+  { x: 13,  z: -13.5 },
+  { x: 20,  z: -13.5 },
+  // Arka sokağın kuzey kaldırımı (bant: -16.4..-17.4, merkez -16.9)
+  { x: -8,  z: -16.9 },
+  { x: 8,   z: -16.9 },
 ];
 
 // ─── BENCH POSITIONS ───
@@ -289,6 +392,10 @@ export const BENCHES: BenchDef[] = [
   { x: -16,   z: -0.4 },  // güney kaldırım, bankın yanı
   { x: -1,    z: -0.4 },  // güney kaldırım, cadde ortası
   { x: 17,    z: -0.4 },  // güney kaldırım
+  // Arka kaldırım — sokak ağızlarının dışında (|x| = 16 ve 0 boş kalır)
+  { x: -9.6,  z: -13.5 },
+  { x: 3.6,   z: -13.5 },
+  { x: 18.6,  z: -13.5 },
 ];
 
 // ─── VENDOR STALL POSITIONS ───
@@ -325,6 +432,10 @@ export const TRASH_CANS: TrashCanDef[] = [
   { x: -8,    z: -0.55 }, // güney kaldırım
   { x: 6.5,   z: -0.55 }, // güney kaldırım
   { x: 15,    z: -0.55 }, // güney kaldırım
+  // Arka sokak (binaların arkası)
+  { x: -6.5,  z: -13.55 },
+  { x: 11,    z: -13.55 },
+  { x: 5,     z: -16.9 },
 ];
 
 // ─── OTOBÜS DURAĞI ───
@@ -339,8 +450,10 @@ export interface BusStopDef {
 
 export const BUS_STOPS: BusStopDef[] = [
   { x: -19.5, z: -6.2, route: "12", color: "#1d4ed8" },
-  { x: -2.5,  z: -6.2, route: "34", color: "#0f766e" },
-  { x: 15.5,  z: -6.2, route: "7",  color: "#b45309" },
+  // Eski X -2.5 durağı dikey sokak ağzına denk geliyordu → batıya kaydırıldı.
+  { x: -5.3,  z: -6.2, route: "34", color: "#0f766e" },
+  // Arka sokak durağı (eski X 15.5 durağı sokak ağzındaydı).
+  { x: 9.0,   z: -13.5, route: "7", color: "#b45309" },
 ];
 
 // ─── YÖN TABELALARI ───
@@ -380,6 +493,14 @@ export const DIRECTION_SIGNS: DirectionSignDef[] = [
       { text: "SAHİL", arrow: "right" },
     ],
   },
+  {
+    // Arka sokak — caddenin arkasındaki yeni bölgenin yön tabelası.
+    x: 6.8, z: -13.9,
+    plates: [
+      { text: "ÇARŞI", arrow: "left" },
+      { text: "OTEL", arrow: "right" },
+    ],
+  },
 ];
 
 // ─── SINIR ÇİTİ (kaldırım ↔ çim hattı) ───
@@ -402,9 +523,34 @@ export interface FenceLineDef {
   enabled: boolean;
 }
 
+/** Sokak ağzında çitin bıraktığı boşluk (sokak yarı genişliği + pay). */
+const FENCE_GAP = SIDE_STREET_W / 2 + 0.15;
+
+/**
+ * Bir çit hattını dikey sokak ağızlarında bölerek kesintisiz parçalara ayırır:
+ * böylece yürünebilir sokak boşluğunun içinde çit kalmaz.
+ */
+function fenceSegments(z: number): FenceLineDef[] {
+  const lines: FenceLineDef[] = [];
+  const limit = WORLD_WIDTH / 2;
+  let start = -limit;
+  for (const street of SIDE_STREETS) {
+    const cut = street - FENCE_GAP;
+    if (cut > start) lines.push({ z, startX: start, endX: cut, enabled: true });
+    start = street + FENCE_GAP;
+  }
+  if (start < limit) lines.push({ z, startX: start, endX: limit, enabled: true });
+  return lines;
+}
+
+/**
+ * Üç hat: güney çim (0.0), kuzey çim (-7.2) ve arka çim (-17.4). Dikey
+ * sokaklar bu hatların hepsini kestiği için her hat sokak ağızlarında bölünür.
+ */
 export const FENCE_LINES: FenceLineDef[] = [
-  { z: ZONE.southGrassTop, startX: -WORLD_WIDTH / 2, endX: WORLD_WIDTH / 2, enabled: true },
-  { z: ZONE.northGrassBot, startX: -WORLD_WIDTH / 2, endX: WORLD_WIDTH / 2, enabled: true },
+  ...fenceSegments(ZONE.southGrassTop),
+  ...fenceSegments(ZONE.northGrassBot),
+  ...fenceSegments(ZONE.backGrassTop),
 ];
 
 /** Çit aralığı (birim) — çıtalar ve korkuluklar bunu kullanır. */

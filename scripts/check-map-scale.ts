@@ -1,15 +1,18 @@
 /**
  * Harita ölçeği doğrulaması (kalıcı betik).
  *
- * Harita büyütüldü (X 32→48, Z 18→26). Bu ölçek iki koordinat sistemini
- * birden besliyor:
+ * Harita kuzeye doğru büyütüldü: dükkanların ARKASINA arka cadde + ikinci bina
+ * sırası ve ana caddeyi oraya bağlayan DİKEY ara sokaklar eklendi. Bu ölçek iki
+ * koordinat sistemini birden besliyor:
  *
- *   1. 3D dünya   : X -24..+24 · Z -13..+13 (birim)
- *   2. SVG px katmanı: 1 birim = S px → MAP_W × MAP_H (2400 × 1300)
+ *   1. 3D dünya   : X -24..+24 · Z -22..+6 (birim)
+ *   2. SVG px katmanı: 1 birim = S px → MAP_W × MAP_H (2400 × 1400)
  *
- * Dönüşüm `GameEngine3D.svgToWorld` ile birebir aynı olmalı. Betik dönüşümü
- * gidiş-dönüş test eder, tüm yerleşimlerin doğru bantta olduğunu, prop
- * ayak izlerinin çakışmadığını ve yol bulmanın hâlâ çalıştığını ölçer.
+ * Dönüşüm `GameEngine3D.svgToWorld` ile birebir aynı olmalı; px katmanının
+ * y = 0 kenarı artık haritanın en GÜNEY kenarıdır (`WORLD_Z_MAX`). Betik
+ * dönüşümü gidiş-dönüş test eder, bant/kaldırım/sokak hizalarını, prop
+ * ayak izlerini, çit ve bitki örtüsünün sokak ağızlarını boş bırakmasını ve yol
+ * bulmanın arka sokağa kadar çalıştığını ölçer.
  *
  * Çalıştırma: bun scripts/check-map-scale.ts
  */
@@ -21,12 +24,17 @@ import {
   FENCE_LINES,
   LAMPS,
   S,
+  SIDE_STREETS,
+  SIDE_STREET_SOUTH,
+  SIDE_STREET_W,
   SPAWN_SVG,
   STALLS,
   TRASH_CANS,
   TREE_ROWS,
   WORLD_DEPTH,
   WORLD_WIDTH,
+  WORLD_Z_MAX,
+  WORLD_Z_MIN,
   ZONE,
 } from "../src/engine/constants";
 import {
@@ -34,6 +42,7 @@ import {
   MAP_H,
   MAP_W,
   OBSTACLES,
+  SIDE_STREET_ZONES,
   VENDORS,
   WALKABLE_ZONES,
   WORLD_BOUNDS,
@@ -50,25 +59,34 @@ function check(ok: boolean, label: string, detail = "") {
 const f = (n: number, d = 2) => n.toFixed(d);
 
 /* ── 1) Dünya boyutu ve px katmanı ─────────────────────────── */
-console.log("HARİTA BOYUTU");console.log(
-    `  3D dünya: X ${-WORLD_WIDTH / 2}..${WORLD_WIDTH / 2} · Z ${-WORLD_DEPTH / 2}..${WORLD_DEPTH / 2}` +
-    `  (öncesi: 32 × 18 → alan ${f(32 * 18)} → ${f(WORLD_WIDTH * WORLD_DEPTH)} birim², +%${f(((WORLD_WIDTH * WORLD_DEPTH) / (32 * 18) - 1) * 100, 0)})`,
+console.log("HARİTA BOYUTU");
+console.log(
+  `  3D dünya: X ${-WORLD_WIDTH / 2}..${WORLD_WIDTH / 2} · Z ${WORLD_Z_MIN}..${WORLD_Z_MAX}` +
+    `  (önceki: 48 × 26 → alan ${f(48 * 26)} → ${f(WORLD_WIDTH * WORLD_DEPTH)} birim², ` +
+    `+%${f(((WORLD_WIDTH * WORLD_DEPTH) / (48 * 26) - 1) * 100, 0)})`,
 );
 console.log(`  px katmanı: ${MAP_W} × ${MAP_H} (S = ${S} px/birim)`);
 check(MAP_W === WORLD_WIDTH * S && MAP_H === WORLD_DEPTH * S, "px katmanı S ile tutarlı");
 
-// GameEngine3D.svgToWorld ile aynı dönüşümün tersi:
+// Yürünebilir (sokak) alan: harita büyüklüğünden çok daha anlamlı ölçü.
+const walkableArea = WALKABLE_ZONES.reduce((sum, z) => sum + (z.w / S) * (z.h / S), 0);
+const OLD_WALKABLE = 48 * 7.2; // önceki koridor: X 48 × Z -7.2..0
+console.log(`  yürünebilir alan: ${f(walkableArea)} birim² (önceki ${f(OLD_WALKABLE)}, +%${f((walkableArea / OLD_WALKABLE - 1) * 100, 0)})`);
+check(walkableArea > OLD_WALKABLE * 1.5, "yürünebilir sokak alanı belirgin şekilde büyüdü", `${f(walkableArea)} birim²`);
+
+// GameEngine3D.svgToWorld ile aynı dönüşümün tersi (px y=0 → Z = WORLD_Z_MAX):
 const toSvgX = (x: number) => (x + WORLD_WIDTH / 2) * S;
-const toSvgY = (z: number) => (WORLD_DEPTH / 2 - z) * S;
+const toSvgY = (z: number) => (WORLD_Z_MAX - z) * S;
 const toWorldX = (px: number) => px / S - WORLD_WIDTH / 2;
-const toWorldZ = (py: number) => -(py / S - WORLD_DEPTH / 2);
+const toWorldZ = (py: number) => WORLD_Z_MAX - py / S;
 
 const samples: [number, number][] = [
   [0, 0],
-  [-24, -13],
-  [24, 13],
+  [-24, WORLD_Z_MIN],
+  [24, WORLD_Z_MAX],
   [-7.7, 0.85],
   [12.5, -3.2],
+  [0, -15.2],
 ];
 let roundTripMax = 0;
 for (const [x, z] of samples) {
@@ -81,43 +99,107 @@ for (const [x, z] of samples) {
   );
 }
 check(roundTripMax < 1e-9, "dünya ↔ px dönüşümü gidiş-dönüş hatasız", `en büyük sapma ${roundTripMax}`);
+check(svgY(WORLD_Z_MAX) === 0 && svgY(WORLD_Z_MIN) === MAP_H, "px katmanının iki ucu dünya Z uçlarına oturuyor");
 
 /* ── 2) Bantlar (ZONE ↔ WALKABLE_ZONES) ────────────────────── */
-console.log("\nBANTLAR (ZONE → yürünebilir px)");
-// [ad, güney kenarı (büyük Z), kuzey kenarı (küçük Z)]
-const bands: [string, number, number][] = [
+console.log("\nBANTLAR (ZONE → px)");
+type Band = { name: string; south: number; north: number };
+const BANDS: Band[] = [
+  { name: "güney kaldırım", south: ZONE.southSidewalkBot, north: ZONE.southSidewalkTop },
+  { name: "cadde", south: ZONE.roadBot, north: ZONE.roadTop },
+  { name: "kuzey kaldırım", south: ZONE.northSidewalkBot, north: ZONE.northSidewalkTop },
+  { name: "kuzey çim", south: ZONE.northGrassBot, north: ZONE.northGrassTop },
+  { name: "güney çim", south: ZONE.southGrassBot, north: ZONE.southGrassTop },
+  { name: "arka kaldırım", south: ZONE.backWalkTop, north: ZONE.backWalkBot },
+  { name: "arka cadde", south: ZONE.backRoadTop, north: ZONE.backRoadBot },
+  { name: "arka kuzey kaldırım", south: ZONE.backNorthWalkTop, north: ZONE.backNorthWalkBot },
+  { name: "arka çim", south: ZONE.backGrassTop, north: ZONE.backGrassBot },
+];
+for (const b of BANDS) {
+  check(b.south > b.north, `${b.name}: Z ${b.south}..${b.north}`, `${f(b.south - b.north)} birim`);
+}
+// Birbirine değen kenarlar: kaldırım/cadde/çim hattı boşluksuz olmalı.
+const seams: [string, number][] = [
+  ["güney kaldırım ↔ cadde", ZONE.southSidewalkTop - ZONE.roadBot],
+  ["cadde ↔ kuzey kaldırım", ZONE.roadTop - ZONE.northSidewalkBot],
+  ["kuzey kaldırım ↔ kuzey çim", ZONE.northGrassBot - ZONE.northSidewalkTop],
+  ["arka kaldırım ↔ arka cadde", ZONE.backWalkBot - ZONE.backRoadTop],
+  ["arka cadde ↔ arka kuzey kaldırım", ZONE.backRoadBot - ZONE.backNorthWalkTop],
+  ["arka kuzey kaldırım ↔ arka çim", ZONE.backNorthWalkBot - ZONE.backGrassTop],
+];
+check(
+  seams.every(([, d]) => Math.abs(d) < 1e-9),
+  "şerit kenarları boşluksuz birleşiyor",
+  seams.map(([n, d]) => `${n}=${d}`).join(" · "),
+);
+
+// Yürünebilir bantlar: ilk üçü ana cadde, dördüncüsü arka sokak.
+const walkBands: [string, number, number][] = [
   ["güney kaldırım", ZONE.southSidewalkBot, ZONE.southSidewalkTop],
   ["cadde", ZONE.roadBot, ZONE.roadTop],
   ["kuzey kaldırım", ZONE.northSidewalkBot, ZONE.northSidewalkTop],
+  ["arka sokak", ZONE.backWalkTop, ZONE.backNorthWalkBot],
 ];
-bands.forEach(([name, south, north], i) => {
+walkBands.forEach(([name, south, north], i) => {
   const zone = WALKABLE_ZONES[i];
   const ok =
     Math.abs(zone.y - svgY(south)) < 1e-9 &&
     Math.abs(zone.h - (south - north) * S) < 1e-9 &&
     zone.x === 0 &&
     zone.w === MAP_W;
-  check(
-    ok,
-    `${name}: Z ${south}..${north} → y ${zone.y}..${zone.y + zone.h}`,
-    `${(south - north) * S} px (${f(south - north)} birim)`,
-  );
+  check(ok, `yürünebilir ${name}: Z ${south}..${north}`, `y ${zone.y}..${zone.y + zone.h} (${f(south - north)} birim)`);
 });
-let gap = 0;
-for (let i = 0; i < WALKABLE_ZONES.length - 1; i++) {
-  const a = WALKABLE_ZONES[i];
-  const b = WALKABLE_ZONES[i + 1];
-  gap = Math.max(gap, Math.abs(b.y - (a.y + a.h)));
-}
-check(gap < 1e-9, "bantlar boşluksuz/üst üste binmeden birleşiyor", `en büyük boşluk ${gap}`);
+
+/* ── 3) Dikey ara sokaklar ─────────────────────────────────── */
+console.log("\nDİKEY ARA SOKAKLAR");
+check(SIDE_STREET_ZONES.length === SIDE_STREETS.length, "her sokak için bir yürünebilir kolon", `${SIDE_STREET_ZONES.length} sokak`);
 check(
-  WORLD_BOUNDS.minY === WALKABLE_ZONES[0].y &&
-    WORLD_BOUNDS.maxY === WALKABLE_ZONES[WALKABLE_ZONES.length - 1].y + WALKABLE_ZONES[WALKABLE_ZONES.length - 1].h,
-  "WORLD_BOUNDS yürünebilir koridorun tam sınırı",
-  `y ${WORLD_BOUNDS.minY}..${WORLD_BOUNDS.maxY} · x ${WORLD_BOUNDS.minX}..${WORLD_BOUNDS.maxX}`,
+  WALKABLE_ZONES.length === walkBands.length + SIDE_STREET_ZONES.length,
+  "yürünebilir alan = bantlar + sokak kolonları",
+  `${WALKABLE_ZONES.length} bölge`,
+);
+SIDE_STREET_ZONES.forEach((zone, i) => {
+  const x = SIDE_STREETS[i];
+  const ok =
+    Math.abs(zone.x - svgX(x - SIDE_STREET_W / 2)) < 1e-9 &&
+    zone.w === SIDE_STREET_W * S &&
+    Math.abs(zone.y - svgY(SIDE_STREET_SOUTH)) < 1e-9 &&
+    Math.abs(zone.h - (SIDE_STREET_SOUTH - ZONE.backNorthWalkBot) * S) < 1e-9;
+  check(ok, `sokak X ${x}: px ${zone.x}..${zone.x + zone.w}`, `y ${zone.y}..${zone.y + zone.h}`);
+});
+// Kolonlar birbirine/kenara taşmamalı.
+const columns = [...SIDE_STREET_ZONES].sort((a, b) => a.x - b.x);
+let columnGap = Infinity;
+for (let i = 1; i < columns.length; i++) columnGap = Math.min(columnGap, columns[i].x - (columns[i - 1].x + columns[i - 1].w));
+check(columnGap > 0, "sokaklar birbirine girmiyor", `en dar boşluk ${f(columnGap / S)} birim`);
+check(
+  columns[0].x >= WORLD_BOUNDS.minX && columns[columns.length - 1].x + columns[columns.length - 1].w <= WORLD_BOUNDS.maxX,
+  "sokaklar WORLD_BOUNDS içinde",
 );
 
-/* ── 3) Tehgâhlar: 3D ↔ px ↔ çarpışma kutusu ───────────────── */
+/* ── 4) Sınırlar ──────────────────────────────────────────── */
+console.log("\nSINIRLAR");
+check(
+  WORLD_BOUNDS.minY === svgY(SIDE_STREET_SOUTH) && WORLD_BOUNDS.maxY === svgY(ZONE.backNorthWalkBot),
+  "WORLD_BOUNDS yürünebilir alanın tam sınırı",
+  `y ${WORLD_BOUNDS.minY}..${WORLD_BOUNDS.maxY}`,
+);
+// Bantlar tam genişlikte (x 0..MAP_W), WORLD_BOUNDS ise oyuncunun x sınırı;
+// bu yüzden ölçü: her bölge haritanın içinde + sınırlarla KESİŞİYOR + y
+// aralığı sınırların içinde olmalı (kuzey/güney uçları aşmamalı).
+const outsideBounds = WALKABLE_ZONES.filter((z) => {
+  const overlapsX = z.x + z.w > WORLD_BOUNDS.minX && z.x < WORLD_BOUNDS.maxX;
+  return (
+    z.x < 0 ||
+    z.x + z.w > MAP_W ||
+    z.y < WORLD_BOUNDS.minY - 1e-9 ||
+    z.y + z.h > WORLD_BOUNDS.maxY + 1e-9 ||
+    !overlapsX
+  );
+});
+check(outsideBounds.length === 0, "her yürünebilir bölge haritanın + sınırların içinde", outsideBounds.length ? `${outsideBounds.length} taşan` : "hepsi ✔");
+
+/* ── 5) Tezgâhlar: 3D ↔ px ↔ çarpışma kutusu ───────────────── */
 console.log("\nTEZGÂHLAR (STALLS → VENDORS → OBSTACLES)");
 check(VENDORS.length === STALLS.length, "satıcı sayısı tezgâh sayısına eşit", `${VENDORS.length}`);
 let stallOk = true;
@@ -132,55 +214,64 @@ STALLS.forEach((stall, i) => {
     obstacle.h === 0.6 * S;
   if (!same || !boxOk) stallOk = false;
   console.log(
-    `    ${vendor.short.padEnd(10)} X ${String(stall.x).padStart(3)} → px x ${String(vendor.x).padStart(4)} · ` +
+    `    ${vendor.short.padEnd(10)} X ${String(stall.x).padStart(5)} → px x ${String(vendor.x).padStart(4)} · ` +
       `çarpışma kutusu ${obstacle.x}..${obstacle.x + obstacle.w} × ${obstacle.y}..${obstacle.y + obstacle.h}`,
   );
 });
 check(stallOk, "her tezgâhın px konumu + çarpışma kutusu 3D verisinden türetiliyor");
 
-/* ── 4) Prop ayak izleri ve bant kontrolü ──────────────────── */
+/* ── 6) Prop ayak izleri ──────────────────────────────────── */
 console.log("\nPROP YERLEŞİMİ");
-type Prop = { name: string; x: number; z: number; hx: number; hz: number; band: [number, number] };
+type Prop = { name: string; x: number; z: number; hx: number; hz: number; band: Band };
 const props: Prop[] = [];
-const add = (name: string, x: number, z: number, hx: number, hz: number, band: [number, number]) =>
+const add = (name: string, x: number, z: number, hx: number, hz: number) => {
+  const band = BANDS.find((b) => z <= b.south + 1e-9 && z >= b.north - 1e-9);
+  if (!band) {
+    failures++;
+    console.log(`  ✘ ${name}: Z ${z} hiçbir şeritte değil`);
+    return;
+  }
   props.push({ name, x, z, hx, hz, band });
+};
 
-STALLS.forEach((s, i) => add(`tezgâh ${VENDORS[i].short}`, s.x, s.z, 0.8, 0.3, [ZONE.southSidewalkTop, ZONE.southSidewalkBot]));
-LAMPS.forEach((l, i) => {
-  const inNorth = l.z < ZONE.roadTop;
-  add(`lamba ${i + 1}`, l.x, l.z, 0.3, 0.15, inNorth ? [ZONE.northSidewalkTop, ZONE.northSidewalkBot] : [ZONE.southSidewalkTop, ZONE.southSidewalkBot]);
-});
-BENCHES.forEach((b, i) => {
-  const inNorth = b.z < ZONE.roadTop;
-  add(`bank ${i + 1}`, b.x, b.z, 0.28, 0.12, inNorth ? [ZONE.northSidewalkTop, ZONE.northSidewalkBot] : [ZONE.southSidewalkTop, ZONE.southSidewalkBot]);
-});
-TRASH_CANS.forEach((t, i) => {
-  const inNorth = t.z < ZONE.roadTop;
-  add(`çöp ${i + 1}`, t.x, t.z, 0.2, 0.2, inNorth ? [ZONE.northSidewalkTop, ZONE.northSidewalkBot] : [ZONE.southSidewalkTop, ZONE.southSidewalkBot]);
-});
-BUS_STOPS.forEach((b, i) => add(`durak ${b.route}`, b.x, b.z, 0.9, 0.36, [ZONE.northSidewalkTop, ZONE.northSidewalkBot]));
-DIRECTION_SIGNS.forEach((d, i) => {
-  const inNorth = d.z < ZONE.roadTop;
-  add(`tabela ${i + 1}`, d.x, d.z, 0.31, 0.1, inNorth ? [ZONE.northSidewalkTop, ZONE.northSidewalkBot] : [ZONE.southSidewalkTop, ZONE.southSidewalkBot]);
-});
+STALLS.forEach((s, i) => add(`tezgâh ${VENDORS[i].short}`, s.x, s.z, 0.8, 0.3));
+LAMPS.forEach((l, i) => add(`lamba ${i + 1}`, l.x, l.z, 0.3, 0.15));
+BENCHES.forEach((b, i) => add(`bank ${i + 1}`, b.x, b.z, 0.28, 0.12));
+TRASH_CANS.forEach((t, i) => add(`çöp ${i + 1}`, t.x, t.z, 0.2, 0.2));
+BUS_STOPS.forEach((b) => add(`durak ${b.route}`, b.x, b.z, 0.9, 0.36));
+DIRECTION_SIGNS.forEach((d, i) => add(`tabela ${i + 1}`, d.x, d.z, 0.31, 0.1));
 TREE_ROWS.forEach((row, i) => {
-  const band: [number, number] = row.z < ZONE.roadTop ? [ZONE.northGrassTop, ZONE.northGrassBot] : [ZONE.southGrassTop, ZONE.southGrassBot];
+  const avoidRadius = row.avoidRadius ?? 0;
   for (let x = row.startX; x <= row.endX + 1e-6; x += row.spacing) {
-    add(`ağaç sıra${i + 1}`, x, row.z, 0.4, 0.4, band);
+    if (row.avoidX?.some((ax) => Math.abs(x - ax) < avoidRadius)) continue;
+    add(`ağaç sıra${i + 1}`, x, row.z, 0.4, 0.4);
   }
 });
 
-const outOfBand = props.filter((p) => p.z - p.hz < Math.min(p.band[0], p.band[1]) || p.z + p.hz > Math.max(p.band[0], p.band[1]));
-check(outOfBand.length === 0, "her prop kendi bandının içinde", outOfBand.map((p) => p.name).join(", ") || "hepsi ✔");
+const outOfBand = props.filter((p) => p.z - p.hz < p.band.north - 1e-9 || p.z + p.hz > p.band.south + 1e-9);
+check(outOfBand.length === 0, "her prop kendi şeridinin içinde", outOfBand.map((p) => `${p.name}→${p.band.name}`).join(", ") || "hepsi ✔");
 const outOfWorld = props.filter((p) => Math.abs(p.x) + p.hx > WORLD_WIDTH / 2);
 check(outOfWorld.length === 0, "hiçbir prop dünya sınırını taşmıyor", outOfWorld.map((p) => p.name).join(", ") || "hepsi ✔");
 
 /** Z, cadde bandının içinde mi? (kuzey sınırı negatif tarafta) */
 const onRoadBand = (z: number) => z <= ZONE.roadBot && z >= ZONE.roadTop;
+const onBackRoad = (z: number) => z <= ZONE.backRoadTop && z >= ZONE.backRoadBot;
 
-// Yol şeridi (cadde) boş kalmalı: yürünebilir koridorun ortası.
-const onRoad = props.filter((p) => onRoadBand(p.z));
-check(onRoad.length === 0, "cadde şeridi (yürünebilir orta hat) proplardan temiz", onRoad.map((p) => p.name).join(", ") || "temiz");
+// Yol şeritleri boş kalmalı (yürünebilir orta hat).
+const onRoad = props.filter((p) => onRoadBand(p.z) || onBackRoad(p.z));
+check(onRoad.length === 0, "cadde + arka cadde şeritleri proplardan temiz", onRoad.map((p) => p.name).join(", ") || "temiz");
+
+// Sokak ağızları: prop ayak izi dikey sokak kolonuna girmemeli.
+const inColumn = (x: number, hx: number, z: number, hz: number) =>
+  SIDE_STREET_ZONES.some(
+    (zone) =>
+      x + hx > zone.x &&
+      x - hx < zone.x + zone.w &&
+      svgY(z - hz) < zone.y + zone.h &&
+      svgY(z + hz) > zone.y,
+  );
+const columnClash = props.filter((p) => inColumn(p.x, p.hx, p.z, p.hz));
+check(columnClash.length === 0, "sokak ağızlarına prop girmiyor", columnClash.map((p) => p.name).join(", ") || "temiz");
 
 // Çakışma: ayak izleri kesişen prop var mı?
 const clashes: string[] = [];
@@ -188,75 +279,152 @@ for (let i = 0; i < props.length; i++) {
   for (let j = i + 1; j < props.length; j++) {
     const a = props[i];
     const b = props[j];
-    const overlapX = Math.abs(a.x - b.x) < a.hx + b.hx;
-    const overlapZ = Math.abs(a.z - b.z) < a.hz + b.hz;
-    if (overlapX && overlapZ) clashes.push(`${a.name} ↔ ${b.name} (Δx ${f(Math.abs(a.x - b.x))}, Δz ${f(Math.abs(a.z - b.z))})`);
+    if (Math.abs(a.x - b.x) < a.hx + b.hx && Math.abs(a.z - b.z) < a.hz + b.hz)
+      clashes.push(`${a.name} ↔ ${b.name} (Δx ${f(Math.abs(a.x - b.x))}, Δz ${f(Math.abs(a.z - b.z))})`);
   }
 }
 check(clashes.length === 0, `prop ayak izleri çakışmıyor (${props.length} prop tarandı)`, clashes.slice(0, 5).join(" · ") || "çakışma yok");
 
-// Çit hatları ile prop teması (çit kaldırım kenarında, propların dışında kalmalı).
+// Çit hatları proplardan ve sokak ağızlarından uzak olmalı.
 const fenceHits: string[] = [];
+const fenceInStreet: string[] = [];
 for (const line of FENCE_LINES.filter((l) => l.enabled)) {
   for (const p of props) {
-    const inX = p.x >= line.startX - p.hx && p.x <= line.endX + p.hx;
-    if (inX && Math.abs(p.z - line.z) < p.hz) fenceHits.push(`${p.name} ↔ çit z=${line.z}`);
+    if (p.x >= line.startX - p.hx && p.x <= line.endX + p.hx && Math.abs(p.z - line.z) < p.hz)
+      fenceHits.push(`${p.name} ↔ çit z=${line.z}`);
   }
+  if (SIDE_STREETS.some((sx) => sx + SIDE_STREET_W / 2 > line.startX && sx - SIDE_STREET_W / 2 < line.endX))
+    fenceInStreet.push(`çit z=${line.z} x ${f(line.startX)}..${f(line.endX)}`);
 }
 check(fenceHits.length === 0, "sınır çitleri proplara girmiyor", fenceHits.slice(0, 4).join(" · ") || "temiz");
+check(fenceInStreet.length === 0, "çitler dikey sokak ağızlarını kapatmıyor", fenceInStreet.join(" · ") || `${FENCE_LINES.length} parça`);
+check(
+  FENCE_LINES.length === 4 * 3,
+  "üç çit hattı da sokak ağızlarında bölünüyor",
+  `${FENCE_LINES.length} parça (3 hat × 4 parça)`,
+);
 
-/* ── 5) Dükkanlar ─────────────────────────────────────────── */
-console.log("\nDÜKKANLAR");
-const fronts = BUILDINGS.map((b) => b.frontZ);
-const frontGap = Math.max(...fronts) - Math.min(...fronts);
-check(frontGap < 1e-9, `${BUILDINGS.length} dükkan aynı cephe hattında`, `z = ${fronts[0]}`);
-const spans = BUILDINGS.map((b) => [b.x - b.w / 2, b.x + b.w / 2] as const).sort((a, b) => a[0] - b[0]);
-let shopGap = Infinity;
-for (let i = 1; i < spans.length; i++) shopGap = Math.min(shopGap, spans[i][0] - spans[i - 1][1]);
-check(shopGap > 0, "dükkanlar üst üste binmiyor", `en dar boşluk ${f(shopGap)} birim`);
-const rowSpan = spans[spans.length - 1][1] - spans[0][0];
-check(rowSpan <= WORLD_WIDTH, "dükkan sırası haritaya sığıyor", `${f(rowSpan)} ≤ ${WORLD_WIDTH} birim`);
-// Ağaç tacı cepheye girmemeli (ağaç yarıçapı ≈ 1.2 birim).
-const northTrees = TREE_ROWS.filter((r) => r.z < ZONE.roadTop);
-const canopyClash = northTrees.some((r) => r.z - 1.2 < Math.max(...fronts));
-check(!canopyClash, "kuzey ağaç sırasının tacı dükkan cephesine girmiyor", `ağaç z ${northTrees[0]?.z} · cephe ${fronts[0]}`);
+/* ── 7) Binalar ───────────────────────────────────────────── */
+console.log("\nBİNALAR");
+const rows = new Map<number, typeof BUILDINGS>();
+for (const b of BUILDINGS) {
+  const key = Math.round(b.frontZ * 100) / 100;
+  rows.set(key, [...(rows.get(key) ?? []), b]);
+}
+check(rows.size === 2, "binalar iki cephe hattında (cadde + arka cadde)", `${rows.size} sıra · ${BUILDINGS.length} bina`);
+for (const [frontZ, row] of rows) {
+  const spans = row.map((b) => [b.x - b.w / 2, b.x + b.w / 2] as const).sort((a, b) => a[0] - b[0]);
+  let gap = Infinity;
+  for (let i = 1; i < spans.length; i++) gap = Math.min(gap, spans[i][0] - spans[i - 1][1]);
+  const span = spans[spans.length - 1][1] - spans[0][0];
+  check(gap > 0, `cephe z=${frontZ}: binalar üst üste binmiyor`, `en dar boşluk ${f(gap)} birim`);
+  check(
+    spans[0][0] >= -WORLD_WIDTH / 2 && spans[spans.length - 1][1] <= WORLD_WIDTH / 2,
+    `cephe z=${frontZ}: sıra haritaya sığıyor`,
+    `${f(span)} ≤ ${WORLD_WIDTH} birim`,
+  );
+}
+const deep = BUILDINGS.filter((b) => b.frontZ - b.d < WORLD_Z_MIN);
+check(deep.length === 0, "hiçbir bina haritanın kuzey kenarını aşmıyor", deep.map((b) => b.signText).join(", ") || "hepsi ✔");
+const shopBacks = BUILDINGS.filter((b) => b.frontZ > ZONE.backWalkTop).map((b) => b.frontZ - b.d);
+const minShopBack = Math.min(...shopBacks);
+check(minShopBack >= ZONE.backWalkTop, "dükkan arkaları arka kaldırıma girmiyor", `en güney arka duvar Z ${f(minShopBack)} ≥ ${ZONE.backWalkTop}`);
+// Bina ayak izleri hiçbir yürünebilir bölgeye / sokak kolonuna girmemeli.
+const buildingInWalkable: string[] = [];
+const buildingInStreet: string[] = [];
+for (const b of BUILDINGS) {
+  const x0 = b.x - b.w / 2;
+  const x1 = b.x + b.w / 2;
+  const z0 = b.frontZ - b.d; // kuzey (arka) yüz
+  const z1 = b.frontZ; // güney (cephe) yüz
+  for (const zone of WALKABLE_ZONES) {
+    const zx0 = zone.x / S - WORLD_WIDTH / 2;
+    const zx1 = (zone.x + zone.w) / S - WORLD_WIDTH / 2;
+    const zz1 = toWorldZ(zone.y);
+    const zz0 = toWorldZ(zone.y + zone.h);
+    if (x0 < zx1 && x1 > zx0 && z0 < zz1 && z1 > zz0) buildingInWalkable.push(`${b.signText} ↔ yürünebilir alan`);
+  }
+  for (const sx of SIDE_STREETS) {
+    if (x0 < sx + SIDE_STREET_W / 2 && x1 > sx - SIDE_STREET_W / 2) buildingInStreet.push(`${b.signText} ↔ sokak X ${sx}`);
+  }
+}
+check(buildingInWalkable.length === 0, "bina ayak izleri yürünebilir alana taşmıyor", buildingInWalkable.slice(0, 4).join(" · ") || "hepsi ✔");
+check(buildingInStreet.length === 0, "binalar dikey sokak ağızlarını kapatmıyor", buildingInStreet.slice(0, 4).join(" · ") || "hepsi ✔");
+// Kuzey çim şeridindeki ağaç sırasının tacı dükkan cephesine girmemeli
+// (tacın yarıçapı ≈ 1.2 birim, cephe hattı `frontZ`).
+const shopFrontZ = Math.max(...BUILDINGS.map((b) => b.frontZ));
+const frontTreeRow = TREE_ROWS.find((r) => r.z < ZONE.northGrassBot && r.z > ZONE.northGrassTop);
+check(
+  frontTreeRow !== undefined && frontTreeRow.z - 1.2 > shopFrontZ,
+  "kuzey ağaç sırasının tacı dükkan cephesine girmiyor",
+  `ağaç Z ${frontTreeRow?.z} - 1.2 = ${f((frontTreeRow?.z ?? 0) - 1.2)} > cephe ${f(shopFrontZ)}`,
+);
+const backTrees = TREE_ROWS.filter((r) => r.z < ZONE.backGrassTop);
+check(backTrees.length > 0, "arka çim şeridinde ağaç sırası var", `Z ${backTrees[0]?.z}`);
 
-/* ── 6) Doğuş noktası, hediye kutusu ──────────────────────── */
-console.log("\nDOĞUŞ VE HEDİYE KUTUSU");
+/* ── 8) Doğuş / hediye / botlar ───────────────────────────── */
+console.log("\nDOĞUŞ · HEDİYE · BOTLAR");
 const spawnWorld = { x: toWorldX(SPAWN_SVG.x), z: toWorldZ(SPAWN_SVG.y) };
 check(
   SPAWN_SVG.x === svgX(spawnWorld.x) && SPAWN_SVG.y === svgY(spawnWorld.z),
   "SPAWN_SVG ↔ dünya koordinatı tutarlı",
   `X ${f(spawnWorld.x)} · Z ${f(spawnWorld.z)}`,
 );
-check(
-  onRoadBand(spawnWorld.z),
-  "doğuş noktası cadde üzerinde",
-  `Z ${f(spawnWorld.z)} (cadde ${ZONE.roadTop}..${ZONE.roadBot})`,
-);
-const spawnBlocked = STALLS.some(
-  (s) => Math.abs(spawnWorld.x - s.x) < 0.8 + 20 / S && Math.abs(spawnWorld.z - s.z) < 0.3 + 20 / S,
-);
-check(!spawnBlocked, "doğuş noktası tezgâh çarpışma kutusunun dışında");
+check(onRoadBand(spawnWorld.z), "doğuş noktası cadde üzerinde", `Z ${f(spawnWorld.z)} (cadde ${ZONE.roadTop}..${ZONE.roadBot})`);
 const giftWorld = { x: toWorldX(GIFT_BOX.x), z: toWorldZ(GIFT_BOX.y) };
-check(
-  onRoadBand(giftWorld.z),
-  "hediye kutusu cadde üzerinde",
-  `X ${f(giftWorld.x)} · Z ${f(giftWorld.z)}`,
-);
+check(onRoadBand(giftWorld.z), "hediye kutusu cadde üzerinde", `X ${f(giftWorld.x)} · Z ${f(giftWorld.z)}`);
 
-/* ── 7) Yol bulma ─────────────────────────────────────────── */
+/** World.tsx `inWalkable` ile aynı kural: yürünebilir bölgede + engelde değil. */
+const inWalkable = (x: number, y: number) =>
+  WALKABLE_ZONES.some((z) => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h) &&
+  !OBSTACLES.some((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+check(inWalkable(SPAWN_SVG.x, SPAWN_SVG.y), "doğuş noktası yürünebilir + engelsiz");
+
+/** World.tsx BOT_DEFS ile aynı px değerleri. */
+const BOTS: [string, number, number][] = [
+  ["Ada", 520, 470],
+  ["Mert", 1680, 420],
+  ["Elif", 300, 520],
+  ["Kaan", 2080, 450],
+];
+const badBots = BOTS.filter(([, x, y]) => !inWalkable(x, y));
+check(badBots.length === 0, "4 bot doğuş noktası yürünebilir cadde üzerinde", badBots.map(([n]) => n).join(", ") || "hepsi ✔");
+VENDORS.forEach((v) => {
+  const ok = inWalkable(v.x, v.y + 40);
+  if (!ok) console.log(`    ✘ ${v.short} önü yürünebilir değil (px ${v.x}, ${v.y + 40})`);
+});
+check(VENDORS.every((v) => inWalkable(v.x, v.y + 40)), "her tezgâhın önü yürünebilir");
+
+/* ── 9) Yol bulma ─────────────────────────────────────────── */
 console.log("\nYOL BULMA");
 const spawnPx = { x: SPAWN_SVG.x, y: SPAWN_SVG.y };
 let reachable = 0;
 for (const v of VENDORS) {
-  const path = findPath(spawnPx, { x: v.x, y: v.y + 40 });
+  const path = findPath(spawnPx.x, spawnPx.y, v.x, v.y + 40);
   if (path.length > 0) reachable++;
   else console.log(`    ✘ ${v.short} erişilemedi`);
 }
 check(reachable === VENDORS.length, `doğuştan ${VENDORS.length} tezgâhın önüne yol bulunuyor`, `${reachable}/${VENDORS.length}`);
-const giftPath = findPath(spawnPx, { x: GIFT_BOX.x, y: GIFT_BOX.y });
+const giftPath = findPath(spawnPx.x, spawnPx.y, GIFT_BOX.x, GIFT_BOX.y);
 check(giftPath.length > 0, "hediye kutusuna yol bulunuyor", `${giftPath.length} düğüm`);
+
+// Arka sokak: her dikey sokaktan ulaşılabilmeli + arka caddenin uçlarına kadar.
+const backRoadY = svgY((ZONE.backRoadTop + ZONE.backRoadBot) / 2);
+SIDE_STREETS.forEach((x) => {
+  const path = findPath(spawnPx.x, spawnPx.y, svgX(x), backRoadY);
+  check(path.length > 0, `sokak X ${x} üzerinden arka caddeye yol var`, `${path.length} düğüm`);
+});
+const backEnds: [string, number][] = [
+  ["batı ucu", svgX(-22)],
+  ["doğu ucu", svgX(22)],
+];
+for (const [name, px] of backEnds) {
+  const path = findPath(spawnPx.x, spawnPx.y, px, backRoadY);
+  check(path.length > 0, `arka caddenin ${name} erişilebilir`, `${path.length} düğüm`);
+}
+// Arka sıra binaların önündeki çim yürünebilir OLMAMALI (çit hattı).
+check(!inWalkable(svgX(-4.4), svgY(-19.0)), "arka çim şeridi yürünebilir değil (çit korunuyor)");
+check(!inWalkable(svgX(-4.4), svgY(-9.0)), "kuzey çim şeridi yürünebilir değil (çit korunuyor)");
 
 /* ── Sonuç ────────────────────────────────────────────────── */
 console.log(failures === 0 ? "\nTÜM KONTROLLER GEÇTİ ✔" : `\n${failures} KONTROL BAŞARISIZ ✘`);

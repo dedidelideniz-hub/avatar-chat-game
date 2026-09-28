@@ -5,7 +5,17 @@
  * dependency-free (no React imports).
  */
 
-import { S, WORLD_WIDTH, WORLD_DEPTH, STALLS, ZONE } from "../engine/constants";
+import {
+  S,
+  SIDE_STREETS,
+  SIDE_STREET_SOUTH,
+  SIDE_STREET_W,
+  WORLD_DEPTH,
+  WORLD_WIDTH,
+  WORLD_Z_MAX,
+  STALLS,
+  ZONE,
+} from "../engine/constants";
 
 /* ── SVG px katmanı ───────────────────────────────────────────
    Oyun mantığı (tıklama → yürüme, yol bulma, mini harita, satıcı
@@ -13,13 +23,14 @@ import { S, WORLD_WIDTH, WORLD_DEPTH, STALLS, ZONE } from "../engine/constants";
    Dönüşüm `GameEngine3D`'deki `svgToWorld` ile BİREBİR aynı olmalı:
 
      x3 = svgX / S - WORLD_WIDTH / 2
-     z3 = -(svgY / S - WORLD_DEPTH / 2)
+     z3 = WORLD_Z_MAX - svgY / S
 
-   Yani 1 dünya birimi = S px, harita merkezi = (MAP_W/2, MAP_H/2).
-   Harita büyüdüğünde (X 32→48, Z 18→26) yalnızca `engine/constants`
-   içindeki WORLD_* ve ZONE değişir; aşağıdaki yerleşimlerin tamamı bu
-   dönüşümden türetildiği için kendiliğinden ölçeklenir (elle px
-   güncellemek gerekmez).
+   Yani 1 dünya birimi = S px; px katmanının y = 0 kenarı Z = `WORLD_Z_MAX`
+   (haritanın en GÜNEY kenarı), y = MAP_H kenarı ise `WORLD_Z_MIN`'dir.
+   Harita büyüdüğünde (X 32→48, Z 18→28 ve kuzeye arka sokak) yalnızca
+   `engine/constants` içindeki WORLD_* ve ZONE değişir; aşağıdaki
+   yerleşimlerin tamamı bu dönüşümden türetildiği için kendiliğinden
+   ölçeklenir (elle px güncellemek gerekmez).
    ──────────────────────────────────────────────────────────── */
 
 export const MAP_W = WORLD_WIDTH * S;
@@ -32,7 +43,7 @@ export function svgX(x: number): number {
 
 /** Dünya Z'si → harita px'i (kuzey = büyük y, ekranda aşağı). */
 export function svgY(z: number): number {
-  return (WORLD_DEPTH / 2 - z) * S;
+  return (WORLD_Z_MAX - z) * S;
 }
 
 export const CURRENCY_NAME = "Vaelos Parası";
@@ -438,8 +449,8 @@ export function vendorAtPoint(x: number, y: number): Vendor | undefined {
 export const WORLD_BOUNDS = {
   minX: 28,
   maxX: MAP_W - 28,
-  minY: svgY(ZONE.southSidewalkBot), // Z 0    → güney kaldırımın güney kenarı
-  maxY: svgY(ZONE.northGrassBot),    // Z -7.2 → kuzey çimin sınır çiti
+  minY: svgY(SIDE_STREET_SOUTH),     // Z +4.0  → dikey sokakların güney ağzı
+  maxY: svgY(ZONE.backNorthWalkBot), // Z -17.4 → arka sokağın kuzey kaldırımı
 };
 
 /**
@@ -463,10 +474,25 @@ function band(zSouth: number, zNorth: number): Rect {
   return { x: 0, y: svgY(zSouth), w: MAP_W, h: (zSouth - zNorth) * S };
 }
 
+/**
+ * Dikey ara sokakların yürünebilir kolonları: her sokak, güney ağzından
+ * (Z +4.0) arka sokağın kuzey kaldırımına (Z -17.4) kadar kesintisizdir —
+ * yani dükkan bloklarının ARASINDAN geçip binaların arkasına ulaşır.
+ */
+export const SIDE_STREET_ZONES: Rect[] = SIDE_STREETS.map((x) => ({
+  x: svgX(x - SIDE_STREET_W / 2),
+  y: svgY(SIDE_STREET_SOUTH),
+  w: SIDE_STREET_W * S,
+  h: (SIDE_STREET_SOUTH - ZONE.backNorthWalkBot) * S,
+}));
+
 export const WALKABLE_ZONES: Rect[] = [
   band(ZONE.southSidewalkBot, ZONE.southSidewalkTop), // güney kaldırım (tezgâhlar)
   band(ZONE.roadBot, ZONE.roadTop), // ana cadde / yaya yolu
   band(ZONE.northSidewalkBot, ZONE.northSidewalkTop), // kuzey kaldırım
+  // Arka sokak: kaldırım + asfalt + karşı kaldırım tek parça hâlinde.
+  band(ZONE.backWalkTop, ZONE.backNorthWalkBot),
+  ...SIDE_STREET_ZONES,
 ];
 
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace

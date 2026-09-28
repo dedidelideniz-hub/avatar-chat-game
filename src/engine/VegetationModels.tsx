@@ -28,7 +28,16 @@ import { useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { tickFoliageSway } from "./foliageSway";
-import { GRASS_CLUMP_ZONES, GRASS_GROUND_Y, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
+import {
+  GRASS_CLUMP_ZONES,
+  GRASS_GROUND_Y,
+  SIDE_STREETS,
+  SIDE_STREET_W,
+  TREE_AVOID_RADIUS,
+  TREE_ROWS,
+  VEG_SIZES,
+  WORLD_WIDTH,
+} from "./constants";
 import { mulberry32 } from "./StreetDetail";
 import {
   GRASS_CLUMP_MODEL_URL,
@@ -238,9 +247,19 @@ function GlbInstancedModel(props: Parameters<typeof InstancedModel>[0]) {
 /* ═══════════════════════════════════════════════════════════ */
 
 /**
- * Sokak ağaçları — `TREE_ROWS` ile EŞİT ARALIKLI iki sıra (kuzey/güney yeşillik
- * şeritleri). Her ağaca yerleştirilirken rastgele Y rotasyonu (0–360°) ve
- * ±%15 boyut farkı verilir; tohum sabit olduğu için kare kare aynı kalır.
+ * Dikey ara sokağın ağzında mı? Asfaltın üstüne ne ağaç ne çim öbeği dikilir —
+ * bu yüzden her iki katman da `SIDE_STREETS` kolonlarını boş bırakır.
+ */
+function onSideStreet(x: number, margin = 0): boolean {
+  const half = SIDE_STREET_W / 2 + margin;
+  return SIDE_STREETS.some((sx) => Math.abs(x - sx) < half);
+}
+
+/**
+ * Sokak ağaçları — `TREE_ROWS` ile EŞİT ARALIKLI sıralar (kuzey/güney/arka
+ * yeşillik şeritleri). Sokak ağızları boş bırakılır (`avoidX`). Her ağaca
+ * yerleştirilirken rastgele Y rotasyonu (0–360°) ve ±%15 boyut farkı verilir;
+ * tohum sabit olduğu için kare kare aynı kalır.
  *
  * Yapraklar hafifçe salınır (`foliageSway.ts`): salınım vertex shader'da
  * hesaplandığı için kare başına sadece TEK uniform yazılır — ağaç sayısı
@@ -251,7 +270,10 @@ export function StreetTrees() {
     const out: VegPlacement[] = [];
     TREE_ROWS.forEach((row, rowIndex) => {
       const rnd = mulberry32(4711 + rowIndex * 7919);
+      const avoidRadius = row.avoidRadius ?? TREE_AVOID_RADIUS;
       for (let x = row.startX; x <= row.endX + 1e-6; x += row.spacing) {
+        // Dikey sokak ağzına ağaç dikilmez (yol görünür kalsın).
+        if (row.avoidX?.some((ax) => Math.abs(x - ax) < avoidRadius)) continue;
         out.push({
           x,
           z: row.z,
@@ -291,9 +313,13 @@ export function StreetGrassClumps() {
       const depth = Math.max(0.2, zone.depth - inset * 2);
       const count = Math.max(1, Math.round(WORLD_WIDTH * depth * zone.density));
       for (let i = 0; i < count; i++) {
+        const x = (rnd() - 0.5) * (WORLD_WIDTH - 0.6);
+        const z = zone.z + (rnd() - 0.5) * depth;
+        // Asfaltın üstüne öbek düşmesin: sokak kolonları boş bırakılır.
+        if (onSideStreet(x, 0.2)) continue;
         out.push({
-          x: (rnd() - 0.5) * (WORLD_WIDTH - 0.6),
-          z: zone.z + (rnd() - 0.5) * depth,
+          x,
+          z,
           rot: rnd() * Math.PI * 2,
           scale: span(rnd, SIZE_MIN, SIZE_MAX),
           tint: span(rnd, TINT_MIN, TINT_MAX),

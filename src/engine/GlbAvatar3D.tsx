@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { PLAYER_3D_HEIGHT, WORLD_WIDTH, WORLD_DEPTH, S } from "./constants";
+import { PLAYER_3D_HEIGHT, WORLD_WIDTH, WORLD_Z_MAX, S } from "./constants";
 import {
   type EquipSlot,
   getEquipmentDef,
@@ -236,7 +236,8 @@ export function applyCharacterTint(
 
 // Position conversion constants (mirror GameEngine3D's sX/sZ helpers).
 const WORLD_W = WORLD_WIDTH / 2;
-const WORLD_D = WORLD_DEPTH / 2;
+/** px katmanının y = 0 kenarı = haritanın en güney Z'si (`svgY` tersi). */
+const WORLD_Z0 = WORLD_Z_MAX;
 
 /**
  * Attaches all equipped items to the model's bones. Returns a cleanup
@@ -851,7 +852,7 @@ function GlbAvatarCore({
     const lerpFactor = Math.min(1, lerpSpeed * dt);
     sp.x += (p.x - sp.x) * lerpFactor;
     sp.y += (p.y - sp.y) * lerpFactor;
-    group.position.set(sp.x / S - WORLD_W, 0.02, -(sp.y / S - WORLD_D));
+    group.position.set(sp.x / S - WORLD_W, 0.02, WORLD_Z0 - sp.y / S);
 
     // Walking detection from position delta (same threshold as SVG avatar).
     const dx = Math.abs(p.x - sp.x);

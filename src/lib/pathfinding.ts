@@ -39,7 +39,7 @@ const CELL = 16; // px per cell — small enough for smooth paths,
 // Izgara harita boyutundan türetilir (tek kaynak `MAP_W`/`MAP_H`), böylece
 // harita büyüdüğünde ızgara kendiliğinden uyar.
 const COLS = Math.ceil(MAP_W / CELL); // 2400/16 = 150
-const ROWS = Math.ceil(MAP_H / CELL); // 1300/16 = 82
+const ROWS = Math.ceil(MAP_H / CELL); // 1400/16 = 88
 const N = COLS * ROWS;
 
 /* ── walkability bitmap (built once, module-level) ──────────── */

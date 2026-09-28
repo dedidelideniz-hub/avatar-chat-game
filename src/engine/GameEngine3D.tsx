@@ -17,7 +17,10 @@ import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
 import {
   WORLD_WIDTH,
-  WORLD_DEPTH,
+  WORLD_Z_MAX,
+  SIDE_STREETS,
+  SIDE_STREET_W,
+  SIDE_STREET_SOUTH,
   CAMERA_ELEVATION,
   CAMERA_ZOOM,
   CAMERA_LERP_SPEED,
@@ -59,7 +62,7 @@ function sX(svgX: number): number {
   return svgX / S - WORLD_WIDTH / 2;
 }
 function sZ(svgY: number): number {
-  return -(svgY / S - WORLD_DEPTH / 2);
+  return WORLD_Z_MAX - svgY / S;
 }
 /** Inverse: 3D X → SVG X */
 function toSvgX(x3: number): number {
@@ -67,7 +70,7 @@ function toSvgX(x3: number): number {
 }
 /** Inverse: 3D Z → SVG Y */
 function toSvgY(z3: number): number {
-  return (-(z3) + WORLD_DEPTH / 2) * S;
+  return (WORLD_Z_MAX - z3) * S;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -102,7 +105,7 @@ export function raycastScreenToSVG(
 /** Convert SVG coordinates to 3D world coordinates.
  *  SVG X → 3D X, SVG Y → 3D Z, ground Y = 0. */
 export function svgToWorld(svgX: number, svgY: number): { x: number; y: number; z: number } {
-  return { x: svgX / S - WORLD_WIDTH / 2, y: 0, z: -(svgY / S - WORLD_DEPTH / 2) };
+  return { x: svgX / S - WORLD_WIDTH / 2, y: 0, z: WORLD_Z_MAX - svgY / S };
 }
 
 /** Project a 3D world position to screen-space pixel coordinates.
@@ -139,7 +142,7 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
   useFrame((_, dt) => {
     const p = posRef.current;
     const tx = p.x / S - WORLD_WIDTH / 2;
-    const tz = -(p.y / S - WORLD_DEPTH / 2);
+    const tz = WORLD_Z_MAX - p.y / S;
     target.current.set(tx, 0, tz);
     const lerp = Math.min(1, CAMERA_LERP_SPEED * dt);
     cur.current.lerp(target.current, lerp);
@@ -167,6 +170,24 @@ function Ground() {
   // Kaldırım taşı + asfalt dokusu (tek kez üretilir, paylaşılır).
   // Çim zemini doku değil, GLB karosudur → `<GrassGround />`.
   const { pavement, asphalt } = useStreetGroundTextures();
+
+  // Arka cadde ve dikey sokaklar ana caddeden ÇOK farklı oranlarda (kısa/geniş
+  // yerine uzun/dar) → paylaşılan dokunun `repeat`i onlara uymaz. Görüntü
+  // paylaşılır, döşeme ayarı klonlarda ayrı tutulur (2 ek doku, doku 2×2 birim).
+  const backAsphalt = useMemo(() => {
+    const t = asphalt.clone();
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(WORLD_WIDTH / 2, (ZONE.backRoadTop - ZONE.backRoadBot) / 2);
+    t.needsUpdate = true;
+    return t;
+  }, [asphalt]);
+  const sideAsphalt = useMemo(() => {
+    const t = asphalt.clone();
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(SIDE_STREET_W / 2, (SIDE_STREET_SOUTH - ZONE.backNorthWalkTop) / 2);
+    t.needsUpdate = true;
+    return t;
+  }, [asphalt]);
 
   // Subtle road dashes for pedestrian walkway feel
   const dashes = useMemo(() => {
@@ -211,6 +232,39 @@ function Ground() {
         <planeGeometry args={[WORLD_WIDTH, ZONE.southSidewalkBot - ZONE.southSidewalkTop]} />
         <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
       </mesh>
+
+      {/* ═══ ARKA SOKAK (binaların arkası) ═══
+          Dükkan sırasının kuzeyinde ikinci bir cadde: arka kaldırım + asfalt +
+          karşı kaldırım. Sınır çitleri ve yürünebilir bantlar `ZONE.back*`. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, (ZONE.backWalkTop + ZONE.backWalkBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.backWalkTop - ZONE.backWalkBot]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, (ZONE.backRoadTop + ZONE.backRoadBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.backRoadTop - ZONE.backRoadBot]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.95} map={backAsphalt} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, (ZONE.backNorthWalkTop + ZONE.backNorthWalkBot) / 2]} receiveShadow>
+        <planeGeometry args={[WORLD_WIDTH, ZONE.backNorthWalkTop - ZONE.backNorthWalkBot]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
+      </mesh>
+
+      {/* ═══ DİKEY ARA SOKAKLAR ═══
+          Ana caddeyi kuzey-güney yönünde keser, dükkan bloklarının arasından
+          geçip arka caddeye ulaşır (güneyde +4.0'a kadar uzanan ağız). */}
+      {SIDE_STREETS.map((x) => (
+        <mesh
+          key={`side-${x}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          // 0.009: ana cadde ve arka cadde 0.008'de; aynı düzlemde çakışıp
+          // z-fighting yapmasınlar diye ara sokak bir tık üstte.
+          position={[x, 0.009, (SIDE_STREET_SOUTH + ZONE.backNorthWalkTop) / 2]}
+          receiveShadow
+        >
+          <planeGeometry args={[SIDE_STREET_W, SIDE_STREET_SOUTH - ZONE.backNorthWalkTop]} />
+          <meshStandardMaterial color="#ffffff" roughness={0.95} map={sideAsphalt} />
+        </mesh>
+      ))}
 
       {/* ═══ Curbs ═══ */}
       {/* North sidewalk → road curb */}
@@ -656,7 +710,7 @@ function SvgPlayerAvatar3D({
     groupRef.current.position.set(
       smoothPos.current.x / S - WORLD_WIDTH / 2,
       0.02,
-      -(smoothPos.current.y / S - WORLD_DEPTH / 2),
+      WORLD_Z_MAX - smoothPos.current.y / S,
     );
     const dx = Math.abs(p.x - smoothPos.current.x);
     const dy = Math.abs(p.y - smoothPos.current.y);
@@ -718,7 +772,7 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
   return (
     <>
       <group
-        position={[data.x / S - WORLD_WIDTH / 2, 0, -(data.y / S - WORLD_DEPTH / 2)]}
+        position={[data.x / S - WORLD_WIDTH / 2, 0, WORLD_Z_MAX - data.y / S]}
         onClick={(event) => { event.stopPropagation(); onSelect(entry); }}
         onPointerDown={(event) => { event.stopPropagation(); onSelect(entry); }}
       >
@@ -882,7 +936,7 @@ function SvgBotAvatar3D({
 
     // Set 3D position
     const wx = smoothPos.current.x / S - WORLD_WIDTH / 2;
-    const wz = -(smoothPos.current.y / S - WORLD_DEPTH / 2);
+    const wz = WORLD_Z_MAX - smoothPos.current.y / S;
     groupRef.current.position.set(wx, 0.02, wz);
 
     // Walking animation

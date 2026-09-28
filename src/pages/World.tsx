@@ -148,8 +148,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Ada",
     color: "#ec4899",
     speed: 80,
-    x: 500, // X -14 · Z -3.0 (caddenin batı yarısı)
-    y: 800,
+    x: 520, // X -13.6 · Z -3.4 (caddenin batı yarısı)
+    y: 470,
     config: {
       skin: "#ffd1a3",
       hair: "long",
@@ -167,8 +167,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Mert",
     color: "#0ea5e9",
     speed: 80,
-    x: 1650, // X +9 · Z -2.2
-    y: 760,
+    x: 1680, // X +9.6 · Z -2.4
+    y: 420,
     config: {
       skin: "#e8a87c",
       hair: "spiky",
@@ -186,8 +186,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Elif",
     color: "#a855f7",
     speed: 80,
-    x: 250, // X -19 · Z -1.8 (batı ucu, tezgâhların önü)
-    y: 740,
+    x: 300, // X -18 · Z -4.4 (batı ucu, kuzey şeride yakın)
+    y: 520,
     config: {
       skin: "#f5c19a",
       hair: "curly",
@@ -205,8 +205,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Kaan",
     color: "#f59e0b",
     speed: 80,
-    x: 2050, // X +17 · Z -4.2 (doğu ucu, kuzey şeride yakın)
-    y: 860,
+    x: 2080, // X +17.6 · Z -3.0 (doğu ucu)
+    y: 450,
     config: {
       skin: "#b97e4f",
       hair: "short",

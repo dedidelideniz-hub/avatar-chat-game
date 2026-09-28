@@ -1,6 +1,15 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { GIFT_BOX, MAP_H, MAP_W, VENDORS, svgX, svgY } from "@/lib/shop";
-import { BUILDINGS, S, SPAWN_SVG, TREE_ROWS, ZONE } from "@/engine/constants";
+import {
+  BUILDINGS,
+  S,
+  SIDE_STREETS,
+  SIDE_STREET_SOUTH,
+  SIDE_STREET_W,
+  SPAWN_SVG,
+  TREE_ROWS,
+  ZONE,
+} from "@/engine/constants";
 
 export interface MiniMapHandle {
   setPlayer(x: number, y: number): void;
@@ -17,6 +26,9 @@ function band(zSouth: number, zNorth: number) {
 }
 
 const SIDEWALK = "#ecdcbc";
+/** Arka plan (görünmeyen kenar bölgeleri) — daha koyu çim. */
+const GRASS_BG = "#93d956";
+/** Yeşillik şeritleri — sınır çitleriyle çevrili bakımlı çim. */
 const GRASS = "#aee571";
 const ROAD = "#4a4540";
 
@@ -25,11 +37,25 @@ const NORTH_WALK = band(ZONE.northSidewalkBot, ZONE.northSidewalkTop);
 const ROAD_BAND = band(ZONE.roadBot, ZONE.roadTop);
 const SOUTH_WALK = band(ZONE.southSidewalkBot, ZONE.southSidewalkTop);
 const SOUTH_GRASS = band(ZONE.southGrassBot, ZONE.southGrassTop);
+const BACK_WALK = band(ZONE.backWalkTop, ZONE.backWalkBot);
+const BACK_ROAD = band(ZONE.backRoadTop, ZONE.backRoadBot);
+const BACK_NORTH_WALK = band(ZONE.backNorthWalkTop, ZONE.backNorthWalkBot);
+const BACK_GRASS = band(ZONE.backGrassTop, ZONE.backGrassBot);
+
+/** Dikey ara sokaklar — asfalt, kuzeyde arka caddenin kaldırımında biter. */
+const SIDE_STREETS_PX = SIDE_STREETS.map((x) => ({
+  x: svgX(x - SIDE_STREET_W / 2),
+  y: svgY(SIDE_STREET_SOUTH),
+  w: SIDE_STREET_W * S,
+  h: (SIDE_STREET_SOUTH - ZONE.backNorthWalkTop) * S,
+}));
 
 /** Ağaç sıralarından seyrek bir örnek — her 3. ağaç, haritayı boğmasın. */
 const TREES = TREE_ROWS.flatMap((row) => {
   const out: { x: number; y: number }[] = [];
+  const avoidRadius = row.avoidRadius ?? 0;
   for (let i = 0, x = row.startX; x <= row.endX + 1e-6; x += row.spacing, i++) {
+    if (row.avoidX?.some((ax) => Math.abs(x - ax) < avoidRadius)) continue;
     if (i % 3 === 0) out.push({ x: svgX(x), y: svgY(row.z) });
   }
   return out;
@@ -80,23 +106,30 @@ export const MiniMap = forwardRef<
         aria-label="Cadde haritası — dokununca karakter oraya yürür"
         style={{ touchAction: "none" }}
       >
-        {/* zemin */}
-        <rect width={MAP_W} height={MAP_H} fill={SIDEWALK} />
-        {/* kuzey çim (dükkanların önü) */}
+        {/* zemin — harita büyüdüğü için taban artık çim, sokaklar üstüne çizilir */}
+        <rect width={MAP_W} height={MAP_H} fill={GRASS_BG} />
+        {/* yeşillik şeritleri: kuzey (dükkan önü), güney (çit arkası), arka (binaların arkası) */}
         <rect x={0} y={NORTH_GRASS.y} width={MAP_W} height={NORTH_GRASS.h} fill={GRASS} />
-        {/* güney çim (sınır çitinin arkası) */}
         <rect x={0} y={SOUTH_GRASS.y} width={MAP_W} height={SOUTH_GRASS.h} fill={GRASS} />
+        <rect x={0} y={BACK_GRASS.y} width={MAP_W} height={BACK_GRASS.h} fill={GRASS} />
         {/* kaldırımlar */}
         <rect x={0} y={NORTH_WALK.y} width={MAP_W} height={NORTH_WALK.h} fill={SIDEWALK} />
         <rect x={0} y={SOUTH_WALK.y} width={MAP_W} height={SOUTH_WALK.h} fill={SIDEWALK} />
-        {/* cadde */}
+        <rect x={0} y={BACK_WALK.y} width={MAP_W} height={BACK_WALK.h} fill={SIDEWALK} />
+        <rect x={0} y={BACK_NORTH_WALK.y} width={MAP_W} height={BACK_NORTH_WALK.h} fill={SIDEWALK} />
+        {/* cadde + arka cadde + dikey ara sokaklar */}
         <rect x={0} y={ROAD_BAND.y} width={MAP_W} height={ROAD_BAND.h} fill={ROAD} />
-        {/* dükkanlar (kuzey cephe) */}
+        <rect x={0} y={BACK_ROAD.y} width={MAP_W} height={BACK_ROAD.h} fill={ROAD} />
+        {SIDE_STREETS_PX.map((s) => (
+          <rect key={s.x} x={s.x} y={s.y} width={s.w} height={s.h} fill={ROAD} />
+        ))}
+        {/* binalar — iki sıra: cadde dükkanları + arka caddenin arkasındakiler.
+            Gövde, cephe hattından kuzeye (haritada aşağı) doğru uzanır. */}
         {BUILDINGS.map((b, i) => (
           <rect
             key={i}
             x={svgX(b.x) - (b.w * S) / 2}
-            y={svgY(b.frontZ) - b.d * S}
+            y={svgY(b.frontZ)}
             width={b.w * S}
             height={b.d * S}
             fill={b.front}
