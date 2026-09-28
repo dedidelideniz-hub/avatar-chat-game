@@ -26,6 +26,7 @@ import {
   BUILDINGS,
   PLAYER_3D_HEIGHT,
   S,
+  SIT_LEAN,
   SIDE_STREETS,
   SIDE_STREET_W,
   SIDE_STREET_SOUTH,
@@ -99,7 +100,10 @@ check(
   ankleY > -0.05,
   `ayak y ${ankleY.toFixed(3)}`,
 );
-check("Ayak havada kalmıyor", ankleY < 0.06, `ayak y ${ankleY.toFixed(3)}`);
+// Birkaç cm hava payı bilinçli: minder dokusu çıtalara değmesin (z-fighting)
+// ve tıknaz avatarların gövdesi çıtaların içine girmesin. Gerçek avatarların
+// ölçümü `scripts/check-sit-model-pose.ts` içinde.
+check("Ayak havada kalmıyor", ankleY < 0.1, `ayak y ${ankleY.toFixed(3)}`);
 check(
   "Bacak erişi gerçekçi (0.45–0.75 birim)",
   reach > 0.45 && reach < 0.75,
@@ -182,6 +186,45 @@ check(
   `${farStands}/${usable.length} bank`,
 );
 
+/* ── 2c. Banklar YOLA bakıyor mu? (oturan karakter yola bakar) ─────── */
+// Bank, sırtını verdiği yönün TERSİNE bakar. Kuzey kaldırımdaki bankın
+// arkası kuzeyde (çit/çim), önü CADDEYE (+Z) bakar → `facing: 1`. Güney
+// kaldırımdaki bankın arkası güneyde (çim), önü CADDEYE (−Z) bakar →
+// `facing: -1`. Arka sokakta duvar güneyde olduğu için onlar da −Z'ye bakar.
+console.log("── banklar yola bakıyor mu? ──");
+// Bant kenarlarının adlandırması bölgeden bölgeye değişiyor (kuzey/güney) —
+// bu yüzden bant her zaman min/max ile kurulur.
+const inBand = (z: number, a: number, b: number) =>
+  z > Math.min(a, b) && z < Math.max(a, b);
+const inNorthWalk = (z: number) =>
+  inBand(z, ZONE.northSidewalkTop, ZONE.northSidewalkBot);
+const inSouthWalk = (z: number) => inBand(z, ZONE.southGrassTop, ZONE.roadTop);
+const inBackWalk = (z: number) => inBand(z, ZONE.backWalkTop, ZONE.backWalkBot);
+const northWalkBenches = BENCHES.filter((b) => inNorthWalk(b.z));
+const southWalkBenches = BENCHES.filter((b) => inSouthWalk(b.z));
+const backWalkBenches = BENCHES.filter((b) => inBackWalk(b.z));
+check(
+  "Kuzey kaldırım bankları CADDEYE bakar (facing 1)",
+  northWalkBenches.length > 0 && northWalkBenches.every((b) => benchFacing(b) === 1),
+  `${northWalkBenches.length} bank`,
+);
+check(
+  "Güney kaldırım bankları CADDEYE bakar (facing -1)",
+  southWalkBenches.length > 0 && southWalkBenches.every((b) => benchFacing(b) === -1),
+  `${southWalkBenches.length} bank`,
+);
+check(
+  "Arka sokak bankları sokağa bakar (duvara sırt, facing -1)",
+  backWalkBenches.length > 0 && backWalkBenches.every((b) => benchFacing(b) === -1),
+  `${backWalkBenches.length} bank`,
+);
+check(
+  "Tüm banklar sınıflandırıldı (kaldırım bandı dışında bank yok)",
+  northWalkBenches.length + southWalkBenches.length + backWalkBenches.length ===
+    BENCHES.length,
+  `${northWalkBenches.length}+${southWalkBenches.length}+${backWalkBenches.length} / ${BENCHES.length}`,
+);
+
 /* ── 3. Bacaklar binanın içine giriyor mu? ─────────────────────────── */
 console.log("── bacaklar binaya giriyor mu? ──");
 const boxes = BUILDINGS.map((b) => {
@@ -238,10 +281,10 @@ check(
   seats.every((s) => !inRoad(s.z + reach * s.facing)),
   `ayak z ${seats.map((s) => (s.z + reach * s.facing).toFixed(2)).join(", ")}`,
 );
-const northWalkBenches = BENCHES.filter((b) => b.z < -5 && b.z > -8);
+const northKeepBenches = BENCHES.filter((b) => b.z < -5 && b.z > -8);
 check(
   "Kuzey kaldırım banklarında ayaklar kaldırımda kalıyor",
-  northWalkBenches.every((b) => {
+  northKeepBenches.every((b) => {
     const s = benchSeatSpot(b);
     const footZ = s.z + reach * benchFacing(b);
     return footZ >= ZONE.northSidewalkTop && footZ <= ZONE.northSidewalkBot;
@@ -377,6 +420,49 @@ for (const model of MODELS) {
     shinDir.dot(SHIN_DIR) > 0.999,
     `dot ${shinDir.dot(SHIN_DIR).toFixed(5)}`,
   );
+  // Omurga geriye yatık mı (bank oturuşu): gövde dik değil, sırt arkalığa
+  // yaslanmış olmalı. `SIT_LEAN` kadar geriye yatık "yukarı" yönü hedeflenir.
+  const spine = found.spine;
+  const spineTip = spine ? tipOf(spine) : null;
+  if (spine && spineTip) {
+    const dir = dirOf(spine, spineTip);
+    const want = new THREE.Vector3(
+      0,
+      Math.cos(SIT_LEAN),
+      -Math.sin(SIT_LEAN),
+    ).normalize();
+    check(
+      `${model}: gövde geriye yatık (bank oturuşu)`,
+      dir.dot(want) > 0.99,
+      `omurga ${spine.name} · dot ${dir.dot(want).toFixed(5)} · yatış ${(
+        Math.acos(Math.min(1, Math.max(-1, dir.y))) *
+        (180 / Math.PI)
+      ).toFixed(1)}°`,
+    );
+    // Ters yön (facing -1) için ayna: aynı açı, ters işaret.
+    applySitPose(root, found, -1, 1);
+    root.updateMatrixWorld(true);
+    const dirBack = dirOf(spine, spineTip);
+    const wantBack = new THREE.Vector3(
+      0,
+      Math.cos(SIT_LEAN),
+      Math.sin(SIT_LEAN),
+    ).normalize();
+    check(
+      `${model}: gövde yatışı bankın yönüne göre aynalanıyor (facing -1)`,
+      dirBack.dot(wantBack) > 0.99,
+      `dot ${dirBack.dot(wantBack).toFixed(5)}`,
+    );
+    applySitPose(root, found, 1, 1);
+    root.updateMatrixWorld(true);
+  } else {
+    check(
+      `${model}: gövdeyi yatıracak omurga kemiği bulundu`,
+      false,
+      spine ? "ucu çözülemedi" : "omurga kemiği yok",
+    );
+  }
+
   // Ayak, baldırın ucuna hizalanmış olmalı (character.glb'de zincir kopuktu).
   const footGap = worldPoint(found.footL!).distanceTo(
     worldPoint(tipOf(found.shinL!)!),

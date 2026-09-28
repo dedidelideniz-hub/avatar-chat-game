@@ -400,11 +400,16 @@ export interface BenchDef {
   z: number;
   /**
    * Bankın baktığı yön — oturan karakterin de baktığı yön.
-   *   `1`  (varsayılan): arkalık -Z'de, bank +Z'ye bakar (kamera / ana cadde).
+   *   `1`  (varsayılan): arkalık -Z'de, bank +Z'ye bakar (camere / güney).
    *   `-1`            : 180° döndürülmüş; arkalık +Z'de, bank -Z'ye bakar.
-   * Sadece sırtı bir duvara dönük kalacak banklarda `-1` verilir (arka
-   * sokaktaki banklar dükkan duvarına sıfır olduğu için oturan karakterin
-   * bacakları duvarın içine girmesin diye çevrildi).
+   *
+   * KURAL: bank, ARKASI dönük olduğu yere sırtını verir ve oturan kişi YOLA
+   * bakar. Yani kuzey kaldırım bankları güneye (yola, `1`), güney kaldırım
+   * bankları kuzeye (yola, `-1`) bakar. Karakter `rotation.y = facing === 1 ?
+   * 0 : π` yönüne döner (bkz. `GlbAvatar3D` ve `World.tsx`).
+   *
+   * Önceden güney kaldırım bankları da `1` idi: karakter caddeye sırtını
+   * dönüp çimenliğe bakıyordu — ekran görüntüsündeki "ters oturmuş" görünüm.
    */
   facing?: 1 | -1;
 }
@@ -413,11 +418,12 @@ export const BENCHES: BenchDef[] = [
   { x: -10.5, z: -6.2 },  // kuzey kaldırım, lambaların arası
   { x: 4.5,   z: -6.2 },  // kuzey kaldırım
   { x: 18.5,  z: -6.2 },  // kuzey kaldırım, doğu ucu
-  { x: -16,   z: -0.4 },  // güney kaldırım, bankın yanı
-  { x: -1,    z: -0.4 },  // güney kaldırım, cadde ortası
-  { x: 17,    z: -0.4 },  // güney kaldırım
+  // Güney kaldırım: arkalık çimenliğe, yüz CADDEYE dönük.
+  { x: -16,   z: -0.4, facing: -1 },
+  { x: -1,    z: -0.4, facing: -1 },
+  { x: 17,    z: -0.4, facing: -1 },
   // Arka kaldırım — sokak ağızlarının dışında (|x| = 16 ve 0 boş kalır)
-  // Duvar (-12.9) hemen güneyde kaldığı için bu üçü arkaya dönüktür.
+  // Duvar (-12.9) hemen güneyde kaldığı için bu üçü kuzeye dönüktür.
   { x: -9.6,  z: -13.5, facing: -1 },
   { x: 3.6,   z: -13.5, facing: -1 },
   { x: 18.6,  z: -13.5, facing: -1 },
@@ -445,11 +451,11 @@ export const BENCH_SEAT_TOP = 0.46;
  * bu yüzden değer tahminle değil DÖRT GERÇEK AVATAR ölçülerek seçildi:
  * `scripts/check-sit-model-pose.ts` gerçek GLB'leri (GLTFLoader + Meshopt)
  * yükleyip oturma pozunu uygular, minder temas dokusunun kalçaya göre
- * derinliğini ölçer. Ölçüm (kalça 0.61 iken mindere göre fark):
- *   character 0.000 · savaşçı −0.010 · samuray −0.001 · şövalye +0.045
- * (negatif = dokunun birkaç mm mindere değmesi, pozitif = birkaç cm havada).
- * Eski 0.56'da üçü 3-6 cm mindere GÖMÜLÜYORDU — ekranda "bankın içine
- * geçmiş" görünen buydu.
+ * derinliğini ölçer. Ölçüm (kalça 0.63 iken mindere göre fark):
+ *   character +0.020 · savaşçı +0.010 · samuray +0.019 · şövalye +0.065
+ * (pozitif = dokunun birkaç cm ÜSTÜNDE durması; çıtalar gövdenin altında
+ * görünür kalır). Eski 0.56'da dördü de mindere GÖMÜLÜYDÜ — ekrandaki
+ * "bankın içine geçmiş" görünüm buydu.
  *
  * YÜKSEKLİK POZU BELİRLER: kalçayı yükseltmek diziyi bozmaz, sadece ayakları
  * da yukarı taşır (uyluk yatay kaldığı sürece). Uzun bacaklı modellerde
@@ -457,12 +463,22 @@ export const BENCH_SEAT_TOP = 0.46;
  * (şövalye 0.59, varsayılan avatar 0.69) ayaklar havada kalır — alçak bir
  * bankta oturan kısa boylu bir karakter gibi. bkz. `SitPose.ts`.
  */
-export const BENCH_SEAT_HEIGHT = 0.61;
+export const BENCH_SEAT_HEIGHT = 0.63;
 /**
  * Oturan kalçanın bank merkezinden baktığı yöne kayması. Negatif = arkalığa
  * doğru: kalça oturma yüzeyinin ortasında, sırt arkalığa yakın durur.
+ * −0.07: kalça oturma yüzeyinin arka yarısında durur (butun arka yüzü
+ * arkalığa değer), uyluklar ön kenardan taşarak görünür — "bankta oturuyor"
+ * okunurluğu. Aşırı geriye almak tıknaz avatarlarda gövdeyi arkalığın içine
+ * sokar.
  */
-export const BENCH_SEAT_FORWARD = -0.05;
+export const BENCH_SEAT_FORWARD = -0.07;
+/**
+ * Otururken gövdenin (omurga) geriye yatma açısı (radyan) — sırt arkalığa
+ * yaslanır. Pozu uygulayan `SitPose.applySitPose` omurga kemiğini bu kadar
+ * döndürür; kemik bulunamazsa kalça kemiği döner (düşme payı).
+ */
+export const SIT_LEAN = 0.09;
 /** Bir banka oturma etkileşiminin göründüğü yarıçap (dünya birimi). */
 export const BENCH_INTERACT_RADIUS = 1.35;
 /**

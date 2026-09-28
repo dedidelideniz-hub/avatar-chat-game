@@ -26,9 +26,12 @@
  * sadece bacaklar ve kök yüksekliği burada ezilir).
  */
 import * as THREE from "three";
+import { SIT_LEAN } from "./constants";
 
 export interface SitBones {
   hips: THREE.Bone | null;
+  /** Omurga/göğüs kökü — otururken gövdeyi geriye yatırmak için. */
+  spine: THREE.Bone | null;
   thighL: THREE.Bone | null;
   thighR: THREE.Bone | null;
   shinL: THREE.Bone | null;
@@ -114,6 +117,7 @@ export function tipOf(bone: THREE.Object3D): THREE.Object3D | null {
 export function findSitBones(root: THREE.Object3D): SitBones {
   const out: SitBones = {
     hips: null,
+    spine: null,
     thighL: null,
     thighR: null,
     shinL: null,
@@ -131,6 +135,29 @@ export function findSitBones(root: THREE.Object3D): SitBones {
     if (score > hipsScore) {
       hipsScore = score;
       out.hips = obj as THREE.Bone;
+    }
+  });
+
+  // ── Omurga: gövdeyi geriye yatırmak için.
+  //    Sıra: "spine"/"chest" (3) > "torso" (2) > "body" (1).
+  //    `character.glb`de göğüs kökü `Torso`, alt gövde kökü `Body`dir; ikisi
+  //    de kemik olduğu için skor AYIRT EDİCİ olmalı — `Body` aşağı bakar,
+  //    onu döndürmek gövde yerine bacak köklerini savurur.
+  //    Hiçbiri yoksa gövde yatırılmaz, poz yine doğru çıkar.
+  let spineScore = -1;
+  root.traverse((obj) => {
+    if (!isBone(obj)) return;
+    const name = obj.name.toLowerCase();
+    const score = /spine|chest/.test(name)
+      ? 3
+      : /torso/.test(name)
+        ? 2
+        : /^body/.test(name)
+          ? 1
+          : -1;
+    if (score > spineScore) {
+      spineScore = score;
+      out.spine = obj as THREE.Bone;
     }
   });
 
@@ -292,6 +319,7 @@ const _IDENTITY = new THREE.Quaternion();
 const _thighDir = new THREE.Vector3();
 const _shinDir = new THREE.Vector3();
 
+
 /** Ayak kemiklerinin duruş (taban) konumu — bir kez yakalanır. */
 const basePosition = new WeakMap<THREE.Object3D, THREE.Vector3>();
 function basePositionOf(bone: THREE.Object3D): THREE.Vector3 {
@@ -413,6 +441,37 @@ export function applySitPose(
   _shinDir.set(0, -1, facing * 0.0875).normalize();
 
   root.updateMatrixWorld(true);
+  // GÖVDE GERİYE (bank oturuşu): sırt arkalığa yaslanır, gövde dik durmaz.
+  // Omurga döndürülür — kalça/ bacaklar aşağıda AYRICA mutlak yönlerle
+  // ayarlandığı için bu dönüş pozu bozmaz (sadece üst gövdeyi yatırır).
+  leanTorso(root, bones.spine ?? bones.hips, facing, blend);
   poseLeg(root, bones.thighL, bones.shinL, bones.footL, _thighDir, _shinDir, blend);
   poseLeg(root, bones.thighR, bones.shinR, bones.footR, _thighDir, _shinDir, blend);
+}
+
+/**
+ * Üst gövdeyi bank oturuşuna uygun şekilde geriye yatırır.
+ *
+ * MUTLAK HEDEF: omurganın dünya yönü "yukarı, `SIT_LEAN` kadar geriye
+ * yatık" yönüne çevrilir — açı eklemek gibi birikmediği için fonksiyon
+ * İDEMPOTENT kalır (her kare çağrılabilir). Omurga dikey değilse (tanınmayan
+ * rig) hiç dokunulmaz; poz yine geçerli olur.
+ */
+function leanTorso(
+  root: THREE.Object3D,
+  bone: THREE.Bone | null,
+  facing: 1 | -1,
+  blend: number,
+): void {
+  if (!bone || blend <= 0) return;
+  const tip = tipOf(bone);
+  if (!tip) return;
+  bone.getWorldPosition(_a);
+  tip.getWorldPosition(_b);
+  _b.sub(_a);
+  if (_b.lengthSq() < 1e-10) return;
+  _b.normalize();
+  if (_b.y < 0.5) return; // omurga dikey değil → yatırmaya kalkma
+  _target.set(0, Math.cos(SIT_LEAN), -facing * Math.sin(SIT_LEAN));
+  rotateBoneToward(root, bone, tip, _target, blend);
 }
