@@ -57,8 +57,11 @@ import {
   ARENA_H,
   ARENA_W,
   DASH_HIT_R,
+  WALK_SPEED,
   moveOnGround,
   resolveSpawn,
+  shapeStick,
+  smoothMoveInput,
   stepDash,
   type GroundConfig,
 } from "@/components/world/arena/MovementComponent";
@@ -184,8 +187,8 @@ const botAimError = (level: number) => 0.14 - 0.11 * botLevelT(level);
  *  Much faster than the player's 0.85s ATK_CD: bots fire continuously,
  *  with no pauses between bursts. */
 const botFireInterval = (level: number) => 0.4 - 0.2 * botLevelT(level);
-/** Bot move speed multiplier — 0.9x (level 1) up to 1.15x (level 10). */
-const botSpeedMul = (level: number) => 0.9 + 0.25 * botLevelT(level);
+/** Botun yürüme hızı oyuncununkiyle AYNIDIR (bkz. WALK_SPEED): seviye
+ *  farkı artık hızdan değil, nişan hatasından/ateş sıklığından gelir. */
 /** Chance per shot the bot strafes after firing — dodgier at higher levels. */
 const botStrafeChance = (level: number) => 0.15 + 0.45 * botLevelT(level);
 
@@ -1155,6 +1158,16 @@ export default function BattleScene({
           vy = joystickRef.current.y;
         }
       }
+      // ── Analog his (Brawl Stars rahatlığı) ──
+      // Ölü bölge + eğri: kol yarıya kadar itilince YARIM hızda yürünür (ince
+      // kontrol), sonuna kadar itilince tam hız. Ardından üstel yumuşatma:
+      // kalkış yumuşak, duruş keskin (0.15 sn'lik kısa bir süzülme). Yön
+      // (`dirX/dirY`) ham vektörden `moveOnGround` içinde okunduğu için bu
+      // ölçek gövdenin baktığı yönü bozmaz. Girdi, düz vuruş kilidinden ÖNCE
+      // şekillendirilir: windup'ta gövde köklenirken süzülmesin.
+      const shaped = smoothMoveInput(p, shapeStick({ x: vx, y: vy }), dt);
+      vx = shaped.x;
+      vy = shaped.y;
       // ⚡ SÜRELİ BUTON (oyuncu): süper bar yalnız zamanla, yavaşça dolar ve
       // ancak %100'de kullanılabilir. Kraliyet ultisi zamanla dolmaz (savaşta
       // dolar), düz vuruş ise kendi bekleme süresiyle (`ATK_CD`) çalışır.
@@ -1309,8 +1322,12 @@ export default function BattleScene({
         }
         p.moving = false;
         p.phase += dt * 5;
-      } else if (pStunned) {
+      } else      if (pStunned) {
         // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
+        // Yumuşatılmış girdi de sıfırlanır: sarsılma bitince karakter
+        // sarsılmadan önceki hızla fırlamasın.
+        p.moveVX = 0;
+        p.moveVY = 0;
       } else if (p.meleeT > 0) {
         // ⚔️ Yakın dövüş: sol/sağ çapraz kesişler + (rakip yakınsa) üstüne
         // atlama. Salınım karakteri kökler; atlama çarpışma kontrollü yürür
@@ -1336,7 +1353,10 @@ export default function BattleScene({
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
-        moveFighter(p, vx * 90 * dt, vy * 90 * dt, dt);
+        // Adım döngüsü girdi hızına ölçeklenir (prosedürel gövde yarı itilmiş
+        // kolda da ayakları kaydırmasın; GLB yolu klibi hıza göre ölçer).
+        p.moveScale = Math.hypot(vx, vy);
+        moveFighter(p, vx * WALK_SPEED * dt, vy * WALK_SPEED * dt, dt);
       }
 
       // --- footstep ticks while walking (continuous battle audio) ---
@@ -1444,7 +1464,7 @@ export default function BattleScene({
           mx += (dy / dist) * sway;
           my += (-dx / dist) * sway;
         }
-        const speed = 90 * botSpeedMul(b.level);
+        const speed = WALK_SPEED;
         const beforeX = b.x;
         const beforeY = b.y;
         // Try the natural vector first; diagonal motion lets the bot slide

@@ -57,8 +57,11 @@ import {
   ARENA_H,
   ARENA_W,
   DASH_HIT_R,
+  WALK_SPEED,
   moveOnGround,
   resolveSpawn,
+  shapeStick,
+  smoothMoveInput,
   stepDash,
   type GroundConfig,
 } from "@/components/world/arena/MovementComponent";
@@ -1255,6 +1258,17 @@ export default function PvpBattleScene({
       b.facing = t.facing;
       b.vy = t.vy;
       b.moving = t.moving;
+      // 🎛️ Rakibin gövdesi de analog yöne dönsün: yön ağ paketine yeni alan
+      // eklemeden, hedefe kalan farktan (yani gerçekte gittiği yönden) okunur.
+      // Yayın yalnız `facing/vy` (4 yön) taşıdığı için bu olmadan rakip kare
+      // kare dört yöne zıplıyordu.
+      const rdx = t.x - b.x;
+      const rdy = t.y - b.y;
+      const rdist = Math.hypot(rdx, rdy);
+      if (t.moving && rdist > 0.5) {
+        b.dirX = rdx / rdist;
+        b.dirY = rdy / rdist;
+      }
       // 🎯 Rakip ateş ettiğinde/yetenek kullandığında gövdesi hedefe dönsün:
       // karşı telefondan yayınlanan yön kilidi buraya aynalanır (yerelde her
       // kare azalır, snapshot geldikçe tazelenir).
@@ -1388,6 +1402,12 @@ export default function PvpBattleScene({
           vy = joystickRef.current.y;
         }
       }
+      // ── Analog his (bot arenasıyla aynı katman) ──
+      // Ölü bölge + eğri + yumuşatma: kol yarıya itilince yarım hız, kalkış
+      // yumuşak, duruş keskin. Girdi, düz vuruş kilidinden ÖNCE şekillenir.
+      const shaped = smoothMoveInput(p, shapeStick({ x: vx, y: vy }), dt);
+      vx = shaped.x;
+      vy = shaped.y;
       // ── Düz vuruş animasyonu + cancel penceresi (kiting / hit-and-run) ──
       // Windup boyunca karakter köklenir; pencere açıldıktan sonra joystick'e
       // dokunmak bitiş animasyonunu keser ve karakter hemen yürümeye başlar.
@@ -1422,6 +1442,10 @@ export default function PvpBattleScene({
       }
       if (pStunned) {
         // Sarsılıyor: girdi yok sayılır, savrulma yukarıda uygulandı.
+        // Yumuşatılmış girdi de sıfırlanır: sarsılma bitince karakter
+        // sarsılmadan önceki hızla fırlamasın.
+        p.moveVX = 0;
+        p.moveVY = 0;
       } else if (p.meleeT > 0) {
         // ⚔️ Yakın dövüş: sol/sağ kesişler + (rakip yakınsa) üstüne atlama.
         // Vuruşlar karşı cihaza olay olarak gider; hasar orada uygulanır.
@@ -1458,7 +1482,10 @@ export default function PvpBattleScene({
         }
         if (p.dashT <= 0) p.dashHit = false;
       } else {
-        moveFighter(p, vx * 90 * dt, vy * 90 * dt, dt);
+        // Adım döngüsü girdi hızına ölçeklenir (prosedürel gövde yarı itilmiş
+        // kolda da ayakları kaydırmasın; GLB yolu klibi hıza göre ölçer).
+        p.moveScale = Math.hypot(vx, vy);
+        moveFighter(p, vx * WALK_SPEED * dt, vy * WALK_SPEED * dt, dt);
       }
 
       // --- footsteps while walking ---

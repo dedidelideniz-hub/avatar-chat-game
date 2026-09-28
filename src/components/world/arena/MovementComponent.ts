@@ -23,6 +23,33 @@ export const ARENA_H = 1100;
 export const EDGE_PAD = 40;
 /** Dash (şimşek yeteneği) hızı — px/s. */
 export const DASH_SPEED = 820;
+
+/** Yürüme hızı — px/s.
+ *
+ *  TEK KAYNAK: oyuncu, bot ve PvP'deki rakip AYNI hızda yürür. Eskiden oyuncu
+ *  90 px/sn ile yürürken botlar `botSpeedMul` ile 81–103 px/sn arasında
+ *  değişiyordu: hem hızlar eşit değildi hem de kolun verdiği his sertti.
+ *  Hız buraya taşındı, dengeli ve biraz daha yavaş bir tempoya çekildi. */
+export const WALK_SPEED = 74;
+
+/** Kolun ölü bölgesi (sapma oranı): bu kadar sapmadan hareket başlamaz. */
+export const MOVE_DEAD_ZONE = 0.14;
+/** Kolun tam hıza ulaştığı sapma; üstü doygun (fazlası hız eklemez). */
+export const MOVE_FULL_AT = 0.85;
+/** Ölü bölgeden sonraki hız eğrisi üssü: 1 doğrusal, >1 ince kontrol. */
+const MOVE_CURVE = 1.25;
+/** Kalkış yumuşatma oranı (1/sn) — ani kalkışta karakter sıçramaz. */
+const MOVE_ACCEL_RATE = 13;
+/** Duruş yumuşatma oranı (1/sn) — bırakınca çok kısa bir süzülme. */
+const MOVE_BRAKE_RATE = 20;
+/** Yürürken gövdenin dönüş hızı (rad/sn) — ~802°/sn (180° ≈ 0.22 sn).
+ *
+ *  Eskiden 4 yönlü `facing/vy` yüzünden 16 rad/sn'lik dönüş bile "kare
+ *  atlamış" gibi okunuyordu; yön artık analog olduğu için biraz yavaşlatılıp
+ *  dönüşün GÖRÜLMESİ sağlandı — his burada yumuşuyor. */
+export const TURN_RATE = 14;
+/** Nişan/ulti kilidinde dönüş hızı (rad/sn): mermi çıkmadan gövde dönmüş olur. */
+export const TURN_RATE_AIM = 24;
 /** Dash sırasında temas hasarı için gövde merkezleri arası mesafe (px). */
 export const DASH_HIT_R = 90;
 
@@ -34,6 +61,21 @@ export interface GroundBody {
   vy: number;
   moving: boolean;
   phase: number;
+  /** Analog yürüme yönü (birim vektör, sim uzayı).
+   *
+   *  `facing`/`vy` yalnızca 4 yönü taşır; gövde pozunu artık bu sürekli
+   *  açı belirler (bkz. Arena3D → `dirYaw`). Böylece çapraz yürüyüşte
+   *  karakter kare kare dört yöne zıplamaz, girdiyi takip eder. */
+  dirX?: number;
+  dirY?: number;
+  /** Yumuşatılmış girdi vektörü (yalnız oyuncu tarafı kullanır). */
+  moveVX?: number;
+  moveVY?: number;
+  /** Girdi büyüklüğü (0..1): adım döngüsü bu oranda yavaşlar.
+   *
+   *  GLB yolu yürüme klibini zaten gerçek hıza ölçekler; prosedürel gövde
+   *  fazla yürüyordu, bu yüzden yarı itilmiş kolda ayaklar kayardı. */
+  moveScale?: number;
 }
 
 export interface GroundConfig {
@@ -81,6 +123,13 @@ export function moveOnGround(
   body.x = next.x;
   body.y = next.y;
   if (Math.abs(dx) > 0.01) body.facing = dx > 0 ? 1 : -1;
+  // Analog yön İSTENEN vektörden okunur (gerçekleşenden değil): duvara
+  // yaslanmışken de gövde baktığı yönde kalır, engel yönü dondurmaz.
+  const wish = Math.hypot(dx, dy);
+  if (wish > 0.001) {
+    body.dirX = dx / wish;
+    body.dirY = dy / wish;
+  }
   body.moving = next.moved;
   // Dikey yön gövde pozunu belirler (yukarı/aşağı bakış).
   if (body.moving) {
@@ -89,7 +138,11 @@ export function moveOnGround(
   } else {
     body.vy = 0;
   }
-  if (body.moving) body.phase += dt * (cfg.phaseRate ?? 10);
+  // Adım döngüsü hızla ölçeklenir; alt sınır 0.4 (çok yavaş yürüyüşte de
+  // bacaklar kımıldasın) yoksa ağır çekim hissi doğardı.
+  if (body.moving)
+    body.phase +=
+      dt * (cfg.phaseRate ?? 10) * (0.4 + 0.6 * (body.moveScale ?? 1));
   return body.moving;
 }
 
@@ -101,6 +154,59 @@ export function stepDash(
 ): void {
   body.dashT -= dt;
   moveOnGround(body, body.dashVX * DASH_SPEED * dt, body.dashVY * DASH_SPEED * dt, dt, cfg);
+}
+
+/** Analog girdi vektörü (x: sağ, y: aşağı), her bileşen −1..1. */
+export interface MoveInput {
+  x: number;
+  y: number;
+}
+
+/**
+ * Kol/klavye girdisini ölü bölge + yumuşak eğriden geçirir.
+ *
+ * Ölü bölge parmak titremesini yok eder; eğri ise kolun yarısında yürüyen,
+ * sonuna kadar itilince tam hızda koşan "dozlanabilir" bir kontrol verir
+ * (Brawl Stars'daki rahat his büyük ölçüde bu eğriden gelir).
+ */
+export function shapeStick(raw: MoveInput): MoveInput {
+  const mag = Math.hypot(raw.x, raw.y);
+  if (mag <= MOVE_DEAD_ZONE) return { x: 0, y: 0 };
+  const t = Math.min(
+    1,
+    (mag - MOVE_DEAD_ZONE) / (MOVE_FULL_AT - MOVE_DEAD_ZONE),
+  );
+  const gain = Math.pow(t, MOVE_CURVE);
+  return { x: (raw.x / mag) * gain, y: (raw.y / mag) * gain };
+}
+
+/**
+ * Hedef girdiye üstel yaklaşım: kalkış yumuşak, duruş keskin.
+ *
+ * Durum gövdenin kendisinde tutulur (`moveVX/moveVY`) — sahne başına ayrı ref
+ * yok. Düşük kare hızında katsayı 1'e kırpılır, yoksa gövde hedefi aşar.
+ */
+export function smoothMoveInput(
+  body: GroundBody,
+  target: MoveInput,
+  dt: number,
+): MoveInput {
+  const curX = body.moveVX ?? target.x;
+  const curY = body.moveVY ?? target.y;
+  const rate =
+    Math.hypot(target.x, target.y) > 0 ? MOVE_ACCEL_RATE : MOVE_BRAKE_RATE;
+  const k = Math.min(1, rate * dt);
+  let nx = curX + (target.x - curX) * k;
+  let ny = curY + (target.y - curY) * k;
+  // Duruşta tamamen sıfıra in: kalan 0.01'lik artık karakterin sürünmesine
+  // (ve adım animasyonunun boşta oynamasına) yol açmasın.
+  if (!target.x && !target.y && Math.hypot(nx, ny) < 0.03) {
+    nx = 0;
+    ny = 0;
+  }
+  body.moveVX = nx;
+  body.moveVY = ny;
+  return { x: nx, y: ny };
 }
 
 /**

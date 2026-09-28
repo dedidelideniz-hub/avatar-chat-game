@@ -122,6 +122,9 @@ import {
 // 🌑 Zemin gölgeleri: ayak altı temas gölgesi (harita gölge ALICI bayrakları
 // `BattleMapGuard` içinde kurulur).
 import { ContactShadow } from "./arena/GroundShadows";
+// 🎛️ Dönüş hissi: gövdenin yaw'ı yürürken bu hızla hedefe oturur (tek kaynak
+// `MovementComponent` — yürüme hızı ve girdi eğrisi de orada yaşar).
+import { TURN_RATE, TURN_RATE_AIM } from "./arena/MovementComponent";
 
 /* Arena sabitleri, tipleri ve efekt yardımcıları `./arena/shared` içinde.
  * Genel API eskisi gibi Arena3D üzerinden de erişilebilir kalsın diye
@@ -373,6 +376,15 @@ export interface BattleFighter {
   facing: number;
   phase: number;
   moving: boolean;
+  /** Analog yürüme yönü (birim vektör, sim uzayı) — gövde bu açıya döner.
+   *  `facing`/`vy` 4 yönlü kalır (nişan/ulti onları okur); poz artık buradan. */
+  dirX?: number;
+  dirY?: number;
+  /** Yumuşatılmış hareket girdisi (ölü bölge + eğri sonrası, −1..1). */
+  moveVX?: number;
+  moveVY?: number;
+  /** Girdi büyüklüğü (0..1) — adım döngüsü bu oranda yavaşlar. */
+  moveScale?: number;
   atkCd: number;
   /** Düz vuruş animasyonunun kalan süresi (windup + bitiş). 0 = animasyon
    *  bitmiş. Cancel penceresinde hareket girdisi bunu anında 0'lar. */
@@ -1158,7 +1170,7 @@ function FighterRig({
       });
     }
     root.current.position.set(f.x / S, 0, f.y / S);
-    // ── 4-direction facing ──
+    // ── Analog yön (gövde yürüdüğü yöne döner) ──
     // The royal warrior GLB's authored forward axis is opposite to the
     // procedural body's axis. Keep the shared movement coordinates intact,
     // but apply the model-specific half-turn so it walks toward its travel
@@ -1181,13 +1193,15 @@ function FighterRig({
     // yetenek/ulti sonrası karakter eski pozisyonuna dönmez, ateş ettiği (ve
     // yürüdüğü) son yönde kalır.
     const moveYaw =
-      (f.vy ?? 0) !== 0
-        ? f.vy < 0
-          ? Math.PI
-          : 0
-        : f.facing >= 0
-          ? Math.PI / 2
-          : -Math.PI / 2;
+      f.dirX !== undefined && f.dirY !== undefined
+        ? Math.atan2(f.dirX, f.dirY)
+        : (f.vy ?? 0) !== 0
+          ? f.vy < 0
+            ? Math.PI
+            : 0
+          : f.facing >= 0
+            ? Math.PI / 2
+            : -Math.PI / 2;
     let dirYaw: number;
     if (aimLocked) dirYaw = aimYaw as number;
     else if (f.moving) dirYaw = moveYaw;
@@ -1207,10 +1221,13 @@ function FighterRig({
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     // Keskin dönüş (rotateTowards): üstel yumuşatma yerine sabit açısal hız.
     // Üstel yaklaşımda karakter yön değiştirirken geniş bir kavis çizip
-    // sürükleniyordu; şimdi sınırlı adımla tek karede hedefe oturuyor
-    // (16 rad/sn ≈ 917°/sn → 180° dönüş ~0.2 sn). Atış kilidinde dönüş daha
-    // da hızlıdır: mermi çıkarken gövde çoktan hedefe bakıyor olmalı.
-    const maxTurn = (ulting || aimLocked ? 26 : 16) * dt;
+    // sürükleniyordu; şimdi sınırlı adımla tek karede hedefe oturuyor.
+    // Hız `TURN_RATE` (≈802°/sn → 180° dönüş ~0.22 sn): 4 yönlü zıplama
+    // bittiği için yavaşlatılabilir — dönüş artık GÖRÜLÜYOR ve omuz/kalça
+    // hareketiyle okunuyor, eskiden olduğu gibi kare atlamış gibi durmuyor.
+    // Atış kilidinde dönüş daha hızlıdır: mermi çıkarken gövde çoktan hedefe
+    // bakıyor olmalı.
+    const maxTurn = (ulting || aimLocked ? TURN_RATE_AIM : TURN_RATE) * dt;
     root.current.rotation.y += Math.max(-maxTurn, Math.min(maxTurn, yawDiff));
     // Baş-üstü HUD (isim + can barı) gövde kazancı kadar yukarı kayar:
     // gövde büyürken bar kafaya gömülmez, hep hemen üstünde kalır.
