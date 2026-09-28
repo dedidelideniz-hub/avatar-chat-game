@@ -132,25 +132,19 @@ function isCoarsePointer() {
 }
 
 export function ArenaPostFx({
-  // ── AAA VFX IŞIMASI (bloom eşiği) ────────────────────────────────────
-  // Eşik 0.88 → 0.64 İNDİRİLDİ. Eskisi yalnızca neredeyse beyaz katmanları
-  // yakalıyordu; samurayın fünye alevi, kavisli bomba izi, hedef göstergesi,
-  // şok dalgası ve kılıç kesiği gibi `toneMapped=false` EMMİSYON katmanları
-  // turuncu/kırmızı tonlarda olduğu için (ör. #ff8a2b'nin lineer parlaklığı
-  // ~0.39) eşiği hiç geçmiyor ve "parlaması gereken şey parlamıyordu".
+  // ── bloom (neon ışıma) eşiği ─────────────────────────────────────────
+  // Eşik YÜKSEK tutulur (0.88): yalnızca GERÇEKTEN parlak öğeler — üs/kule
+  // kristalleri, zemindeki nişan çemberi, menzil halkaları, mermiler, yetenek
+  // efektleri ve lav — etraflarına ışık saçar. Zemin/gövde gibi normal
+  // parlaklıktaki yüzeyler eşiği geçmediği için kare "her yeri saran sis"e
+  // dönüşmez.
   //
-  // Neden hâlâ seçici kalır: bu katmanların çoğu ADDITIF ve `toneMapped=false`
-  // çizilir, yani yazdıkları parlaklık zeminin lambert yansımasından bağımsız
-  // olarak eşiği AŞABİLİR. Çim/taş gibi dağınık yüzeyler gündüz ışığında
-  // lineer parlaklıkta ~0.3-0.5 bandında kalır; eşik orada kesildiği için
-  // kare "her yeri saran sis"e dönüşmez, ışıma samuray efektlerine ve zaten
-  // parlak dünya öğelerine (kristal, lav, kenar çizgisi) yapışır.
-  //
-  // Yarıçap 0.38 → 0.5: patlama ve iz ışıması daha geniş, yumuşak bir hâle
-  // açar — "neon" hissinin asıl kaynağı budur. Şiddet de hafifçe yükseltildi.
-  strength = 0.8,
-  radius = 0.5,
-  threshold = 0.64,
+  // NOT: Son görsel cila turunda eşik 0.64'e indirilip şiddet/yarıçap
+  // yükseltilmişti; bu savaş alanını sisli/parlak gösterdiği için eski
+  // (seçici) değerlere geri alındı.
+  strength = 0.62,
+  radius = 0.38,
+  threshold = 0.88,
 }: {
   strength?: number;
   radius?: number;
