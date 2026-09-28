@@ -5,6 +5,36 @@
  * dependency-free (no React imports).
  */
 
+import { S, WORLD_WIDTH, WORLD_DEPTH, STALLS, ZONE } from "../engine/constants";
+
+/* ── SVG px katmanı ───────────────────────────────────────────
+   Oyun mantığı (tıklama → yürüme, yol bulma, mini harita, satıcı
+   etkileşimi) 3D dünyanın düzleştirilmiş SVG karşılığını kullanır.
+   Dönüşüm `GameEngine3D`'deki `svgToWorld` ile BİREBİR aynı olmalı:
+
+     x3 = svgX / S - WORLD_WIDTH / 2
+     z3 = -(svgY / S - WORLD_DEPTH / 2)
+
+   Yani 1 dünya birimi = S px, harita merkezi = (MAP_W/2, MAP_H/2).
+   Harita büyüdüğünde (X 32→48, Z 18→26) yalnızca `engine/constants`
+   içindeki WORLD_* ve ZONE değişir; aşağıdaki yerleşimlerin tamamı bu
+   dönüşümden türetildiği için kendiliğinden ölçeklenir (elle px
+   güncellemek gerekmez).
+   ──────────────────────────────────────────────────────────── */
+
+export const MAP_W = WORLD_WIDTH * S;
+export const MAP_H = WORLD_DEPTH * S;
+
+/** Dünya X'i → harita px'i. */
+export function svgX(x: number): number {
+  return (x + WORLD_WIDTH / 2) * S;
+}
+
+/** Dünya Z'si → harita px'i (kuzey = büyük y, ekranda aşağı). */
+export function svgY(z: number): number {
+  return (WORLD_DEPTH / 2 - z) * S;
+}
+
 export const CURRENCY_NAME = "Vaelos Parası";
 export const CURRENCY_EMOJI = "🪙";
 export const STARTING_COINS = 500;
@@ -259,68 +289,35 @@ export interface Vendor {
   y: number; // ground line of the stall
 }
 
-export const VENDORS: Vendor[] = [
-  {
-    id: "dondurma",
-    name: "Emre'nin Dondurma Tezgâhı",
-    short: "Dondurma",
-    emoji: "🍦",
-    color: "#ff8fb3",
-    accent: "#ffffff",
-    x: 250,
-    y: 495,
-  },
-  {
-    id: "balon",
-    name: "Zeynep'in Balon Standı",
-    short: "Balonlar",
-    emoji: "🎈",
-    color: "#14b8a6",
-    accent: "#ffffff",
-    x: 500,
-    y: 495,
-  },
-  {
-    id: "oyuncak",
-    name: "Oyuncakçı Dede",
-    short: "Oyuncakçı",
-    emoji: "🧸",
-    color: "#f59e0b",
-    accent: "#ffd166",
-    x: 750,
-    y: 495,
-  },
-  {
-    id: "moda",
-    name: "Selin'in Moda Standı",
-    short: "Moda",
-    emoji: "🕶️",
-    color: "#a855f7",
-    accent: "#ffd166",
-    x: 1000,
-    y: 495,
-  },
-  {
-    id: "silahci",
-    name: "Kemal'in Silah Dükkanı",
-    short: "Silahçı",
-    emoji: "⚔️",
-    color: "#b91c1c",
-    accent: "#fbbf24",
-    x: 1250,
-    y: 495,
-  },
-  {
-    id: VIP_VENDOR_ID,
-    name: "Kraliyet VIP Köşesi",
-    short: "VIP Üyelik",
-    emoji: "👑",
-    color: "#f59e0b",
-    accent: "#ffd166",
-    x: 1500,
-    y: 495,
-  },
-];
+/**
+ * Satıcı kimlikleri (kimlik/simge/ad) — renk ve KONUM 3D tezgâh verisinden
+ * (`STALLS`, `engine/constants`) türetilir. Böylece tezgâhı cadde üzerinde
+ * başka bir X'e taşımak için tek yer değiştirilir; 2D katman (tıklama,
+ * engeller, mini harita) otomatik hizalanır.
+ */
+const VENDOR_IDENTITY = [
+  { id: "dondurma", name: "Emre'nin Dondurma Tezgâhı", short: "Dondurma", emoji: "🍦" },
+  { id: "balon", name: "Zeynep'in Balon Standı", short: "Balonlar", emoji: "🎈" },
+  { id: "oyuncak", name: "Oyuncakçı Dede", short: "Oyuncakçı", emoji: "🧸" },
+  { id: "moda", name: "Selin'in Moda Standı", short: "Moda", emoji: "🕶️" },
+  { id: "silahci", name: "Kemal'in Silah Dükkanı", short: "Silahçı", emoji: "⚔️" },
+  { id: VIP_VENDOR_ID, name: "Kraliyet VIP Köşesi", short: "VIP Üyelik", emoji: "👑" },
+] as const;
+
+/** Satıcının tezgâhın önünde durduğu Z çizgisi (tezgâh merkezinden 0.3 birim güney). */
+const VENDOR_ROW_Z = STALLS[0].z - 0.3;
+
+export const VENDORS: Vendor[] = VENDOR_IDENTITY.map((identity, i) => {
+  // `STALLS` ile aynı sırada: dondurma, balon, oyuncak, moda, silahçı, VIP.
+  const stall = STALLS[i];
+  return {
+    ...identity,
+    color: stall.color,
+    accent: stall.accent,
+    x: svgX(stall.x),
+    y: svgY(VENDOR_ROW_Z),
+  };
+});
 
 /**
  * All old legacy products (balloon, ice cream, toy, etc.) have been removed.
@@ -399,10 +396,10 @@ export function wornCharacterSkin(
     .find((product) => product !== undefined && product.skinUrl !== undefined);
 }
 
-/** Daily gift box position + reach radius (world coordinates). */
+/** Daily gift box position + reach radius (harita px; caddenin ortası, Z -2.4). */
 export const GIFT_BOX = {
-  x: 800,
-  y: 570,
+  x: svgX(0),
+  y: svgY(-2.4),
   radius: 115,
 };
 
@@ -434,12 +431,15 @@ export function vendorAtPoint(x: number, y: number): Vendor | undefined {
   );
 }
 
-/** World bounds the player can walk in. */
+/**
+ * World bounds the player can walk in — yürünebilir bantların (güney kaldırım
+ * üstünden kuzey kaldırımın çim sınırına kadar) px karşılığı.
+ */
 export const WORLD_BOUNDS = {
   minX: 28,
-  maxX: 1572,
-  minY: 450,
-  maxY: 690,
+  maxX: MAP_W - 28,
+  minY: svgY(ZONE.southSidewalkBot), // Z 0    → güney kaldırımın güney kenarı
+  maxY: svgY(ZONE.northGrassBot),    // Z -7.2 → kuzey çimin sınır çiti
 };
 
 /**
@@ -454,13 +454,19 @@ export const WORLD_BOUNDS = {
  *
  * The character walks on the road + sidewalks.
  */
+/**
+ * Bir Z bandını yürünebilir dikdörtgene çevirir. `zSouth` bandın caddeye bakan
+ * (büyük Z) kenarı, `zNorth` çim tarafındaki (küçük Z) kenarıdır — px katmanı
+ * kuzeyde büyük y ile çizilir.
+ */
+function band(zSouth: number, zNorth: number): Rect {
+  return { x: 0, y: svgY(zSouth), w: MAP_W, h: (zSouth - zNorth) * S };
+}
+
 export const WALKABLE_ZONES: Rect[] = [
-  // South sidewalk (vendor stalls zone, y=450..510)
-  { x: 0, y: 450, w: 1600, h: 60 },
-  // Main pedestrian road (y=510..630)
-  { x: 0, y: 510, w: 1600, h: 120 },
-  // North sidewalk (y=630..690)
-  { x: 0, y: 630, w: 1600, h: 60 },
+  band(ZONE.southSidewalkBot, ZONE.southSidewalkTop), // güney kaldırım (tezgâhlar)
+  band(ZONE.roadBot, ZONE.roadTop), // ana cadde / yaya yolu
+  band(ZONE.northSidewalkBot, ZONE.northSidewalkTop), // kuzey kaldırım
 ];
 
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace
@@ -478,12 +484,14 @@ export interface Rect {
  * Solid objects the player cannot walk through (stalls).
  * Positions converted from 3D engine layout.
  */
-export const OBSTACLES: Rect[] = [
-  // Vendor stall tables (south sidewalk, matching 3D stall positions)
-  { x: 210, y: 465, w: 80, h: 30 },
-  { x: 460, y: 465, w: 80, h: 30 },
-  { x: 710, y: 465, w: 80, h: 30 },
-  { x: 960, y: 465, w: 80, h: 30 },
-  { x: 1210, y: 465, w: 80, h: 30 },
-  { x: 1460, y: 465, w: 80, h: 30 }, // Silahçı stall
-];
+/** Tezgâh ayak izi (X 1.6 × Z 0.6 birim). */
+const STALL_W_PX = 1.6 * S;
+const STALL_D_PX = 0.6 * S;
+
+// Vendor stall tables — tezgâh sayısı/konumu değişirse kendiliğinden uyar.
+export const OBSTACLES: Rect[] = STALLS.map((stall) => ({
+  x: svgX(stall.x) - STALL_W_PX / 2,
+  y: svgY(stall.z) - STALL_D_PX / 2,
+  w: STALL_W_PX,
+  h: STALL_D_PX,
+}));

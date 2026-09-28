@@ -11,7 +11,7 @@ import {
 const glbTestParam =
   typeof window !== "undefined" &&
   new URLSearchParams(window.location.search).has("glbtest");
-import { PLAYER_3D_HEIGHT } from "@/engine/constants";
+import { PLAYER_3D_HEIGHT, SPAWN_SVG } from "@/engine/constants";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -41,6 +41,8 @@ import {
   formatCoins,
   GIFT_BOX,
   GIFT_CLICK_RADIUS,
+  MAP_H,
+  MAP_W,
   OBSTACLES,
   PLAYER_RADIUS,
   PLAYER_SPEED,
@@ -79,14 +81,16 @@ import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
 import { levelFromWins, WINS_PER_LEVEL } from "@/lib/levels";
 
-const WORLD_W = 1600;
-const WORLD_H = 900;
+// Harita px katmanı: 1 dünya birimi = `S` px (bkz. `engine/constants`).
+// Boyutlar artık elle yazılmıyor — dünya büyüyünce kendiliğinden ölçeklenir.
+const WORLD_W = MAP_W;
+const WORLD_H = MAP_H;
 const PLAYER_W = 70;
 const PLAYER_H = 96;
 // Spawn on the open road, clear of every stall obstacle — the old spawn
-// point (800, 760) sat inside the VIP stand's collision box, which pinned
-// the player and made walking impossible.
-const SPAWN = { x: 800, y: 610 };
+// point sat inside the VIP stand's collision box, which pinned the player
+// and made walking impossible. `SPAWN_SVG` dünya merkezine göre tanımlıdır.
+const SPAWN = { x: SPAWN_SVG.x, y: SPAWN_SVG.y };
 
 /** Random things the vendors say in the street chat. */
 const VENDOR_PHRASES: Record<string, string[]> = {
@@ -144,8 +148,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Ada",
     color: "#ec4899",
     speed: 80,
-    x: 450,
-    y: 580,
+    x: 500, // X -14 · Z -3.0 (caddenin batı yarısı)
+    y: 800,
     config: {
       skin: "#ffd1a3",
       hair: "long",
@@ -163,8 +167,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Mert",
     color: "#0ea5e9",
     speed: 80,
-    x: 1100,
-    y: 560,
+    x: 1650, // X +9 · Z -2.2
+    y: 760,
     config: {
       skin: "#e8a87c",
       hair: "spiky",
@@ -182,8 +186,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Elif",
     color: "#a855f7",
     speed: 80,
-    x: 250,
-    y: 540,
+    x: 250, // X -19 · Z -1.8 (batı ucu, tezgâhların önü)
+    y: 740,
     config: {
       skin: "#f5c19a",
       hair: "curly",
@@ -201,8 +205,8 @@ const BOT_DEFS: BotDef[] = [
     name: "Kaan",
     color: "#f59e0b",
     speed: 80,
-    x: 1350,
-    y: 600,
+    x: 2050, // X +17 · Z -4.2 (doğu ucu, kuzey şeride yakın)
+    y: 860,
     config: {
       skin: "#b97e4f",
       hair: "short",

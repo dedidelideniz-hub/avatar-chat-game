@@ -74,8 +74,8 @@ export function useStreetGroundTextures() {
     const pavement = makePavementTexture();
     const asphalt = makeAsphaltTexture();
     // Doku 2×2 dünya birimini kaplar → repeat boyuta göre.
-    const sidewalkDepth = ZONE.northSidewalkBot - ZONE.northSidewalkTop; // 1.2
-    const roadDepth = ZONE.roadBot - ZONE.roadTop; // 2.4
+    const sidewalkDepth = ZONE.northSidewalkBot - ZONE.northSidewalkTop; // 2.0
+    const roadDepth = ZONE.roadBot - ZONE.roadTop; // 4.0
     pavement.repeat.set(WORLD_WIDTH / 2, sidewalkDepth / 2);
     asphalt.repeat.set(WORLD_WIDTH / 2, roadDepth / 2);
     return { pavement, asphalt };

@@ -2,7 +2,7 @@
  * VAELOS 3D GAME ENGINE — Street Prototype Constants
  *
  * Coordinate system:
- *   X = left/right (centered, -16..+16)
+ *   X = left/right (centered, -24..+24)
  *   Y = up (0 = ground)
  *   Z = forward/back (positive = toward camera)
  *
@@ -19,8 +19,10 @@
 export const S = 50;
 
 // ─── WORLD SIZE ───
-export const WORLD_WIDTH = 32;   // X: -16..+16
-export const WORLD_DEPTH = 18;   // Z: -9..+9
+// Harita büyütüldü: X 32 → 48, Z 18 → 26. SVG px katmanı (`src/lib/shop.ts`,
+// `src/lib/pathfinding.ts`) S = 50 ile türetilir: 48×50 = 2400 px, 26×50 = 1300 px.
+export const WORLD_WIDTH = 48;   // X: -24..+24
+export const WORLD_DEPTH = 26;   // Z: -13..+13
 
 // ─── GROUND Y ───
 export const GROUND_Y = 0;
@@ -30,7 +32,8 @@ export const PLAYER_3D_WIDTH = 70 / S;   // 1.4
 export const PLAYER_3D_HEIGHT = 96 / S;  // 1.92
 
 // ─── SPAWN (SVG coordinates — for compatibility with World.tsx game loop) ───
-export const SPAWN_SVG = { x: 800, y: 610 };
+// Dünya merkezi (SVG 1200, 810) = X 0 · Z -3.2 → caddenin tam ortası.
+export const SPAWN_SVG = { x: 1200, y: 810 };
 
 // ─── CAMERA ───
 export const CAMERA_ELEVATION = 0.87; // radians (~50°) — shows road + buildings
@@ -43,21 +46,23 @@ export const CAMERA_LERP_SPEED = 5;
 export const BUILDING_HEIGHT_SCALE = 0.025;
 
 // ─── ZONE BOUNDARIES (3D Z coordinates) ───
-// These define the ground layout:
+// Güney şeritleri SABİT tutuldu (tezgâh/bank/çit verisi oraya bağlı), cadde
+// kuzeye doğru genişletildi: yürünebilir koridor 4.8 → 7.2 birim, kuzey çim
+// şeridi 1.2 → 4.0 birim oldu.
 //
-//  Z = -6.0  ░░░ North grass (trees, benches) ░░░
-//  Z = -4.8  ─── North sidewalk ───
-//  Z = -3.4  ═══ Main pedestrian road ═══
-//  Z = -1.0  ─── South sidewalk (vendors, flower boxes) ───
-//  Z = +0.4  ░░░ South grass / grass border ░░░
-//  Z = +2.0  ─── Edge of visible area ───
+//  Z = -11.2  ░░░ Kuzey çim (akçaağaç sırası, çim öbekleri) ░░░
+//  Z = -7.2   ─── Kuzey kaldırım (lambalar, banklar, durak, çöp) ───
+//  Z = -5.2   ═══ Ana cadde / yaya yolu (genişledi: 2.4 → 4.0) ═══
+//  Z = -1.2   ─── Güney kaldırım (tezgâhlar, lambalar) ───
+//  Z = +0.0   ░░░ Güney çim + sınır çiti ░░░
+//  Z = +1.6   ─── Görünür alanın kenarı ───
 //
 export const ZONE = {
-  northGrassTop: -6.0,
-  northGrassBot: -4.8,
-  northSidewalkTop: -4.8,
-  northSidewalkBot: -3.6,
-  roadTop: -3.6,
+  northGrassTop: -11.2,
+  northGrassBot: -7.2,
+  northSidewalkTop: -7.2,
+  northSidewalkBot: -5.2,
+  roadTop: -5.2,
   roadBot: -1.2,
   southSidewalkTop: -1.2,
   southSidewalkBot: 0.0,
@@ -100,41 +105,48 @@ export interface BuildingDef {
   roofDetail?: "ac" | "antenna" | "tank" | "vent";
 }
 
-export const BUILDINGS: BuildingDef[] = [
-  // Left cluster — small shops
-  {
-    x: -12, w: 2.6, h: 3.2, d: 2.0, front: "#f09058", side: "#d07040", roof: "#c05828",
-    floors: 2, windows: 2, frontZ: ZONE.northGrassTop + 0.3,
-    signText: "KAFE", signBg: "#fff4e6", signFg: "#7a3f18",
-    awningA: "#e8623a", awningB: "#fff0dd", roofDetail: "ac",
-  },
-  {
-    x: -8.8, w: 2.0, h: 4.0, d: 1.8, front: "#dce4fa", side: "#bcc8e0", roof: "#a0aac0",
-    floors: 3, windows: 2, frontZ: ZONE.northGrassTop + 0.3,
-    signText: "MARKET", signBg: "#1e40af", signFg: "#ffffff",
-    awningA: "#2f6fd0", awningB: "#eaf2ff", roofDetail: "antenna",
-  },
-  // Center — taller landmark building
-  {
-    x: -5.6, w: 3.0, h: 5.0, d: 2.2, front: "#f0a030", side: "#d08820", roof: "#b07018",
-    floors: 3, windows: 3, frontZ: ZONE.northGrassTop + 0.3,
-    signText: "FIRIN", signBg: "#7c2d12", signFg: "#ffe9b8",
-    awningA: "#c1440e", awningB: "#ffd9a0", roofDetail: "tank",
-  },
-  // Right cluster — smaller shops
-  {
-    x: -2.0, w: 2.2, h: 3.5, d: 1.8, front: "#e8ecf0", side: "#c8ccd4", roof: "#b0b4bc",
-    floors: 2, windows: 2, frontZ: ZONE.northGrassTop + 0.3,
-    signText: "OYUNCAK", signBg: "#be185d", signFg: "#ffe4f0",
-    awningA: "#d94f8a", awningB: "#fff0f6", roofDetail: "vent",
-  },
-  {
-    x: 1.6, w: 2.6, h: 4.2, d: 2.0, front: "#e88040", side: "#c06830", roof: "#a85828",
-    floors: 3, windows: 3, frontZ: ZONE.northGrassTop + 0.3,
-    signText: "MODA", signBg: "#6d28d9", signFg: "#efe6ff",
-    awningA: "#7c3aed", awningB: "#e9dcff", roofDetail: "ac",
-  },
-];
+/**
+ * Dükkan cephe paleti — her stilde ön/yan/çatı rengi, tabela ve tente uyumlu.
+ * 12 dükkan bu paletten sırayla renk alır (tekdüze görünmesin).
+ */
+const SHOP_STYLES = [
+  { front: "#f09058", side: "#d07040", roof: "#c05828", signBg: "#fff4e6", signFg: "#7a3f18", awningA: "#e8623a", awningB: "#fff0dd" },
+  { front: "#dce4fa", side: "#bcc8e0", roof: "#a0aac0", signBg: "#1e40af", signFg: "#ffffff", awningA: "#2f6fd0", awningB: "#eaf2ff" },
+  { front: "#f0a030", side: "#d08820", roof: "#b07018", signBg: "#7c2d12", signFg: "#ffe9b8", awningA: "#c1440e", awningB: "#ffd9a0" },
+  { front: "#e8ecf0", side: "#c8ccd4", roof: "#b0b4bc", signBg: "#be185d", signFg: "#ffe4f0", awningA: "#d94f8a", awningB: "#fff0f6" },
+  { front: "#e88040", side: "#c06830", roof: "#a85828", signBg: "#6d28d9", signFg: "#efe6ff", awningA: "#7c3aed", awningB: "#e9dcff" },
+  { front: "#d8f0d0", side: "#b4d4a8", roof: "#94b888", signBg: "#14532d", signFg: "#e6ffe8", awningA: "#15803d", awningB: "#eafff0" },
+] as const;
+
+/** Dükkan adları — sırayla cadde boyunca dizilir. */
+const SHOP_NAMES = [
+  "KAFE", "MARKET", "FIRIN", "OYUNCAK", "MODA", "KİTAPÇI",
+  "PASTANE", "ÇİÇEKÇİ", "TERZİ", "ECZANE", "AYAKKABI", "KUYUM",
+] as const;
+
+const SHOP_DETAILS = ["ac", "antenna", "tank", "vent"] as const;
+
+/** Dükkan dizisi: ilk dükkanın X'i ve dükkanlar arası mesafe (birim). */
+const SHOP_ROW_START_X = -(WORLD_WIDTH / 2) + 2; // -22
+const SHOP_ROW_STEP = 4;
+
+/**
+ * 12 dükkan — caddenin kuzey cephesi boyunca eşit aralıkla. Genişlik/yükseklik/
+ * kat/pencere/çatı detayı indekse göre döner; hepsi kuzey çim şeridinin
+ * arkasında, cephe hattı `northGrassTop + 0.3`.
+ */
+export const BUILDINGS: BuildingDef[] = SHOP_NAMES.map((signText, i) => ({
+  x: SHOP_ROW_START_X + i * SHOP_ROW_STEP,
+  w: 2.2 + (i % 3) * 0.4,
+  h: 3.2 + (i % 3) * 0.6 + (i % 2) * 0.4,
+  d: 1.8 + (i % 2) * 0.2,
+  floors: 2 + (i % 2),
+  windows: 2 + ((i + 1) % 2),
+  frontZ: ZONE.northGrassTop + 0.3,
+  roofDetail: SHOP_DETAILS[i % SHOP_DETAILS.length],
+  ...SHOP_STYLES[i % SHOP_STYLES.length],
+  signText,
+}));
 
 // ─── AĞAÇ SIRALARI (caddenin yeşillik şeritleri) ───
 // Ağaçlar artık tek tek elle değil, EŞİT ARALIKLI sıralar hâlinde dizilir:
@@ -157,8 +169,9 @@ export interface TreeRowDef {
  * düzeni bozmadan doğallık katıyor.
  */
 export const TREE_ROWS: TreeRowDef[] = [
-  { z: -5.3, startX: -14, endX: 14, spacing: 4 },
-  { z: 0.85, startX: -12, endX: 14, spacing: 4 },
+  // Kuzey sırası kuzey kaldırımın hemen arkasında (eski 0.5 birim ofset korundu).
+  { z: -7.7, startX: -22, endX: 22, spacing: 4 },
+  { z: 0.85, startX: -20, endX: 22, spacing: 4 },
 ];
 
 /* ════════════════════════════════════════════════════════════
@@ -216,13 +229,14 @@ export const GRASS_CLUMP_ZONES: GrassClumpZoneDef[] = [
   {
     z: (ZONE.northGrassTop + ZONE.northGrassBot) / 2,
     depth: ZONE.northGrassBot - ZONE.northGrassTop,
-    density: 3.4,
+    // Alan büyüdü → yoğunluk düşürüldü (örnek sayısı makul kalsın).
+    density: 2.2,
     seed: 911,
   },
   {
     z: (ZONE.southGrassTop + ZONE.southGrassBot) / 2,
     depth: ZONE.southGrassBot - ZONE.southGrassTop,
-    density: 3.4,
+    density: 2.2,
     seed: 733,
   },
 ];
@@ -248,58 +262,69 @@ export const VEG_SIZES = {
 export interface LampDef { x: number; z: number; }
 
 export const LAMPS: LampDef[] = [
-  // Along north sidewalk
-  { x: -13, z: -4.0 },
-  { x: -7,  z: -4.0 },
-  { x: -1,  z: -4.0 },
-  { x: 5,   z: -4.0 },
-  // Along south sidewalk
+  // Kuzey kaldırım (bant: -7.2..-5.2, merkez -6.2)
+  { x: -21, z: -6.2 },
+  { x: -14, z: -6.2 },
+  { x: -7,  z: -6.2 },
+  { x: 0,   z: -6.2 },
+  { x: 7,   z: -6.2 },
+  { x: 14,  z: -6.2 },
+  { x: 21,  z: -6.2 },
+  // Güney kaldırım (bant: -1.2..0.0, merkez -0.5) — tezgâhların (+3) ara boşluğuna
+  { x: -18, z: -0.4 },
   { x: -10, z: -0.4 },
-  { x: -4,  z: -0.4 },
-  { x: 2,   z: -0.4 },
-  { x: 8,   z: -0.4 },
+  { x: -2,  z: -0.4 },
+  { x: 6,   z: -0.4 },
+  { x: 14,  z: -0.4 },
+  { x: 21,  z: -0.4 },
 ];
 
 // ─── BENCH POSITIONS ───
 export interface BenchDef { x: number; z: number; }
 
 export const BENCHES: BenchDef[] = [
-  { x: -9, z: -4.0 },   // north sidewalk, near shop
-  { x: 3,  z: -0.4 },   // south sidewalk, near market
-  { x: 11, z: -0.4 },   // south sidewalk, near trees
+  { x: -10.5, z: -6.2 },  // kuzey kaldırım, lambaların arası
+  { x: 4.5,   z: -6.2 },  // kuzey kaldırım
+  { x: 18.5,  z: -6.2 },  // kuzey kaldırım, doğu ucu
+  { x: -16,   z: -0.4 },  // güney kaldırım, bankın yanı
+  { x: -1,    z: -0.4 },  // güney kaldırım, cadde ortası
+  { x: 17,    z: -0.4 },  // güney kaldırım
 ];
 
 // ─── VENDOR STALL POSITIONS ───
 export interface StallDef { x: number; z: number; color: string; accent: string; }
 
 export const STALLS: StallDef[] = [
-  { x: -11, z: -0.6, color: "#ff8fb3", accent: "#ffffff" },  // Dondurma
-  { x: -6,  z: -0.6, color: "#14b8a6", accent: "#ffffff" },  // Balon
-  { x: -1,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },  // Oyuncakçı
-  { x: 4,   z: -0.6, color: "#a855f7", accent: "#ffd166" },  // Moda
-  { x: 9,   z: -0.6, color: "#b91c1c", accent: "#fbbf24" },  // Silahçı
-  { x: 14,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },  // VIP
+  { x: -21, z: -0.6, color: "#ff8fb3", accent: "#ffffff" },  // Dondurma
+  { x: -13, z: -0.6, color: "#14b8a6", accent: "#ffffff" },  // Balon
+  { x: -5,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },  // Oyuncakçı
+  { x: 3,   z: -0.6, color: "#a855f7", accent: "#ffd166" },  // Moda
+  { x: 11,  z: -0.6, color: "#b91c1c", accent: "#fbbf24" },  // Silahçı
+  { x: 19,  z: -0.6, color: "#f59e0b", accent: "#ffd166" },  // VIP
 ];
 
 /* ════════════════════════════════════════════════════════════
    CADDE DETAY KATMANI — "yaşayan şehir" modüler parçaları
    Tüm parçalar prosedürel (three.js) üretilir; harici GLB/PNG eklenmez.
-   Yerleşimler yürünebilir alanı (Z -4.8..0) ve mevcut propları
+   Yerleşimler yürünebilir alanı (Z -7.2..0) ve mevcut propları
    (lamba/çeşme/bank/tezgâh) gözeterek seçildi.
    ════════════════════════════════════════════════════════════ */
 
 /** Yaya geçidi merkezleri (X) — şeritler yolun Z derinliğini kat eder. */
-export const CROSSWALKS: number[] = [-9.5, 6.5];
+export const CROSSWALKS: number[] = [-20, -8, 4, 16];
 
 // ─── ÇÖP KUTULARI ───
 export interface TrashCanDef { x: number; z: number; }
 
 export const TRASH_CANS: TrashCanDef[] = [
-  { x: -9.8, z: -3.95 },  // kuzey kaldırım, bankın yanı
-  { x: 8.4, z: -3.95 },   // kuzey kaldırım
-  { x: -13.6, z: -0.55 }, // güney kaldırım
-  { x: 6.6, z: -0.55 },   // güney kaldırım
-  { x: 11.9, z: -0.55 },  // güney kaldırım, bankın yanı
+  { x: -16.5, z: -5.55 }, // kuzey kaldırım, yol kenarı
+  { x: 2.4,   z: -5.55 }, // kuzey kaldırım
+  { x: 9.5,   z: -5.55 }, // kuzey kaldırım, bankın yanı
+  { x: 19.5,  z: -5.55 }, // kuzey kaldırım, doğu ucu
+  { x: -19,   z: -0.55 }, // güney kaldırım
+  { x: -8,    z: -0.55 }, // güney kaldırım
+  { x: 6.5,   z: -0.55 }, // güney kaldırım
+  { x: 15,    z: -0.55 }, // güney kaldırım
 ];
 
 // ─── OTOBÜS DURAĞI ───
@@ -313,8 +338,9 @@ export interface BusStopDef {
 }
 
 export const BUS_STOPS: BusStopDef[] = [
-  { x: -15.05, z: -4.2, route: "12", color: "#1d4ed8" },
-  { x: 12.0, z: -4.2, route: "34", color: "#0f766e" },
+  { x: -19.5, z: -6.2, route: "12", color: "#1d4ed8" },
+  { x: -2.5,  z: -6.2, route: "34", color: "#0f766e" },
+  { x: 15.5,  z: -6.2, route: "7",  color: "#b45309" },
 ];
 
 // ─── YÖN TABELALARI ───
@@ -326,7 +352,7 @@ export interface DirectionSignDef {
 
 export const DIRECTION_SIGNS: DirectionSignDef[] = [
   {
-    x: -8.9, z: -3.82,
+    x: -12, z: -5.42,
     plates: [
       { text: "ÇARŞI", arrow: "left" },
       { text: "PLAZA", arrow: "right" },
@@ -334,10 +360,24 @@ export const DIRECTION_SIGNS: DirectionSignDef[] = [
     ],
   },
   {
-    x: 7.2, z: -0.82,
+    x: 12, z: -5.42,
+    plates: [
+      { text: "LİMAN", arrow: "right" },
+      { text: "MÜZE", arrow: "left" },
+    ],
+  },
+  {
+    x: -9, z: -0.82,
     plates: [
       { text: "PLAZA", arrow: "left" },
       { text: "LİMAN", arrow: "right" },
+    ],
+  },
+  {
+    x: 13, z: -0.82,
+    plates: [
+      { text: "ÇARŞI", arrow: "left" },
+      { text: "SAHİL", arrow: "right" },
     ],
   },
 ];
@@ -347,8 +387,8 @@ export const DIRECTION_SIGNS: DirectionSignDef[] = [
  * Çit artık tek tek parçalar hâlinde değil, kaldırım taşı ile çim karosunun
  * BİRLEŞTİĞİ çizgi boyunca kesintisiz bir hat olarak döşenir:
  *   · güney hat: güney kaldırım (…0.0) ↔ güney çim (0.0…)   → `southGrassTop`
- *   · kuzey hat: kuzey çim (…-4.8) ↔ kuzey kaldırım (-4.8…)  → `northGrassBot`
- * Bu iki çizgi aynı zamanda yürünebilir alanın (Z -4.8…0) sınırıdır, yani
+ *   · kuzey hat: kuzey çim (…-7.2) ↔ kuzey kaldırım (-7.2…)  → `northGrassBot`
+ * Bu iki çizgi aynı zamanda yürünebilir alanın (Z -7.2…0) sınırıdır, yani
  * çit tam olarak kaldırımın kenar hizasına oturur.
  */
 export interface FenceLineDef {

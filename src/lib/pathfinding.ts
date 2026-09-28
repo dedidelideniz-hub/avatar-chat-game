@@ -30,14 +30,16 @@
  * fonksiyondur ve hiçbir tarayıcı API'sine dokunmaz.
  */
 
-import { OBSTACLES, WALKABLE_ZONES, PLAYER_RADIUS } from "./shop";
+import { MAP_H, MAP_W, OBSTACLES, WALKABLE_ZONES, PLAYER_RADIUS } from "./shop";
 
 /* ── grid constants ─────────────────────────────────────────── */
 
 const CELL = 16; // px per cell — small enough for smooth paths,
 // large enough to keep the open list tiny.
-const COLS = Math.ceil(1600 / CELL); // 100
-const ROWS = Math.ceil(900 / CELL); // 57
+// Izgara harita boyutundan türetilir (tek kaynak `MAP_W`/`MAP_H`), böylece
+// harita büyüdüğünde ızgara kendiliğinden uyar.
+const COLS = Math.ceil(MAP_W / CELL); // 2400/16 = 150
+const ROWS = Math.ceil(MAP_H / CELL); // 1300/16 = 82
 const N = COLS * ROWS;
 
 /* ── walkability bitmap (built once, module-level) ──────────── */
