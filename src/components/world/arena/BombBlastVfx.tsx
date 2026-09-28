@@ -56,13 +56,41 @@ const SHOCK_LAYERS = [
   { scale: 2.6, life: 0.85, color: BOMB_PALETTE.smoke },
 ] as const;
 /**
- * ⚡ ÜÇÜNCÜ KADEME — yalnız ULTİDE kurulur (bkz. `BombBlastEvent.power`).
+ * ⚠️ ÜÇÜNCÜ BİR BASINÇ DİSKİ KADEMESİ BİLİNÇLİ OLARAK YOKTUR.
  *
- * Patlamanın "haritayı doldurduğu" okuması budur: tuzak yarıçapının ~4 katı,
- * sıcak tonlu VE uzun ömürlü (1.25 sn) bir basınç cephesi. `burst` havuzunda
- * görünen kürenin anlatamadığı ölçek bu katmandan gelir.
+ * Ulti için bir deneme yapılmıştı (`scale: 3.1`, 1.15 sn): patlama çok güçlü
+ * görünüyordu ama mobilde kare süresini düşürüyordu — çünkü disk, cephesi
+ * ilerlerken bile ALANININ TAMAMINDA fragment shader çalıştırır (bkz.
+ * `MAX_SHOCK_RADIUS`), yani maliyet yarıçapın karesiyle büyür ve yarıçap
+ * ekranı aştığında tamamen boşa gider.
+ *
+ * Ultinin "geniş alan" okuması artık DİSK yerine İNCE HALKADAN geliyor
+ * (`shared` → `pushBombBlastFx`: ultiye özel r×2.4'lük torus). Aynı 5 birimlik
+ * ayak izi diskte ~50 birim² dolgu, halkada ~3.5 birim²dir.
  */
-const ULT_SHOCK = { scale: 3.1, life: 1.15, color: BOMB_PALETTE.blast } as const;
+
+/**
+ * 🖼️ BASINÇ DİSKİNİN YARIÇAP ÜST SINIRI (dünya birimi) — "DOLGU BÜTÇESİ"nın
+ * en önemli kuralı.
+ *
+ * NEDEN SINIR ŞART: bu disk, cephesi ilerlerken bile alanının TAMAMINDA
+ * fragment shader çalıştırır — `discard` cephenin önünde atar, ama GPU piksel
+ * gölgelendiricisini önce çalıştırmak zorundadır (erken-Z iptal edilir). Yani
+ * maliyet, dalganın görünen genişliğine değil, DISKİN YARIÇAPINA bağlıdır ve
+ * kare başına sabittir. Yarıçap büyüdükçe maliyet yarıçapın KARESİYLE artar.
+ *
+ * Ulti denemesinde üçüncü kademe `r × 3.1` ile ~7.4 birime çıkıyordu: bu, kare
+ * başına tam ekran bir gölgelendirici geçişi demekti ve mobilde kasmanın
+ * doğrudan kaynağıydı.
+ *
+ * 3.6 birim seçildi — ölçüt "görünen zeminin büyük kısmı" ve biraz pay:
+ * hasar yarıçapı tuzağın en büyüğünde 2.8 birimdir, yani disk onu hâlâ rahatça
+ * aşıyor ve dalga "yayıldı" diye okunuyor. Bunun üzerindeki her piksel zaten
+ * ekranın DIŞINA düşer: boşa yanan kare süresi. (Tuzakta 4.0 → 3.6 birimlik bu
+ * indirim, en pahalı geçişte ~%19 alan tasarrufu demektir; aynı indirim ultiyi
+ * 5.4 → 3.6'ya çekerek kare bütçesini kurtarır.)
+ */
+const MAX_SHOCK_RADIUS = 3.6;
 
 /** Taş fırtınasının yayılma yarıçapı ve yuvanın meşgul kalma süresi (sn). */
 const DEBRIS_SCALE = 1.15;
@@ -79,8 +107,15 @@ const SLASH_SCALE = 1.45;
  */
 const FLASH_LIFE = 0.26;
 const FLASH_SCALE = 1;
-/** Parlama ultide bir tık büyür ve biraz daha uzun kalır (çekirdek daha sıcak). */
-const ULT_FLASH_GAIN = 1.25;
+/**
+ * Parlama ultide bir tık büyür ve biraz daha uzun kalır (çekirdek daha sıcak).
+ *
+ * Küçük tutulması bilinçli: bu sprite'ta ~1 birim yarıçap bile ekran
+ * yüksekliğinin yarısına denk gelir. Ama kısa ömürlü olduğu için (0.26 sn)
+ * "çakma" etkisi yaratıp kare bütçesini yemez — ultinin en ucuz ve en çok
+ * okunan güç sinyali budur.
+ */
+const ULT_FLASH_GAIN = 1.12;
 
 /** Havuz yuvasının zaman durumu (kare başına ayırma yok). */
 interface TimerSlot {
@@ -205,18 +240,21 @@ export function BombBlastVfx() {
     const events = drainBombBlastEvents();
     for (const e of events) {
       const radius = e.r / S; // px → dünya birimi
-      // 🧨 GÜÇ KADEMESİ: ulti (power ≥ 2) üçüncü şok kademesini, merkez
-      // parlamasını ve ÇİFT taş fırtınasını devreye sokar. Aynı katmanlar,
-      // iki farklı kütle — tuzak yine "normal" barut olarak okunur.
+      // 🧨 GÜÇ KADEMESİ: ulti (power ≥ 2) merkez parlamasını, ÇİFT taş
+      // fırtınasını ve daha büyük kılıç kesiğini devreye sokar. BASINÇ DİSKİ
+      // kademesi ultide ARTMAZ — en pahalı katman odur ve "güçlü" hissi zaten
+      // diskten değil parlamadan, sarsıntıdan ve taşlardan gelir.
       const ult = e.power >= 2;
-      const layers = ult ? SHOCK_LAYERS.length + 1 : SHOCK_LAYERS.length;
-      for (let l = 0; l < layers; l++) {
-        const layer = l < SHOCK_LAYERS.length ? SHOCK_LAYERS[l] : ULT_SHOCK;
+      for (let l = 0; l < SHOCK_LAYERS.length; l++) {
+        const layer = SHOCK_LAYERS[l];
         const slot = shocks.current[freeSlot(shocks.current)];
         slot.active = true;
         slot.x = e.x / S;
         slot.z = e.y / S;
-        slot.grow = radius * layer.scale;
+        // Üst sınır: ekranın dışına taşan yarıçap yalnızca kare süresi yakar
+        // (bkz. `MAX_SHOCK_RADIUS`). Tuzak patlaması sınıra hiç değmez, yani
+        // bugüne kadarki görünüm birebir korunur.
+        slot.grow = Math.min(radius * layer.scale, MAX_SHOCK_RADIUS);
         slot.age = 0;
         slot.life = layer.life;
         slot.layer = l;
@@ -235,10 +273,13 @@ export function BombBlastVfx() {
       flash.z = e.y / S;
       flash.grow = radius * FLASH_SCALE * (ult ? ULT_FLASH_GAIN : 1);
       flash.age = 0;
-      flash.life = ult ? FLASH_LIFE * 1.3 : FLASH_LIFE;
+      flash.life = ult ? FLASH_LIFE * 1.15 : FLASH_LIFE;
 
       // Taş fırtınası: ultide İKİ fırtına (daha geniş saçılan + daha uzağa
-      // savrulan) — patlamanın KÜTLESİ olduğunu anlatan tek katman bu.
+      // savrulan) — patlamanın KÜTLESİ olduğunu anlatan tek katman bu ve
+      // maliyeti bedava: parçalar tek `InstancedMesh`te, dolgu üretmezler.
+      // "Güçlü" hissini UZUN ÖMÜRLÜ ve EKRANI KAPLAYAN katmanlarda değil,
+      // böyle ucuz katmanlarda aramak bilinçli bir tercihtir.
       const bursts = ult ? 2 : 1;
       for (let b = 0; b < bursts; b++) {
         let index = debrisTime.current.findIndex((t) => t <= 0);

@@ -42,12 +42,19 @@ const IMPULSE_LIFE = 0.62;
 /**
  * Genliğin birimi: dünya birimi cinsinden kamera kayması (1.0 = 1 birim ≈
  * dövüşçü gövdesinin 2/3'ü). Değerler bilinçli olarak KÜÇÜKTÜR: kamera
- * oyuncunun 6.7 birim uzağında durur, 0.2'lik bir kayma ekranda ~%10'luk bir
- * oynama demektir — "sarsıldı" der, haritayı okunmaz kılmaz.
+ * oyuncunun 6.7 birim uzağında durur, 0.14'lük bir kayma ekranda ~%7'lik bir
+ * oynama ve roll bileşeninde birkaç piksellik bir yatma demektir.
+ *
+ * ⚠️ FREKANS DA SINIRLIDIR — ve bu bir "zevk" ayarı değil, ÖLÇÜLMÜŞ bir
+ * karardır: yüksek frekanslı (kare başına büyük atlamalı) bir sarsıntı,
+ * oyuncu tarafından "kare düşüyor / oyun kasıyor" diye okunur. Sarsıntının
+ * en yüksek frekansı ~2.3 × `SHAKE_SPEED` olduğundan hız 20 rad/sn'de tutulur
+ * (üst harmonik ≈ 46 rad/sn ≈ 7 Hz): sonuç yüksek hızlı bir titreme değil,
+ * ağır bir "güm" hissidir — ve kare süresi bütçesine hiç dokunmaz.
  */
-const MAX_AMPLITUDE = 0.24;
+const MAX_AMPLITUDE = 0.16;
 /** Sarsıntı frekansı (rad/sn) — genlik arttıkça biraz yükselir (daha sert). */
-const SHAKE_SPEED = 34;
+const SHAKE_SPEED = 20;
 
 export interface ShakeSample {
   /** Kameraya eklenecek dünya kayması (birim). */

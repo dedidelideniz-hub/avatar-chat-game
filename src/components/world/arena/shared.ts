@@ -361,10 +361,39 @@ export const BOMB_PALETTE = {
  * yetenek her seferinde haritayı sallarsa okunurluk düşer.
  * ULTİ: hasar alanının çok ötesine ulaşır (~36 birim) ve genliği yüksektir;
  * "harita yerinden oynadı" hissi buradan gelir, bastığın anın ödülü odur. */
-const TRAP_SHAKE_AMOUNT = 0.055;
+const TRAP_SHAKE_AMOUNT = 0.04;
 const TRAP_SHAKE_REACH = 620;
-const ULT_SHAKE_AMOUNT = 0.2;
+const ULT_SHAKE_AMOUNT = 0.14;
 const ULT_SHAKE_REACH = 1800;
+
+/**
+ * Billboard parçacıkların (alev pufu, barut dumanı) yarıçap ÜST SINIRI
+ * (sim px → `FIREBALL_VFX_SCALE` ile ölçeklenir). Tuzak patlamasının
+ * yarıçapına denk seçildi: tuzak görünümü değişmez, ulti aynı boyutta puf
+ * kullanır (bkz. `pushBombBlastFx` → "PARÇACIK BOYUTU ÜST SINIRI"). */
+const MAX_PUFF_R = 82;
+
+/* ── ⚡ DOLGU BÜTÇESİ (kare süresi) ────────────────────────────────────────
+ *
+ * MOBİLDE ÖLÇÜLEN DERS: "patlamayı büyütmek" ile "patlamayı ÇOK KATMANLI
+ * büyütmek" aynı şey değildir. Buradaki tüm şeffaf katmanlar ekran alanı
+ * üzerinden (fill-rate) maliyetlidir ve kamera oyuncunun ~6.7 birim uzağında,
+ * dikey görünen yükseklik ~5.7 birimdir. Yerdeki bir halka/diskinin yarıçapı
+ * 3 birimi geçtiğinde ekranın TAMAMINI kaplar; böyle bir katman kare başına
+ * bir tam ekran harmanlama demektir.
+ *
+ * Bu yüzden kural: ULTİ farkı UZUN ÖMÜRLÜ DEV KATMANLARDAN DEĞİL, KISA ÖMÜRLÜ
+ * ve DAR katmanlardan + bedava olan unsurlardan gelir:
+ *   · beyaz-sıcak merkez parlaması (0.26 sn — anlık "çakma"),
+ *   · ek şok kademesi (dar ve kısa),
+ *   · ikinci taş fırtınası (InstancedMesh — dolgu maliyeti yok),
+ *   · kamera sarsıntısı ve bloom nabzı (ekran alanı üretmez),
+ *   · daha büyük hasar/yarıçap (oyun kuralı tarafı).
+ *
+ * ESKİ DENEME (kaldırıldı): r×2.9 genişliğinde uzun ömürlü üçüncü bir toz
+ * halkası ve r×3.1 basınç diski. Ulti "haritayı kaplıyordu" ama kare süresi
+ * bütçesini aşıyordu — patlama ÇOK GÜÇLÜ olmasına rağmen oyun kasıyordu.
+ */
 
 /**
  * 🧨 BARUT PATLAMASI (bomba tuzağı + fırlatılan bomba) — sıcak VFX.
@@ -386,10 +415,16 @@ const ULT_SHAKE_REACH = 1800;
  *
  * `power` GÜÇ KADEMESİDİR (bkz. `bombBlast` → `BombBlastEvent.power`):
  *   1 = yerdeki tuzak  → bugüne kadarki patlama,
- *   2 = fırlatılan bomba (SAMURAY ULTİSİ) → daha geniş kadraj, ek şok
- *       kademesi, daha çok alev/kor/duman ve MESAFEDEN BAĞIMSIZ kamera
- *       sarsıntısı. Ultinin "sağlam patladı" okuması buradan gelir; hasar
- *       sayısı tek başına ekranda güç hissi vermez.
+ *   2 = fırlatılan bomba (SAMURAY ULTİSİ) → daha geniş ayak izi + ultiye özel
+ *       GENİŞ HALKALAR, kısa ömürlü beyaz-sıcak merkez parlaması, ikinci taş
+ *       fırtınası ve MESAFEDEN BAĞIMSIZ kamera sarsıntısı. Ultinin "sağlam
+ *       patladı" okuması buradan gelir; hasar sayısı tek başına ekranda güç
+ *       hissi vermez.
+ *
+ * ⚠️ KATMAN/PARÇACIK SAYISI ULTİDE ARTIRILMAZ (bkz. yukarıdaki "DOLGU
+ * BÜTÇESİ"): kare süresi zaten ulti anında tepeye çıkıyor ve büyük patlama
+ * mobilde kareyi düşürüyordu. Fark YENİ TÜRLERLE kurulur (parlama + geniş
+ * halka + ikinci taş fırtınası + sarsıntı), aynı katmanı çoğaltarak değil.
  */
 export function pushBombBlastFx(
   add: (fx: BattleFx) => void,
@@ -399,11 +434,22 @@ export function pushBombBlastFx(
   power = 1,
 ): void {
   const ult = power >= 2;
-  // Ulti yarıçapı BİR TIK büyür (1.15×) — asıl farkı ölçek değil, EK KATMANLAR
-  // ve kamera sarsıntısı yaratır. Çarpanı şişirmek patlamayı kadraja
-  // sığdırmaz hâle getirirdi; oysa "daha güçlü" hissi halkaların, parlamanın
-  // ve taşların fazlalığından okunur.
-  const r = damageR * FIREBALL_VFX_SCALE * (ult ? 1.15 : 1);
+  // Ulti yarıçapı, hasar yarıçapının büyümesinden (190 vs 140 px) KENDİLİĞİNDEN
+  // gelir — üstüne görsel bir çarpan binmez: çarpan hem patlamayı kadraja
+  // sığdırmaz hâle getiriyor hem de her parçacığın ekran alanını karesiyle
+  // büyütüyordu (dolgu maliyeti).
+  const r = damageR * FIREBALL_VFX_SCALE;
+  // 🖼️ PARÇACIK BOYUTU ÜST SINIRI — ultinin "bedava" büyüklüğü burada biter.
+  //
+  // NEDEN: duman/alev pufları BILLBOARD'dır (her zaman kameraya bakar),
+  // dolayısıyla ekranda kapladıkları alan yarıçaplarının KARESİYLE büyür ve
+  // zemin halkaları gibi perspektifle kısalmış bir elips DEĞİL, neredeyse tam
+  // bir dikdörtgen olarak çizilirler. Ultinin daha büyük hasar yarıçapını puf
+  // boyutuna da yansıtmak, kareyi "alevle" doldurup mobilde kasmaya yol
+  // açıyordu. Karar: patlamanın BÜYÜKLÜĞÜ ayak izinden (halkalar, disk, taşlar)
+  // okunur; puf boyutu tuzak seviyesinde kalır — göz bunu "aynı barut, daha
+  // geniş alan" olarak okur ve kare süresi bütçesi korunur.
+  const puffR = Math.min(r, MAX_PUFF_R);
   // ══ İKİ KADEMELİ ŞOK DALGASI ══
   // İç halka patlamanın AYAK İZİDİR (hızlı, sıcak ton), dış halka havayı iten
   // geniş toz dalgasıdır (yavaş, solgun — duman tonu). Tek halka zemine
@@ -413,9 +459,12 @@ export function pushBombBlastFx(
     kind: "ring",
     x,
     y,
-    ttl: 0.44,
-    maxTtl: 0.44,
-    grow: r * 1.15,
+    ttl: ult ? 0.52 : 0.44,
+    maxTtl: ult ? 0.52 : 0.44,
+    // Ultide ayak izi bir tık geniş ve daha uzun yaşar: "daha büyük patladı"
+    // okuması buradan gelir. Üst sınır bilinçli (r×1.45): bir sonraki kademe
+    // (r×2.05 toz dalgası) zaten ekranı kaplıyor.
+    grow: r * (ult ? 1.45 : 1.15),
     color: BOMB_PALETTE.ring,
   });
   add({
@@ -427,17 +476,22 @@ export function pushBombBlastFx(
     grow: r * 2.05,
     color: BOMB_PALETTE.smoke,
   });
-  // ══ ÜÇÜNCÜ KADEME (yalnız ULTI) ══
-  // Uzun ömürlü, çok geniş ve sıcak tonlu bir dış halka: patlamanın "haritaya
-  // yayıldığı" okuması budur. Tuzakta yok — iki tehdit tek bakışta ayrılsın.
+  // ══ ULTİYE ÖZEL GENİŞ HALKALAR ══
+  // "Ulti haritayı kapladı" okuması buradan gelir — ama DİSK'ten değil,
+  // İNCE HALKADAN (torus: kalınlık 0.035 × ölçek). Neden bu ayrım kritik:
+  //   · basınç diski (`shock`) alanının tamamında `exp()`li shader çalıştırır
+  //     (bkz. `BombBlastVfx` → `MAX_SHOCK_RADIUS`) — maliyet YARIÇAPIN KARESİ,
+  //   · halka yalnızca ÇEVRESİNİ boyar — maliyet yarıçapla DOĞRUSAL ve çok küçük.
+  // Aynı 5 birimlik ayak izi diskte ~50 birim² dolgu, halkada ~3.5 birim²dir:
+  // yani "geniş alan" hissi neredeyse bedava buradan alınır.
   if (ult) {
     add({
       kind: "ring",
       x,
       y,
-      ttl: 1.1,
-      maxTtl: 1.1,
-      grow: r * 2.9,
+      ttl: 0.8,
+      maxTtl: 0.8,
+      grow: r * 2.4,
       color: BOMB_PALETTE.blast,
     });
   }
@@ -467,11 +521,11 @@ export function pushBombBlastFx(
     ult ? ULT_SHAKE_AMOUNT : TRAP_SHAKE_AMOUNT,
     ult ? ULT_SHAKE_REACH : TRAP_SHAKE_REACH,
   );
-  // Alev pufları: sıcak, kısa ömürlü (patlamanın ilk yarısı). Ultide daha çok
-  // puf ama duman havuzunu (`SMOKE_POOL`) boğmayacak kadar: pay havuzun
-  // tamamını değil, tepesini hedefler.
-  const flamePuffs = ult ? 10 : 7;
-  for (let i = 0; i < flamePuffs; i++) {
+  // Alev pufları: sıcak, kısa ömürlü (patlamanın ilk yarısı). SAYI ULTİDE
+  // ARTIRILMAZ (bkz. "DOLGU BÜTÇESİ"): her puf, ekran yüksekliğinin ~%30'unu
+  // kaplayan bir sprite'tır; sayıyı artırmak kareyi düşürür. Puf zaten ultide
+  // daha BÜYÜK ve daha PARLAK (r büyüdü, bloom nabzı tepeye oturdu).
+  for (let i = 0; i < 7; i++) {
     const life = 0.24 + Math.random() * 0.2;
     add({
       kind: "smoke",
@@ -479,7 +533,7 @@ export function pushBombBlastFx(
       y: y + (Math.random() - 0.5) * r * 0.7,
       ttl: life,
       maxTtl: life,
-      grow: r * (0.5 + Math.random() * 0.4),
+      grow: puffR * (0.5 + Math.random() * 0.4),
       color: i % 2 === 0 ? BOMB_PALETTE.flame : BOMB_PALETTE.spark,
     });
   }
@@ -487,8 +541,7 @@ export function pushBombBlastFx(
   // NEDEN GEREKLİ: alev pufları 0.24-0.44 sn'de söner, barut dumanı hemen
   // koyulaşır; aradaki "hâlâ sıcak" okumasını bu kıvılcımlar taşır. Küçük
   // büyüme + kısa ömür → patlamanın kuyruğu uzar, görüş kapanmaz.
-  const emberRain = ult ? 7 : 5;
-  for (let i = 0; i < emberRain; i++) {
+  for (let i = 0; i < 5; i++) {
     const life = 0.3 + Math.random() * 0.28;
     add({
       kind: "smoke",
@@ -501,8 +554,8 @@ export function pushBombBlastFx(
     });
   }
   // Barut dumanı: koyu, uzun ömürlü — patlama geçtikten sonra da kalır.
-  const powderSmoke = ult ? 14 : 10;
-  for (let i = 0; i < powderSmoke; i++) {
+  // Sayı ultide artmaz (dolgu bütçesi); ultinin farkı parlamadadır.
+  for (let i = 0; i < 10; i++) {
     const life = 0.7 + Math.random() * 0.6;
     add({
       kind: "smoke",
@@ -510,7 +563,7 @@ export function pushBombBlastFx(
       y: y + (Math.random() - 0.5) * r * 1.1,
       ttl: life,
       maxTtl: life,
-      grow: r * (0.55 + Math.random() * 0.5),
+      grow: puffR * (0.55 + Math.random() * 0.5),
       color: i % 3 === 0 ? BOMB_PALETTE.smoke : "#4a4a4a",
     });
   }
