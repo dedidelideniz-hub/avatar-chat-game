@@ -413,10 +413,15 @@ export function useArenaCamera(
     );
     smoothed.current.lerp(target.current, Math.min(1, dt * smoothK));
 
+    // Kamera hedefin ÜSTÜNDE DEĞİL, GERİSİNDE durur: konum oyuncudan
+    // cos(el)·dist kadar +Z yönünde kaydırılır. Bakış noktası da oyuncunun
+    // kendi X/Z'si olmalıdır — konumun Z'sine bakılırsa kamera tam tepeden
+    // (90°) bakar ve oyuncu cos(el)·dist birim aşağı, yani kadrajın dışına
+    // düşer. Bu yüzden lookAt hedefi smoothed (oyuncu) Z'sidir.
     const camX = smoothed.current.x;
     const camY = smoothed.current.y + Math.sin(el) * dist;
     const camZ = smoothed.current.z + Math.cos(el) * dist;
     camera.position.set(camX, camY, camZ);
-    camera.lookAt(camX, LOOK_Y, camZ);
+    camera.lookAt(camX, LOOK_Y, smoothed.current.z);
   });
 }
