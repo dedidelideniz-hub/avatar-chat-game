@@ -50,6 +50,18 @@ export const CAMERA_ELEVATION = 0.87; // radians (~50°) — shows road + buildi
 export const CAMERA_ZOOM = 9;         // distance from target
 export const CAMERA_LERP_SPEED = 5;
 
+// ─── CAMERA — BİNA ARKASI / ÜST SOKAK ───
+// Saydamlık yerine kamera açısı otomatik açılır: oyuncu dükkan sırasının
+// arkasına (üst/arka sokağa) geçtikçe kamera daha dik (top-down) bir açıya ve
+// biraz daha yükseğe taşınır; caddeye dönünce eski açıya yumuşakça döner.
+// Z kuzeye doğru KÜÇÜLÜR: `OPEN_Z_START`ta geçiş başlar, `OPEN_Z_FULL`de
+// (bina arkası) tamamen açık kamera açısına ulaşılır.
+export const CAMERA_BACK_ELEVATION = 1.15; // radians (~66°) — neredeyse tepeden
+export const CAMERA_BACK_ZOOM = 10.5;      // biraz daha uzak → daha geniş görüş
+export const CAMERA_OPEN_Z_START = -10.6;  // geçiş başlangıcı (dükkan cephesi)
+export const CAMERA_OPEN_Z_FULL = -12.8;   // tam açık (dükkanların arkası)
+export const CAMERA_OPEN_LERP_SPEED = 3.2; // açı/yükseklik geçiş yumuşaklığı
+
 // ─── BUILDING HEIGHT SCALE ───
 // Buildings: 3-5 units tall (player = 1.92 units)
 // SVG h=120 → 3.0u, h=160 → 4.0u, h=200 → 5.0u

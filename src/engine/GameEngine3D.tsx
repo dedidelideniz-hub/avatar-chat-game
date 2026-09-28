@@ -12,8 +12,11 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
 import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
-// Oyuncunun önüne giren binaları şeffaflaştırır (kamera occlusion).
-import { CameraOcclusion } from "./CameraOcclusion";
+import { cameraFraming, cameraOpenAmount } from "./cameraFraming";
+// Eski saydamlaştırma (kamera occlusion) sistemi devre dışı bırakıldı —
+// binaların arkasına girildiğinde artık kamera açısı otomatik açılıyor
+// (bkz. `FollowCamera`). `BUILDING_USER_DATA` sadece binaları işaretleyen
+// zararsız meta veri olarak kalıyor (sistem gerekirse yeniden açılabilir).
 import { BUILDING_USER_DATA } from "./buildingOcclusion";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
@@ -27,6 +30,7 @@ import {
   CAMERA_ELEVATION,
   CAMERA_ZOOM,
   CAMERA_LERP_SPEED,
+  CAMERA_OPEN_LERP_SPEED,
   SPAWN_SVG,
   ZONE,
   BUILDINGS,
@@ -141,6 +145,8 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
   React.useEffect(() => { _engineCamera = camera; return () => { _engineCamera = null; }; }, [camera]);
   const target = useRef(new THREE.Vector3());
   const cur = useRef(new THREE.Vector3(sX(SPAWN_SVG.x), 0, sZ(SPAWN_SVG.y)));
+  // 0 = cadde kamerası, 1 = tam açık (bina arkası / üst sokak) kamerası.
+  const open = useRef(0);
 
   useFrame((_, dt) => {
     const p = posRef.current;
@@ -149,8 +155,15 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
     target.current.set(tx, 0, tz);
     const lerp = Math.min(1, CAMERA_LERP_SPEED * dt);
     cur.current.lerp(target.current, lerp);
-    const el = CAMERA_ELEVATION;
-    const d = CAMERA_ZOOM;
+
+    // Oyuncu dükkan sırasının arkasına / üst sokağa girdikçe görüş açısını
+    // otomatik aç: kamera daha dik (top-down) ve biraz daha yukarı taşınır.
+    // Yumuşatılmış `cur` konumundan hesaplanır ki geçiş kamera takibiyle
+    // birlikte pürüzsüz olsun; açı/yükseklik ayrıca yavaşça lerp edilir.
+    const want = cameraOpenAmount(cur.current.z);
+    open.current += (want - open.current) * Math.min(1, CAMERA_OPEN_LERP_SPEED * dt);
+    const { elevation: el, zoom: d } = cameraFraming(open.current);
+
     camera.position.set(
       cur.current.x,
       cur.current.y + Math.sin(el) * d,
@@ -370,8 +383,8 @@ function Building({ def }: { def: BuildingDef }) {
   }, [def.signText, def.signBg, def.signFg]);
 
   return (
-    // `BUILDING_USER_DATA` işareti kamera occlusion sistemine "bu bir bina"
-    // der; ışın bu grubun mesh'lerine çarparsa grup şeffaflaşır.
+    // `BUILDING_USER_DATA`: bu grubun bir bina olduğunu işaretleyen meta veri
+    // (saydamlaştırma kapalı; sadece ileride gerekirse kullanılır).
     <group position={[def.x, def.h / 2, def.frontZ - def.d / 2]} userData={BUILDING_USER_DATA}>
       {/* Main body */}
       <mesh material={facadeMat} castShadow receiveShadow>
@@ -1072,9 +1085,9 @@ export function GameEngine3D({
     >
       <FollowCamera posRef={playerPosRef} />
 
-      {/* Kamera ile oyuncu arasına giren binalar 0.3 opaklığa iner; aradan
-          çıkınca yumuşakça tam opak hâle döner (bkz. `buildingOcclusion.ts`). */}
-      <CameraOcclusion playerPosRef={playerPosRef} isMobile={isMobile} />
+      {/* Kamera, oyuncu binaların arkasına / üst sokağa girince otomatik
+          olarak daha dik (top-down) ve daha yüksek bir açıya geçer; caddeye
+          dönünce yumuşakça eski açıya döner. Binalar saydamlaştırılmaz. */}
 
       {/* Sky — soft warm blue */}
       <color attach="background" args={["#78c8e8"]} />
