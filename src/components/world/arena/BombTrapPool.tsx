@@ -163,7 +163,15 @@ export function BombTrapPool() {
     const mounted: BombInstance[] = [];
     for (const body of bodies.current) {
       if (!body) continue;
-      const instance = createBombInstance({ flame: true, flameLight: false });
+      // Tuzak da yerde dururken "çalışan bir düzenek" gibi okunsun: güç
+      // çekirdeği (dönen halkalar + periyodik şok dalgası + fitil dumanı +
+      // gövde ısı nabzı). Işık eklemediği için açılma/kapanma anında shader
+      // yeniden derlemesi olmaz; alarm tonu (`setAlert`) dalgayı sıklaştırır.
+      const instance = createBombInstance({
+        flame: true,
+        energy: true,
+        flameLight: false,
+      });
       body.add(instance.root);
       instance.root.position.y = BOMB_REST_Y;
       mounted.push(instance);
@@ -267,8 +275,12 @@ export function BombTrapPool() {
         // 🔥 Fünye alevi modelin ÜSTÜNDE canlıdır: fitil kısaldıkça alev
         // amberden kırmızıya kayar, büyür ve kor parçacıkları saçar — "bu şey
         // patlamak üzere" okuması tek bir renk/mesh eklemeden gelir.
+        //
+        // Tehlike tonu ÖNCE yazılır: `setAlert` alevi VE güç çekirdeğini
+        // birlikte sürer (halkalar ısınır, şok dalgası sıklaşır), `update` ise
+        // bu karede o tonu okur.
+        spark.setAlert(armed ? 1 : k * 0.85);
         spark.update(dt);
-        spark.flame?.setAlert(armed ? 1 : k * 0.85);
         spark.flame?.group.scale.setScalar(
           (0.62 + 0.38 * k + 0.05 * pulse) * (0.9 + 0.1 * blink),
         );

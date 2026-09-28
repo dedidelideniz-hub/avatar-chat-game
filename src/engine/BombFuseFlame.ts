@@ -802,10 +802,14 @@ export function createBombAura(
         0.12 *
         motion;
 
-    halo.scale.setScalar(radius * 2.2 * pulse);
-    haloMat.opacity = 0.09 * pulse + 0.03 * motion;
-    core.scale.setScalar(radius * 1.3 * pulse);
-    coreMat.opacity = 0.14 * pulse + 0.035 * motion;
+    // GÜÇLENDİRİLDİ (hâle 2.2 → 2.45, opaklıklar ~%35 yukarı): bomba 55°
+    // izometrik kamerada karakterin silüeti içinde kaybolmasın diye okunurluk
+    // payı büyütüldü. Katman additif olduğu için artış zemini aydınlatan bir
+    // parıltıya değil, sıcak bir ışımaya dönüşür ve bloom eşiğini rahatça geçer.
+    halo.scale.setScalar(radius * 2.45 * pulse);
+    haloMat.opacity = 0.12 * pulse + 0.04 * motion;
+    core.scale.setScalar(radius * 1.42 * pulse);
+    coreMat.opacity = 0.18 * pulse + 0.045 * motion;
     if (light) light.intensity = LIGHT_INTENSITY * (0.75 + 0.45 * pulse);
   };
 

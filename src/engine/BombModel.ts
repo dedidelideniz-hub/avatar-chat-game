@@ -56,6 +56,10 @@ import {
   type BombAura,
   type FuseFlame,
 } from "./BombFuseFlame";
+import {
+  createBombEnergyField,
+  type BombEnergyField,
+} from "./BombEnergyField";
 
 /**
  * Bomba modelleri, ÖNCELİK SIRASIYLA. İlk yüklenen kullanılır:
@@ -150,8 +154,19 @@ export interface BombInstance {
   flame: FuseFlame | null;
   /** Okunurluk hâlesi (`aura: true` verilirse). */
   aura: BombAura | null;
-  /** Alevi/hâleyi ilerletir (`dt` saniye). */
+  /** Gövde çevresindeki güç çekirdeği (`energy: true` verilirse). */
+  energy: BombEnergyField | null;
+  /** Alevi, hâleyi ve güç çekirdeğini ilerletir (`dt` saniye). */
   update(dt: number): void;
+  /**
+   * TEHLİKE TONU (0 = elde sakin fitil, 1 = patlamak üzere).
+   *
+   * Alevi VE güç çekirdeğini birlikte sürer: alev amberden kızıla kayarken
+   * halkalar ısınır, şok dalgası sıklaşır ve gövdenin ısısı yükselir. Tek
+   * çağrı olması bilinçlidir — iki katman ayrı ayrı sürülseydi biri güncellenip
+   * diğeri unutulabilir, bomba "yarı alarm" durumunda görünürdü.
+   */
+  setAlert(amount: number): void;
   /** Model + alev + malzemeleri serbest bırakır. */
   dispose(): void;
 }
@@ -176,6 +191,18 @@ export interface BombInstanceOptions {
    * (karakterin silüeti içinde kaybolmasın); yerde/havada gereksiz maliyet.
    */
   aura?: boolean;
+  /**
+   * GÜÇ ÇEKİRDEĞİ (varsayılan KAPALI, bkz. `engine/BombEnergyField`): gövdenin
+   * çevresinde zıt yönlerde dönen iki halka, periyodik şok dalgası, fitilden
+   * yükselen duman ve gövdede nabız gibi atan ısı.
+   *
+   * Işık EKLEMEZ (yalnız additif/unlit katmanlar + emissive şiddeti), bu yüzden
+   * shader yeniden derlemesine yol açmaz. Buna rağmen her örnek için ~5 çizim
+   * çağrısı demektir: ELDE TUTULAN bomba ve YERDEKİ tuzak için açılır (bomba bu
+   * iki yerde dururken "çalışan bir düzenek" olarak okunmalı), uçarken zaten
+   * sıcak iz + takla + nişan halkası taşıdığı için KAPALI kalır.
+   */
+  energy?: boolean;
   /** Hâle nokta ışığı (VARSAYILAN KAPALI) — `flameLight` ile aynı gerekçe. */
   auraLight?: boolean;
   /** Gövde küresinin istenen DÜNYA çapı (varsayılan `BOMB_TARGET_WORLD_SPAN`). */
@@ -265,6 +292,13 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
   //    alır → kuş bakışı kadrajda/karakterin silüeti içinde kaybolmaz.
   // Dokulu modelde ışımayı modelin kendi dokusu taşır; oraya düz renk yazmak
   // emissive = renk × doku olduğu için siyah kısımlarda hiç görünmezdi.
+  //
+  // `bodyGlow` — ısı nabzını sürecek GÖVDE malzemeleri (`energy` katmanına
+  // verilir). Fünye/ateş malzemeleri BİLİNÇLİ olarak dışarıda tutulur: onların
+  // ışıması zaten `BOMB_FUSE_EMISSIVE` ile çok yüksek ve nabız onları ekranı
+  // yakan bir beneğe çevirirdi.
+  const bodyGlow: THREE.MeshStandardMaterial[] = [];
+  const glowSeen = new Set<THREE.Material>();
   model.traverse((o) => {
     o.userData.isEquipment = true;
     // Frustum culling kapatılır: kemik animasyonu/havuz yeniden kullanımı
@@ -284,6 +318,10 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
         m.emissive.set(BOMB_BODY_EMISSIVE_COLOR);
         m.emissiveIntensity = BOMB_BODY_EMISSIVE;
         // `toneMapped` ELLENMEZ: gövde ateş değil, yalnız hafif aydınlık kalır.
+        if (!glowSeen.has(m)) {
+          glowSeen.add(m);
+          bodyGlow.push(m);
+        }
       }
     }
   });
@@ -304,20 +342,25 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
   root.frustumCulled = false;
   root.add(model);
 
-  // 🔥 Ağız ateşi: modelin fünye ucunda. Nokta KÖK-YEREL uzayda hesaplanır
-  // (kök zaten hizalı olduğu için ayrıca döndürülmez — döndürmek alevi fünyeden
-  // kopartırdı). Alev ölçüsü bomba çapından DEĞİL kendi sabitinden gelir:
-  // fitil alevi bomba büyüdükçe büyümez, ama farklı çaplarda oransal kalır.
+  // Fünye ucunun KÖK-YEREL konumu (dünya birimi): ağız ateşi ve fitil dumanı
+  // AYNI noktaya otursun diye bir kez hesaplanır. Nokta kök uzayındadır — kök
+  // zaten fünyeye göre hizalı olduğu için ayrıca döndürülmez (döndürmek alevi
+  // fünyeden kopartırdı). Alev ölçüsü bomba çapından DEĞİL kendi sabitinden
+  // gelir: fitil alevi bomba büyüdükçe büyümez, ama farklı çaplarda oransal
+  // kalır.
+  const fuseLocal = metrics.fuseAnchor
+    .clone()
+    .sub(metrics.bodyCenter)
+    .multiplyScalar(modelScale);
+
+  // 🔥 Ağız ateşi: modelin fünye ucunda.
   let flame: FuseFlame | null = null;
   if (options.flame !== false) {
     flame = createFuseFlame(
       BOMB_FLAME_SPAN * (worldSpan / BOMB_TARGET_WORLD_SPAN),
       { light: options.flameLight === true },
     );
-    flame.group.position
-      .copy(metrics.fuseAnchor)
-      .sub(metrics.bodyCenter)
-      .multiplyScalar(modelScale);
+    flame.group.position.copy(fuseLocal);
     root.add(flame.group);
   }
 
@@ -328,17 +371,43 @@ export function createBombInstance(options: BombInstanceOptions = {}): BombInsta
     root.add(aura.group);
   }
 
+  // ⚡ GÜÇ ÇEKİRDEĞİ (bkz. `engine/BombEnergyField`): gövdenin çevresinde dönen
+  // iki halka, periyodik şok dalgası, fitil dumanı ve gövde ısı nabzı. Işık
+  // eklemez; bomba "çalışan bir düzenek" gibi okunur.
+  let energy: BombEnergyField | null = null;
+  if (options.energy) {
+    energy = createBombEnergyField(worldSpan, {
+      bodyMaterials: bodyGlow,
+      fuseOffset: fuseLocal,
+    });
+    root.add(energy.group);
+  }
+
+  // Tehlike tonu: `setAlert` alevi ve güç çekirdeğini birlikte sürsün diye
+  // örnek düzeyinde tutulur (bkz. `BombInstance.setAlert`).
+  let alert = 0;
+
   return {
     root,
     flame,
     aura,
+    energy,
     update(dt: number) {
       flame?.update(dt);
       aura?.update(dt);
+      // Güç çekirdeği yeni bir şok dalgası ateşlediyse fünye de bir tutam
+      // kıvılcım saçar: halkalar, dalga ve kıvılcım aynı "enerji boşalması"
+      // anının üç ayrı okuması olur (hepsi tek nabızdan sürülür).
+      if (energy?.update(dt, alert)) flame?.burst(2, 0.75);
+    },
+    setAlert(amount: number) {
+      alert = THREE.MathUtils.clamp(amount, 0, 1);
+      flame?.setAlert(alert);
     },
     dispose() {
       flame?.dispose();
       aura?.dispose();
+      energy?.dispose();
       root.removeFromParent();
       root.clear();
       for (const material of materials) material.dispose();

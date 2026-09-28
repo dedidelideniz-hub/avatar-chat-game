@@ -317,6 +317,12 @@ export function useSamuraiBomb(
       const instance = createBombInstance({
         flame: true,
         aura: true,
+        // ⚡ Güç çekirdeği: gövdenin çevresinde zıt yönlerde dönen iki halka,
+        // periyodik şok dalgası, fitilden yükselen duman ve gövdede ısı nabzı
+        // (`engine/BombEnergyField`). Bomba bu karakterin SİLAHI; elde dururken
+        // "çalışan bir düzenek" gibi okunması gerekir. Işık eklemez, dolayısıyla
+        // yetenek anındaki shader yeniden derlemesini geri getirmez.
+        energy: true,
         flameLight: false,
         auraLight: false,
       });
