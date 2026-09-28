@@ -40,6 +40,21 @@ import {
   type FlowerBoxDef,
   type StallDef,
 } from "./constants";
+import {
+  LampGlowFx,
+  RoofDetail,
+  ShopAwning,
+  StreetBushes,
+  StreetBusStops,
+  StreetCrosswalks,
+  StreetDirectionSigns,
+  StreetFences,
+  StreetFlowerPatches,
+  StreetHedges,
+  StreetTrashCans,
+  useStreetGroundTextures,
+} from "./StreetDetail";
+import { makeSignTexture } from "./streetTextures";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Helpers                                                    */
@@ -154,6 +169,9 @@ function Ground() {
   const roadMid = (ZONE.roadTop + ZONE.roadBot) / 2;
   const roadW = ZONE.roadBot - ZONE.roadTop;
 
+  // Kaldırım taşı + asfalt dokusu (tek kez üretilir, paylaşılır).
+  const { pavement, asphalt } = useStreetGroundTextures();
+
   // Subtle road dashes for pedestrian walkway feel
   const dashes = useMemo(() => {
     const arr: number[] = [];
@@ -175,16 +193,18 @@ function Ground() {
         <meshStandardMaterial color="#55c040" roughness={1} />
       </mesh>
 
-      {/* North sidewalk — warm stone */}
+      {/* North sidewalk — warm stone (kaldırım taşı dokusu).
+          `map` ile `color` ÇARPILIR; renk dokunun kendi tonunu bozmasın diye
+          çarpan beyaz bırakılır (doku zaten sıcak taş renginde üretildi). */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, (ZONE.northSidewalkTop + ZONE.northSidewalkBot) / 2]} receiveShadow>
         <planeGeometry args={[WORLD_WIDTH, ZONE.northSidewalkBot - ZONE.northSidewalkTop]} />
-        <meshStandardMaterial color="#ddd4c0" roughness={0.92} />
+        <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
       </mesh>
 
-      {/* Road surface — warm pedestrian paving */}
+      {/* Road surface — asfalt dokusu */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, roadMid]} receiveShadow>
         <planeGeometry args={[WORLD_WIDTH, roadW]} />
-        <meshStandardMaterial color="#9e9486" roughness={0.95} />
+        <meshStandardMaterial color="#ffffff" roughness={0.95} map={asphalt} />
       </mesh>
 
       {/* Road dashes — pedestrian lane markers */}
@@ -195,10 +215,10 @@ function Ground() {
         </mesh>
       ))}
 
-      {/* South sidewalk — warm stone */}
+      {/* South sidewalk — warm stone (kaldırım taşı dokusu) */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, (ZONE.southSidewalkTop + ZONE.southSidewalkBot) / 2]} receiveShadow>
         <planeGeometry args={[WORLD_WIDTH, ZONE.southSidewalkBot - ZONE.southSidewalkTop]} />
-        <meshStandardMaterial color="#ddd4c0" roughness={0.92} />
+        <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
       </mesh>
 
       {/* South grass overlay */}
@@ -234,6 +254,9 @@ function Ground() {
         <circleGeometry args={[0.25, 16]} />
         <meshStandardMaterial color="#b8a890" roughness={0.82} />
       </mesh>
+
+      {/* ═══ Yaya geçidi şeritleri (asfalt üzerine) ═══ */}
+      <StreetCrosswalks />
     </group>
   );
 }
@@ -247,6 +270,13 @@ function Building({ def }: { def: BuildingDef }) {
   const winW = Math.min(0.38, ((def.w - 0.6) / def.windows) * 0.52);
   const winH = storyH * 0.32;
 
+  // Zemin kat pencereleri dünya yüksekliği 0.69·storyH'de başlar (aşağıdaki
+  // pencere formülünden). Tente onun hemen altına, tabela ise zemin kat ile
+  // 1. kat pencereleri ARASINDAKİ boşluğa (1.35·storyH) oturtulur — böylece
+  // hiçbir binada pano pencereyi kapatmaz.
+  const awningY = Math.min(0.95, 0.69 * storyH - 0.12);
+  const signY = 1.35 * storyH;
+
   // Alternate facade material colors for visual variety
   const facadeMat = useMemo(() => {
     return new THREE.MeshStandardMaterial({ color: def.front, roughness: 0.82 });
@@ -257,6 +287,45 @@ function Building({ def }: { def: BuildingDef }) {
   const roofMat = useMemo(() => {
     return new THREE.MeshStandardMaterial({ color: def.roof, roughness: 0.75 });
   }, [def.roof]);
+
+  // Pencere materyalleri PAYLAŞILIR (pencere başına yeni materyal üretilmez):
+  // sönük cam + yanan sıcak cam. "Pencerelerde parıltı" böylece toplam
+  // materyal sayısını artırmaz (shader derleme maliyeti sabit kalır).
+  const { sillMat, glassMat, glassLitMat, frameMat, litSeed } = useMemo(() => {
+    const seed = Math.round((def.x + 20) * 13) + def.floors * 3;
+    return {
+      frameMat: new THREE.MeshStandardMaterial({ color: "#e8e4dc", roughness: 0.7 }),
+      sillMat: new THREE.MeshStandardMaterial({ color: "#d8d0c0", roughness: 0.8 }),
+      glassMat: new THREE.MeshStandardMaterial({
+        color: "#5cc8f0",
+        roughness: 0.2,
+        metalness: 0.15,
+        emissive: "#183848",
+        emissiveIntensity: 0.15,
+      }),
+      glassLitMat: new THREE.MeshStandardMaterial({
+        color: "#ffd98a",
+        roughness: 0.35,
+        metalness: 0.05,
+        emissive: "#ffc061",
+        emissiveIntensity: 0.8,
+      }),
+      litSeed: seed,
+    };
+  }, [def.x, def.floors]);
+
+  // Vitrin tabelası — dükkan adı renkli panoya yazılır ve hafifçe parlar.
+  const signFaceMat = useMemo(() => {
+    if (!def.signText) return null;
+    const tex = makeSignTexture(def.signText, def.signBg ?? "#ffffff", def.signFg ?? "#2b2320");
+    return new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: "#ffffff",
+      emissiveIntensity: 0.34,
+      roughness: 0.62,
+    });
+  }, [def.signText, def.signBg, def.signFg]);
 
   return (
     <group position={[def.x, def.h / 2, def.frontZ - def.d / 2]}>
@@ -303,44 +372,60 @@ function Building({ def }: { def: BuildingDef }) {
         <meshStandardMaterial color="#d4a840" roughness={0.4} metalness={0.5} />
       </mesh>
 
-      {/* ═══ Windows — with frames ═══ */}
+      {/* ═══ Windows — with frames; bir kısmı sıcak ışıkla yanar ═══ */}
       {Array.from({ length: def.floors }).map((_, floor) =>
         Array.from({ length: def.windows }).map((_, win) => {
           const wx = -def.w / 2 + (win + 1) * (def.w / (def.windows + 1));
           const wy = -def.h / 2 + (floor + 1) * storyH - storyH * 0.15;
+          const lit = (floor * 3 + win * 5 + litSeed) % 4 === 0;
           return (
             <group key={`${floor}-${win}`} position={[wx, wy, def.d / 2 + 0.01]}>
               {/* Window frame */}
-              <mesh position={[0, 0, -0.005]}>
+              <mesh position={[0, 0, -0.005]} material={frameMat}>
                 <boxGeometry args={[winW + 0.06, winH + 0.06, 0.02]} />
-                <meshStandardMaterial color="#e8e4dc" roughness={0.7} />
               </mesh>
-              {/* Glass pane */}
-              <mesh position={[0, 0, 0.005]}>
+              {/* Glass pane — sönük ya da sıcak ışıklı */}
+              <mesh position={[0, 0, 0.005]} material={lit ? glassLitMat : glassMat}>
                 <planeGeometry args={[winW, winH]} />
-                <meshStandardMaterial
-                  color="#5cc8f0"
-                  roughness={0.2}
-                  metalness={0.15}
-                  emissive="#183848"
-                  emissiveIntensity={0.15}
-                />
               </mesh>
               {/* Window sill */}
-              <mesh position={[0, -winH / 2 - 0.02, 0.02]}>
+              <mesh position={[0, -winH / 2 - 0.02, 0.02]} material={sillMat}>
                 <boxGeometry args={[winW + 0.1, 0.04, 0.06]} />
-                <meshStandardMaterial color="#d8d0c0" roughness={0.8} />
               </mesh>
             </group>
           );
         })
       )}
 
-      {/* ═══ Sign board — above door ═══ */}
-      <mesh position={[0, -def.h / 2 + 0.95, def.d / 2 + 0.025]}>
-        <boxGeometry args={[def.w * 0.5, 0.22, 0.03]} />
-        <meshStandardMaterial color="#4a3828" roughness={0.85} />
-      </mesh>
+      {/* ═══ Dükkan tentesi — canlı renkli branda ═══ */}
+      {def.awningA && def.awningB && (
+        <ShopAwning
+          x={0}
+          y={-def.h / 2 + awningY}
+          z={def.d / 2 + 0.01}
+          width={def.w}
+          colorA={def.awningA}
+          colorB={def.awningB}
+        />
+      )}
+
+      {/* ═══ Vitrin tabelası — renkli pano + dükkan adı ═══ */}
+      {signFaceMat && (
+        <group position={[0, -def.h / 2 + signY, def.d / 2 + 0.03]}>
+          {/* Pano gövdesi (çerçeve) */}
+          <mesh>
+            <boxGeometry args={[def.w * 0.7, 0.32, 0.04]} />
+            <meshStandardMaterial color="#3a2c1e" roughness={0.82} />
+          </mesh>
+          {/* Yazı yüzü */}
+          <mesh position={[0, 0, 0.026]} material={signFaceMat}>
+            <planeGeometry args={[def.w * 0.64, 0.26]} />
+          </mesh>
+        </group>
+      )}
+
+      {/* ═══ Çatı detayı — dükkan silüetine canlılık ═══ */}
+      <RoofDetail kind={def.roofDetail} w={def.w} d={def.d} topY={def.h / 2 + 0.15} />
     </group>
   );
 }
@@ -435,6 +520,9 @@ function Lamp3D({ def }: { def: LampDef }) {
         <sphereGeometry args={[0.065, 8, 8]} />
         <meshStandardMaterial color="#fff8d4" emissive="#ffe870" emissiveIntensity={0.8} roughness={0.15} />
       </mesh>
+      {/* Ampul halesi + zemine düşen ışık havuzu. Gerçek PointLight EKLENMEZ:
+          ışık sayısı değişirse three tüm shader'ları yeniden derler. */}
+      <LampGlowFx />
     </group>
   );
 }
@@ -1108,6 +1196,20 @@ export function GameEngine3D({
       {BENCHES.map((def, i) => (
         <Bench3D key={i} def={def} />
       ))}
+
+      {/* ═══════════════════════════════════════════════════════
+          MODÜLER CADDE DETAYLARI (yaşayan şehir katmanı)
+          ═══════════════════════════════════════════════════════ */}
+      {/* Çalılar, çiçek tarhları, budanmış çitler ve ahşap çitler */}
+      <StreetBushes />
+      <StreetFlowerPatches />
+      <StreetHedges />
+      <StreetFences />
+
+      {/* Sokak mobilyası: çöp kutuları, otobüs durakları, yön tabelaları */}
+      <StreetTrashCans />
+      <StreetBusStops />
+      <StreetDirectionSigns />
 
       {/* === MOVE TARGET === */}
       <MoveTarget3D target={moveTarget} />
