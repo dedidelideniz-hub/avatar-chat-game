@@ -54,9 +54,18 @@ function isBone(obj: THREE.Object3D): boolean {
 }
 
 /** "left"/"right" ya da ".l"/"_L"/" L" gibi son eklerden tarafı çıkarır. */
-function sideOf(name: string): "L" | "R" | null {
-  if (/left/.test(name)) return "L";
-  if (/right/.test(name)) return "R";
+function sideOf(rawName: string): "L" | "R" | null {
+  if (/left/i.test(rawName)) return "L";
+  if (/right/i.test(rawName)) return "R";
+  // ÜÇ.JS AD TEMİZLİĞİ: GLTFLoader düğüm adlarını `sanitizeNodeName`den
+  // geçirir ve NOKTAYI siler — `UpperLeg.L` → `UpperLegL`. `character.glb`
+  // (varsayılan avatar) tam olarak böyle adlandırılmıştır; eski desen
+  // (`l` harfinden önce harf olmayan sınır) bu adları göremediği için
+  // oturma pozu HİÇ uygulanmıyordu. Bu yüzden ad SONUNDAKİ büyük L/R de
+  // yan işareti sayılır ("UpperLegL", "FootR").
+  if (/[LR]$/.test(rawName)) return rawName.endsWith("L") ? "L" : "R";
+  // Zayıf desenler yalnızca küçük harfle anlamlı (`.`/`_` ile ayrılmış işaretler).
+  const name = rawName.toLowerCase();
   if (/(^|[^a-z])l([^a-z]|$)/.test(name)) return "L";
   if (/(^|[^a-z])r([^a-z]|$)/.test(name)) return "R";
   return null;
@@ -134,9 +143,10 @@ export function findSitBones(root: THREE.Object3D): SitBones {
     let thighScoreBest = -1;
     scope.traverse((obj) => {
       if (obj === scope || !isBone(obj)) return;
-      const name = obj.name.toLowerCase();
-      if (sideOf(name) !== side) return;
-      const score = thighScore(name);
+      // DİKKAT: yan işareti HAM addan okunur (üç.js ad temizliğinden sonra
+      // `UpperLegL` gibi adlarda büyük L/R ayırt edicidir); skor ise küçük harfle.
+      if (sideOf(obj.name) !== side) return;
+      const score = thighScore(obj.name.toLowerCase());
       if (score > thighScoreBest) {
         thighScoreBest = score;
         thigh = obj as THREE.Bone;
@@ -149,9 +159,8 @@ export function findSitBones(root: THREE.Object3D): SitBones {
       const parent: THREE.Object3D = thigh;
       parent.traverse((obj) => {
         if (obj === parent || !isBone(obj)) return;
-        const name = obj.name.toLowerCase();
-        if (sideOf(name) !== side) return;
-        const score = shinScore(name);
+        if (sideOf(obj.name) !== side) return;
+        const score = shinScore(obj.name.toLowerCase());
         if (score > shinScoreBest) {
           shinScoreBest = score;
           shin = obj as THREE.Bone;
@@ -165,14 +174,14 @@ export function findSitBones(root: THREE.Object3D): SitBones {
     const footScope: THREE.Object3D = shin ?? thigh ?? scope;
     footScope.traverse((obj) => {
       if (foot || obj === footScope || !isBone(obj)) return;
-      const name = obj.name.toLowerCase();
-      if (sideOf(name) === side && FOOT_RE.test(name)) foot = obj as THREE.Bone;
+      if (sideOf(obj.name) === side && FOOT_RE.test(obj.name.toLowerCase()))
+        foot = obj as THREE.Bone;
     });
     if (!foot) {
       root.traverse((obj) => {
         if (foot || !isBone(obj)) return;
-        const name = obj.name.toLowerCase();
-        if (sideOf(name) === side && FOOT_RE.test(name)) foot = obj as THREE.Bone;
+        if (sideOf(obj.name) === side && FOOT_RE.test(obj.name.toLowerCase()))
+          foot = obj as THREE.Bone;
       });
     }
 
@@ -196,6 +205,78 @@ export function canSit(bones: SitBones): boolean {
     (bones.thighL && bones.shinL && tipOf(bones.thighL) && tipOf(bones.shinL)) ||
     (bones.thighR && bones.shinR && tipOf(bones.thighR) && tipOf(bones.shinR))
   );
+}
+
+/**
+ * MİNDER TEMASI — kalça dokusunun kalça kemiğine göre derinliği.
+ *
+ * NEDEN ÖLÇÜLÜR: mindere değen kısım kalça KEMİĞİ değil, onun altındaki
+ * kalça/uyluk DOKUSUDUR ve bu doku modelden modele değişir (tıknaz avatarda
+ * kalça kemiği gövdenin içinde kalır, ince insan riginde ~0.10 birimdir).
+ * Sabit bir yükseklik (eski `BENCH_SEAT_HEIGHT = 0.56`) tıknaz modellerde
+ * karakteri bankın İÇİNE gömüyordu — ekran görüntüsündeki "bankın içine
+ * geçmiş" görünüm. Bu ölçüm, `BENCH_SEAT_HEIGHT` sabitinin kalibrasyonudur ve
+ * `scripts/check-sit-model-pose.ts` her avatar için hâlâ geçerli olduğunu
+ * doğrular (ölçülen derinlik + minder üstü ≤ sabit).
+ */
+/** Ölçüm yapılamazsa (mesh/örnek yok) kullanılan güvenli değer. */
+export const SEAT_CONTACT_FALLBACK = 0.15;
+/** Ölçüm bandı: kalçanın altında kalan bu yarıçaptaki geometri (dünya birimi). */
+const SEAT_CONTACT_RADIUS = 0.18;
+
+const _measureP = new THREE.Vector3();
+const _measureV = new THREE.Vector3();
+
+/**
+ * Kalça dokusunun kalça kemiğinin ne kadar altına indiğini ölçer (dünya
+ * birimi) — OTURMA POZU UYGULANMIŞ iskelette çağrılmalıdır.
+ *
+ * BANT: kalçanın ±0.18 birim çevresindeki, kalçanın ALTINDAKİ geometri.
+ * Baldır/ayak dışarıda kalsın diye alt sınır DİZ seviyesidir; diz kalçanın
+ * üstüne çıkan modellerde (tıknaz avatarlar) bacaklar öne katlandığı için
+ * alt sınır gerekmez.
+ */
+export function measureSeatContact(
+  root: THREE.Object3D,
+  bones: SitBones,
+): number {
+  if (!bones.hips) return SEAT_CONTACT_FALLBACK;
+  root.updateMatrixWorld(true);
+  const hips = bones.hips;
+  hips.getWorldPosition(_measureP);
+  const kneeBone = bones.thighL ? tipOf(bones.thighL) : null;
+  const kneeY = kneeBone ? kneeBone.getWorldPosition(_measureV).y : _measureP.y;
+  const lowerBound = kneeY < _measureP.y ? kneeY - 0.02 : _measureP.y - 0.45;
+  let lowest = Infinity;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.SkinnedMesh;
+    if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
+    const pos = mesh.geometry?.getAttribute?.("position") as
+      | THREE.BufferAttribute
+      | undefined;
+    if (!pos) return;
+    // Örnekleme: büyük modellerde (16k tepe) her 4. tepe yeterli.
+    const step = Math.max(1, Math.floor(pos.count / 4000));
+    for (let i = 0; i < pos.count; i += step) {
+      if ((mesh as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+        mesh.getVertexPosition(i, _measureV);
+      } else {
+        _measureV.fromBufferAttribute(pos, i);
+      }
+      mesh.localToWorld(_measureV);
+      if (
+        _measureV.y < _measureP.y &&
+        _measureV.y > lowerBound &&
+        Math.abs(_measureV.x - _measureP.x) < SEAT_CONTACT_RADIUS &&
+        Math.abs(_measureV.z - _measureP.z) < SEAT_CONTACT_RADIUS &&
+        _measureV.y < lowest
+      ) {
+        lowest = _measureV.y;
+      }
+    }
+  });
+  if (!Number.isFinite(lowest)) return SEAT_CONTACT_FALLBACK;
+  return _measureP.y - lowest;
 }
 
 /* ── Yeniden kullanılan geçici nesneler (kare başına çöp üretmemek için) ── */
@@ -316,7 +397,7 @@ export function applySitPose(
   blend: number,
 ) {
   if (blend <= 0) return;
-  // NORMAL BANK OTURUŞU (minder 0.46, kalça 0.56 — bkz. BENCH_SEAT_HEIGHT):
+  // NORMAL BANK OTURUŞU (minder 0.46, kalça 0.61 — bkz. BENCH_SEAT_HEIGHT):
   //   • uyluk yataydan ~11° aşağı (diz kalçanın ~9 cm altında),
   //   • baldır neredeyse DİKEY (5° öne açık),
   //   • ayaklar yere basar: kalça 0.56 − uyluk dikey payı 0.088 −

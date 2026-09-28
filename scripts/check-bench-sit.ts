@@ -19,8 +19,10 @@ import {
   BENCH_SEAT_FORWARD,
   BENCH_SEAT_HEIGHT,
   BENCH_INTERACT_RADIUS,
+  BENCH_STAND_FALLBACKS,
   benchFacing,
   benchSeatSpot,
+  benchStandSpot,
   BUILDINGS,
   PLAYER_3D_HEIGHT,
   S,
@@ -109,10 +111,10 @@ check(
   `${BENCH_SEAT_TOP} birim`,
 );
 check(
-  "Kalça eklemi minderin 6–13 cm üstünde (kalça dokusu mindere oturur)",
-  BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP > 0.06 &&
-    BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP < 0.13,
-  `minder ${BENCH_SEAT_TOP} → kalça ${BENCH_SEAT_HEIGHT}`,
+  "Kalça eklemi minderin 10–20 cm üstünde (kalça dokusu mindere oturur)",
+  BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP > 0.1 &&
+    BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP < 0.2,
+  `minder ${BENCH_SEAT_TOP} → kalça ${BENCH_SEAT_HEIGHT} (ölçüm: check-sit-model-pose.ts)`,
 );
 check(
   "Bank eni karakterin sırtından geniş (≥ 1.2 birim)",
@@ -133,6 +135,51 @@ check(
   "Etkileşim yarıçapı bankın yarı enini kapsıyor",
   BENCH_INTERACT_RADIUS > 0.9 && BENCH_INTERACT_RADIUS > BENCH_WIDTH / 2,
   `${BENCH_INTERACT_RADIUS} birim`,
+);
+
+/* ── 2b. Bankın ÖNÜNDEKİ duraklama noktası (ışınlanma yok) ─────────── */
+// Karakter banka dokununca ışınlanmaz: önce buraya YÜRÜR (World.tsx
+// `requestSit` → `benchStandPx`). En yakın yürünebilir mesafe seçilir.
+console.log("── bankın önündeki duraklama noktası ──");
+const stands = BENCHES.map((def) => {
+  for (const offset of BENCH_STAND_FALLBACKS) {
+    const s = benchStandSpot(def, offset);
+    const px = svgX(s.x);
+    const py = svgY(s.z);
+    if (inWalkable(px, py))
+      return { offset, x: s.x, z: s.z, facing: benchFacing(def), def };
+  }
+  return null;
+});
+check(
+  "Her bankın önünde yürünebilir bir duraklama noktası var",
+  stands.every((s) => s !== null),
+  stands
+    .map((s, i) => (s ? `b${i}:${s.offset}` : `b${i}:YOK`))
+    .join(" "),
+);
+const usable = stands.filter((s) => s !== null) as NonNullable<
+  (typeof stands)[number]
+>[];
+check(
+  "Duraklama noktası bankın BAKTIĞI tarafta (önünde)",
+  usable.every((s) => (s.z - s.def.z) * s.facing > 0.1),
+  `en küçük ön mesafe ${Math.min(
+    ...usable.map((s) => (s.z - s.def.z) * s.facing),
+  ).toFixed(2)} birim`,
+);
+check(
+  "Duraklama noktası bankın ön kenarının dışında (minderin içine denk gelmiyor)",
+  usable.every(
+    (s) => Math.abs(s.z - s.def.z) > BENCH_SEAT_DEPTH / 2,
+  ),
+  `minder derinliği ${BENCH_SEAT_DEPTH} · ön yarı ${BENCH_SEAT_DEPTH / 2}`,
+);
+const farStands = usable.filter((s) => s.offset >= 0.35).length;
+check(
+  "Çoğu bankta duraklama noktası tam mesafede (0.35+) kalabiliyor",
+  farStands >= usable.length - 3,
+  `${farStands}/${usable.length} bank`,
 );
 
 /* ── 3. Bacaklar binanın içine giriyor mu? ─────────────────────────── */

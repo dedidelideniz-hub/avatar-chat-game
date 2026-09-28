@@ -14,9 +14,12 @@ const glbTestParam =
 import {
   BENCHES,
   BENCH_INTERACT_RADIUS,
+  BENCH_STAND_FALLBACKS,
   benchFacing,
   benchSeatSpot,
+  benchStandSpot,
   PLAYER_3D_HEIGHT,
+  SEAT_TRANSITION_SECONDS,
   SPAWN_SVG,
   S,
 } from "@/engine/constants";
@@ -819,6 +822,24 @@ const BENCH_SEATS: { x: number; y: number; facing: 1 | -1 }[] = BENCHES.map(
 );
 /** Oturma etkileşiminin px cinsinden menzili. */
 const BENCH_RADIUS_PX = BENCH_INTERACT_RADIUS * S;
+/**
+ * Bankın ÖNÜNDE durulacak px noktası — karakter oraya YÜRÜR, sonra oturur
+ * (ışınlanma yok). En yakın yürünebilir mesafe seçilir: kaldırımın dışına
+ * taşan banklarda (güney kaldırım, `facing: 1`) mesafe kısalır; hiçbiri
+ * yürünebilir değilse oturma noktasının kendisi döner.
+ */
+function benchStandPx(index: number): { x: number; y: number } {
+  const def = BENCHES[index];
+  for (const offset of BENCH_STAND_FALLBACKS) {
+    const spot = benchStandSpot(def, offset);
+    const x = svgX(spot.x);
+    const y = svgY(spot.z);
+    if (inWalkable(x, y)) return { x, y };
+  }
+  return { x: BENCH_SEATS[index].x, y: BENCH_SEATS[index].y };
+}
+/** Bankın önündeki durağa bu kadar yaklaşınca oturma geçişi başlar (px). */
+const SIT_ARRIVE_PX = 22;
 
 /** Real players from other phones — rendered from live presence data. */
 function RemotePlayers({
@@ -958,6 +979,18 @@ export default function World() {
   // Kalktıktan sonra kısa bir süre tekrar oturmayı engeller (aynı banka
   // dokununca "kalk → hemen otur" titremesi olmasın).
   const sitCooldownRef = useRef(0);
+  // 🪑 Banka yürüyüş isteği (bankın önündeki durağa varınca oturulur).
+  const sitRequestRef = useRef<{ index: number; x: number; y: number } | null>(
+    null,
+  );
+  // 🪑 Oturma/kalkma yer değiştirmesi — konum bu aralıkta lerp ile kayar.
+  const seatMoveRef = useRef<{
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    t: number;
+  } | null>(null);
   const stuckRef = useRef({ x: 0, y: 0, since: 0 });
   const waypointsRef = useRef<{ x: number; y: number }[]>([]);
   const waypointIdxRef = useRef(0);
@@ -1245,14 +1278,25 @@ export default function World() {
   }, []);
 
   /**
-   * 🪑 Banka otur (menzildeki banka dokununca ya da 3D "Otur" düğmesiyle).
-   * Konum bir sonraki karede oturma noktasına sabitlenir; oturma hareketini
-   * avatarın kendi yumuşak geçiş animasyonu yapar.
+   * 🪑 Banka yerleşme — konum ANİMASYONLA mindere kayar (`seatMoveRef`).
+   * Oturma pozunu avatarın kendi yumuşak geçişi (SIT_BLEND_SPEED) yapar;
+   * ikisi aynı sürede (`SEAT_TRANSITION_SECONDS`) bittiği için karakter
+   * "yürüyerek yerleşiyor" gibi okunur.
    */
   const sitDown = useCallback(
     (index: number) => {
       if (index < 0 || index >= BENCH_SEATS.length) return;
       if (seatBenchRef.current === index) return;
+      const seat = BENCH_SEATS[index];
+      const p = posRef.current;
+      sitRequestRef.current = null;
+      seatMoveRef.current = {
+        fromX: p.x,
+        fromY: p.y,
+        toX: seat.x,
+        toY: seat.y,
+        t: 0,
+      };
       playSound("click");
       seatBenchRef.current = index;
       setSeatBench(index);
@@ -1268,18 +1312,74 @@ export default function World() {
     [publishBenchSeat],
   );
 
-  /** Banktan kalk — bankın içinden geçmemek için baktığı yöne bırakır. */
+  /**
+   * 🪑 BANKTA OTURMA İSTEĞİ — IŞINLANMA YOK.
+   *
+   * Sıra: dokunma/düğme → bankın ÖNÜNDEKİ durağa YÜRÜ → durağa varınca
+   * `sitDown`. Böylece karakter bankın yanına kadar kendi adımlarıyla gider;
+   * yalnızca son yarım birimlik yerleşme animasyonla geçilir.
+   */
+  const requestSit = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= BENCH_SEATS.length) return;
+      if (seatBenchRef.current === index) return;
+      if (seatBenchRef.current !== null || seatMoveRef.current !== null) return;
+      const stand = benchStandPx(index);
+      const p = posRef.current;
+      // Zaten bankın yanındaysak doğrudan oturma geçişi başlar.
+      if (Math.hypot(p.x - stand.x, p.y - stand.y) <= SIT_ARRIVE_PX) {
+        sitDown(index);
+        return;
+      }
+      sitRequestRef.current = { index, x: stand.x, y: stand.y };
+      const path = findPath(p.x, p.y, stand.x, stand.y);
+      if (path.length > 1) {
+        waypointsRef.current = path.slice(1);
+        waypointIdxRef.current = 0;
+        targetRef.current = path[path.length - 1];
+      } else {
+        waypointsRef.current = [];
+        targetRef.current = { x: stand.x, y: stand.y };
+      }
+      stuckRef.current = { x: p.x, y: p.y, since: performance.now() };
+      setTargetMarker({ x: stand.x, y: stand.y });
+      playSound("click");
+      toast.info("Bankın yanına gidiliyor 🚶");
+    },
+    [sitDown],
+  );
+
+  /**
+   * Banktan kalk — karakter mindere oturduğu yerden kalkıp bankın önüne
+   * kayar (ışınlanma yok). Önü yürünebilir değilse olduğu yerde doğrulur.
+   */
   const standUp = useCallback(() => {
     const index = seatBenchRef.current;
     if (index === null) return;
     const seat = BENCH_SEATS[index];
     seatBenchRef.current = null;
     setSeatBench(null);
-    // Ayakta durulacak nokta oturma noktasının yarım birim ötesidir —
-    // yalnızca orası yürünebilirse (aksi hâlde bankın üstünde doğrulur).
-    const p = posRef.current;
-    const forwardY = seat.facing === 1 ? -0.55 * S : 0.55 * S;
-    if (inWalkable(p.x, p.y + forwardY)) p.y += forwardY;
+    sitRequestRef.current = null;
+    const stand = benchStandPx(index);
+    seatMoveRef.current = {
+      fromX: seat.x,
+      fromY: seat.y,
+      toX: stand.x,
+      toY: stand.y,
+      t: 0,
+    };
+    // Bankın üstüne dokunulmuşsa hedef SİLİNİR: aksi hâlde kalktıktan sonra
+    // döngüdeki "banka dokunuldu" tespiti aynı banka yeniden oturturdu.
+    const t = targetRef.current;
+    if (
+      t &&
+      BENCH_SEATS.some((b) => Math.hypot(b.x - t.x, b.y - t.y) <= BENCH_RADIUS_PX)
+    ) {
+      targetRef.current = null;
+      waypointsRef.current = [];
+      waypointIdxRef.current = 0;
+      setTargetMarker(null);
+    }
     sitCooldownRef.current = performance.now() + 600;
     publishBenchSeat();
   }, [publishBenchSeat]);
@@ -1318,40 +1418,79 @@ export default function World() {
         // `moving` and `pos` are also read by the sprite/camera code below.
         let moving = false;
         const pos = posRef.current;
-        // 🪑 Bankta otururken hareket kilitlidir: konum her karede banka
-        // sabitlenir, otomatik yürüme iptal edilir. Tuşa basmak kalkma
-        // sayılır (bir sonraki karede yürümeye devam edilir).
+        // 🪑 OTURMA/KALKMA GEÇİŞİ: konum iki nokta arasında smoothstep ile
+        // kayar — banka dokununca karakter ışınlanmaz, yürür ve yerleşir.
+        const seatMove = seatMoveRef.current;
+        if (seatMove) {
+          seatMove.t = Math.min(1, seatMove.t + dt / SEAT_TRANSITION_SECONDS);
+          const k = seatMove.t * seatMove.t * (3 - 2 * seatMove.t);
+          pos.x = seatMove.fromX + (seatMove.toX - seatMove.fromX) * k;
+          pos.y = seatMove.fromY + (seatMove.toY - seatMove.fromY) * k;
+          if (seatMove.t >= 1) seatMoveRef.current = null;
+        }
+        // Bankta otururken hareket kilitlidir: konum banka sabitlenir,
+        // otomatik yürüme iptal edilir. Tuşa basmak kalkma sayılır.
         const seatIndex = seatBenchRef.current;
         if (seatIndex !== null) {
-          const seatPos = BENCH_SEATS[seatIndex];
-          pos.x = seatPos.x;
-          pos.y = seatPos.y;
+          if (seatMoveRef.current === null) {
+            const seatPos = BENCH_SEATS[seatIndex];
+            pos.x = seatPos.x;
+            pos.y = seatPos.y;
+          }
           // Tuşa basmak ya da yere dokunmak kalkma sayılır; dokunma hedefi
           // SİLİNMEZ, böylece karakter kalkıp o noktaya yürür.
-          if (keysRef.current.size > 0 || targetRef.current !== null) {
+          if (
+            seatMoveRef.current === null &&
+            (keysRef.current.size > 0 || targetRef.current !== null)
+          ) {
             standUp();
-          } else {
+          } else if (seatMoveRef.current === null) {
             targetRef.current = null;
             waypointsRef.current = [];
             waypointIdxRef.current = 0;
           }
-        } else if (targetRef.current !== null && now >= sitCooldownRef.current) {
-          // 🪑 Banka dokunulduysa oraya yürümek yerine otur.
+        } else if (sitRequestRef.current !== null) {
+          // 🪑 Bankın önündeki durağa VARINCA oturulur.
+          const req = sitRequestRef.current;
+          if (Math.hypot(req.x - pos.x, req.y - pos.y) <= SIT_ARRIVE_PX) {
+            sitDown(req.index);
+          } else if (
+            targetRef.current === null &&
+            waypointsRef.current.length === 0
+          ) {
+            // Yürüyüş iptal edildi (tuş/sıkışma) → istek düşer.
+            sitRequestRef.current = null;
+          }
+        } else if (
+          targetRef.current !== null &&
+          seatMoveRef.current === null &&
+          now >= sitCooldownRef.current
+        ) {
+          // 🪑 BANKA DOKUNULDU: dokunma hedefi bir bankın menzilindeyse, oraya
+          // yürümek yerine "bankın önüne yürü + otur" isteğine çevrilir —
+          // yani karakter ışınlanmak yerine bankın yanına kadar yürür.
           const tapped = targetRef.current;
           for (let i = 0; i < BENCH_SEATS.length; i++) {
             const b = BENCH_SEATS[i];
             if (Math.hypot(b.x - tapped.x, b.y - tapped.y) <= BENCH_RADIUS_PX) {
-              sitDown(i);
+              requestSit(i);
               break;
             }
           }
         }
         // 🪑 3D "Otur" düğmesinden gelen istek varsa bu karede işlenir.
+        // Düğme yalnızca menzilde görünür; yine de önce bankın yanına yürünür.
         if (consumeBenchSitRequest() && seatBenchRef.current === null) {
           const requested = nearBenchRef.current;
-          if (requested !== null) sitDown(requested);
+          if (requested !== null && now >= sitCooldownRef.current) {
+            requestSit(requested);
+          }
         }
-        if (!inBattle && seatBenchRef.current === null) {
+        if (
+          !inBattle &&
+          seatBenchRef.current === null &&
+          seatMoveRef.current === null
+        ) {
           if (keys.has("ArrowLeft") || keys.has("KeyA")) vx -= 1;
           if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
           if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;

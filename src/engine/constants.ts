@@ -438,21 +438,26 @@ export const BENCH_SEAT_DEPTH = 0.44;
 /** Oturma çıtalarının üst yüzeyi (bkz. `GameEngine3D › Bench3D`). */
 export const BENCH_SEAT_TOP = 0.46;
 /**
- * Oturan KALÇA kemiğinin dünya yüksekliği — oturma yüzeyinin 10 cm üstü.
+ * Oturan KALÇA kemiğinin dünya yüksekliği — oturma yüzeyinin 15 cm üstü.
  *
- * NEDEN 10 CM: kalça KEMİĞİ (pelvis merkezi) minderin üzerinde oturmaz;
- * mindere değen kısım onun ~10-12 cm altındaki kalça/but dokusudur. Değeri
- * mindere indirirsek (eski hâli: kalça = minder) karakterin kalçası ve
- * uylukları çıtaların İÇİNE gömülür. Gerçek insanda da kalça eklemi oturma
- * yüzeyinin ~8-10 cm üstündedir.
+ * NEDEN 15 CM: kalça KEMİĞİ (pelvis merkezi) mindere oturmaz; mindere değen
+ * kısım onun altındaki kalça/but DOKUSUdur. Bu doku modelden modele değişir,
+ * bu yüzden değer tahminle değil DÖRT GERÇEK AVATAR ölçülerek seçildi:
+ * `scripts/check-sit-model-pose.ts` gerçek GLB'leri (GLTFLoader + Meshopt)
+ * yükleyip oturma pozunu uygular, minder temas dokusunun kalçaya göre
+ * derinliğini ölçer. Ölçüm (kalça 0.61 iken mindere göre fark):
+ *   character 0.000 · savaşçı −0.010 · samuray −0.001 · şövalye +0.045
+ * (negatif = dokunun birkaç mm mindere değmesi, pozitif = birkaç cm havada).
+ * Eski 0.56'da üçü 3-6 cm mindere GÖMÜLÜYORDU — ekranda "bankın içine
+ * geçmiş" görünen buydu.
  *
- * YÜKSEKLİK POZU BELİRLER: ayaklar yerde kaldığı sürece DİZ sabittir
- * (~baldır boyu = 0.47, çünkü ayak yerde ve baldır dikey). Kalçayı
- * yükseltmek sadece uyluğu biraz daha aşağı eğer — diz yukarı çıkmaz.
- * Eski 0.25'lik bankta bacaklar katlanıp dizler göğse yaklaşıyordu;
- * bkz. `SitPose.ts` ve `check-bench-sit.ts`.
+ * YÜKSEKLİK POZU BELİRLER: kalçayı yükseltmek diziyi bozmaz, sadece ayakları
+ * da yukarı taşır (uyluk yatay kaldığı sürece). Uzun bacaklı modellerde
+ * (savaşçı, bacak 0.99) ayaklar 0.61'de tam yere basar; kısa bacaklılarda
+ * (şövalye 0.59, varsayılan avatar 0.69) ayaklar havada kalır — alçak bir
+ * bankta oturan kısa boylu bir karakter gibi. bkz. `SitPose.ts`.
  */
-export const BENCH_SEAT_HEIGHT = 0.56;
+export const BENCH_SEAT_HEIGHT = 0.61;
 /**
  * Oturan kalçanın bank merkezinden baktığı yöne kayması. Negatif = arkalığa
  * doğru: kalça oturma yüzeyinin ortasında, sırt arkalığa yakın durur.
@@ -460,6 +465,27 @@ export const BENCH_SEAT_HEIGHT = 0.56;
 export const BENCH_SEAT_FORWARD = -0.05;
 /** Bir banka oturma etkileşiminin göründüğü yarıçap (dünya birimi). */
 export const BENCH_INTERACT_RADIUS = 1.35;
+/**
+ * Bankın ÖNÜNDE durulacak mesafe (dünya birimi) — karakter ışınlanmaz,
+ * önce buraya YÜRÜR, sonra oturma geçişi başlar (bkz. World.tsx `requestSit`).
+ */
+export const BENCH_STAND_OFFSET = 0.55;
+/** Ayakta durulacak nokta yürünebilir değilse denenecek daha kısa mesafeler. */
+export const BENCH_STAND_FALLBACKS = [0.55, 0.45, 0.35, 0.25, 0.15] as const;
+/** Oturma/kalkma yer değiştirmesinin süresi (saniye) — poz geçişiyle uyumlu. */
+export const SEAT_TRANSITION_SECONDS = 0.55;
+
+/**
+ * Bankın önünde durulacak dünya noktası (bank baktığı yöne `offset` kadar
+ * ötede). `facing: 1` → +Z yönünde, `-1` → -Z yönünde.
+ */
+export function benchStandSpot(
+  def: BenchDef,
+  offset = BENCH_STAND_OFFSET,
+): { x: number; z: number } {
+  const seat = benchSeatSpot(def);
+  return { x: seat.x, z: seat.z + benchFacing(def) * offset };
+}
 
 /**
  * Oturma noktasının dünya koordinatı — hem 3D avatara hem px katmanına
