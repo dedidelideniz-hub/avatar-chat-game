@@ -156,6 +156,28 @@ const THROW_FOLLOW_END = 0.78;
 /** Boştaki kol hedefi gösterir (atış boyunca). */
 const THROW_AIM_FWD = 0.5;
 const THROW_AIM_UP = 0.08;
+/**
+ * 💪 ZORLANMA (ısınma) katmanı — "ağır bombayı zor tutuyor" okuması.
+ *
+ * `THROW_STRAIN`: kol boyunun oranı olarak titreme genliği. 0.028 küçük bir
+ * sayıdır ama kol boyuyla (~0.5 birim) çarpıldığında ~1.4 cm'lik bir titreme
+ * verir — ekranda görülen ama "bozuk" görünmeyen aralık budur.
+ * `THROW_STRAIN_HZ`: titreme frekansı; 26 rad/sn ≈ 4 Hz, yani kas zorlanmasının
+ * doğal titremesi (yüksek frekans "vibrasyon" gibi, düşük frekans "sallanma"
+ * gibi okunurdu).
+ */
+const THROW_STRAIN = 0.028;
+const THROW_STRAIN_HZ = 26;
+/**
+ * Boştaki elin şarj boyunca topa GELMESİ (iki elle kurma). Ölçüler kol boyu
+ * oranıdır ve bilinçli olarak küçüktür: topa tam yetişmek gerekmez (avuç
+ * geometrisi rig'e göre değişir ve elin gövdeyi kesme riski vardır); amaç
+ * "diğer kol da işin içinde" okumasıdır. `OUT` negatiftir: el gövdeye doğru,
+ * yani tutan ele doğru gelir.
+ */
+const THROW_BRACE_FWD = 0.2;
+const THROW_BRACE_UP = 0.3;
+const THROW_BRACE_OUT = 0.28;
 /** Gövde: hazırlıkta geriye yaslanır, bırakışta öne kapanır (rad). */
 const THROW_LEAN_BACK = 0.13;
 const THROW_LEAN_FWD = 0.3;
@@ -803,6 +825,17 @@ export interface BombActionPoseInput {
   progress: number;
   /** Bombanın ELDEN ÇIKTIĞI ilerleme (bırakış/toprağa bırakma anı). */
   release: number;
+  /**
+   * FIRLATMADA ISINMA (kurma) fazının bittiği ilerleme (0..1). Verilmezse
+   * eski kısa penceresi (`THROW_WINDUP_END`) kullanılır — yani bu alanı
+   * göndermeyen çağıranlar eskisi gibi davranır.
+   *
+   * NEDEN DIŞARIDAN: ultinin şarj süresi oyun kuralıdır (`bombKit` →
+   * `BOMB_ULT_CHARGE_AT`) ve bombanın güç çekirdeği de AYNI eşiği okur
+   * (bkz. `SamuraiBomb` → `setAlert`). Sabit burada yazılsaydı kol ile bomba
+   * şarjı ayrı yerden sürülür ve bir gün kaçınılmaz olarak kayardı.
+   */
+  charge?: number;
   /** true → bomba SAĞ elde, yani aksiyonu yapan el sağdır. */
   right: boolean;
   /**
@@ -884,9 +917,19 @@ export function applyBombActionPose(
   if (input.kind === "throw") {
     // ── FIRLATMA ────────────────────────────────────────────────
     // Hazırlıkta geriye yaslan, bırakışta öne kapan, takipte doğrul.
-    const windup = smoothstep(0, THROW_WINDUP_END, p);
+    //
+    // ISINMA PENCERESİ dışarıdan gelebilir (`charge`, bkz. `bombKit` →
+    // `BOMB_ULT_CHARGE_AT`): ultinin şarj fazı uzundur ve bombanın güç
+    // çekirdeği de aynı eşikte alarm tonuna geçer, yani "kol kuruldu" ile
+    // "bomba doldu" AYNI anda okunur.
+    const chargeEnd = THREE.MathUtils.clamp(
+      input.charge ?? THROW_WINDUP_END,
+      0.06,
+      release - 0.02,
+    );
+    const windup = smoothstep(0, chargeEnd, p);
     // Kamçı: kol uzun süre kurulu kalır, sonra boşalır (bkz. `WHIP_POW`).
-    const whip = Math.pow(smoothstep(THROW_WINDUP_END, release, p), WHIP_POW);
+    const whip = Math.pow(smoothstep(chargeEnd, release, p), WHIP_POW);
     const follow = smoothstep(release, THROW_FOLLOW_END, p);
     const settle = smoothstep(THROW_FOLLOW_END, 1, p);
     bow =
@@ -908,6 +951,13 @@ export function applyBombActionPose(
     fwdHold = -THROW_WINDUP_BACK * windup;
     upHold = THROW_WINDUP_UP * windup;
     outHold = THROW_WINDUP_OUT * windup;
+    // 💪 ZORLANMA TİTREMESİ: ağır bomba kurulu kolda sabit durmaz — kol
+    // kısa periyotlu, küçük genlikli bir titreme yapar ve kamçıya kadar büyür.
+    // (Kemik çözücüden SONRA uygulanır; bomba konumu avuçtan okunduğu için
+    // titreme bombaya da geçer — "zor tutuyor" okuması bundan gelir.)
+    const strain = Math.pow(windup, 2) * (1 - whip) * THROW_STRAIN;
+    fwdHold += Math.sin(time * THROW_STRAIN_HZ) * strain;
+    upHold += Math.sin(time * THROW_STRAIN_HZ * 1.37 + 1.1) * strain * 0.7;
     fwdHold = THREE.MathUtils.lerp(fwdHold, THROW_RELEASE_FWD, whip);
     upHold = THREE.MathUtils.lerp(upHold, THROW_RELEASE_UP, whip);
     outHold = THREE.MathUtils.lerp(outHold, THROW_RELEASE_OUT, whip);
@@ -916,14 +966,23 @@ export function applyBombActionPose(
       upHold = THREE.MathUtils.lerp(upHold, -THROW_FOLLOW_DOWN, follow);
       outHold = THREE.MathUtils.lerp(outHold, THROW_RELEASE_OUT, follow);
     }
-    // Boştaki kol HEDEFİ GÖSTERİR: atış boyunca nişan yönüne uzanır, takipte
-    // gevşer.
+    // Boştaki kol: ÖNCE TOPA GELİR, SONRA HEDEFİ GÖSTERİR.
+    //
+    // NEDEN İKİ FAZLI: tek başına "işaret eden" boş kol, atışı tek elle
+    // yapılan hafif bir hareket gibi gösteriyordu. Ultide karakter bombayı
+    // İKİ elle kurar: boş el şarj boyunca topa gelir (kol aşağı-yana açılmaz,
+    // ağırlığı paylaşır), ısınmanın ikinci yarısında hedefe açılır ve
+    // bırakışta nişan yönünde uzanır. `grab` ile `point` C0 sürekli
+    // harmanlandığı için poz hiçbir karede sıçramaz.
     const point =
-      smoothstep(0, THROW_WINDUP_END, p) *
+      smoothstep(0, chargeEnd, p) *
       (1 - smoothstep(release, THROW_FOLLOW_END, p));
-    fwdOff = THROW_AIM_FWD * point;
-    upOff = THROW_AIM_UP * point;
-    // Tutan el bırakışta açılır, boştaki el işaret ederken gevşek kalır.
+    const grab = windup * (1 - point);
+    fwdOff = THROW_AIM_FWD * point - THROW_BRACE_FWD * grab;
+    upOff = THROW_AIM_UP * point + THROW_BRACE_UP * grab;
+    outOff = -THROW_BRACE_OUT * grab;
+    // Tutan el bırakışta açılır; boştaki el topu tutarken KAPALI, hedef
+    // gösterirken gevşektir.
     gripHold = 1 - GRIP_OPEN * smoothstep(release, release + 0.1, p);
     gripOff = 1 - 0.55 * point;
   } else if (input.kind === "place") {

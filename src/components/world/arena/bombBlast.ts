@@ -21,6 +21,16 @@ export interface BombBlastEvent {
   y: number;
   /** Patlamanın GÖRSEL yarıçapı (dünya px) = `damageR × FIREBALL_VFX_SCALE`. */
   r: number;
+  /**
+   * GÜÇ KADEMESİ: 1 = yerdeki tuzak (normal barut), 2 = FIRLATILAN bomba
+   * (samuray ultisi).
+   *
+   * NEDEN AYRI BİR ALAN: ultinin "daha güçlü" olduğu hasar sayısından değil
+   * EKRANDAN okunmalıdır. Aynı patlama katmanı iki farklı kütle üretir: ultide
+   * ek şok kademesi, beyaz-sıcak merkez parlaması, daha geniş taş yağmuru ve
+   * mesafeden bağımsız kamera sarsıntısı devreye girer (bkz. `BombBlastVfx`).
+   */
+  power: number;
 }
 
 /** Aynı anda kuyrukta bekleyebilecek en fazla olay. */
@@ -31,9 +41,14 @@ const queue: BombBlastEvent[] = [];
 const EMPTY: BombBlastEvent[] = [];
 
 /** Bir barut patlamasını görsel katmana bildirir (bkz. `pushBombBlastFx`). */
-export function pushBombBlastEvent(x: number, y: number, r: number): void {
+export function pushBombBlastEvent(
+  x: number,
+  y: number,
+  r: number,
+  power = 1,
+): void {
   if (queue.length >= MAX_QUEUE) queue.shift();
-  queue.push({ x, y, r });
+  queue.push({ x, y, r, power });
 }
 
 /**

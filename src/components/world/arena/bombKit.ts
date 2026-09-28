@@ -16,10 +16,23 @@
 //     açılmış olurdu (bomba elden çıkıp ışınlanırdı); tuzak noktası bu yüzden
 //     karakterin KENDİ konumudur ve el ile yere konan top birebir oraya iner.
 //
-//   · ULTİ — **BOMBA FIRLATMA**: karakter bombayı nişan yönünde savurur;
-//     mermi menzil sonunda patlar ve `BOMB_THROW_BLAST_PX` yarıçapında hasar
-//     verir. Fırlatma mantığı `SkillComponent.fireBombThrow` içinde, mermi
-//     görseli `arena/ProjectilePool` içinde (`proj.bomb`).
+//   · ULTİ — **BOMBA FIRLATMA**: karakter bombayı iki fazda kullanır.
+//
+//       1. KURMA/ISINMA (`BOMB_ULT_CHARGE_AT`e kadar): bomba elde tutulur,
+//          kol geriye kurulur, gövde geriye yaslanır ve SALINIR; bu karakterin
+//          en ağır hareketi olduğu için "uğraşma" görünmelidir. Bombanın güç
+//          çekirdeği de bu fazda alarm tonuna geçer (halkalar kızıla kayar,
+//          şok dalgası sıklaşır, fünye kıvılcım saçar) — yani şarj hem bedende
+//          hem bombada okunur (bkz. `engine/SamuraiBomb` → `setAlert`).
+//       2. SAVURMA (`BOMB_RELEASE_AT`te bırakış): kol kamçı gibi öne savrulur,
+//          bomba elden çıkar ve mermi olarak uçar.
+//
+//     Mermi menzil sonunda patlar, `BOMB_THROW_BLAST_PX` yarıçapında hasar
+//     verir ve TUZAKTAN DAHA GÜÇLÜ bir patlama kurar: daha geniş VFX
+//     katmanları + haritayı oynatan kamera sarsıntısı (bkz. `arena/shared` →
+//     `pushBombBlastFx(power = 2)`). Fırlatma mantığı
+//     `SkillComponent.fireBombThrow` içinde, mermi görseli
+//     `arena/ProjectilePool` içinde (`proj.bomb`).
 //
 // NEDEN AYRI MODÜL: tuzak, iki arenada da (bot + PvP) aynı kurallarla
 // işlemelidir. Simülasyon burada SAF ve React'sizdir; sahne yalnızca listeyi
@@ -59,13 +72,35 @@ export const BOMB_TRAP_DAMAGE = 300;
 
 /** Ulti bombasının uçuş hızı (px/s) — diğer mermilerden yavaş, "savrulma". */
 export const BOMB_THROW_SPEED = 300;
-/** Ulti bombasının patlama yarıçapı (px). */
-export const BOMB_THROW_BLAST_PX = 165;
+/** Ulti bombasının patlama yarıçapı (px) — BÜYÜTÜLDÜ (165 → 190).
+ *  Ulti bir bölge kontrol aracıdır: menzil sonunda "oraya artık girilmez"
+ *  demeli. Tuzak (140) ile arasındaki fark korunur, yani iki tehdit hâlâ
+ *  ayırt edilebilir. */
+export const BOMB_THROW_BLAST_PX = 190;
 /** Ulti bombasının hasarı — yere vuruş ultisinden (360) yüksek: isabet etmesi
- *  daha zor (uçuş + menzil sonu), karşılığı daha ağır olmalı. */
-export const BOMB_THROW_DAMAGE = 460;
-/** Ulti animasyon süresi (sn) — Kraliyet ultisiyle aynı zamanlama. */
-export const BOMB_ULT_S = 0.82;
+ *  daha zor (uçuş + menzil sonu), karşılığı daha ağır olmalı.
+ *  YÜKSELTİLDİ (460 → 620): şarj + uçuş + menzil sonu zincirinin ödülü
+ *  "az hasar" ile ödenirse ulti kullanmanın anlamı kalmıyordu. */
+export const BOMB_THROW_DAMAGE = 620;
+/** Ulti animasyon süresi (sn) — UZATILDI (0.82 → 1.35).
+ *
+ *  NEDEN: eski 0.82 sn'lik süre içinde kurma fazı yalnız ~0.28 sn kalıyordu;
+ *  karakter bombayı sanki aniden fırlatıveriyordu (oyuncu geri bildirimi:
+ *  "ulti için biraz daha uğraşsın"). Yeni süre iki anlamlı faza bölünür:
+ *    · ISINMA  0 → 0.61 sn  (`BOMB_ULT_CHARGE_AT` = 0.45)
+ *    · SAVURMA 0.61 → 0.84 sn (bırakış `BOMB_RELEASE_AT` = 0.62)
+ *    · takip + toparlanma → 1.35 sn
+ *  Ulti bir "yetenek" değil bir OLAY olduğu için bu uzunluk normaldir ve
+ *  hazırlık boyunca hareket serbesttir (bkz. sahne döngüleri). */
+export const BOMB_ULT_S = 1.35;
+/**
+ * ISINMA (kurma) fazının bittiği ilerleme oranı (0..1) — kolun geriye
+ * kurulduğu ve gövdenin geriye yaslandığı evrenin sonu; bu andan sonra kamçı
+ * boşalır. Kemik katmanı (`engine/BombArmPose`) ve bombanın güç çekirdeği
+ * (bkz. `SamuraiBomb` → `setAlert`) AYNI eşiği okur, yoksa şarj ile kol
+ * birbirinden kayardı.
+ */
+export const BOMB_ULT_CHARGE_AT = 0.45;
 /** Bombanın ELDEN BIRAKILDIĞI ilerleme oranı (0..1) — ulti ile aynı eşik. */
 export const BOMB_RELEASE_AT = 0.62;
 /** Bomba elden çıktıktan (fırlatma/bırakma) sonra elin boş kaldığı süre (sn).
@@ -74,11 +109,11 @@ export const BOMB_RELEASE_AT = 0.62;
  *
  *  SÜRE AKSİYONUN KUYRUĞUNA GÖRE SEÇİLİR (`0.55`): bu süre
  *  aksiyonun bitişinden ÖNCE dolarsa, kemik katmanı hâlâ bombayı elden
- *  çıkarılmış sayarken sahne onu geri getirir ve top elin havada dururken
+ *  çıkarılmış sayarken sahne onu geri getirir ve top elin havadırken
  *  belirir (kemik katmanı `visible`ı her kare kendi yazıyor — bkz.
  *  `SamuraiBomb` kare döngüsü). Kalan pay = "boş el":
- *    · fırlatma: bırakış 0.31 sn (`BOMB_ULT_S`×`BOMB_RELEASE_AT`),
- *      geri geliş 0.31+0.55 = 0.86 → aksiyon bitişinden (0.82) 0.04 sn sonra,
+ *    · fırlatma: bırakış 0.84 sn (`BOMB_ULT_S`×`BOMB_RELEASE_AT`),
+ *      geri geliş 0.84+0.55 = 1.39 → aksiyon bitişinden (1.35) 0.04 sn sonra,
  *    · yere bırakma: yere değme 0.59 sn (`BOMB_PLACE_S`×`BOMB_PLACE_DROP_AT`),
  *      geri geliş 0.59+0.55 = 1.14 → aksiyon bitişinden (0.95) 0.19 sn sonra.
  *  Yani kol ne yaptıysa biter, el bir an boş kalır ve hokkabazlık SIFIRDAN
@@ -174,6 +209,7 @@ export function bombActionFor(
   const frame = out ?? { kind: "empty", progress: 0 };
   frame.release = undefined;
   frame.land = undefined;
+  frame.charge = undefined;
   if (place > 0) {
     frame.kind = "place";
     frame.progress = 1 - place / BOMB_PLACE_S;
@@ -182,6 +218,8 @@ export function bombActionFor(
     frame.kind = "throw";
     frame.progress = 1 - throwT / BOMB_ULT_S;
     frame.release = BOMB_RELEASE_AT;
+    // Şarj penceresi: bu eşiğe kadar bomba ELDE ve gövde kurulu kalır.
+    frame.charge = BOMB_ULT_CHARGE_AT;
   } else {
     frame.kind = "empty";
     frame.progress = 0;

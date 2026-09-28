@@ -691,7 +691,10 @@ export default function PvpBattleScene({
       case "explode": {
         b.castFxT = 1;
         // 🧨 Fırlatılan bomba sıcak barutla, Ateş Topu soğuk alevle patlar.
-        if (ev.bomb) vfx.bombBlast(ev.x, ev.y, ev.r);
+        // RAKİBİN ultisi de bizim ekranda AYNI güçle patlar (`power = 2`):
+        // ultinin ağırlığı yalnız atan tarafın ekranında kalmaz, dayak yiyen
+        // de haritanın oynadığını görür (`ev.bomb` zaten senkron geliyor).
+        if (ev.bomb) vfx.bombBlast(ev.x, ev.y, ev.r, 2);
         else vfx.coldFlame(ev.x, ev.y, ev.r);
         if (ev.hit) damageMe(ev.dmg);
         break;
@@ -918,7 +921,8 @@ export default function PvpBattleScene({
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
     // 🧨 Fırlatılan bomba barutla, Ateş Topu soğuk alevle patlar.
     // Hasar yarıçapı (r) aynı kalır — sadece görsel değişir.
-    if (pr.bomb) vfx.bombBlast(pr.x, pr.y, r);
+    // `power = 2`: samuray ultisi kendi ekranımızda da "sağlam" patlar.
+    if (pr.bomb) vfx.bombBlast(pr.x, pr.y, r, 2);
     else vfx.coldFlame(pr.x, pr.y, r);
     const b = bot.current;
     const hit = Math.hypot(b.x - pr.x, b.y - pr.y) < r;

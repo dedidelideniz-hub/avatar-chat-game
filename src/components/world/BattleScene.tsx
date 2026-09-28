@@ -862,7 +862,10 @@ export default function BattleScene({
     playSound("explode", { volume: 0.9, rate: 0.85 + Math.random() * 0.3 });
     // 🧨 Fırlatılan bomba: barut patlaması (sıcak, tozlu) — soğuk alev
     // büyüsünden KASITLI olarak farklı, iki tehdit tek bakışta ayrılsın.
-    if (pr.bomb) vfx.bombBlast(pr.x, pr.y, r);
+    // `power = 2`: bu SAMURAY ULTİSİDİR — geniş kadraj, ek şok halkası,
+    // beyaz-sıcak merkez parlaması ve haritayı oynatan kamera sarsıntısı
+    // (bkz. `pushBombBlastFx`). Yerdeki tuzak kademe 1'de kalır.
+    if (pr.bomb) vfx.bombBlast(pr.x, pr.y, r, 2);
     // Ateş Topu: fiziksel turuncu ateş yerine antik büyüyle harmanlanmış
     // ruhani / soğuk alev patlaması. Hasar yarıçapı (r) aynı kalır; bloom
     // VFX katmanında aynı karede tetiklenir.

@@ -11,6 +11,7 @@
 // `fxs` listesi yerine posta kutusuna yazılır: bkz. `./bombBlast` (yazan) ve
 // `./BombBlastVfx` (çizen).
 import { pushBombBlastEvent } from "./bombBlast";
+import { pushCameraShake } from "./cameraShake";
 
 /** World px → 3D units.
  *  Enlarged battlefield: the whole 5v5 terrain is now spread over a much
@@ -351,6 +352,20 @@ export const BOMB_PALETTE = {
   rock: "#4a4238", // savrulan taş parçaları (zeminden kopan kütle)
 } as const;
 
+/* ── 💥 KAMERA SARSINTISI kademeleri (bkz. `./cameraShake`) ────────────────
+ * Genlik DÜNYA BİRİMİNDEDİR (kamera oyuncunun ~6.7 birim uzağında durur;
+ * 0.2'lik kayma ekranda ~%10 oynama demektir). Yarıçaplar sim px'tir ve
+ * mesafe sönümünü belirler.
+ *
+ * TUZAK: yalnız yakınındaki oyuncuyu dürter (~12 birim) — sık kullanılan bir
+ * yetenek her seferinde haritayı sallarsa okunurluk düşer.
+ * ULTİ: hasar alanının çok ötesine ulaşır (~36 birim) ve genliği yüksektir;
+ * "harita yerinden oynadı" hissi buradan gelir, bastığın anın ödülü odur. */
+const TRAP_SHAKE_AMOUNT = 0.055;
+const TRAP_SHAKE_REACH = 620;
+const ULT_SHAKE_AMOUNT = 0.2;
+const ULT_SHAKE_REACH = 1800;
+
 /**
  * 🧨 BARUT PATLAMASI (bomba tuzağı + fırlatılan bomba) — sıcak VFX.
  *
@@ -368,14 +383,27 @@ export const BOMB_PALETTE = {
  * Görsel yarıçap hasar yarıçapından KÜÇÜKTÜR (aynı `FIREBALL_VFX_SCALE`
  * kuralı): gerçek hasar alanını zemin halkası ve tuzakta kurulunca görünen
  * tehlike diski anlatır; patlama katmanı görüşü kapatmasın diye sıkı tutulur.
+ *
+ * `power` GÜÇ KADEMESİDİR (bkz. `bombBlast` → `BombBlastEvent.power`):
+ *   1 = yerdeki tuzak  → bugüne kadarki patlama,
+ *   2 = fırlatılan bomba (SAMURAY ULTİSİ) → daha geniş kadraj, ek şok
+ *       kademesi, daha çok alev/kor/duman ve MESAFEDEN BAĞIMSIZ kamera
+ *       sarsıntısı. Ultinin "sağlam patladı" okuması buradan gelir; hasar
+ *       sayısı tek başına ekranda güç hissi vermez.
  */
 export function pushBombBlastFx(
   add: (fx: BattleFx) => void,
   x: number,
   y: number,
   damageR: number,
+  power = 1,
 ): void {
-  const r = damageR * FIREBALL_VFX_SCALE;
+  const ult = power >= 2;
+  // Ulti yarıçapı BİR TIK büyür (1.15×) — asıl farkı ölçek değil, EK KATMANLAR
+  // ve kamera sarsıntısı yaratır. Çarpanı şişirmek patlamayı kadraja
+  // sığdırmaz hâle getirirdi; oysa "daha güçlü" hissi halkaların, parlamanın
+  // ve taşların fazlalığından okunur.
+  const r = damageR * FIREBALL_VFX_SCALE * (ult ? 1.15 : 1);
   // ══ İKİ KADEMELİ ŞOK DALGASI ══
   // İç halka patlamanın AYAK İZİDİR (hızlı, sıcak ton), dış halka havayı iten
   // geniş toz dalgasıdır (yavaş, solgun — duman tonu). Tek halka zemine
@@ -399,13 +427,27 @@ export function pushBombBlastFx(
     grow: r * 2.05,
     color: BOMB_PALETTE.smoke,
   });
+  // ══ ÜÇÜNCÜ KADEME (yalnız ULTI) ══
+  // Uzun ömürlü, çok geniş ve sıcak tonlu bir dış halka: patlamanın "haritaya
+  // yayıldığı" okuması budur. Tuzakta yok — iki tehdit tek bakışta ayrılsın.
+  if (ult) {
+    add({
+      kind: "ring",
+      x,
+      y,
+      ttl: 1.1,
+      maxTtl: 1.1,
+      grow: r * 2.9,
+      color: BOMB_PALETTE.blast,
+    });
+  }
   add({
     kind: "burst",
     x,
     y,
-    ttl: 0.36,
-    maxTtl: 0.36,
-    grow: r * 0.8,
+    ttl: ult ? 0.5 : 0.36,
+    maxTtl: ult ? 0.5 : 0.36,
+    grow: r * (ult ? 0.95 : 0.8),
     color: BOMB_PALETTE.blast,
   });
   // ══ ŞOK DALGASI · TAŞ PARÇALARI · KILIÇ KESİĞİ ══
@@ -414,9 +456,22 @@ export function pushBombBlastFx(
   // fizik + örnekleme) katmanlardır ve hepsi tek bir bileşende toplanır
   // (bkz. `arena/BombBlastVfx`). Buraya yalnızca "bir patlama oldu" bilgisi
   // bırakılır — ölçüler ve ömürler o bileşenin içinde ayarlanır.
-  pushBombBlastEvent(x, y, r);
-  // Alev pufları: sıcak, kısa ömürlü (patlamanın ilk yarısı).
-  for (let i = 0; i < 7; i++) {
+  pushBombBlastEvent(x, y, r, power);
+  // 💥 KAMERA SARSINTISI: patlamanın AĞIRLIĞI. Ultide etki yarıçapı oyunun
+  // tamamına yakındır (uzaktan bile hissedilir), tuzakta yalnız yakınında.
+  // Salınım mesafeyle sönümlenir ve tek atımlık bir darbe olarak söner —
+  // sürekli sallanan bir kamera haritayı oynatmak değil, okunmaz kılmaktır.
+  pushCameraShake(
+    x,
+    y,
+    ult ? ULT_SHAKE_AMOUNT : TRAP_SHAKE_AMOUNT,
+    ult ? ULT_SHAKE_REACH : TRAP_SHAKE_REACH,
+  );
+  // Alev pufları: sıcak, kısa ömürlü (patlamanın ilk yarısı). Ultide daha çok
+  // puf ama duman havuzunu (`SMOKE_POOL`) boğmayacak kadar: pay havuzun
+  // tamamını değil, tepesini hedefler.
+  const flamePuffs = ult ? 10 : 7;
+  for (let i = 0; i < flamePuffs; i++) {
     const life = 0.24 + Math.random() * 0.2;
     add({
       kind: "smoke",
@@ -432,7 +487,8 @@ export function pushBombBlastFx(
   // NEDEN GEREKLİ: alev pufları 0.24-0.44 sn'de söner, barut dumanı hemen
   // koyulaşır; aradaki "hâlâ sıcak" okumasını bu kıvılcımlar taşır. Küçük
   // büyüme + kısa ömür → patlamanın kuyruğu uzar, görüş kapanmaz.
-  for (let i = 0; i < 5; i++) {
+  const emberRain = ult ? 7 : 5;
+  for (let i = 0; i < emberRain; i++) {
     const life = 0.3 + Math.random() * 0.28;
     add({
       kind: "smoke",
@@ -445,7 +501,8 @@ export function pushBombBlastFx(
     });
   }
   // Barut dumanı: koyu, uzun ömürlü — patlama geçtikten sonra da kalır.
-  for (let i = 0; i < 10; i++) {
+  const powderSmoke = ult ? 14 : 10;
+  for (let i = 0; i < powderSmoke; i++) {
     const life = 0.7 + Math.random() * 0.6;
     add({
       kind: "smoke",

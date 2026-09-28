@@ -203,6 +203,15 @@ export interface BombActionFrame {
   release?: number;
   /** Yere bırakmada bombanın YERE DEĞDİĞİ ilerleme (tuzak o anda doğar). */
   land?: number;
+  /**
+   * FIRLATMADA ISINMA (kurma) fazının bittiği ilerleme (0..1) — bu eşiğe
+   * kadar bomba ELDE ve gövde kurulu kalır, sonra kamçı boşalır.
+   *
+   * TEK EŞİK İKİ KATMANI SÜRER: kol pozu (`engine/BombArmPose`) ve bombanın
+   * güç çekirdeğinin şarj tonu (aşağıdaki `setAlert`) AYNI değeri okur; şarj
+   * ile kol birbirinden kayamaz (bkz. `arena/bombKit` → `BOMB_ULT_CHARGE_AT`).
+   */
+  charge?: number;
 }
 
 /**
@@ -393,22 +402,41 @@ export function useSamuraiBomb(
   // 20. karede bir kez tazeleniyordu ve ilk 20 kare boyunca top kalibrasyonsuz
   // konumda kalıp o karede sıçrıyordu.)
   useFrame((_, dt) => {
-    // Ateş ve gövde hâlesi her karede canlı kalır (titreme, ışık, nabız).
-    instanceRef.current?.update(dt);
-    const grip = bombRef.current;
     const hand = handRef.current;
+    const other = otherHandRef.current;
+    const armRig = armRigRef.current;
+
+    // 🧨 AKSİYON KAPISI: yalnız kol zinciri ve iki el varsa aksiyon oynar;
+    // yoksa (tek elli rig) hokkabazlık eski hâlinde devam eder.
+    // Çerçeve, bombadan ÖNCE okunur: şarj tonu bu karede uygulanmalıdır.
+    const action = armRig && other && hand ? (readAction?.() ?? null) : null;
+    const kind = action?.kind ?? null;
+
+    // ⚡ ŞARJ TONU: ultinin ISINMA fazında bombanın güç çekirdeği alarm
+    // durumuna geçer — halkalar amberden kızıla kayar, şok dalgası sıklaşır,
+    // gövdenin ısısı yükselir ve fünye kıvılcım saçar (bkz.
+    // `engine/BombEnergyField`). Yani "bomba doluyor" bilgisi hem BEDENDE
+    // (kolun kurulması, gövdenin geriye yaslanması) hem BOMBADA okunur ve
+    // ikisi de aynı eşikten (`BombActionFrame.charge`) sürülür.
+    // Hokkabazlıkta, yere bırakmada ve boş elde ton 0'dır: elde taşınan bomba
+    // sakin amber kalır.
+    const chargeEnd = action?.kind === "throw" ? (action.charge ?? 0) : 0;
+    const charging =
+      action && chargeEnd > 0
+        ? THREE.MathUtils.clamp(action.progress / chargeEnd, 0, 1)
+        : 0;
+    // Ateş, gövde hâlesi ve güç çekirdeği her karede canlı kalır (titreme,
+    // nabız, şarj tonu).
+    const instance = instanceRef.current;
+    instance?.setAlert(charging);
+    instance?.update(dt);
+
+    const grip = bombRef.current;
     if (!grip || !hand) return;
 
-    const other = otherHandRef.current;
     const t = scratch.current;
-    const armRig = armRigRef.current;
     // Salınım saati aksiyondan bağımsız akar (bkz. `swayTime`).
     swayTime.current += dt;
-
-    // 🧨 AKSiYON KAPISI: yalnız kol zinciri ve iki el varsa aksiyon oynar;
-    // yoksa (tek elli rig) hokkabazlık eski hâlinde devam eder.
-    const action = armRig && other ? (readAction?.() ?? null) : null;
-    const kind = action?.kind ?? null;
     if (kind !== actionKind.current) {
       actionKind.current = kind;
       // Bomba HANGİ elde ise o el fırlatır / yere koyar: hokkabazlık son
@@ -480,6 +508,8 @@ export function useSamuraiBomb(
           kind: action.kind,
           progress: p,
           release,
+          // Isınma penceresi sim'den gelir (bkz. `BombActionFrame.charge`).
+          charge: action.charge,
           right,
           intro,
           from: { right: actionFromR.current, left: actionFromL.current },

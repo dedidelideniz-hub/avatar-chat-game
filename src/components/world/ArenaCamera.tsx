@@ -47,6 +47,8 @@ import {
   clearTowerScreenProjection,
   setTowerScreenProjection,
 } from "@/engine/BattleTowers";
+// 💥 Patlamaların bıraktığı kamera darbeleri (bkz. `arena/cameraShake`).
+import { stepCameraShake } from "@/components/world/arena/cameraShake";
 
 const S = 50; // px per 3D unit — must match Arena3D
 const ARENA_W = 34;
@@ -421,7 +423,15 @@ export function useArenaCamera(
     const camX = smoothed.current.x;
     const camY = smoothed.current.y + Math.sin(el) * dist;
     const camZ = smoothed.current.z + Math.cos(el) * dist;
-    camera.position.set(camX, camY, camZ);
+    // 💥 SARSINTI — lookAt'ten ÖNCE konuma eklenir, sonra bakış yeniden
+    // kurulur: yoksa `lookAt` kamerayı tekrar hedefe çevirip kaymayı silerdi.
+    // Darbe mesafeyle sönümlenir (uzaktaki bir tuzak kendi ekranını sarsmaz),
+    // yatırma ise EN ÇOK okunan bileşendir: kamera kaymadan öte "titrer".
+    // Genlik `cameraShake` içinde sınırlıdır — üst üste binen ultiler bile
+    // haritayı okunmaz hâle getiremez.
+    const shake = stepCameraShake(dt, smoothed.current.x, smoothed.current.z);
+    camera.position.set(camX + shake.x, camY + shake.y, camZ + shake.z);
     camera.lookAt(camX, LOOK_Y, smoothed.current.z);
+    if (shake.roll !== 0) camera.rotateZ(shake.roll);
   });
 }

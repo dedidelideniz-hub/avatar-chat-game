@@ -79,8 +79,14 @@ export interface VfxBus {
   crack(x1: number, y1: number, x2: number, y2: number, ttl?: number): void;
   /** Ateş Topu patlaması (soğuk alev büyüsü). */
   coldFlame(x: number, y: number, damageR: number): void;
-  /** 🧨 Barut patlaması (bomba tuzağı + fırlatılan bomba) — sıcak, tozlu. */
-  bombBlast(x: number, y: number, damageR: number): void;
+  /**
+   * 🧨 Barut patlaması (bomba tuzağı + fırlatılan bomba) — sıcak, tozlu.
+   *
+   * `power` güç kademesidir: 1 = yerdeki tuzak, 2 = fırlatılan bomba (ulti).
+   * Ulti daha geniş katmanlar, ek şok halkası ve kamera sarsıntısı üretir
+   * (bkz. `pushBombBlastFx`); verilmezse tuzak davranışı korunur.
+   */
+  bombBlast(x: number, y: number, damageR: number, power?: number): void;
   /** KAN FIŞKIRMASI: bıçak gövdeye girdiğinde kısa, koyu kırmızı püskürme
    *  (yakın dövüş bitiricisinin okunurluğu buna bağlı). */
   blood(x: number, y: number, size?: number): void;
@@ -133,10 +139,11 @@ export function createVfxBus(sink: (fx: BattleFx) => void): VfxBus {
       pushColdFlameFx(sink, x, y, damageR);
       pulseBloom(0.7);
     },
-    bombBlast: (x, y, damageR) => {
-      pushBombBlastFx(sink, x, y, damageR);
-      // Barut, arenadaki en parlak ışık olayıdır (soğuk alevden yüksek).
-      pulseBloom(0.85);
+    bombBlast: (x, y, damageR, power = 1) => {
+      pushBombBlastFx(sink, x, y, damageR, power);
+      // Barut, arenadaki en parlak ışık olayıdır (soğuk alevden yüksek);
+      // ultide nabız tepeye oturur: patlama karenin tamamını ışıtır.
+      pulseBloom(power >= 2 ? 1 : 0.85);
     },
     blood: (x, y, size = 74) => {
       // "smoke" türü RENK taşır (3D katman sprite rengini doğrudan fx.color'dan
