@@ -163,12 +163,74 @@ export const TREES: TreeDef[] = [
 ];
 
 // ─── TREE COLORS ───
+// Pastel yaprak paleti — çim tonlarıyla (#7EC850 / #6EC045) aynı ailede
+// kalsın diye doygunluk düşürüldü; çiğ neon yeşil görünüm kaldırıldı.
 export const TREE_FOLIAGE_COLORS = [
-  ["#4cc040", "#3aa030"], // vibrant green
-  ["#2eb83e", "#1e9830"], // teal green
-  ["#60c838", "#48a828"], // yellow-green
+  ["#74C155", "#5A9E42"], // pastel yeşil (ana)
+  ["#68B44C", "#4F8F3C"], // yumuşak koyu yeşil
+  ["#82CC5E", "#63A845"], // açık sarı-yeşil
 ];
 export const TREE_TRUNK_COLOR = "#7a5230";
+
+/* ════════════════════════════════════════════════════════════
+   ÇİM KATMANI — yeşil alanların zemin kalitesi
+   Düz parlak yeşil plane yerine: iki tonlu karo dokusu + ince bordür
+   + rastgele dağılmış low-poly çim kümeleri.
+   ════════════════════════════════════════════════════════════ */
+
+/** Çim renk paleti — pastel, göz yormayan yeşil. */
+export const GRASS_TONES = {
+  /** Karo açık tonu. */
+  light: "#7EC850",
+  /** Karo koyu tonu (satranç deseninin ikinci yeşili). */
+  dark: "#6EC045",
+  /** Çim kümelerinde kullanılan açık bıçak tonu. */
+  bladeLight: "#8FD85F",
+  /** Çim kümelerinde kullanılan koyu bıçak tonu. */
+  bladeDark: "#5DA838",
+  /** Kaldırıma temas eden kenardaki ince koyu yeşil bordür. */
+  border: "#4C8A31",
+} as const;
+
+/** Çim karosu kenarı (dünya birimi) — doku repeat'i bundan türetilir. */
+export const GRASS_TILE = 0.5;
+
+/** Çim şeritlerinin kaldırım seviyesinden yüksekliği (ince kenar/derinlik). */
+export const GRASS_LIFT = 0.07;
+
+/** Çim kümesi (grass tuft) dağıtım bölgesi. */
+export interface GrassTuftZoneDef {
+  /** Şerit merkezi (Z). */
+  z: number;
+  /** Şerit derinliği (Z) — kümeler bu bandın içine dağıtılır. */
+  depth: number;
+  /** Birim² başına küme yoğunluğu. */
+  density: number;
+  /** Tohum — dağılım her karede aynı kalsın. */
+  seed: number;
+}
+
+export const GRASS_TUFT_ZONES: GrassTuftZoneDef[] = [
+  {
+    z: (ZONE.northGrassTop + ZONE.northGrassBot) / 2,
+    depth: ZONE.northGrassBot - ZONE.northGrassTop,
+    density: 3.4,
+    seed: 911,
+  },
+  {
+    z: (ZONE.southGrassTop + ZONE.southGrassBot) / 2,
+    depth: ZONE.southGrassBot - ZONE.southGrassTop,
+    density: 3.4,
+    seed: 733,
+  },
+];
+
+/** Çim şeritlerinin kaldırıma bakan kenarları — bordür çizgileri. */
+export const GRASS_BORDERS: number[] = [
+  ZONE.northGrassBot, // kuzey çim → kuzey kaldırım
+  ZONE.southGrassTop, // güney kaldırım → güney çim
+  ZONE.southGrassBot, // güney çimin dış (arka) kenarı
+];
 
 // ─── LAMP POSITIONS ───
 export interface LampDef { x: number; z: number; }

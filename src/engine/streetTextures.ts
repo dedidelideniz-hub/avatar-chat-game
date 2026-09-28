@@ -113,6 +113,65 @@ export function makeAsphaltTexture(): THREE.CanvasTexture {
   });
 }
 
+/**
+ * Çim karosu — iki pastel yeşilin hafif satranç deseni (karo/grid).
+ *
+ * Doku 2×2 dünya birimini kaplar ve 4×4 karo içerir → karo kenarı 0.5 birim.
+ * Renkler tam olarak GRASS_TONES.light / GRASS_TONES.dark değerleridir; üstüne
+ * bıçak izleri + ince derz gölgesi biner, böylece düz/çiğ renk gibi durmaz.
+ */
+export function makeGrassTexture(
+  light = "#7EC850",
+  dark = "#6EC045",
+): THREE.CanvasTexture {
+  return textureOf(`grass|${light}|${dark}`, 256, 256, (g) => {
+    const s = 256;
+    const cells = 4;
+    const cell = s / cells;
+    const rnd = seeded(4242);
+
+    const rgb = (hex: string): [number, number, number] => [
+      parseInt(hex.slice(1, 3), 16),
+      parseInt(hex.slice(3, 5), 16),
+      parseInt(hex.slice(5, 7), 16),
+    ];
+    const lightRgb = rgb(light);
+    const darkRgb = rgb(dark);
+
+    for (let r = 0; r < cells; r++) {
+      for (let c = 0; c < cells; c++) {
+        const isLight = (r + c) % 2 === 0;
+        const base = isLight ? lightRgb : darkRgb;
+        // Karo içi çok hafif ton kayması → düz renk hissini kırar.
+        const jitter = (rnd() - 0.5) * 8;
+        g.fillStyle = `rgb(${Math.round(base[0] + jitter)},${Math.round(base[1] + jitter)},${Math.round(base[2] + jitter * 0.6)})`;
+        g.fillRect(c * cell, r * cell, cell, cell);
+
+        // Bıçak izleri — kısa, hafif eğik çizgiler.
+        for (let i = 0; i < 26; i++) {
+          const bx = c * cell + rnd() * cell;
+          const by = r * cell + rnd() * cell;
+          const len = 2.5 + rnd() * 5;
+          g.strokeStyle = rnd() > 0.5 ? "rgba(143,216,95,0.34)" : "rgba(93,168,56,0.30)";
+          g.lineWidth = 1;
+          g.beginPath();
+          g.moveTo(bx, by);
+          g.lineTo(bx + (rnd() - 0.5) * 3, by - len);
+          g.stroke();
+        }
+
+        // Karo derzi: üst/sol kenarda ince ışık, alt/sağ kenarda ince gölge.
+        g.fillStyle = "rgba(255,255,255,0.09)";
+        g.fillRect(c * cell, r * cell, cell, 1.5);
+        g.fillRect(c * cell, r * cell, 1.5, cell);
+        g.fillStyle = "rgba(52,96,32,0.16)";
+        g.fillRect(c * cell, r * cell + cell - 1.5, cell, 1.5);
+        g.fillRect(c * cell + cell - 1.5, r * cell, 1.5, cell);
+      }
+    }
+  });
+}
+
 /** Yumuşak radyal parıltı — lamba halesi ve zemine düşen ışık havuzu. */
 export function makeGlowTexture(): THREE.CanvasTexture {
   return textureOf("glow", 128, 128, (g) => {

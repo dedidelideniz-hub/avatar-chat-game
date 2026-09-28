@@ -32,6 +32,7 @@ import {
   STALLS,
   TREE_FOLIAGE_COLORS,
   TREE_TRUNK_COLOR,
+  GRASS_LIFT,
   S,
   type BuildingDef,
   type TreeDef,
@@ -41,6 +42,8 @@ import {
   type StallDef,
 } from "./constants";
 import {
+  GrassBorders,
+  GrassPatch,
   LampGlowFx,
   RoofDetail,
   ShopAwning,
@@ -50,6 +53,7 @@ import {
   StreetDirectionSigns,
   StreetFences,
   StreetFlowerPatches,
+  StreetGrassTufts,
   StreetHedges,
   StreetTrashCans,
   useStreetGroundTextures,
@@ -169,8 +173,8 @@ function Ground() {
   const roadMid = (ZONE.roadTop + ZONE.roadBot) / 2;
   const roadW = ZONE.roadBot - ZONE.roadTop;
 
-  // Kaldırım taşı + asfalt dokusu (tek kez üretilir, paylaşılır).
-  const { pavement, asphalt } = useStreetGroundTextures();
+  // Kaldırım taşı + asfalt + çim karosu dokusu (tek kez üretilir, paylaşılır).
+  const { pavement, asphalt, grass } = useStreetGroundTextures();
 
   // Subtle road dashes for pedestrian walkway feel
   const dashes = useMemo(() => {
@@ -181,17 +185,17 @@ function Ground() {
 
   return (
     <group>
-      {/* Base grass — full extent */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
-        <planeGeometry args={[WORLD_WIDTH + 4, WORLD_DEPTH + 4]} />
-        <meshStandardMaterial color="#3da830" roughness={1} />
-      </mesh>
+      {/* Arka plan çimi — dünya dışına taşan şerit (karo dokulu, seviye 0). */}
+      <GrassPatch x={0} z={0} w={WORLD_WIDTH + 4} d={WORLD_DEPTH + 4} texture={grass} lift={-0.01} />
 
-      {/* North grass overlay — slightly brighter */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, (ZONE.northGrassTop + ZONE.northGrassBot) / 2]} receiveShadow>
-        <planeGeometry args={[WORLD_WIDTH, ZONE.northGrassBot - ZONE.northGrassTop]} />
-        <meshStandardMaterial color="#55c040" roughness={1} />
-      </mesh>
+      {/* Kuzey çim şeridi — iki tonlu karo dokusu + hafif yükseklik. */}
+      <GrassPatch
+        x={0}
+        z={(ZONE.northGrassTop + ZONE.northGrassBot) / 2}
+        w={WORLD_WIDTH}
+        d={ZONE.northGrassBot - ZONE.northGrassTop}
+        texture={grass}
+      />
 
       {/* North sidewalk — warm stone (kaldırım taşı dokusu).
           `map` ile `color` ÇARPILIR; renk dokunun kendi tonunu bozmasın diye
@@ -221,11 +225,17 @@ function Ground() {
         <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
       </mesh>
 
-      {/* South grass overlay */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.002, (ZONE.southGrassTop + ZONE.southGrassBot) / 2]} receiveShadow>
-        <planeGeometry args={[WORLD_WIDTH, ZONE.southGrassBot - ZONE.southGrassTop]} />
-        <meshStandardMaterial color="#55c040" roughness={1} />
-      </mesh>
+      {/* Güney çim şeridi — karo dokusu + hafif yükseklik. */}
+      <GrassPatch
+        x={0}
+        z={(ZONE.southGrassTop + ZONE.southGrassBot) / 2}
+        w={WORLD_WIDTH}
+        d={ZONE.southGrassBot - ZONE.southGrassTop}
+        texture={grass}
+      />
+
+      {/* Çim bordürleri — kaldırıma temas eden kenarlarda ince koyu yeşil çizgi. */}
+      <GrassBorders />
 
       {/* ═══ Curbs ═══ */}
       {/* North sidewalk → road curb */}
@@ -479,10 +489,10 @@ function Tree3D({ def }: { def: TreeDef }) {
         <sphereGeometry args={[0.25, 8, 6]} />
         <meshStandardMaterial color={colors[1]} roughness={0.95} />
       </mesh>
-      {/* Shadow blob at base */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, 0]}>
+      {/* Shadow blob at base — yükseltilmiş çim seviyesine oturur. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GRASS_LIFT + 0.008, 0]}>
         <circleGeometry args={[0.35, 12]} />
-        <meshStandardMaterial color="#2a6818" roughness={1} transparent opacity={0.35} />
+        <meshStandardMaterial color="#3f7a2a" roughness={1} transparent opacity={0.28} />
       </mesh>
     </group>
   );
@@ -1200,7 +1210,9 @@ export function GameEngine3D({
       {/* ═══════════════════════════════════════════════════════
           MODÜLER CADDE DETAYLARI (yaşayan şehir katmanı)
           ═══════════════════════════════════════════════════════ */}
-      {/* Çalılar, çiçek tarhları, budanmış çitler ve ahşap çitler */}
+      {/* Çim kümeleri (low-poly bıçak demetleri) + çalılar, çiçek
+          tarhları, budanmış çitler ve ahşap çitler */}
+      <StreetGrassTufts />
       <StreetBushes />
       <StreetFlowerPatches />
       <StreetHedges />

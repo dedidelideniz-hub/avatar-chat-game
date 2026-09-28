@@ -23,6 +23,11 @@ import {
   FENCE_SPACING,
   FLOWER_COLORS,
   FLOWER_PATCHES,
+  GRASS_BORDERS,
+  GRASS_LIFT,
+  GRASS_TILE,
+  GRASS_TONES,
+  GRASS_TUFT_ZONES,
   HEDGES,
   TRASH_CANS,
   ZONE,
@@ -34,6 +39,7 @@ import {
   makeAsphaltTexture,
   makeAwningTexture,
   makeGlowTexture,
+  makeGrassTexture,
   makePavementTexture,
   makeSignTexture,
 } from "./streetTextures";
@@ -74,23 +80,181 @@ const MAT = {
   // three tarafından parça shader'ında USE_COLOR ile devreye alınır; vertexColors
   // açmak geometride olmayan `color` özniteliğini okutup taç yaprakları siyaha boyar.
   flowerBloom: new THREE.MeshStandardMaterial({ roughness: 0.82 }),
+  // Çim kümeleri: `vertexColors` AÇILMAZ, renk örnek başına `instanceColor`
+  // ile gelir (çiçek taç yapraklarıyla aynı desen). Tek yüzlü üçgenler için
+  // DoubleSide şart. flatShading → low-poly bıçak görünümü.
+  grassTuft: new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true, side: THREE.DoubleSide }),
+  grassBorder: new THREE.MeshStandardMaterial({ color: GRASS_TONES.border, roughness: 0.95 }),
   binGreen: new THREE.MeshStandardMaterial({ color: "#3d6b52", roughness: 0.62, metalness: 0.18 }),
   binBlue: new THREE.MeshStandardMaterial({ color: "#2f5c8a", roughness: 0.62, metalness: 0.18 }),
   binLid: new THREE.MeshStandardMaterial({ color: "#2a3a34", roughness: 0.55, metalness: 0.3 }),
 };
 
-/** Kaldırım/asfalt için zemin dokuları (Ground bileşeni kullanır). */
+/** Kaldırım/asfalt/çim için zemin dokuları (Ground bileşeni kullanır). */
 export function useStreetGroundTextures() {
   return useMemo(() => {
     const pavement = makePavementTexture();
     const asphalt = makeAsphaltTexture();
+    const grass = makeGrassTexture(GRASS_TONES.light, GRASS_TONES.dark);
     // Doku 2×2 dünya birimini kaplar → repeat boyuta göre.
     const sidewalkDepth = ZONE.northSidewalkBot - ZONE.northSidewalkTop; // 1.2
     const roadDepth = ZONE.roadBot - ZONE.roadTop; // 2.4
     pavement.repeat.set(WORLD_WIDTH / 2, sidewalkDepth / 2);
     asphalt.repeat.set(WORLD_WIDTH / 2, roadDepth / 2);
-    return { pavement, asphalt };
+    return { pavement, asphalt, grass };
   }, []);
+}
+
+/**
+ * UV'leri çim karosuna göre ölçeklenmiş düzlem geometrisi.
+ *
+ * Çim dokusu 2×2 dünya birimini kaplar ve 4×4 karo içerir. UV'yi ölçeklemek,
+ * TEK paylaşılan dokunun farklı derinlikteki çim şeritlerinde de aynı karo
+ * boyutunu vermesini sağlar (doku başına tek `repeat` değeri yetmez, aksi
+ * hâlde 1.2'lik ve 1.6'lık şeritlerde karolar farklı boyutta çıkardı).
+ */
+function makeGrassPlane(w: number, d: number): THREE.PlaneGeometry {
+  const geo = new THREE.PlaneGeometry(w, d);
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  const su = w / (GRASS_TILE * 4);
+  const sv = d / (GRASS_TILE * 4);
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  uv.needsUpdate = true;
+  return geo;
+}
+
+/**
+ * Çim şeridi — karo desenli, hafif yüksek (GRASS_LIFT) çim platformu.
+ * Zemin katmanını tek yerden yönetmek için Ground bileşeni bunu kullanır.
+ */
+export function GrassPatch({
+  x,
+  z,
+  w,
+  d,
+  texture,
+  lift = GRASS_LIFT,
+}: {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  texture: THREE.Texture;
+  /** Yükseklik ofseti (arka plan çimi 0'da kalır). */
+  lift?: number;
+}) {
+  const geo = useMemo(() => makeGrassPlane(w, d), [w, d]);
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[x, lift, z]} geometry={geo} receiveShadow>
+      {/* `map` ile `color` çarpılır → çarpan beyaz bırakılır, tonu doku verir. */}
+      <meshStandardMaterial color="#ffffff" roughness={1} map={texture} />
+    </mesh>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  ÇİM BORDÜRÜ — kaldırıma temas eden kenardaki koyu yeşil çizgi */
+/* ═══════════════════════════════════════════════════════════ */
+
+export function GrassBorders() {
+  return (
+    <>
+      {GRASS_BORDERS.map((z) => (
+        <mesh key={z} position={[0, GRASS_LIFT / 2 + 0.008, z]} material={MAT.grassBorder}>
+          <boxGeometry args={[WORLD_WIDTH, GRASS_LIFT + 0.016, 0.1]} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  ÇİM KÜMELERİ — low-poly bıçak demetleri (tek InstancedMesh)  */
+/* ═══════════════════════════════════════════════════════════ */
+
+/**
+ * Low-poly çim kümesi: 3 çapraz yaprak dilimi (3 üçgen). Yükseklik 1 birim
+ * kabul edilir; her örnek kendi ölçeğiyle yerleştirilir.
+ */
+function makeTuftGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  const halfW = 0.19;
+  const heights = [1, 0.78, 0.9];
+  for (let b = 0; b < 3; b++) {
+    const a = (b / 3) * Math.PI;
+    const dx = Math.cos(a);
+    const dz = Math.sin(a);
+    const tipX = -0.3 * dx;
+    const tipZ = -0.3 * dz;
+    positions.push(-halfW * dx, 0, -halfW * dz);
+    positions.push(halfW * dx, 0, halfW * dz);
+    positions.push(tipX, heights[b], tipZ);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const TUFT_GEO = makeTuftGeometry();
+const TUFT_LIGHT = new THREE.Color(GRASS_TONES.bladeLight);
+const TUFT_DARK = new THREE.Color(GRASS_TONES.bladeDark);
+
+interface TuftInstance {
+  x: number;
+  z: number;
+  s: number;
+  rot: number;
+  tone: number;
+}
+
+export function StreetGrassTufts() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+
+  const tufts = useMemo<TuftInstance[]>(() => {
+    const out: TuftInstance[] = [];
+    const inset = 0.14; // kaldırım bordürüne taşmasın
+    for (const zone of GRASS_TUFT_ZONES) {
+      const rnd = mulberry32(zone.seed);
+      const depth = Math.max(0.2, zone.depth - inset * 2);
+      const count = Math.max(1, Math.round(WORLD_WIDTH * depth * zone.density));
+      for (let i = 0; i < count; i++) {
+        out.push({
+          x: (rnd() - 0.5) * (WORLD_WIDTH - 0.6),
+          z: zone.z + (rnd() - 0.5) * depth,
+          s: 0.16 + rnd() * 0.22,
+          rot: rnd() * Math.PI * 2,
+          tone: rnd(),
+        });
+      }
+    }
+    return out;
+  }, []);
+
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const up = new THREE.Vector3(0, 1, 0);
+    const c = new THREE.Color();
+    tufts.forEach((t, i) => {
+      q.setFromAxisAngle(up, t.rot);
+      m.compose(
+        new THREE.Vector3(t.x, GRASS_LIFT, t.z),
+        q,
+        new THREE.Vector3(t.s * 1.35, t.s, t.s * 1.35),
+      );
+      mesh.setMatrixAt(i, m);
+      c.copy(TUFT_DARK).lerp(TUFT_LIGHT, t.tone);
+      mesh.setColorAt(i, c);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [tufts]);
+
+  if (tufts.length === 0) return null;
+  return <instancedMesh ref={ref} args={[TUFT_GEO, MAT.grassTuft, tufts.length]} />;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -370,13 +534,13 @@ export function StreetBushes() {
     BUSHES.forEach((b, i) => {
       const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, b.x * 2.3, 0));
       m.compose(
-        new THREE.Vector3(b.x, b.s * 0.42, b.z),
+        new THREE.Vector3(b.x, b.s * 0.42 + GRASS_LIFT, b.z),
         q,
         new THREE.Vector3(b.s * 1.15, b.s * 0.92, b.s),
       );
       refA.current?.setMatrixAt(i, m);
       m.compose(
-        new THREE.Vector3(b.x + b.s * 0.3, b.s * 0.3, b.z - b.s * 0.18),
+        new THREE.Vector3(b.x + b.s * 0.3, b.s * 0.3 + GRASS_LIFT, b.z - b.s * 0.18),
         q,
         new THREE.Vector3(b.s * 0.72, b.s * 0.62, b.s * 0.7),
       );
@@ -448,13 +612,13 @@ export function StreetFlowerPatches() {
     flowers.forEach((f, i) => {
       const stemH = 0.13 * f.s;
       m.compose(
-        new THREE.Vector3(f.x, stemH / 2, f.z),
+        new THREE.Vector3(f.x, GRASS_LIFT + stemH / 2, f.z),
         q,
         new THREE.Vector3(0.011 * f.s, stemH, 0.011 * f.s),
       );
       stems.setMatrixAt(i, m);
       m.compose(
-        new THREE.Vector3(f.x, stemH + 0.02, f.z),
+        new THREE.Vector3(f.x, GRASS_LIFT + stemH + 0.02, f.z),
         q,
         new THREE.Vector3(0.042 * f.s, 0.036 * f.s, 0.042 * f.s),
       );
@@ -506,7 +670,7 @@ export function StreetHedges() {
     const q = new THREE.Quaternion();
     segments.forEach((s, i) => {
       m.compose(
-        new THREE.Vector3(s.x, 0.18, s.z),
+        new THREE.Vector3(s.x, 0.18 + GRASS_LIFT, s.z),
         q,
         new THREE.Vector3(s.len + 0.04, 0.36, 0.42),
       );
@@ -551,11 +715,11 @@ export function StreetFences() {
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     slats.forEach((s, i) => {
-      m.compose(new THREE.Vector3(s.x, 0.19, s.z), q, new THREE.Vector3(0.05, 0.38, 0.035));
+      m.compose(new THREE.Vector3(s.x, 0.19 + GRASS_LIFT, s.z), q, new THREE.Vector3(0.05, 0.38, 0.035));
       slatMesh.setMatrixAt(i, m);
     });
     rails.forEach((r, i) => {
-      m.compose(new THREE.Vector3(r.x, 0.3, r.z), q, new THREE.Vector3(FENCE_SPACING + 0.02, 0.045, 0.03));
+      m.compose(new THREE.Vector3(r.x, 0.3 + GRASS_LIFT, r.z), q, new THREE.Vector3(FENCE_SPACING + 0.02, 0.045, 0.03));
       railMesh.setMatrixAt(i, m);
     });
     slatMesh.instanceMatrix.needsUpdate = true;
