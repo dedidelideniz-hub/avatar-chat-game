@@ -438,9 +438,17 @@ export const BENCHES: BenchDef[] = [
  * kaybolduğu için "bankta oturuyor" okunmuyordu (bkz. Bench3D). Yeni
  * ölçüler gerçek park bankı oranlarında.
  */
-export const BENCH_WIDTH = 1.5;
-/** Oturma yüzeyinin Z derinliği (çıtaların dış kenarları arası). */
-export const BENCH_SEAT_DEPTH = 0.44;
+export const BENCH_WIDTH = 1.6;
+/**
+ * Oturma yüzeyinin Z derinliği (çıtaların dış kenarları arası).
+ *
+ * 0.56: gerçek park banklarından biraz derin — bilinçli. Oyuncu avatarları
+ * tıknaz (varsayılan avatar 1.28 birim derin!), 0.44'lik minderde bankın
+ * oturma yüzeyi gövdenin altında tamamen kayboluyordu ("bankın içine
+ * gömülmüş" görünüm). Daha derin + 4 çıtalı minder gövdenin altında
+ * görünür kalır.
+ */
+export const BENCH_SEAT_DEPTH = 0.56;
 /** Oturma çıtalarının üst yüzeyi (bkz. `GameEngine3D › Bench3D`). */
 export const BENCH_SEAT_TOP = 0.46;
 /**
@@ -467,12 +475,12 @@ export const BENCH_SEAT_HEIGHT = 0.63;
 /**
  * Oturan kalçanın bank merkezinden baktığı yöne kayması. Negatif = arkalığa
  * doğru: kalça oturma yüzeyinin ortasında, sırt arkalığa yakın durur.
- * −0.07: kalça oturma yüzeyinin arka yarısında durur (butun arka yüzü
- * arkalığa değer), uyluklar ön kenardan taşarak görünür — "bankta oturuyor"
- * okunurluğu. Aşırı geriye almak tıknaz avatarlarda gövdeyi arkalığın içine
- * sokar.
+ * −0.14: kalça oturma yüzeyinin ARKA yarısında durur — sırt arkalığa
+ * yaslanır, uyluklar ön kenardan taşarak görünür ("bankta oturuyor"
+ * okunurluğu). Arkalık ayrıca geriye alındı (`BENCH_BACK_OFFSET`) ki yaslanan
+ * sırt çıtaların içine girmesin.
  */
-export const BENCH_SEAT_FORWARD = -0.07;
+export const BENCH_SEAT_FORWARD = -0.14;
 /**
  * Otururken gövdenin (omurga) geriye yatma açısı (radyan) — sırt arkalığa
  * yaslanır. Pozu uygulayan `SitPose.applySitPose` omurga kemiğini bu kadar
@@ -485,9 +493,20 @@ export const BENCH_INTERACT_RADIUS = 1.35;
  * Bankın ÖNÜNDE durulacak mesafe (dünya birimi) — karakter ışınlanmaz,
  * önce buraya YÜRÜR, sonra oturma geçişi başlar (bkz. World.tsx `requestSit`).
  */
-export const BENCH_STAND_OFFSET = 0.55;
+export const BENCH_STAND_OFFSET = 0.8;
 /** Ayakta durulacak nokta yürünebilir değilse denenecek daha kısa mesafeler. */
-export const BENCH_STAND_FALLBACKS = [0.55, 0.45, 0.35, 0.25, 0.15] as const;
+export const BENCH_STAND_FALLBACKS = [
+  0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1,
+] as const;
+/**
+ * BANKIN ARKALIK DÜZLEMİ (bank merkezinden, dünya birimi).
+ *
+ * Oturma yüzeyi 0.44 derin (arkası −0.22); arkalık bu yüzeyin 8 cm gerisinde
+ * durur. Sebep: oturan karakterin SIRTI arkalığa yaslandığında çıtaların
+ * içine girmesin — özellikle tıknaz avatarlarda gövde derinliği minderi
+ * aştığı için arkalık geride olmalı (`GameEngine3D › Bench3D`).
+ */
+export const BENCH_BACK_OFFSET = 0.38;
 /** Oturma/kalkma yer değiştirmesinin süresi (saniye) — poz geçişiyle uyumlu. */
 export const SEAT_TRANSITION_SECONDS = 0.55;
 
@@ -517,12 +536,33 @@ export function benchFacing(def: BenchDef): 1 | -1 {
 }
 
 /**
+ * Bankta oturan karakterin Y dönüşü (radyan).
+ *
+ * `0` = modelin ileri ekseni +Z (yani güney / kamera yönü), `Math.PI` = −Z.
+ * Karakter BANKIN BAKTIĞI yöne döner — yani yüzü her zaman CADDEYE döner:
+ *   • kuzey kaldırım bankı (+Z'ye bakar) → `0`  → yüz güneye, kamereye
+ *   • güney kaldırım bankı (−Z'ye bakar) → `π`  → yüz kuzeye, caddeye
+ *   • arka sokak bankı (−Z'ye bakar)     → `π`
+ * Yön oturduğu sürece KİLİTLİDİR (`GlbAvatar3D` her karede bu değere lerp
+ * eder); sadece kalkınca hareket yönüne döner.
+ */
+export function benchSeatYaw(def: BenchDef): number {
+  return benchFacing(def) === 1 ? 0 : Math.PI;
+}
+
+/**
  * Oturma durumu — 3D avatara aktarılan tek bilgi. Karakterin nerede durduğu
  * `posRef`ten gelir (px), yön ise buradan.
  */
 export interface SeatState {
   /** Bankın (dolayısıyla oturan karakterin) baktığı yön: +1 = +Z, -1 = -Z. */
   facing: 1 | -1;
+  /**
+   * Karakterin otururken kilitleneceği Y dönüşü (radyan) — `benchSeatYaw`.
+   * Yönü tek yerden türetmek için depoda taşınır (0 = +Z / kamera,
+   * π = −Z / cadde).
+   */
+  yaw: number;
 }
 
 // ─── VENDOR STALL POSITIONS ───

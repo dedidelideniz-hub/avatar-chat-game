@@ -925,9 +925,10 @@ function GlbAvatarCore({
       targetYaw.current = Math.atan2(dxw, dzw);
     } else if (seatRef.current) {
       // Bankta otururken yön bankın baktığı yöne kilitlenir (oturmadan önce
-      // nereye baktığı önemsiz): modelin ileri ekseni +Z, yaw 0 = +Z.
+      // nereye baktığı önemsiz): `benchSeatYaw` = 0 (kamera/güney) ya da π
+      // (kuzey/cadde) — yani karakter her zaman CADDEYE bakar.
       const activeSeat = seatRef.current;
-      targetYaw.current = activeSeat.facing === 1 ? 0 : Math.PI;
+      targetYaw.current = activeSeat.yaw;
     }
     let diff = targetYaw.current - group.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1048,24 +1049,43 @@ function GlbAvatarCore({
     const group = groupRef.current;
     if (!inner || !group) return;
     const activeSeat = seatRef.current;
-    const want = activeSeat && sitReady ? 1 : 0;
+    // OTURMA DURUMU poz şartına BAĞLI DEĞİL: iskelet tanınmasa bile karakter
+    // bankın içine gömülmesin diye kalça hizalaması uygulanır. Yalnızca
+    // bacak/ gövde pozu için kemik zinciri gerekir.
+    const want = activeSeat ? 1 : 0;
     // Ayakta ve geçiş bitmişse hiçbir maliyet yok.
     if (want <= 0 && sitBlend.current <= 0) return;
 
     sitBlend.current += (want - sitBlend.current) * Math.min(1, SIT_BLEND_SPEED * dt);
     if (Math.abs(sitBlend.current - want) < 0.002) sitBlend.current = want;
-    if (sitBlend.current <= 0) return;
+    if (sitBlend.current <= 0) {
+      // Kalktı: animasyon yeniden akar (aktif kalırsa karakter donuk kalırdı).
+      if (mixer && mixer.timeScale === 0) mixer.timeScale = 1;
+      return;
+    }
+
+    // ANİMASYON DONDURMA (kullanıcı isteği: idle'ı dondur): bankta otururken
+    // ayakta durma/yürüme klibi DURUR — alt gövde tamamen prosedürel pozdan
+    // gelir, bekleyen animasyon pozu ezmesin. Geçiş BİTİNCE dondurulur ki
+    // kollar idle duruşuna yerleşmiş olsun (yarım yürüyüş pozunda donmasın).
+    // Eşik yüksek: yürüyüş → idle geçişi (0.2 sn) bitmeden dondurulursa
+    // kollar yarım salınım pozunda kalır.
+    const freeze = activeSeat !== null && sitBlend.current > 0.97;
+    const pace = freeze ? 0 : 1;
+    if (mixer && mixer.timeScale !== pace) mixer.timeScale = pace;
 
     // smoothstep → oturma/kalkma başı ve sonu yumuşak.
     const eased = sitBlend.current * sitBlend.current * (3 - 2 * sitBlend.current);
     // Kök konumu bu karede az önce yazıldı → dünya matrisleri taze olmalı.
     group.updateMatrixWorld(true);
-    applySitPose(clone, sitBones, activeSeat?.facing ?? 1, eased);
+    if (activeSeat && sitReady) {
+      applySitPose(clone, sitBones, activeSeat.facing, eased);
+    }
 
     // Kalçayı bank minderi hizasına indir: bacak pozu uygulandıktan SONRA
     // ölçülen kalça yüksekliği ile hedef arasındaki fark kadar kökü kaydır.
     const hips = sitBones.hips;
-    if (hips) {
+    if (activeSeat && hips) {
       hips.getWorldPosition(seatMeasure.current);
       inner.position.y += (BENCH_SEAT_HEIGHT - seatMeasure.current.y) * eased;
       group.updateMatrixWorld(true);

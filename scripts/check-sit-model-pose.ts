@@ -192,6 +192,29 @@ for (const file of MODELS) {
   );
 }
 
+/* ── Kablo kontrolü: poz ölçümleri doğru olsa bile, oyunda oturma durumu
+   avatarın deposuna bağlanmamışsa hiçbiri görünmez. ── */
+console.log("── oyun kablosu (depo → avatar) ──");
+const gameSrc = readFileSync("src/engine/GameEngine3D.tsx", "utf8");
+const glbSrc = readFileSync("src/engine/GlbAvatar3D.tsx", "utf8");
+check(
+  "yerel oyuncu avatara `readSeatStore` geçiliyor (depo okunur)",
+  /readSeatStore(\s|\n)*\/?>/.test(gameSrc),
+);
+check(
+  "oturma durumu poz yeteneğine bağlı değil (iskelet tanınmasa da gömülmez)",
+  /const want = activeSeat \? 1 : 0;/.test(glbSrc),
+);
+check(
+  "otururken yürüyüş/idle klibi donduruluyor (mixer.timeScale)",
+  /mixer\.timeScale/.test(glbSrc),
+);
+check(
+  "oturma yönü tek kaynaktan: benchSeatYaw",
+  /benchSeatYaw/.test(readFileSync("src/engine/benchSeat.ts", "utf8")) &&
+    /activeSeat\.yaw/.test(glbSrc),
+);
+
 console.log(
   `\n${failures.length === 0 ? "TÜM KONTROLLER GEÇTİ ✔" : "BAŞARISIZ ✘"}`,
 );

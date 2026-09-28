@@ -8,7 +8,7 @@
  * kaynak. Tek yazıcısı oyun döngüsüdür (`setBenchSeatState`), okuyucuları
  * `GlbAvatar3D` ve `GameEngine3D`dir.
  */
-import { benchFacing, BENCHES, type SeatState } from "./constants";
+import { benchFacing, benchSeatYaw, BENCHES, type SeatState } from "./constants";
 
 let near: number | null = null;
 let seated: number | null = null;
@@ -37,7 +37,9 @@ export function getBenchSeated(): number | null {
 export function getSeatState(): SeatState | null {
   if (seated === null) return null;
   const bench = BENCHES[seated];
-  return bench ? { facing: benchFacing(bench) } : null;
+  return bench
+    ? { facing: benchFacing(bench), yaw: benchSeatYaw(bench) }
+    : null;
 }
 
 /** 3D düğmeden gelen oturma isteği (px katmanı bir sonraki karede tüketir). */

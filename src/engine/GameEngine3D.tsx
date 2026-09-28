@@ -38,6 +38,7 @@ import {
   LAMPS,
   BENCHES,
   BENCH_WIDTH,
+  BENCH_BACK_OFFSET,
   BENCH_SEAT_DEPTH,
   BENCH_SEAT_TOP,
   benchFacing,
@@ -551,9 +552,9 @@ const BENCH_METAL = "#4a4a52";
  */
 function Bench3D({ def }: { def: BenchDef }) {
   const seatY = BENCH_SEAT_TOP;
-  const halfDepth = BENCH_SEAT_DEPTH / 2;
-  // Arkalık, oturma çıtalarının hemen arkasında durur (zıplama payı 0.005).
-  const backZ = -halfDepth + 0.015;
+  // Arkalık, oturma yüzeyinin ARKASINDA durur (`BENCH_BACK_OFFSET`): oturan
+  // karakterin sırtı arkalığa yaslandığında çıtaların içine girmesin.
+  const backZ = -BENCH_BACK_OFFSET;
   const postZ = backZ - 0.06;
   return (
     // `facing: -1` olan banklar 180° döner — sırtı duvara bakan banklarda
@@ -562,10 +563,10 @@ function Bench3D({ def }: { def: BenchDef }) {
       position={[def.x, 0, def.z]}
       rotation={[0, benchFacing(def) === -1 ? Math.PI : 0, 0]}
     >
-      {/* Oturma çıtaları (3) */}
-      {[-0.15, 0, 0.15].map((sz) => (
+      {/* Oturma çıtaları (4) — tıknaz avatarların altında görünür kalsın */}
+      {[-0.21, -0.07, 0.07, 0.21].map((sz) => (
         <mesh key={`s${sz}`} position={[0, seatY - 0.03, sz]} castShadow receiveShadow>
-          <boxGeometry args={[BENCH_WIDTH, 0.06, 0.14]} />
+          <boxGeometry args={[BENCH_WIDTH, 0.06, 0.13]} />
           <meshStandardMaterial color={BENCH_WOOD} roughness={0.78} />
         </mesh>
       ))}
@@ -585,10 +586,11 @@ function Bench3D({ def }: { def: BenchDef }) {
         const lx = side * (BENCH_WIDTH / 2 - 0.12);
         return (
           <group key={side} position={[lx, 0, 0]}>
-            <mesh position={[0, seatY / 2 - 0.03, 0.15]} castShadow>
+            <mesh position={[0, seatY / 2 - 0.03, 0.19]} castShadow>
               <boxGeometry args={[0.07, seatY - 0.06, 0.07]} />
               <meshStandardMaterial color={BENCH_METAL} roughness={0.55} metalness={0.3} />
             </mesh>
+            {/* Arkalık direği — arkalığın EN ÜST çıtasına kadar yükselir. */}
             <mesh
               position={[0, (seatY + 0.37) / 2, postZ]}
               castShadow

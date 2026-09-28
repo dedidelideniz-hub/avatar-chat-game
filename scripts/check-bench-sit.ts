@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import * as THREE from "three";
 import {
   BENCHES,
+  BENCH_BACK_OFFSET,
   BENCH_WIDTH,
   BENCH_SEAT_DEPTH,
   BENCH_SEAT_TOP,
@@ -22,6 +23,7 @@ import {
   BENCH_STAND_FALLBACKS,
   benchFacing,
   benchSeatSpot,
+  benchSeatYaw,
   benchStandSpot,
   BUILDINGS,
   PLAYER_3D_HEIGHT,
@@ -125,10 +127,24 @@ check(
   BENCH_WIDTH >= 1.2,
   `${BENCH_WIDTH} birim`,
 );
+// Bilinçli olarak gerçek park bankından biraz derin: oyuncu avatarları tıknaz
+// (varsayılan 1.28 birim derin), sığ minderi tamamen örtüyorlardı.
 check(
-  "Oturma derinliği gerçekçi (0.35–0.55 birim)",
-  BENCH_SEAT_DEPTH > 0.35 && BENCH_SEAT_DEPTH < 0.55,
+  "Oturma derinliği gerçekçi (0.35–0.62 birim, tıknaz avatarlar için derin)",
+  BENCH_SEAT_DEPTH > 0.35 && BENCH_SEAT_DEPTH < 0.62,
   `${BENCH_SEAT_DEPTH} birim`,
+);
+check(
+  "Arkalık minderin ARKASINDA (yaslanan sırt çıtaların içine girmesin)",
+  BENCH_BACK_OFFSET > BENCH_SEAT_DEPTH / 2,
+  `arkalık ${BENCH_BACK_OFFSET} > minder arka kenarı ${BENCH_SEAT_DEPTH / 2}`,
+);
+check(
+  "Kalça minderin arka yarısında (sırt arkalığa yakın)",
+  BENCH_SEAT_FORWARD < 0 &&
+    Math.abs(BENCH_SEAT_FORWARD) > 0.05 &&
+    Math.abs(BENCH_SEAT_FORWARD) < BENCH_SEAT_DEPTH / 2,
+  `kayma ${BENCH_SEAT_FORWARD} birim`,
 );
 check(
   "Oturma noktası mindere denk geliyor",
@@ -223,6 +239,35 @@ check(
   northWalkBenches.length + southWalkBenches.length + backWalkBenches.length ===
     BENCHES.length,
   `${northWalkBenches.length}+${southWalkBenches.length}+${backWalkBenches.length} / ${BENCHES.length}`,
+);
+
+// KESİN KURAL: oturan karakterin YÖNÜ yola bakar. `benchSeatYaw` (avatarın
+// kilitlendiği tek kaynak) her bankta en yakın cadde bandına doğru olmalı.
+const roadCenters = [
+  (ZONE.roadTop + ZONE.roadBot) / 2,
+  (ZONE.backRoadTop + ZONE.backRoadBot) / 2,
+];
+const roadFacing = BENCHES.map((def) => {
+  const yaw = benchSeatYaw(def);
+  // Modelin ileri ekseni +Z; yaw 0 → +Z. Yürüyüşle aynı dönüşüm (atan2(dx,dz)).
+  const dirZ = Math.cos(yaw);
+  const nearest = roadCenters.reduce((a, b) =>
+    Math.abs(b - def.z) < Math.abs(a - def.z) ? b : a,
+  );
+  const toRoad = Math.sign(nearest - def.z);
+  return dirZ * toRoad;
+});
+check(
+  "Her bankta oturan karakter CADDEYE bakar (benchSeatYaw)",
+  roadFacing.every((d) => d > 0.99),
+  `dot ${roadFacing.map((d) => d.toFixed(2)).join(", ")}`,
+);
+check(
+  "Oturma yönü yalnızca 0 veya π (bankın bakışına tam paralel)",
+  BENCHES.every((b) => {
+    const y = benchSeatYaw(b);
+    return y === 0 || Math.abs(y - Math.PI) < 1e-9;
+  }),
 );
 
 /* ── 3. Bacaklar binanın içine giriyor mu? ─────────────────────────── */
