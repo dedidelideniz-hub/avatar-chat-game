@@ -18,6 +18,38 @@ import { mergeGeometries } from "./vegModelPrep";
 
 export const GRASS_GROUND_URL = "/models/grass_ground.glb";
 
+/**
+ * ÇİM ZEMİN GÖRÜNÜM AYARLARI — hepsi tek yerde, sayılar ölçüme dayanıyor.
+ *
+ * Neden bu değerler (gerçek dokular ölçüldü, `scripts/check-grass-ground.ts`):
+ *   · basecolor dokusunun ortalama parlaklığı **61/255** (sRGB) → doku koyu
+ *     çekilmiş; düz `color = #7EC850` vermek işe YARAMAZ, çünkü `color`
+ *     dokunun rengiyle ÇARPILIR (0…1 arası bir ton dokuyu koyulaştırır).
+ *     Bu yüzden renk 1'in ÜSTÜNE çıkarılıp (three `Color` kanalları 1'i
+ *     aşabilir) doku açılır: `tint × brightness`.
+ *   · AO haritası ortalama **131/255** → dolaylı ışığı ~yarıya indiriyordu
+ *     (sahne ışığının yarısı ambient + hemisphere olduğu için "kasvet"in ana
+ *     sebebi). Düz bir zeminde AO gereksiz → kapatıldı.
+ *   · roughness/metalness haritaları da kapatılır ki aşağıdaki 0.8 / 0.1
+ *     değerleri haritayla çarpılıp bozulmasın.
+ */
+export const GRASS_GROUND_TUNING = {
+  /** Doku çarpanı: 1'den büyük = daha açık (1.7 ≈ %70 açma, lineer uzayda). */
+  brightness: 1.7,
+  /** Yeşile hafif kaydırma (canlılık): kırmızı/mavi biraz kısılır. */
+  tint: { r: 0.96, g: 1.08, b: 0.86 },
+  /** Çok hafif kendinden aydınlatma — gölgede kalan çim siyaha düşmesin. */
+  emissive: { r: 0.03, g: 0.07, b: 0.02 },
+  emissiveIntensity: 1,
+  /** İstenen yüzey ayarları (haritalar kapatıldığı için aynen geçerli). */
+  roughness: 0.8,
+  metalness: 0.1,
+  /** Normal haritası detay katar, karartmaz → açık kalır. */
+  useNormalMap: true,
+  /** AO + ORM yuvaları kapatılır (yukarıdaki ölçüm notu). */
+  useAmbientOcclusion: false,
+} as const;
+
 export interface GrassGroundZone {
   /** Bölge merkezi (X, Z). */
   x: number;
@@ -55,9 +87,19 @@ export interface GrassGroundTile {
     normalUp: boolean;
     /** Ters bakıyordu da 180° X ile düzeltildi mi? */
     normalFix: boolean;
-    /** metalness 0'a çekildi mi (FBX→glTF dönüşümü 1 bırakıyor). */
-    metalnessFixed: boolean;
-    /** Materyalde bulunan doku yuvaları. */
+    /** Uygulanan görünüm ayarları (koyu dokuyu açan çarpan dahil). */
+    look: {
+      brightness: number;
+      tint: { r: number; g: number; b: number };
+      emissive: { r: number; g: number; b: number };
+      roughness: number;
+      metalness: number;
+    };
+    /** `color` çarpanı 1'in üstüne çıkarıldı mı (doku açıldı mı). */
+    brightened: boolean;
+    /** Görünüm/zahmet için kapatılan doku yuvaları. */
+    droppedMaps: string[];
+    /** Materyalde kalan doku yuvaları. */
     maps: string[];
   };
 }
@@ -135,10 +177,39 @@ export function prepareGrassGround(scene: THREE.Object3D): GrassGroundTile {
   geometry.computeBoundingSphere();
 
   const material = sourceMaterial.clone() as THREE.MeshStandardMaterial;
-  // Çim metal değildir; glTF varsayılanı `metallicFactor = 1` olduğu için
-  // düzeltilmezse zemin koyu/metalik görünür.
-  const metalnessFixed = typeof material.metalness === "number" && material.metalness !== 0;
-  if (typeof material.metalness === "number") material.metalness = 0;
+  const tuning = GRASS_GROUND_TUNING;
+
+  // Önce hangi yuvalar kapatılıyor (AO dolaylı ışığı ~yarıya indiriyordu;
+  // ORM yuvaları da istenen roughness/metalness değerlerini çarpıp bozardı).
+  const droppedMaps: string[] = [];
+  if (!tuning.useAmbientOcclusion && material.aoMap) {
+    material.aoMap = null;
+    droppedMaps.push("aoMap");
+  }
+  if (material.metalnessMap) {
+    material.metalnessMap = null;
+    droppedMaps.push("metalnessMap");
+  }
+  if (material.roughnessMap) {
+    material.roughnessMap = null;
+    droppedMaps.push("roughnessMap");
+  }
+  if (!tuning.useNormalMap && material.normalMap) {
+    material.normalMap = null;
+    droppedMaps.push("normalMap");
+  }
+
+  // Yüzey: glTF varsayılanı `metallicFactor = 1`; çim metal değildir.
+  material.roughness = tuning.roughness;
+  material.metalness = tuning.metalness;
+
+  // Doku ÇOK koyu (ort. 61/255) → rengi çarpanla aç. `color` dokunun rengiyle
+  // çarpıldığı için 1'in üstüne çıkılır (three `Color` kanalları 1'i aşabilir);
+  // `#7EC850` gibi 0…1 arası bir ton vermek dokuyu daha da koyulaştırırdı.
+  material.color.setRGB(tuning.tint.r, tuning.tint.g, tuning.tint.b);
+  material.color.multiplyScalar(tuning.brightness);
+  material.emissive.setRGB(tuning.emissive.r, tuning.emissive.g, tuning.emissive.b);
+  material.emissiveIntensity = tuning.emissiveIntensity;
   material.side = THREE.DoubleSide;
   material.needsUpdate = true;
 
@@ -159,7 +230,15 @@ export function prepareGrassGround(scene: THREE.Object3D): GrassGroundTile {
       thickness: size.y,
       normalUp: !normalFix,
       normalFix,
-      metalnessFixed,
+      look: {
+        brightness: tuning.brightness,
+        tint: tuning.tint,
+        emissive: tuning.emissive,
+        roughness: tuning.roughness,
+        metalness: tuning.metalness,
+      },
+      brightened: tuning.brightness > 1,
+      droppedMaps,
       maps: mapSlots(material),
     },
   };

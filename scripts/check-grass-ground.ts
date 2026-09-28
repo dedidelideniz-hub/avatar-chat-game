@@ -25,6 +25,7 @@ g.ProgressEvent = class ProgressEvent {
 g.createImageBitmap = async () => ({ width: 1, height: 1, close() {} });
 
 import fs from "node:fs";
+import zlib from "node:zlib";
 import * as THREE from "three";
 import { GLTFLoader } from "three-stdlib";
 import {
@@ -33,6 +34,93 @@ import {
   prepareGrassGround,
 } from "../src/engine/grassGroundPrep";
 import { GRASS_GROUND_Y, GRASS_GROUND_ZONES, VEG_SIZES } from "../src/engine/constants";
+
+/**
+ * GLB içindeki PNG'leri çözer (zlib + PNG filtre çözümü, ek bağımlılık yok) ve
+ * ortalama rengi yazdırır. Görünüm ayarlarının GEREKÇESİ budur: basecolor
+ * koyuysa açma çarpanı şart, AO ortalaması düşükse (koyu) dolaylı ışığı
+ * kısıyordur → kapatılır.
+ */
+function reportTextureStats() {
+  const gltf = JSON.parse(fs.readFileSync(`public${GRASS_GROUND_URL}`, "utf8"));
+  const bin = Buffer.from(gltf.buffers[0].uri.split(",")[1], "base64");
+  const imageBuffer = (i: number) => {
+    const view = gltf.bufferViews[gltf.images[i].bufferView];
+    const offset = view.byteOffset ?? 0;
+    return bin.subarray(offset, offset + view.byteLength);
+  };
+
+  const decode = (png: Buffer) => {
+    let p = 8;
+    let w = 0;
+    let h = 0;
+    let bitDepth = 0;
+    let colorType = 0;
+    const idat: Buffer[] = [];
+    while (p < png.length) {
+      const len = png.readUInt32BE(p);
+      const type = png.toString("latin1", p + 4, p + 8);
+      if (type === "IHDR") {
+        w = png.readUInt32BE(p + 8);
+        h = png.readUInt32BE(p + 12);
+        bitDepth = png[p + 16];
+        colorType = png[p + 17];
+      } else if (type === "IDAT") idat.push(png.subarray(p + 8, p + 8 + len));
+      else if (type === "IEND") break;
+      p += 12 + len;
+    }
+    const raw = zlib.inflateSync(Buffer.concat(idat));
+    const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType as 0 | 2 | 3 | 4 | 6] ?? 3;
+    const bpp = Math.max(1, (channels * bitDepth) / 8);
+    const stride = w * bpp;
+    const out = Buffer.alloc(h * stride);
+    let o = 0;
+    for (let y = 0; y < h; y++) {
+      const filter = raw[o++];
+      const line = raw.subarray(o, o + stride);
+      o += stride;
+      const cur = out.subarray(y * stride, (y + 1) * stride);
+      const prev = y ? out.subarray((y - 1) * stride, y * stride) : Buffer.alloc(stride);
+      for (let x = 0; x < stride; x++) {
+        const a = x >= bpp ? cur[x - bpp] : 0;
+        const b = prev[x];
+        const c = x >= bpp ? prev[x - bpp] : 0;
+        let v = line[x];
+        if (filter === 1) v += a;
+        else if (filter === 2) v += b;
+        else if (filter === 3) v += (a + b) >> 1;
+        else if (filter === 4) {
+          const p = a + b - c;
+          const pa = Math.abs(p - a);
+          const pb = Math.abs(p - b);
+          const pc = Math.abs(p - c);
+          v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+        }
+        cur[x] = v & 255;
+      }
+    }
+    const count = w * h;
+    const sums = [0, 0, 0];
+    for (let i = 0; i < count; i++) {
+      for (let ch = 0; ch < Math.min(3, channels); ch++) sums[ch] += out[i * bpp + ch];
+    }
+    return { w, h, mean: sums.map((s) => s / count) };
+  };
+
+  const base = decode(imageBuffer(0));
+  const orm = decode(imageBuffer(1));
+  const luma = 0.2126 * base.mean[0] + 0.7152 * base.mean[1] + 0.0722 * base.mean[2];
+  console.log(
+    `\n  doku teşhisi: basecolor ${base.w}×${base.h} ort. RGB ` +
+      `[${base.mean.map((v) => v.toFixed(0)).join(", ")}] → parlaklık ${luma.toFixed(0)}/255 ` +
+      `→ ${luma < 110 ? "KOYU, açma çarpanı şart" : "yeterli"}`,
+  );
+  console.log(
+    `    ORM ort. R(AO) ${orm.mean[0].toFixed(0)} · G(roughness) ${orm.mean[1].toFixed(0)} · ` +
+      `B(metalness) ${orm.mean[2].toFixed(0)} → AO x${(orm.mean[0] / 255).toFixed(2)} ile dolaylı ` +
+      `ışığı kısıyordu (kapatıldı)`,
+  );
+}
 
 function loadModel(url: string): Promise<THREE.Object3D> {
   const loader = new GLTFLoader();
@@ -60,9 +148,16 @@ console.log(
   `  yüzey yönü: ${report.normalUp ? "+Y ✔ (düzeltme gerekmedi)" : "ters → 180° X ile düzeltildi ✔"}`,
 );
 console.log(
-  `  materyal: metalness ${report.metalnessFixed ? "1 → 0 (düzeltildi) ✔" : "zaten 0 ✔"} · ` +
-    `dokular: ${report.maps.join(", ") || "yok"}`,
+  `  görünüm: açma ${report.look.brightness}× · tint rgb(${report.look.tint.r}, ` +
+    `${report.look.tint.g}, ${report.look.tint.b}) · emissive rgb(${report.look.emissive.r}, ` +
+    `${report.look.emissive.g}, ${report.look.emissive.b}) · roughness ${report.look.roughness} · ` +
+    `metalness ${report.look.metalness}`,
 );
+console.log(
+  `  kalan dokular: ${report.maps.join(", ") || "yok"} · ` +
+    `kapatılanlar: ${report.droppedMaps.join(", ") || "—"}`,
+);
+reportTextureStats();
 
 const { placements, zones } = buildGrassGroundPlacements(tile, GRASS_GROUND_ZONES);
 console.log(`\n  döşeme: ${placements.length} örnek (instance) → 1 draw call`);

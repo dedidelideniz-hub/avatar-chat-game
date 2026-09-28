@@ -1016,9 +1016,12 @@ export function GameEngine3D({
       {/* Sky — soft warm blue */}
       <color attach="background" args={["#78c8e8"]} />
 
-      {/* ═══ LIGHTING — warm stylized mobile-game lighting ═══ */}
-      <ambientLight intensity={0.6} color="#f0e8d8" />
-      <hemisphereLight args={["#cfe6ff", "#58a038", 0.5]} />
+      {/* ═══ LIGHTING — warm stylized mobile-game lighting ═══
+          Ortam ışığı yükseltildi: çim zeminin dokusu koyu ve AO haritası
+          kapatıldı, yani zemin dolaylı ışığın tamamını artık alıyor — gölgede
+          kalan çim siyaha düşmesin. Ayar tek yerden: aşağıdaki iki satır. */}
+      <ambientLight intensity={0.8} color="#f0e8d8" />
+      <hemisphereLight args={["#cfe6ff", "#58a038", 0.62]} />
       <directionalLight
         position={[8, 12, 6]}
         intensity={1.6}

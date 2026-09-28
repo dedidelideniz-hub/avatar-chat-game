@@ -9,6 +9,9 @@
  * PERFORMANS: karolar tek `InstancedMesh` içinde çizilir (bu sahnede 54 örnek,
  * 2 üçgen/karo) → zemin **tek draw call**. Geometri/materyal modeller arasında
  * paylaşılır, örnek başına klon yoktur.
+ *
+ * GÖRÜNÜM: dokusu koyu çekilmiş bir model olduğu için renk `GRASS_GROUND_TUNING`
+ * ile açılır, AO haritası kapatılır (ölçüm notları `grassGroundPrep.ts`).
  */
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
@@ -38,8 +41,10 @@ function useGrassGroundTile() {
       `[çim zemin] ${GRASS_GROUND_URL} · ${report.sourceMeshes} mesh → ${report.triangles} üçgen · ` +
         `karo ${size.x.toFixed(2)}×${size.z.toFixed(2)} birim · ` +
         `normal ${report.normalUp ? "+Y ✔" : "düzeltildi ✔"} · ` +
-        `dokular: ${report.maps.join(", ") || "yok"}` +
-        `${report.metalnessFixed ? " · metalness 0'a çekildi" : ""}`,
+        `açma çarpanı ${report.look.brightness}× · roughness ${report.look.roughness} · ` +
+        `metalness ${report.look.metalness} · ` +
+        `kalan dokular: ${report.maps.join(", ") || "yok"}` +
+        `${report.droppedMaps.length ? ` · kapatılan: ${report.droppedMaps.join(", ")}` : ""}`,
     );
   }, [tile]);
 
