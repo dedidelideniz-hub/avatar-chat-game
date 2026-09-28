@@ -395,7 +395,19 @@ export const LAMPS: LampDef[] = [
 ];
 
 // ─── BENCH POSITIONS ───
-export interface BenchDef { x: number; z: number; }
+export interface BenchDef {
+  x: number;
+  z: number;
+  /**
+   * Bankın baktığı yön — oturan karakterin de baktığı yön.
+   *   `1`  (varsayılan): arkalık -Z'de, bank +Z'ye bakar (kamera / ana cadde).
+   *   `-1`            : 180° döndürülmüş; arkalık +Z'de, bank -Z'ye bakar.
+   * Sadece sırtı bir duvara dönük kalacak banklarda `-1` verilir (arka
+   * sokaktaki banklar dükkan duvarına sıfır olduğu için oturan karakterin
+   * bacakları duvarın içine girmesin diye çevrildi).
+   */
+  facing?: 1 | -1;
+}
 
 export const BENCHES: BenchDef[] = [
   { x: -10.5, z: -6.2 },  // kuzey kaldırım, lambaların arası
@@ -405,10 +417,41 @@ export const BENCHES: BenchDef[] = [
   { x: -1,    z: -0.4 },  // güney kaldırım, cadde ortası
   { x: 17,    z: -0.4 },  // güney kaldırım
   // Arka kaldırım — sokak ağızlarının dışında (|x| = 16 ve 0 boş kalır)
-  { x: -9.6,  z: -13.5 },
-  { x: 3.6,   z: -13.5 },
-  { x: 18.6,  z: -13.5 },
+  // Duvar (-12.9) hemen güneyde kaldığı için bu üçü arkaya dönüktür.
+  { x: -9.6,  z: -13.5, facing: -1 },
+  { x: 3.6,   z: -13.5, facing: -1 },
+  { x: 18.6,  z: -13.5, facing: -1 },
 ];
+
+// ─── BENCH SITTING GEOMETRY ───
+/** Bank minderi üst yüzeyi (bkz. `GameEngine3D › Bench3D`: 0.22 + 0.02/2). */
+export const BENCH_SEAT_HEIGHT = 0.25;
+/** Oturan kalçanın bank merkezinden baktığı yöne kayması. */
+export const BENCH_SEAT_FORWARD = 0.06;
+/** Bir banka oturma etkileşiminin göründüğü yarıçap (dünya birimi). */
+export const BENCH_INTERACT_RADIUS = 1.15;
+
+/**
+ * Oturma noktasının dünya koordinatı — hem 3D avatara hem px katmanına
+ * (`svgX`/`svgY`) aynı kaynaktan beslenir.
+ */
+export function benchSeatSpot(def: BenchDef): { x: number; z: number } {
+  return { x: def.x, z: def.z + (def.facing ?? 1) * BENCH_SEAT_FORWARD };
+}
+
+/** Bankın baktığı yönü (1 | -1) normalize eder. */
+export function benchFacing(def: BenchDef): 1 | -1 {
+  return def.facing ?? 1;
+}
+
+/**
+ * Oturma durumu — 3D avatara aktarılan tek bilgi. Karakterin nerede durduğu
+ * `posRef`ten gelir (px), yön ise buradan.
+ */
+export interface SeatState {
+  /** Bankın (dolayısıyla oturan karakterin) baktığı yön: +1 = +Z, -1 = -Z. */
+  facing: 1 | -1;
+}
 
 // ─── VENDOR STALL POSITIONS ───
 export interface StallDef { x: number; z: number; color: string; accent: string; }

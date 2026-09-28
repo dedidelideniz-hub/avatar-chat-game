@@ -18,6 +18,7 @@ import { cameraFraming, cameraOpenAmount } from "./cameraFraming";
 // (bkz. `FollowCamera`). `BUILDING_USER_DATA` sadece binaları işaretleyen
 // zararsız meta veri olarak kalıyor (sistem gerekirse yeniden açılabilir).
 import { BUILDING_USER_DATA } from "./buildingOcclusion";
+import { getBenchNear, requestBenchSit } from "./benchSeat";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -36,8 +37,11 @@ import {
   BUILDINGS,
   LAMPS,
   BENCHES,
+  benchFacing,
+  benchSeatSpot,
   STALLS,
   S,
+  type SeatState,
   type BuildingDef,
   type LampDef,
   type BenchDef,
@@ -532,7 +536,12 @@ function Lamp3D({ def }: { def: LampDef }) {
 
 function Bench3D({ def }: { def: BenchDef }) {
   return (
-    <group position={[def.x, 0, def.z]}>
+    // `facing: -1` olan banklar 180° döner — sırtı duvara bakan banklarda
+    // oturan karakterin bacakları duvarın içine girmesin diye (bkz. BENCHES).
+    <group
+      position={[def.x, 0, def.z]}
+      rotation={[0, benchFacing(def) === -1 ? Math.PI : 0, 0]}
+    >
       {/* Seat planks */}
       <mesh position={[0, 0.22, 0]} castShadow>
         <boxGeometry args={[0.55, 0.035, 0.2]} />
@@ -556,6 +565,53 @@ function Bench3D({ def }: { def: BenchDef }) {
         </mesh>
       ))}
     </group>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  🪑 Oturma düğmesi — menzildeki bankın üstünde                 */
+/* ═══════════════════════════════════════════════════════════ */
+
+/**
+ * Oyuncu bir bankın menziline girdiğinde o bankın üzerinde beliren "Otur"
+ * düğmesi. Tıklama yalnızca `benchSeat` deposuna istek bırakır; oyun döngüsü
+ * (World.tsx) isteği bir sonraki karede tüketip karakteri oturtur — böylece
+ * 3D katman ile oyun mantığı React prop'u paylaşmaz.
+ *
+ * Konum depodan hesaplandığı ve yalnızca bank dizini değiştiğinde React
+ * state'i yazıldığı için kare başına re-render olmaz.
+ */
+function BenchSitButton() {
+  const [benchIndex, setBenchIndex] = useState<number | null>(null);
+  const shownRef = useRef<number | null>(null);
+
+  useFrame(() => {
+    const near = getBenchNear();
+    if (near === shownRef.current) return;
+    shownRef.current = near;
+    setBenchIndex(near);
+  });
+
+  if (benchIndex === null) return null;
+  const spot = benchSeatSpot(BENCHES[benchIndex]);
+
+  return (
+    <Html
+      center
+      distanceFactor={9}
+      position={[spot.x, 0.8, spot.z]}
+      zIndexRange={[30, 20]}
+    >
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => requestBenchSit()}
+        style={{ pointerEvents: "auto" }}
+        className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-gradient-to-r from-emerald-500 to-teal-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-lg transition-transform active:scale-95"
+      >
+        🪑 Otur
+      </button>
+    </Html>
   );
 }
 
@@ -681,12 +737,13 @@ function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
 
 /** Normal gameplay: real 3D GLB avatar (skeleton + animations). ?svg=1 restores legacy SVG. */
 function PlayerAvatar3D({
-  posRef, config, equipped, facingRef,
+  posRef, config, equipped, facingRef, seat,
 }: {
   posRef: React.RefObject<{ x: number; y: number }>;
   config: AvatarConfig;
   equipped: string[];
   facingRef: React.RefObject<number>;
+  seat?: SeatState | null;
 }) {
   if (SVG_DEBUG_MODE) {
     return <SvgPlayerAvatar3D posRef={posRef} config={config} equipped={equipped} facingRef={facingRef} />;
@@ -700,6 +757,10 @@ function PlayerAvatar3D({
       facingRef={facingRef}
       equipped={equipped}
       tint={hasCharacterSkin(equipped) ? undefined : config.shirt}
+      seat={seat}
+      // Yerel oyuncu oturma durumunu px katmanının deposundan okur; botlar
+      // ve uzak oyuncular bu bayrağı almaz (birlikte oturmasınlar).
+      readSeatStore
     />
   );
 }
@@ -1027,6 +1088,8 @@ export interface GameEngine3DProps {
   presenceSessionId?: string;
   onRemotePlayerSelect?: (entry: PresenceEntry<StreetPresence>) => void;
   remotePlayerSelectRef?: React.MutableRefObject<((entry: PresenceEntry<StreetPresence>) => void) | null>;
+  /** Doluysa yerel oyuncu bir bankta oturuyor (bkz. `SeatState`). */
+  seat?: SeatState | null;
 }
 
 export function GameEngine3D({
@@ -1041,6 +1104,7 @@ export function GameEngine3D({
   presenceSessionId,
   onRemotePlayerSelect,
   remotePlayerSelectRef,
+  seat = null,
 }: GameEngine3DProps) {
   const remoteSelect = useCallback((entry: PresenceEntry<StreetPresence>) => {
     onRemotePlayerSelect?.(entry);
@@ -1141,6 +1205,9 @@ export function GameEngine3D({
         <Stall3D key={i} def={def} />
       ))}
 
+      {/* 🪑 Menzildeki bankın üstünde beliren oturma düğmesi (bkz. `benchSeat`). */}
+      <BenchSitButton />
+
       {/* === BENCHES === */}
       {BENCHES.map((def, i) => (
         <Bench3D key={i} def={def} />
@@ -1170,6 +1237,7 @@ export function GameEngine3D({
         config={playerConfig}
         equipped={playerEquipped}
         facingRef={facingRef}
+        seat={seat}
       />
       {presenceSessionId && <StreetRemotePlayers sessionId={presenceSessionId} onSelect={onRemotePlayerSelect ?? ((entry) => remotePlayerSelectRef?.current?.(entry))} />}
 

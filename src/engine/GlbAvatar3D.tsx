@@ -4,7 +4,16 @@ import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { PLAYER_3D_HEIGHT, WORLD_WIDTH, WORLD_Z_MAX, S } from "./constants";
+import {
+  BENCH_SEAT_HEIGHT,
+  PLAYER_3D_HEIGHT,
+  WORLD_WIDTH,
+  WORLD_Z_MAX,
+  S,
+  type SeatState,
+} from "./constants";
+import { applySitPose, canSit, findSitBones } from "./SitPose";
+import { getSeatState } from "./benchSeat";
 import {
   type EquipSlot,
   getEquipmentDef,
@@ -90,6 +99,12 @@ const SKIN_ACCENT: Record<string, string> = {
 const MODEL_YAW_OFFSET: Record<string, number> = {
   "/models/skin-savasci.glb": Math.PI,
 };
+
+/**
+ * Oturma / kalkma geçişinin yumuşaklığı (1/sn). Geçiş bir smoothstep ile
+ * ölçeklendiği için ~0.6 sn sürer — ani zıplama olmadan banka yerleşir.
+ */
+const SIT_BLEND_SPEED = 3.4;
 
 /** Tint a clone toward an accent color, cloning materials so skins stay
  *  independent from each other and from the shared cached GLB. */
@@ -523,6 +538,18 @@ interface GlbAvatarCoreProps {
    * kendi ışıması nabız gibi salınır (simli görünüm).
    */
   sparkle?: boolean;
+  /**
+   * Doluysa karakter bir bankta oturur: bacaklar prosedürel oturma pozuna
+   * yumuşakça geçer, kalça bank yüksekliğine iner ve yön bankın baktığı
+   * yöne kilitlenir. `null`/`undefined` → normal ayakta/yürüyen hâl.
+   */
+  seat?: SeatState | null;
+  /**
+   * Oturma durumunu `benchSeat` deposundan oku. YALNIZCA yerel oyuncu için
+   * açılır: botlar, satıcılar ve uzak oyuncular aynı bileşeni paylaştığı
+   * için varsayılan `false` (yoksa hepsi birlikte otururdu).
+   */
+  readSeatStore?: boolean;
 }
 
 /** Işıması salınacak materyaller — boyanmış (klon) materyaller toplanır. */
@@ -549,11 +576,20 @@ function GlbAvatarCore({
   lerpSpeed = 14,
   tint,
   sparkle = false,
+  seat = null,
+  readSeatStore = false,
 }: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   // Scaled inner group: model transform (scale + feet offset) lives here so
   // the per-frame world position on the outer group can never clobber it.
   const innerRef = useRef<THREE.Group>(null);
+
+  // Oturma durumu: prop açıkça verilmişse o; yoksa YALNIZCA yerel oyuncuda
+  // (`readSeatStore`) px katmanının deposu (`benchSeat`) okunur — böylece
+  // oyun döngüsüne prop eklemek gerekmez. Her karede okunduğu için ref'te
+  // tutulur (kare başına re-render yok).
+  const seatRef = useRef<SeatState | null>(null);
+  seatRef.current = seat ?? (readSeatStore ? getSeatState() : null);
 
   // Skin system: if any equipped item has a skinUrl, use that character model instead.
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
@@ -887,6 +923,11 @@ function GlbAvatarCore({
       const dxw = (p.x - sp.x) / S;
       const dzw = -(p.y - sp.y) / S;
       targetYaw.current = Math.atan2(dxw, dzw);
+    } else if (seatRef.current) {
+      // Bankta otururken yön bankın baktığı yöne kilitlenir (oturmadan önce
+      // nereye baktığı önemsiz): modelin ileri ekseni +Z, yaw 0 = +Z.
+      const activeSeat = seatRef.current;
+      targetYaw.current = activeSeat.facing === 1 ? 0 : Math.PI;
     }
     let diff = targetYaw.current - group.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -991,6 +1032,46 @@ function GlbAvatarCore({
     return () => { cleanupEquipRef.current?.(); };
   }, []);
 
+  // ── 🪑 Bankta oturma (prosedürel, rig'den bağımsız) ────────────
+  // SIRA KRİTİK: bu `useFrame`, `useAnimations` (mixer) ve gövde konum
+  // çerçevesinden SONRA kaydolur. Yani her karede önce üst gövde idle
+  // klibinden yazılır, hemen ardından bacaklar + kök yüksekliği burada
+  // ezilir. Bu sayede hazır "Sitting" klibi olmayan deri modelleri de
+  // varsayılan karakterle birebir aynı şekilde oturur.
+  const sitBones = useMemo(() => findSitBones(clone), [clone]);
+  const sitReady = useMemo(() => canSit(sitBones), [sitBones]);
+  const sitBlend = useRef(0);
+  const seatMeasure = useRef(new THREE.Vector3());
+
+  useFrame((_, dt) => {
+    const inner = innerRef.current;
+    const group = groupRef.current;
+    if (!inner || !group) return;
+    const activeSeat = seatRef.current;
+    const want = activeSeat && sitReady ? 1 : 0;
+    // Ayakta ve geçiş bitmişse hiçbir maliyet yok.
+    if (want <= 0 && sitBlend.current <= 0) return;
+
+    sitBlend.current += (want - sitBlend.current) * Math.min(1, SIT_BLEND_SPEED * dt);
+    if (Math.abs(sitBlend.current - want) < 0.002) sitBlend.current = want;
+    if (sitBlend.current <= 0) return;
+
+    // smoothstep → oturma/kalkma başı ve sonu yumuşak.
+    const eased = sitBlend.current * sitBlend.current * (3 - 2 * sitBlend.current);
+    // Kök konumu bu karede az önce yazıldı → dünya matrisleri taze olmalı.
+    group.updateMatrixWorld(true);
+    applySitPose(clone, sitBones, activeSeat?.facing ?? 1, eased);
+
+    // Kalçayı bank minderi hizasına indir: bacak pozu uygulandıktan SONRA
+    // ölçülen kalça yüksekliği ile hedef arasındaki fark kadar kökü kaydır.
+    const hips = sitBones.hips;
+    if (hips) {
+      hips.getWorldPosition(seatMeasure.current);
+      inner.position.y += (BENCH_SEAT_HEIGHT - seatMeasure.current.y) * eased;
+      group.updateMatrixWorld(true);
+    }
+  });
+
   // Inner group carries the model scale + ground offset. The outer
   // group position is rewritten every frame by useFrame (y=0.02),
   // which would otherwise wipe the feet offset after the first frame
@@ -1052,6 +1133,10 @@ export interface GlbAvatar3DProps {
   tint?: string;
   /** Satıcı parıltısı (simli görünüm + yıldız tozu). */
   sparkle?: boolean;
+  /** Doluysa karakter bankta oturur (bkz. `SeatState`). */
+  seat?: SeatState | null;
+  /** Oturma durumunu `benchSeat` deposundan oku (yalnızca yerel oyuncu). */
+  readSeatStore?: boolean;
 }
 
 /** Primary URL can be overridden per-instance (used by the fallback). */
