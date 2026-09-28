@@ -424,12 +424,42 @@ export const BENCHES: BenchDef[] = [
 ];
 
 // ─── BENCH SITTING GEOMETRY ───
-/** Bank minderi üst yüzeyi (bkz. `GameEngine3D › Bench3D`: 0.22 + 0.02/2). */
-export const BENCH_SEAT_HEIGHT = 0.25;
-/** Oturan kalçanın bank merkezinden baktığı yöne kayması. */
-export const BENCH_SEAT_FORWARD = 0.06;
+/**
+ * BANK ÖLÇÜLERİ (dünya birimi). Referans: oyuncu 1.92 birim.
+ *
+ * ÖLÇEK NEDEN BÜYÜDÜ: eski bank 0.55 × 0.24 birimdi — yetişkin bir insan
+ * için ~0.55 m geniş, 0.24 m yüksek bir bank. Karakterin arkasında
+ * kaybolduğu için "bankta oturuyor" okunmuyordu (bkz. Bench3D). Yeni
+ * ölçüler gerçek park bankı oranlarında.
+ */
+export const BENCH_WIDTH = 1.5;
+/** Oturma yüzeyinin Z derinliği (çıtaların dış kenarları arası). */
+export const BENCH_SEAT_DEPTH = 0.44;
+/** Oturma çıtalarının üst yüzeyi (bkz. `GameEngine3D › Bench3D`). */
+export const BENCH_SEAT_TOP = 0.46;
+/**
+ * Oturan KALÇA kemiğinin dünya yüksekliği — oturma yüzeyinin 10 cm üstü.
+ *
+ * NEDEN 10 CM: kalça KEMİĞİ (pelvis merkezi) minderin üzerinde oturmaz;
+ * mindere değen kısım onun ~10-12 cm altındaki kalça/but dokusudur. Değeri
+ * mindere indirirsek (eski hâli: kalça = minder) karakterin kalçası ve
+ * uylukları çıtaların İÇİNE gömülür. Gerçek insanda da kalça eklemi oturma
+ * yüzeyinin ~8-10 cm üstündedir.
+ *
+ * YÜKSEKLİK POZU BELİRLER: ayaklar yerde kaldığı sürece DİZ sabittir
+ * (~baldır boyu = 0.47, çünkü ayak yerde ve baldır dikey). Kalçayı
+ * yükseltmek sadece uyluğu biraz daha aşağı eğer — diz yukarı çıkmaz.
+ * Eski 0.25'lik bankta bacaklar katlanıp dizler göğse yaklaşıyordu;
+ * bkz. `SitPose.ts` ve `check-bench-sit.ts`.
+ */
+export const BENCH_SEAT_HEIGHT = 0.56;
+/**
+ * Oturan kalçanın bank merkezinden baktığı yöne kayması. Negatif = arkalığa
+ * doğru: kalça oturma yüzeyinin ortasında, sırt arkalığa yakın durur.
+ */
+export const BENCH_SEAT_FORWARD = -0.05;
 /** Bir banka oturma etkileşiminin göründüğü yarıçap (dünya birimi). */
-export const BENCH_INTERACT_RADIUS = 1.15;
+export const BENCH_INTERACT_RADIUS = 1.35;
 
 /**
  * Oturma noktasının dünya koordinatı — hem 3D avatara hem px katmanına

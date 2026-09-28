@@ -37,6 +37,9 @@ import {
   BUILDINGS,
   LAMPS,
   BENCHES,
+  BENCH_WIDTH,
+  BENCH_SEAT_DEPTH,
+  BENCH_SEAT_TOP,
   benchFacing,
   benchSeatSpot,
   STALLS,
@@ -534,7 +537,24 @@ function Lamp3D({ def }: { def: LampDef }) {
 /*  Bench                                                      */
 /* ═══════════════════════════════════════════════════════════ */
 
+const BENCH_WOOD = "#c89153";
+const BENCH_METAL = "#4a4a52";
+
+/**
+ * 🪑 PARK BANKI — ölçüler `constants.ts`te (BENCH_*) tanımlıdır.
+ *
+ * NEDEN BU KADAR BÜYÜK: oyuncu 1.92 birim boyunda. Eski bank 0.55 × 0.24
+ * birimdi (insan ölçeğinde ~0.55 m geniş, 0.24 m yüksek bank) ve karakterin
+ * arkasında tamamen kayboluyordu — "bankta oturuyor" okunmuyordu. Yeni
+ * ölçüler yetişkin bir park bankı: 1.5 birim en, 0.46 birim oturma
+ * yüksekliği. 3 oturma çıtası + 2 arkalık çıtası + metal yan ayaklar.
+ */
 function Bench3D({ def }: { def: BenchDef }) {
+  const seatY = BENCH_SEAT_TOP;
+  const halfDepth = BENCH_SEAT_DEPTH / 2;
+  // Arkalık, oturma çıtalarının hemen arkasında durur (zıplama payı 0.005).
+  const backZ = -halfDepth + 0.015;
+  const postZ = backZ - 0.06;
   return (
     // `facing: -1` olan banklar 180° döner — sırtı duvara bakan banklarda
     // oturan karakterin bacakları duvarın içine girmesin diye (bkz. BENCHES).
@@ -542,28 +562,48 @@ function Bench3D({ def }: { def: BenchDef }) {
       position={[def.x, 0, def.z]}
       rotation={[0, benchFacing(def) === -1 ? Math.PI : 0, 0]}
     >
-      {/* Seat planks */}
-      <mesh position={[0, 0.22, 0]} castShadow>
-        <boxGeometry args={[0.55, 0.035, 0.2]} />
-        <meshStandardMaterial color="#c49a60" roughness={0.82} />
-      </mesh>
-      {/* Seat plank detail */}
-      <mesh position={[0, 0.24, 0]} castShadow>
-        <boxGeometry args={[0.52, 0.02, 0.18]} />
-        <meshStandardMaterial color="#b88c50" roughness={0.85} />
-      </mesh>
-      {/* Backrest */}
-      <mesh position={[0, 0.36, -0.085]} castShadow>
-        <boxGeometry args={[0.55, 0.2, 0.035]} />
-        <meshStandardMaterial color="#c49a60" roughness={0.82} />
-      </mesh>
-      {/* Metal legs */}
-      {[-0.22, 0.22].map((lx) => (
-        <mesh key={lx} position={[lx, 0.11, 0]}>
-          <boxGeometry args={[0.035, 0.22, 0.18]} />
-          <meshStandardMaterial color="#4a4a52" roughness={0.6} metalness={0.25} />
+      {/* Oturma çıtaları (3) */}
+      {[-0.15, 0, 0.15].map((sz) => (
+        <mesh key={`s${sz}`} position={[0, seatY - 0.03, sz]} castShadow receiveShadow>
+          <boxGeometry args={[BENCH_WIDTH, 0.06, 0.14]} />
+          <meshStandardMaterial color={BENCH_WOOD} roughness={0.78} />
         </mesh>
       ))}
+      {/* Arkalık çıtaları (2) */}
+      {[0, 1].map((i) => (
+        <mesh
+          key={`b${i}`}
+          position={[0, seatY + 0.16 + i * 0.18, backZ]}
+          castShadow
+        >
+          <boxGeometry args={[BENCH_WIDTH, 0.13, 0.06]} />
+          <meshStandardMaterial color={BENCH_WOOD} roughness={0.78} />
+        </mesh>
+      ))}
+      {/* Metal yan ayaklar: ön ayak + arkalık direği (arkalığın en üstüne kadar) */}
+      {[-1, 1].map((side) => {
+        const lx = side * (BENCH_WIDTH / 2 - 0.12);
+        return (
+          <group key={side} position={[lx, 0, 0]}>
+            <mesh position={[0, seatY / 2 - 0.03, 0.15]} castShadow>
+              <boxGeometry args={[0.07, seatY - 0.06, 0.07]} />
+              <meshStandardMaterial color={BENCH_METAL} roughness={0.55} metalness={0.3} />
+            </mesh>
+            <mesh
+              position={[0, (seatY + 0.37) / 2, postZ]}
+              castShadow
+            >
+              <boxGeometry args={[0.07, seatY + 0.37, 0.07]} />
+              <meshStandardMaterial color={BENCH_METAL} roughness={0.55} metalness={0.3} />
+            </mesh>
+            {/* Oturma çıtalarını taşıyan yan kasa */}
+            <mesh position={[0, seatY - 0.09, 0]} castShadow>
+              <boxGeometry args={[0.06, 0.06, BENCH_SEAT_DEPTH - 0.06]} />
+              <meshStandardMaterial color={BENCH_METAL} roughness={0.55} metalness={0.3} />
+            </mesh>
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -599,7 +639,7 @@ function BenchSitButton() {
     <Html
       center
       distanceFactor={9}
-      position={[spot.x, 0.8, spot.z]}
+      position={[spot.x, 0.98, spot.z]}
       zIndexRange={[30, 20]}
     >
       <button

@@ -13,6 +13,9 @@ import { readFileSync } from "node:fs";
 import * as THREE from "three";
 import {
   BENCHES,
+  BENCH_WIDTH,
+  BENCH_SEAT_DEPTH,
+  BENCH_SEAT_TOP,
   BENCH_SEAT_FORWARD,
   BENCH_SEAT_HEIGHT,
   BENCH_INTERACT_RADIUS,
@@ -42,8 +45,9 @@ function check(label: string, ok: boolean, detail = "") {
   }
 }
 
-const THIGH_DIR = new THREE.Vector3(0, 0.18, 1).normalize();
-const SHIN_DIR = new THREE.Vector3(0, -1, 0.85).normalize();
+// `SitPose.applySitPose` ile AYNI yönler (normal bank oturuşu).
+const THIGH_DIR = new THREE.Vector3(0, -0.19, 1).normalize();
+const SHIN_DIR = new THREE.Vector3(0, -1, 0.0875).normalize();
 
 /* ── 1. Oturma noktası yürünebilir mi? ─────────────────────────────── */
 console.log("── oturma noktaları yürünebilir alanda mı? ──");
@@ -84,32 +88,50 @@ const ankleY = kneeY + SHIN * SHIN_DIR.y;
 const reach = THIGH * THIGH_DIR.z + SHIN * SHIN_DIR.z;
 
 check(
-  "Diz kalçadan yüksekte (alçak bank oturuşu)",
-  kneeY > hipY,
-  `kalça ${hipY.toFixed(2)} → diz ${kneeY.toFixed(2)}`,
+  "Diz kalçanın ALTINDA ama minderin ÜSTÜNDE (bank oturuşu)",
+  kneeY < hipY && kneeY > BENCH_SEAT_TOP,
+  `kalça ${hipY.toFixed(2)} → diz ${kneeY.toFixed(2)} → minder ${BENCH_SEAT_TOP}`,
 );
 check(
-  "Ayak zemine 5 cm'den fazla gömülmüyor",
+  "Ayak zemine gömülmüyor",
   ankleY > -0.05,
   `ayak y ${ankleY.toFixed(3)}`,
 );
-check("Ayak havada kalmıyor", ankleY < 0.08, `ayak y ${ankleY.toFixed(3)}`);
+check("Ayak havada kalmıyor", ankleY < 0.06, `ayak y ${ankleY.toFixed(3)}`);
 check(
-  "Bacak erişi gerçekçi (0.6–0.9 birim)",
-  reach > 0.6 && reach < 0.9,
+  "Bacak erişi gerçekçi (0.45–0.75 birim)",
+  reach > 0.45 && reach < 0.75,
   `${reach.toFixed(3)} birim`,
 );
 check(
-  "Koltuk yüksekliği bankın arkalığından alçak",
-  BENCH_SEAT_HEIGHT < 0.36,
+  "Minder yüksekliği insan ölçeğinde (0.40–0.52 birim)",
+  BENCH_SEAT_TOP > 0.4 && BENCH_SEAT_TOP < 0.52,
+  `${BENCH_SEAT_TOP} birim`,
 );
 check(
-  "Oturma noktası bank merkezinin 0.1 birim yakınında",
-  Math.abs(BENCH_SEAT_FORWARD) < 0.1,
+  "Kalça eklemi minderin 6–13 cm üstünde (kalça dokusu mindere oturur)",
+  BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP > 0.06 &&
+    BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP < 0.13,
+  `minder ${BENCH_SEAT_TOP} → kalça ${BENCH_SEAT_HEIGHT}`,
 );
 check(
-  "Etkileşim yarıçapı oturma erişiminden büyük",
-  BENCH_INTERACT_RADIUS > 0.9,
+  "Bank eni karakterin sırtından geniş (≥ 1.2 birim)",
+  BENCH_WIDTH >= 1.2,
+  `${BENCH_WIDTH} birim`,
+);
+check(
+  "Oturma derinliği gerçekçi (0.35–0.55 birim)",
+  BENCH_SEAT_DEPTH > 0.35 && BENCH_SEAT_DEPTH < 0.55,
+  `${BENCH_SEAT_DEPTH} birim`,
+);
+check(
+  "Oturma noktası mindere denk geliyor",
+  Math.abs(BENCH_SEAT_FORWARD) < BENCH_SEAT_DEPTH / 2,
+  `kayma ${BENCH_SEAT_FORWARD} birim`,
+);
+check(
+  "Etkileşim yarıçapı bankın yarı enini kapsıyor",
+  BENCH_INTERACT_RADIUS > 0.9 && BENCH_INTERACT_RADIUS > BENCH_WIDTH / 2,
   `${BENCH_INTERACT_RADIUS} birim`,
 );
 
@@ -159,6 +181,25 @@ check(
 check(
   "Kuzey kaldırım bankları caddeden yana (facing 1)",
   BENCHES.filter((b) => b.z < -5 && b.z > -8).every((b) => benchFacing(b) === 1),
+);
+
+// Oturan karakterin ayakları yürünen yüzeyde kalmalı: yola taşmamalı ve
+// kaldırım bandının dışına çıkmamalı (bank büyüdüğü için erişim de büyüdü).
+const inRoad = (z: number) => z > ZONE.roadTop && z < ZONE.roadBot;
+check(
+  "Hiçbir bankta oturan ayaklar yola taşmıyor",
+  seats.every((s) => !inRoad(s.z + reach * s.facing)),
+  `ayak z ${seats.map((s) => (s.z + reach * s.facing).toFixed(2)).join(", ")}`,
+);
+const northWalkBenches = BENCHES.filter((b) => b.z < -5 && b.z > -8);
+check(
+  "Kuzey kaldırım banklarında ayaklar kaldırımda kalıyor",
+  northWalkBenches.every((b) => {
+    const s = benchSeatSpot(b);
+    const footZ = s.z + reach * benchFacing(b);
+    return footZ >= ZONE.northSidewalkTop && footZ <= ZONE.northSidewalkBot;
+  }),
+  `${northWalkBenches.length} bank`,
 );
 
 /* ── 4. Gerçek iskeletler ─────────────────────────────────────────── */
@@ -299,14 +340,18 @@ for (const model of MODELS) {
     `uzaklık ${footGap.toFixed(5)}`,
   );
 
-  // İkinci çağrı hiçbir şeyi değiştirmemeli → kare başına titreme olmaz.
+  // Poz İDEMPOTENT olmalı → kare başına titreme olmaz. 120 kere üst üste
+  // uygulanır: hata birikiyorsa (poz kendi çıktısını girdi alıyorsa) sapma
+  // 1e-4'ü aşardı; sadece kayan nokta yuvarlamasıysa 1e-5 mertebesinde kalır.
   const before = snapshot(root);
-  applySitPose(root, found, 1, 1);
-  root.updateMatrixWorld(true);
+  for (let i = 0; i < 120; i++) {
+    applySitPose(root, found, 1, 1);
+    root.updateMatrixWorld(true);
+  }
   const diff = before.maxDiff(snapshot(root));
   check(
-    `${model}: poz idempotent (kare başına kayma yok)`,
-    diff < 1e-6,
+    `${model}: poz idempotent (120 karede kayma yok)`,
+    diff < 1e-4,
     `maks fark ${diff.toExponential(2)}`,
   );
 

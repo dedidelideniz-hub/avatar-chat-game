@@ -3,8 +3,9 @@
  *
  * NEDEN PROSEDÜREL: oyundaki dört karakter GLB'sinin yalnızca biri
  * (`character.glb`) hazır bir "Sitting" klibi taşıyor; deri modelleri
- * (savaşçı/samuray/şövalye) taşımıyor. Hazır klibi kullanmak, bankın çok
- * alçak (0.25 birim) olması yüzünden ayakları zemine gömüyordu. Bu yüzden
+ * (savaşçı/samuray/şövalye) taşımıyor. Hazır klip bankın yüksekliğine göre de
+ * ayarlanamıyordu: minder 0.46 birim, oturan kalça 0.56 birim yükseklikte
+ * (bkz. `constants.ts` BENCH_*). Bu yüzden
  * oturma pozu KEMİK YÖNLERİNDEN türetilir: kemiğin mevcut dünya yönü
  * ölçülür ve istenen yöne döndürülür — böylece her rig'de aynı sonuç çıkar
  * ve kemik eksenleri (local axis) hakkında hiçbir varsayım yapılmaz.
@@ -315,11 +316,20 @@ export function applySitPose(
   blend: number,
 ) {
   if (blend <= 0) return;
-  // Kalça, dizden biraz alçak kalır (alçak bank): uyluk neredeyse yatay ve
-  // hafif yukarı, baldır öne açılı — ayaklar zemine ~1-3 cm yaklaşır, bu da
-  // 50 px/birim ölçekte görünmez.
-  _thighDir.set(0, 0.18, facing).normalize();
-  _shinDir.set(0, -1, facing * 0.85).normalize();
+  // NORMAL BANK OTURUŞU (minder 0.46, kalça 0.56 — bkz. BENCH_SEAT_HEIGHT):
+  //   • uyluk yataydan ~11° aşağı (diz kalçanın ~9 cm altında),
+  //   • baldır neredeyse DİKEY (5° öne açık),
+  //   • ayaklar yere basar: kalça 0.56 − uyluk dikey payı 0.088 −
+  //     baldır 0.470 ≈ 0.002 birim pay.
+  // Eski alçak bankta (0.25) uyluk yukarı, baldır 40° öne bakıyordu; bacaklar
+  // katlanıp dizler göğse yaklaşıyordu ve "bankta oturuyor" okunmuyordu.
+  //
+  // DİKKAT: diz konumu bu iki yönle SABİTLENİR (ayak yerde + baldır dikey →
+  // diz ≈ baldır boyu). Kalça yüksekliğini değiştirmek diziyi yukarı taşımaz,
+  // sadece uyluğun eğimini değiştirir — yani pozu bozmadan bank yüksekliği
+  // ayarlanabilir (`scripts/check-bench-sit.ts` bunu ölçer).
+  _thighDir.set(0, -0.19, facing).normalize();
+  _shinDir.set(0, -1, facing * 0.0875).normalize();
 
   root.updateMatrixWorld(true);
   poseLeg(root, bones.thighL, bones.shinL, bones.footL, _thighDir, _shinDir, blend);
