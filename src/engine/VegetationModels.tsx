@@ -28,7 +28,7 @@ import { useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { tickFoliageSway } from "./foliageSway";
-import { GRASS_CLUMP_ZONES, GRASS_LIFT, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
+import { GRASS_CLUMP_ZONES, GRASS_GROUND_Y, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
 import { mulberry32 } from "./StreetDetail";
 import {
   GRASS_CLUMP_MODEL_URL,
@@ -272,7 +272,7 @@ export function StreetTrees() {
       cfg={TREE_MODEL_CONFIG}
       placements={placements}
       height={VEG_SIZES.tree}
-      baseY={GRASS_LIFT}
+      baseY={GRASS_GROUND_Y}
     />
   );
 }
@@ -308,7 +308,7 @@ export function StreetGrassClumps() {
       cfg={GRASS_MODEL_CONFIG}
       placements={placements}
       height={VEG_SIZES.grassClump}
-      baseY={GRASS_LIFT}
+      baseY={GRASS_GROUND_Y}
       castShadow={false}
       receiveShadow={false}
     />

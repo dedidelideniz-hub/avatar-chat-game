@@ -162,30 +162,43 @@ export const TREE_ROWS: TreeRowDef[] = [
 ];
 
 /* ════════════════════════════════════════════════════════════
-   ÇİM KATMANI — yeşil alanların zemin kalitesi
-   Düz parlak yeşil plane yerine: iki tonlu karo dokusu + ince bordür
-   + rastgele dağılmış GLB çim kümeleri.
+   ÇİM ZEMİN — `public/models/grass_ground.glb` döşemesi
+   Kodla çizilen düz/karo dokulu çim düzlemleri kaldırıldı; zemin
+   gerçek modelin 4×4 birimlik karolarıyla döşeniyor (bkz.
+   `GrassGround.tsx` + `grassGroundPrep.ts`).
    ════════════════════════════════════════════════════════════ */
 
-/** Çim renk paleti — pastel, göz yormayan yeşil. */
-export const GRASS_TONES = {
-  /** Karo açık tonu. */
-  light: "#7EC850",
-  /** Karo koyu tonu (satranç deseninin ikinci yeşili). */
-  dark: "#6EC045",
-  /** Çim kümelerinde kullanılan açık bıçak tonu. */
-  bladeLight: "#8FD85F",
-  /** Çim kümelerinde kullanılan koyu bıçak tonu. */
-  bladeDark: "#5DA838",
-  /** Kaldırıma temas eden kenardaki ince koyu yeşil bordür. */
-  border: "#4C8A31",
-} as const;
+/**
+ * Çim yüzeyinin Y seviyesi.
+ *
+ * Asfalt 0.008, kaldırım 0.005 → çim 0'da kalır: hem yol/kaldırım
+ * seviyesinin altında-hizasında olur hem de tabanı 0 olan proplar (ağaç,
+ * bank, lamba, otobüs durağı, çöp kutusu, çit) doğrudan bu zeminin üstünde
+ * durur — hiçbiri havada kalmaz, zemine gömülmez.
+ */
+export const GRASS_GROUND_Y = 0;
 
-/** Çim karosu kenarı (dünya birimi) — doku repeat'i bundan türetilir. */
-export const GRASS_TILE = 0.5;
+/** Çim döşemesinin kaplanacağı dikdörtgen bölge. */
+export interface GrassGroundZoneDef {
+  /** Bölge merkezi. */
+  x: number;
+  z: number;
+  /** Genişlik (X) — döşeme bu genişliği boşluksuz kaplar. */
+  w: number;
+  /** Derinlik (Z). */
+  d: number;
+  /** Zemin seviyesi. */
+  y: number;
+}
 
-/** Çim şeritlerinin kaldırım seviyesinden yüksekliği (ince kenar/derinlik). */
-export const GRASS_LIFT = 0.07;
+/**
+ * Tek bölge: caddenin ve binaların altındaki tüm zemin (eski "arka plan çimi"
+ * + kuzey ve güney yeşil şeritleri). Yol (0.008) ve kaldırım (0.005) bu
+ * zeminin hemen üstünde kaldığı için çim sadece yeşil alanlarda görünür.
+ */
+export const GRASS_GROUND_ZONES: GrassGroundZoneDef[] = [
+  { x: 0, z: 0, w: WORLD_WIDTH + 4, d: WORLD_DEPTH + 4, y: GRASS_GROUND_Y },
+];
 
 /** Çim kümesi (GLB çim öbeği) dağıtım bölgesi. */
 export interface GrassClumpZoneDef {
@@ -230,13 +243,6 @@ export const VEG_SIZES = {
   /** Çim öbeği boyu. */
   grassClump: 0.34,
 } as const;
-
-/** Çim şeritlerinin kaldırıma bakan kenarları — bordür çizgileri. */
-export const GRASS_BORDERS: number[] = [
-  ZONE.northGrassBot, // kuzey çim → kuzey kaldırım
-  ZONE.southGrassTop, // güney kaldırım → güney çim
-  ZONE.southGrassBot, // güney çimin dış (arka) kenarı
-];
 
 // ─── LAMP POSITIONS ───
 export interface LampDef { x: number; z: number; }

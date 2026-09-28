@@ -158,6 +158,41 @@ yok (`colorType=2` RGB), yani kartlar opak ve yere dikdörtgen gölge basardı.
 
 Yerleşim: `constants.ts` → `TREE_ROWS` (iki sıra, eşit aralık; güney sırası
 yarım adım kaydırılmış), örnek başına rastgele Y rotasyonu + ±%15 boyut.
+Yapraklar GPU'da hafifçe salınır (vertex shader enjeksiyonu, `foliageSway.ts`):
+kare başına tek uniform yazımı, ek draw call yok.
+
+### `models/grass_ground.glb` (caddenin çim zemini — depoya eklenen model)
+
+Caddenin yeşil alanları bu modellen döşenir. Kodla çizilen düz renkli ve
+satranç/grid dokulu çim düzlemleri **tamamen kaldırıldı** (`GrassPatch`,
+`makeGrassPlane`, `makeGrassTexture`, `GrassBorders`, `GRASS_TONES`,
+`GRASS_TILE`, `GRASS_LIFT`, `GRASS_BORDERS`).
+
+Depoya `simple_grass_ground_free_low_model (1).glb` adıyla **binary GLB** olarak
+eklendi; kural gereği ASCII'ye çevrildi (dosya adı da sadeleştirildi):
+
+```bash
+mv "public/models/simple_grass_ground_free_low_model (1).glb" public/models/grass_ground.glb
+node scripts/glb-to-embedded-json.mjs public/models/grass_ground.glb
+# 6.57MiB -> 8.76MiB (ascii-only, byte-exact base64 buffer, aynı uzantı)
+```
+
+Ölçüm (`bun scripts/check-grass-ground.ts`, gerçek dosya): **1 mesh · 2 üçgen ·
+4×4×0 birim düz zemin · normal +Y · UV 0…1 · 3 PNG doku (1024² basecolor +
+normal + ORM)**. Model tek bir karo olduğu için zemin büyütülmez, **kendi
+boyutu kadar (4 birim) adımla döşenir** (`GrassGround.tsx` +
+`grassGroundPrep.ts`): 36×22'lik alan için 9×6 = **54 örnek → 1 draw call**,
+komşu karo kenarları tam uç uca gelir. Doku kenar uyumu da ölçüldü: sol-sağ
+11.3/255 ve üst-alt 11.5/255 → dikiş görünmez, ek düzeltme gerekmiyor.
+
+İki malzeme düzeltmesi yapılır: `metalness = 0` (glTF varsayılanı
+`metallicFactor = 1`; düzeltilmezse zemin koyu/metalik görünür) ve
+`side = DoubleSide`.
+
+Yükseklik: `GRASS_GROUND_Y = 0` — asfalt 0.008, kaldırım 0.005, yani çim
+ yol/kaldırımın hemen altında kalır; tabanı 0 olan tüm proplar (akçaağaçlar,
+banklar, otobüs durakları, lambalar, çöp kutuları, çitler) doğrudan bu zeminin
+üstünde durur. Ağaç ve çim öbeği katmanı da `baseY = GRASS_GROUND_Y` kullanır.
 
 ### `models/tree.glb` · `models/bush.glb` · `models/grass_clump.glb`
 
@@ -185,7 +220,7 @@ node scripts/build-foliage-glb.mjs
 | Model | İçerik | Üçgen | Malzemeler |
 |---|---|---|---|
 | `tree.glb` | stilize yapraklı ağaç (gövde + 2 dal + 5 yaprak lobu) — kullanılmıyor | 144 | `TreeTrunk`, `TreeFoliageLight`, `TreeFoliageDark` |
-| `bush.glb` | şekilli organik çalı (6 iç içe lob) | 120 | `BushFoliage`, `BushFoliageDark` |
+| `bush.glb` | şekilli organik çalı (6 iç içe lob) — kullanılmıyor (çalılar sahneden kaldırıldı) | 120 | `BushFoliage`, `BushFoliageDark` |
 | `grass_clump.glb` | 7 yapraklı 3D çim öbeği | 28 | `GrassBladeLight`, `GrassBladeDark` |
 
 **Model uzayı ölçülerek uygulanır** (`useModelParts`): yükleme anında kaba kutu
@@ -195,10 +230,10 @@ sahne tarafı sadece "kaç birim boyunda duracak" der (`VEG_SIZES`). Her örnek
 rastgele Y rotasyonu (0–360°) ve 0.85–1.15 boyut çarpanı alır; parlaklık
 0.9–1.1 arası `instanceColor` ile oynatılır (hepsi fabrikasyon durmasın).
 
-Yerleşim verisi `constants.ts`'tedir (`TREE_ROWS`, `BUSHES`, `GRASS_CLUMP_ZONES`).
+Yerleşim verisi `constants.ts`'tedir (`TREE_ROWS`, `GRASS_CLUMP_ZONES`).
 Malzemeler örnekler arasında paylaşılır ve modelin her malzemesi tek bir
-`InstancedMesh`'e dönüşür → 15 ağaç + 19 çalı + ~244 çim öbeği için toplam
-**6 draw call**. Modeller bir hata sınırının (`ModelErrorBoundary`) arkasında
+`InstancedMesh`'e dönüşür → 15 akçaağaç + ~244 çim öbeği için toplam
+**4 draw call**. Modeller bir hata sınırının (`ModelErrorBoundary`) arkasında
 yüklenir: dosya bozuksa sadece o katman düşer, cadde çalışmaya devam eder
 (ilkel yedek çizilmez).
 
@@ -206,10 +241,10 @@ Doğrulama: `bun scripts/check-veg-models.ts` gerçek dosyaları sahnenin kullan
 AYNI hazırlık kodundan geçirir ve ölçümü yazar (draw call, yön düzeltmesi,
 normalize boy, caddedeki taç genişliği).
 
-Dokulu bir çalı istenirse depoda hazır model var: `/models/stylized_bush.glb`
-(Sketchfab "Stylized Bush", CC-BY-4.0, 1 mesh + PNG doku).
-`VegetationModels.tsx` içindeki `BUSH_MODEL_URL`'i ona çevirmek yeterli —
-normalizasyon ve instancing kodu aynı kalır.
+Not: `stylized_bush.glb` (Sketchfab "Stylized Bush", CC-BY-4.0) depoda duruyor
+ama artık hiçbir katman onu yüklemiyor — çalılar istendiği üzere sahneden
+kaldırıldı. Geri istenirse `VegetationModels.tsx` içinde aynı desen
+(`useGLTF` + `InstancedMesh`) ile birkaç satırda bağlanır.
 
 ## `sounds/*.mp3.b64`
 

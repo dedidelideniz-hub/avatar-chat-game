@@ -34,8 +34,6 @@ import {
   type StallDef,
 } from "./constants";
 import {
-  GrassBorders,
-  GrassPatch,
   LampGlowFx,
   RoofDetail,
   ShopAwning,
@@ -47,6 +45,8 @@ import {
   useStreetGroundTextures,
 } from "./StreetDetail";
 import { makeSignTexture } from "./streetTextures";
+// Çim zemin GLB karolarıyla döşenir — kodla çizilen çim düzlemi kaldırıldı.
+import { GrassGround } from "./GrassGround";
 // Yeşillik SADECE akçaağaç GLB'sinden (ağaç) ve çim öbeği GLB'sinden gelir:
 // ilkel ağaç/çalı/çiçek geometrisi (küre top, kutu çit, mantar çiçek) kaldırıldı.
 import { StreetGrassClumps, StreetTrees } from "./VegetationModels";
@@ -164,8 +164,9 @@ function Ground() {
   const roadMid = (ZONE.roadTop + ZONE.roadBot) / 2;
   const roadW = ZONE.roadBot - ZONE.roadTop;
 
-  // Kaldırım taşı + asfalt + çim karosu dokusu (tek kez üretilir, paylaşılır).
-  const { pavement, asphalt, grass } = useStreetGroundTextures();
+  // Kaldırım taşı + asfalt dokusu (tek kez üretilir, paylaşılır).
+  // Çim zemini doku değil, GLB karosudur → `<GrassGround />`.
+  const { pavement, asphalt } = useStreetGroundTextures();
 
   // Subtle road dashes for pedestrian walkway feel
   const dashes = useMemo(() => {
@@ -176,17 +177,12 @@ function Ground() {
 
   return (
     <group>
-      {/* Arka plan çimi — dünya dışına taşan şerit (karo dokulu, seviye 0). */}
-      <GrassPatch x={0} z={0} w={WORLD_WIDTH + 4} d={WORLD_DEPTH + 4} texture={grass} lift={-0.01} />
-
-      {/* Kuzey çim şeridi — iki tonlu karo dokusu + hafif yükseklik. */}
-      <GrassPatch
-        x={0}
-        z={(ZONE.northGrassTop + ZONE.northGrassBot) / 2}
-        w={WORLD_WIDTH}
-        d={ZONE.northGrassBot - ZONE.northGrassTop}
-        texture={grass}
-      />
+      {/* ÇİM ZEMİN — `public/models/grass_ground.glb` karolarıyla döşenir
+          (kodla çizilen düz/satranç dokulu çim düzlemleri kaldırıldı). Taban
+          `GRASS_GROUND_Y` = 0, yani yol (0.008) ve kaldırımın (0.005) hemen
+          altında kalır; propların tabanı da aynı seviyede olduğu için
+          hiçbiri havada durmaz / zemine gömülmez. */}
+      <GrassGround />
 
       {/* North sidewalk — warm stone (kaldırım taşı dokusu).
           `map` ile `color` ÇARPILIR; renk dokunun kendi tonunu bozmasın diye
@@ -215,18 +211,6 @@ function Ground() {
         <planeGeometry args={[WORLD_WIDTH, ZONE.southSidewalkBot - ZONE.southSidewalkTop]} />
         <meshStandardMaterial color="#ffffff" roughness={0.92} map={pavement} />
       </mesh>
-
-      {/* Güney çim şeridi — karo dokusu + hafif yükseklik. */}
-      <GrassPatch
-        x={0}
-        z={(ZONE.southGrassTop + ZONE.southGrassBot) / 2}
-        w={WORLD_WIDTH}
-        d={ZONE.southGrassBot - ZONE.southGrassTop}
-        texture={grass}
-      />
-
-      {/* Çim bordürleri — kaldırıma temas eden kenarlarda ince koyu yeşil çizgi. */}
-      <GrassBorders />
 
       {/* ═══ Curbs ═══ */}
       {/* North sidewalk → road curb */}

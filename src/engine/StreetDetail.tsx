@@ -20,10 +20,7 @@ import {
   DIRECTION_SIGNS,
   FENCES,
   FENCE_SPACING,
-  GRASS_BORDERS,
-  GRASS_LIFT,
-  GRASS_TILE,
-  GRASS_TONES,
+  GRASS_GROUND_Y,
   TRASH_CANS,
   ZONE,
   WORLD_WIDTH,
@@ -34,7 +31,6 @@ import {
   makeAsphaltTexture,
   makeAwningTexture,
   makeGlowTexture,
-  makeGrassTexture,
   makePavementTexture,
   makeSignTexture,
 } from "./streetTextures";
@@ -64,88 +60,26 @@ const MAT = {
   darkWood: new THREE.MeshStandardMaterial({ color: "#6b4a2c", roughness: 0.88 }),
   stripe: new THREE.MeshStandardMaterial({ color: "#ece6d8", roughness: 0.85 }),
   fence: new THREE.MeshStandardMaterial({ color: "#efe7d6", roughness: 0.78 }),
-  grassBorder: new THREE.MeshStandardMaterial({ color: GRASS_TONES.border, roughness: 0.95 }),
   binGreen: new THREE.MeshStandardMaterial({ color: "#3d6b52", roughness: 0.62, metalness: 0.18 }),
   binBlue: new THREE.MeshStandardMaterial({ color: "#2f5c8a", roughness: 0.62, metalness: 0.18 }),
   binLid: new THREE.MeshStandardMaterial({ color: "#2a3a34", roughness: 0.55, metalness: 0.3 }),
 };
 
-/** Kaldırım/asfalt/çim için zemin dokuları (Ground bileşeni kullanır). */
+/**
+ * Kaldırım/asfalt dokuları (Ground bileşeni kullanır).
+ * Çim zemini kodla çizilmiyor: `public/models/grass_ground.glb` döşenir.
+ */
 export function useStreetGroundTextures() {
   return useMemo(() => {
     const pavement = makePavementTexture();
     const asphalt = makeAsphaltTexture();
-    const grass = makeGrassTexture(GRASS_TONES.light, GRASS_TONES.dark);
     // Doku 2×2 dünya birimini kaplar → repeat boyuta göre.
     const sidewalkDepth = ZONE.northSidewalkBot - ZONE.northSidewalkTop; // 1.2
     const roadDepth = ZONE.roadBot - ZONE.roadTop; // 2.4
     pavement.repeat.set(WORLD_WIDTH / 2, sidewalkDepth / 2);
     asphalt.repeat.set(WORLD_WIDTH / 2, roadDepth / 2);
-    return { pavement, asphalt, grass };
+    return { pavement, asphalt };
   }, []);
-}
-
-/**
- * UV'leri çim karosuna göre ölçeklenmiş düzlem geometrisi.
- *
- * Çim dokusu 2×2 dünya birimini kaplar ve 4×4 karo içerir. UV'yi ölçeklemek,
- * TEK paylaşılan dokunun farklı derinlikteki çim şeritlerinde de aynı karo
- * boyutunu vermesini sağlar (doku başına tek `repeat` değeri yetmez, aksi
- * hâlde 1.2'lik ve 1.6'lık şeritlerde karolar farklı boyutta çıkardı).
- */
-function makeGrassPlane(w: number, d: number): THREE.PlaneGeometry {
-  const geo = new THREE.PlaneGeometry(w, d);
-  const uv = geo.attributes.uv as THREE.BufferAttribute;
-  const su = w / (GRASS_TILE * 4);
-  const sv = d / (GRASS_TILE * 4);
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
-  uv.needsUpdate = true;
-  return geo;
-}
-
-/**
- * Çim şeridi — karo desenli, hafif yüksek (GRASS_LIFT) çim platformu.
- * Zemin katmanını tek yerden yönetmek için Ground bileşeni bunu kullanır.
- */
-export function GrassPatch({
-  x,
-  z,
-  w,
-  d,
-  texture,
-  lift = GRASS_LIFT,
-}: {
-  x: number;
-  z: number;
-  w: number;
-  d: number;
-  texture: THREE.Texture;
-  /** Yükseklik ofseti (arka plan çimi 0'da kalır). */
-  lift?: number;
-}) {
-  const geo = useMemo(() => makeGrassPlane(w, d), [w, d]);
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[x, lift, z]} geometry={geo} receiveShadow>
-      {/* `map` ile `color` çarpılır → çarpan beyaz bırakılır, tonu doku verir. */}
-      <meshStandardMaterial color="#ffffff" roughness={1} map={texture} />
-    </mesh>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  ÇİM BORDÜRÜ — kaldırıma temas eden kenardaki koyu yeşil çizgi */
-/* ═══════════════════════════════════════════════════════════ */
-
-export function GrassBorders() {
-  return (
-    <>
-      {GRASS_BORDERS.map((z) => (
-        <mesh key={z} position={[0, GRASS_LIFT / 2 + 0.008, z]} material={MAT.grassBorder}>
-          <boxGeometry args={[WORLD_WIDTH, GRASS_LIFT + 0.016, 0.1]} />
-        </mesh>
-      ))}
-    </>
-  );
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -460,11 +394,11 @@ export function StreetFences() {
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     slats.forEach((s, i) => {
-      m.compose(new THREE.Vector3(s.x, 0.19 + GRASS_LIFT, s.z), q, new THREE.Vector3(0.05, 0.38, 0.035));
+      m.compose(new THREE.Vector3(s.x, 0.19 + GRASS_GROUND_Y, s.z), q, new THREE.Vector3(0.05, 0.38, 0.035));
       slatMesh.setMatrixAt(i, m);
     });
     rails.forEach((r, i) => {
-      m.compose(new THREE.Vector3(r.x, 0.3 + GRASS_LIFT, r.z), q, new THREE.Vector3(FENCE_SPACING + 0.02, 0.045, 0.03));
+      m.compose(new THREE.Vector3(r.x, 0.3 + GRASS_GROUND_Y, r.z), q, new THREE.Vector3(FENCE_SPACING + 0.02, 0.045, 0.03));
       railMesh.setMatrixAt(i, m);
     });
     slatMesh.instanceMatrix.needsUpdate = true;

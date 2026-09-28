@@ -35,7 +35,7 @@ import {
   type VegModelConfig,
 } from "../src/engine/vegModelPrep";
 import { hasFoliageSway } from "../src/engine/foliageSway";
-import { GRASS_LIFT, TREE_ROWS, VEG_SIZES } from "../src/engine/constants";
+import { GRASS_GROUND_Y, TREE_ROWS, VEG_SIZES } from "../src/engine/constants";
 
 /** Tarayıcıdaki `useGLTF("/models/x.glb")` çağrısının Node karşılığı:
  *  dosya diskten okunur ve GLTFLoader'a tampon olarak verilir (saf ASCII JSON
@@ -141,5 +141,5 @@ const treeCount = TREE_ROWS.reduce(
 console.log(`Ağaç sıraları: ${TREE_ROWS.length} sıra · ${treeCount} ağaç`);
 for (const row of TREE_ROWS) console.log(`  · z=${row.z} x=${row.startX}…${row.endX} adım ${row.spacing}`);
 
-await inspect("AĞAÇ (maple)", TREE_MODEL_CONFIG, VEG_SIZES.tree, GRASS_LIFT);
-await inspect("ÇİM (grass_clump)", GRASS_MODEL_CONFIG, VEG_SIZES.grassClump, GRASS_LIFT);
+await inspect("AĞAÇ (maple)", TREE_MODEL_CONFIG, VEG_SIZES.tree, GRASS_GROUND_Y);
+await inspect("ÇİM (grass_clump)", GRASS_MODEL_CONFIG, VEG_SIZES.grassClump, GRASS_GROUND_Y);
