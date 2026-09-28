@@ -137,10 +137,15 @@ export const BUILDINGS: BuildingDef[] = [
 ];
 
 // ─── TREE DEFINITIONS (3D positions) ───
+// Ağacın kendisi artık prosedürel değil: `public/models/tree.glb` yüklenir
+// (`src/engine/VegetationModels.tsx`). Buradaki liste yalnızca YERLEŞİM verisi:
+// konum, ağaç başına boy karakteri (`scale`) ve varyasyon tohumu (`variant`).
 export interface TreeDef {
   x: number;
   z: number;
+  /** Ağaç başına boy karakteri — GLB ağacın boyuyla çarpılır. */
   scale: number;
+  /** Şekil/rotasyon tohumu (aynı sürümde her ağaç farklı dursun). */
   variant: number;
 }
 
@@ -162,20 +167,10 @@ export const TREES: TreeDef[] = [
   { x: 10.0,  z: 0.8,  scale: 0.9, variant: 2 },
 ];
 
-// ─── TREE COLORS ───
-// Pastel yaprak paleti — çim tonlarıyla (#7EC850 / #6EC045) aynı ailede
-// kalsın diye doygunluk düşürüldü; çiğ neon yeşil görünüm kaldırıldı.
-export const TREE_FOLIAGE_COLORS = [
-  ["#74C155", "#5A9E42"], // pastel yeşil (ana)
-  ["#68B44C", "#4F8F3C"], // yumuşak koyu yeşil
-  ["#82CC5E", "#63A845"], // açık sarı-yeşil
-];
-export const TREE_TRUNK_COLOR = "#7a5230";
-
 /* ════════════════════════════════════════════════════════════
    ÇİM KATMANI — yeşil alanların zemin kalitesi
    Düz parlak yeşil plane yerine: iki tonlu karo dokusu + ince bordür
-   + rastgele dağılmış low-poly çim kümeleri.
+   + rastgele dağılmış GLB çim kümeleri.
    ════════════════════════════════════════════════════════════ */
 
 /** Çim renk paleti — pastel, göz yormayan yeşil. */
@@ -198,8 +193,8 @@ export const GRASS_TILE = 0.5;
 /** Çim şeritlerinin kaldırım seviyesinden yüksekliği (ince kenar/derinlik). */
 export const GRASS_LIFT = 0.07;
 
-/** Çim kümesi (grass tuft) dağıtım bölgesi. */
-export interface GrassTuftZoneDef {
+/** Çim kümesi (GLB çim öbeği) dağıtım bölgesi. */
+export interface GrassClumpZoneDef {
   /** Şerit merkezi (Z). */
   z: number;
   /** Şerit derinliği (Z) — kümeler bu bandın içine dağıtılır. */
@@ -210,7 +205,7 @@ export interface GrassTuftZoneDef {
   seed: number;
 }
 
-export const GRASS_TUFT_ZONES: GrassTuftZoneDef[] = [
+export const GRASS_CLUMP_ZONES: GrassClumpZoneDef[] = [
   {
     z: (ZONE.northGrassTop + ZONE.northGrassBot) / 2,
     depth: ZONE.northGrassBot - ZONE.northGrassTop,
@@ -224,6 +219,22 @@ export const GRASS_TUFT_ZONES: GrassTuftZoneDef[] = [
     seed: 733,
   },
 ];
+
+/**
+ * GLB bitki örtüsü model boyları (dünya birimi).
+ * Modeller 1 birim yüksekliğe normalize edilerek yüklenir (bkz.
+ * `VegetationModels.tsx`), yani buradaki sayılar doğrudan "kaç birim boyunda
+ * duracak" demektir. Çalı/ağaç boyu ayrıca yerleşim verisindeki ölçekle
+ * (`BUSHES[].s`, `TREES[].scale`) çarpılır.
+ */
+export const VEG_SIZES = {
+  /** Ağaç boyu — TREES[].scale (0.8–0.9) ile çarpılır. */
+  tree: 2.5,
+  /** Çalı boyu — BUSHES[].s (0.5–0.9) ile çarpılır. */
+  bush: 0.9,
+  /** Çim öbeği boyu. */
+  grassClump: 0.34,
+} as const;
 
 /** Çim şeritlerinin kaldırıma bakan kenarları — bordür çizgileri. */
 export const GRASS_BORDERS: number[] = [

@@ -104,6 +104,48 @@ Malzeme adları sabittir:
 adla bulunup `emissiveIntensity` yükseltilir). Dosya yüklenemezse aynı uzayda
 üretilen prosedürel `buildStructuralBomb()` devreye girer — el boş kalmaz.
 
+### `models/tree.glb` · `models/bush.glb` · `models/grass_clump.glb` (cadde yeşilliği)
+
+Caddenin ağaç / çalı / çim örtüsü bu üç modelden yüklenir
+(`src/engine/VegetationModels.tsx` → `useGLTF` + `InstancedMesh`). Prosedürel
+(üst üste küre/silindir) ağaç ve küre çalı fonksiyonları **tamamen kaldırıldı**.
+
+Hazır bir GLB'den çevrilmediler, **üretildiler**: `scripts/build-foliage-glb.mjs`
+modelleri three.js geometrileriyle kurar, malzeme başına tek primitive olacak
+şekilde glTF JSON'a yazar ve binary chunk'ı base64 `data:` URI olarak gömer —
+yani yukarıdaki tüm kurallara uyar (saf ASCII, `.glb` uzantısı, `useGLTF` ile
+doğrudan çalışır).
+
+Yeniden üretmek için:
+
+```bash
+node scripts/build-foliage-glb.mjs
+```
+
+| Model | İçerik | Üçgen | Malzemeler |
+|---|---|---|---|
+| `tree.glb` | stilize yapraklı ağaç (gövde + 2 dal + 5 yaprak lobu) | 144 | `TreeTrunk`, `TreeFoliageLight`, `TreeFoliageDark` |
+| `bush.glb` | şekilli organik çalı (6 iç içe lob) | 120 | `BushFoliage`, `BushFoliageDark` |
+| `grass_clump.glb` | 7 yapraklı 3D çim öbeği | 28 | `GrassBladeLight`, `GrassBladeDark` |
+
+**Model uzayı ölçülerek uygulanır** (`useModelParts`): yükleme anında kaba kutu
+alınır, taban y=0'a, XZ merkezi orijine çekilir ve boy 1 birime ölçeklenir.
+Yani modeli değiştirip script'i yeniden çalıştırmak yerleşim kodunu bozmaz;
+sahne tarafı sadece "kaç birim boyunda duracak" der (`VEG_SIZES`). Her örnek
+rastgele Y rotasyonu (0–360°) ve 0.85–1.15 boyut çarpanı alır; parlaklık
+0.9–1.1 arası `instanceColor` ile oynatılır (hepsi fabrikasyon durmasın).
+
+Yerleşim verisi `constants.ts`'tedir (`TREES`, `BUSHES`, `GRASS_CLUMP_ZONES`).
+Malzemeler örnekler arasında paylaşılır ve modelin her malzemesi tek bir
+`InstancedMesh`'e dönüşür → ~500 örnek için toplam 7 draw call. Modeller bir
+hata sınırının (`ModelErrorBoundary`) arkasında yüklenir: dosya bozuksa sadece
+o katman düşer, cadde çalışmaya devam eder (ilkel yedek çizilmez).
+
+Dokulu bir çalı istenirse depoda hazır model var: `/models/stylized_bush.glb`
+(Sketchfab "Stylized Bush", CC-BY-4.0, 1 mesh + PNG doku).
+`VegetationModels.tsx` içindeki `BUSH_MODEL_URL`'i ona çevirmek yeterli —
+normalizasyon ve instancing kodu aynı kalır.
+
 ## `sounds/*.mp3.b64`
 
 Sound effects ship as standard base64 text companions (`base64 -w0`). The app

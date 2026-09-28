@@ -25,17 +25,12 @@ import {
   SPAWN_SVG,
   ZONE,
   BUILDINGS,
-  TREES,
   LAMPS,
   BENCHES,
   FLOWER_BOXES,
   STALLS,
-  TREE_FOLIAGE_COLORS,
-  TREE_TRUNK_COLOR,
-  GRASS_LIFT,
   S,
   type BuildingDef,
-  type TreeDef,
   type LampDef,
   type BenchDef,
   type FlowerBoxDef,
@@ -47,18 +42,18 @@ import {
   LampGlowFx,
   RoofDetail,
   ShopAwning,
-  StreetBushes,
   StreetBusStops,
   StreetCrosswalks,
   StreetDirectionSigns,
   StreetFences,
   StreetFlowerPatches,
-  StreetGrassTufts,
   StreetHedges,
   StreetTrashCans,
   useStreetGroundTextures,
 } from "./StreetDetail";
 import { makeSignTexture } from "./streetTextures";
+// Bitki örtüsü (ağaç/çalı/çim) GLB modellerden gelir — ilkel geometri kaldırıldı.
+import { StreetBushes, StreetGrassClumps, StreetTrees } from "./VegetationModels";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Helpers                                                    */
@@ -436,64 +431,6 @@ function Building({ def }: { def: BuildingDef }) {
 
       {/* ═══ Çatı detayı — dükkan silüetine canlılık ═══ */}
       <RoofDetail kind={def.roofDetail} w={def.w} d={def.d} topY={def.h / 2 + 0.15} />
-    </group>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  Tree — polished layered foliage with crown                 */
-/* ═══════════════════════════════════════════════════════════ */
-
-function Tree3D({ def }: { def: TreeDef }) {
-  const colors = TREE_FOLIAGE_COLORS[def.variant] ?? TREE_FOLIAGE_COLORS[0];
-  const timeRef = useRef(Math.random() * 100);
-  const groupRef = useRef<THREE.Group>(null);
-
-  // Subtle per-tree rotation offset
-  const rotOffset = useMemo(() => Math.random() * Math.PI * 2, []);
-
-  useFrame((_, dt) => {
-    timeRef.current += dt;
-    if (groupRef.current) {
-      groupRef.current.rotation.z = Math.sin(timeRef.current * 0.7) * 0.018;
-      groupRef.current.rotation.x = Math.sin(timeRef.current * 0.5 + rotOffset) * 0.01;
-    }
-  });
-
-
-
-  return (
-    <group ref={groupRef} position={[def.x, 0, def.z]} scale={[def.scale, def.scale, def.scale]}>
-      {/* Trunk — tapered cylinder */}
-      <mesh position={[0, 0.55, 0]} castShadow>
-        <cylinderGeometry args={[0.06, 0.1, 1.1, 6]} />
-        <meshStandardMaterial color="#6a4828" roughness={0.92} />
-      </mesh>
-      {/* Lower branches — darker */}
-      <mesh position={[0, 1.15, 0]} castShadow>
-        <sphereGeometry args={[0.48, 8, 6]} />
-        <meshStandardMaterial color={colors[1]} roughness={0.95} />
-      </mesh>
-      {/* Main canopy — bright */}
-      <mesh position={[0.04, 1.5, 0.03]} castShadow>
-        <sphereGeometry args={[0.52, 8, 6]} />
-        <meshStandardMaterial color={colors[0]} roughness={0.95} />
-      </mesh>
-      {/* Top crown */}
-      <mesh position={[-0.03, 1.82, -0.02]} castShadow>
-        <sphereGeometry args={[0.32, 8, 6]} />
-        <meshStandardMaterial color={colors[0]} roughness={0.95} />
-      </mesh>
-      {/* Side accent */}
-      <mesh position={[0.12, 1.3, 0.08]} castShadow>
-        <sphereGeometry args={[0.25, 8, 6]} />
-        <meshStandardMaterial color={colors[1]} roughness={0.95} />
-      </mesh>
-      {/* Shadow blob at base — yükseltilmiş çim seviyesine oturur. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GRASS_LIFT + 0.008, 0]}>
-        <circleGeometry args={[0.35, 12]} />
-        <meshStandardMaterial color="#3f7a2a" roughness={1} transparent opacity={0.28} />
-      </mesh>
     </group>
   );
 }
@@ -1182,10 +1119,8 @@ export function GameEngine3D({
         <Building key={i} def={def} />
       ))}
 
-      {/* === TREES === */}
-      {TREES.map((def, i) => (
-        <Tree3D key={i} def={def} />
-      ))}
+      {/* === TREES (GLB — `VegetationModels.tsx`) === */}
+      <StreetTrees />
 
       {/* === LAMPS === */}
       {LAMPS.map((def, i) => (
@@ -1210,9 +1145,9 @@ export function GameEngine3D({
       {/* ═══════════════════════════════════════════════════════
           MODÜLER CADDE DETAYLARI (yaşayan şehir katmanı)
           ═══════════════════════════════════════════════════════ */}
-      {/* Çim kümeleri (low-poly bıçak demetleri) + çalılar, çiçek
+      {/* Çim öbekleri + çalılar (GLB — `VegetationModels.tsx`), çiçek
           tarhları, budanmış çitler ve ahşap çitler */}
-      <StreetGrassTufts />
+      <StreetGrassClumps />
       <StreetBushes />
       <StreetFlowerPatches />
       <StreetHedges />

@@ -15,7 +15,6 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
-  BUSHES,
   BUS_STOPS,
   CROSSWALKS,
   DIRECTION_SIGNS,
@@ -27,7 +26,6 @@ import {
   GRASS_LIFT,
   GRASS_TILE,
   GRASS_TONES,
-  GRASS_TUFT_ZONES,
   HEDGES,
   TRASH_CANS,
   ZONE,
@@ -53,7 +51,6 @@ const GEO = {
   unitCylinder: new THREE.CylinderGeometry(1, 1, 1, 10),
   unitSphere: new THREE.SphereGeometry(1, 8, 6),
   unitPlane: new THREE.PlaneGeometry(1, 1),
-  lowSphere: new THREE.IcosahedronGeometry(0.5, 1),
 };
 
 const MAT = {
@@ -71,8 +68,6 @@ const MAT = {
   wood: new THREE.MeshStandardMaterial({ color: "#c49a60", roughness: 0.82 }),
   darkWood: new THREE.MeshStandardMaterial({ color: "#6b4a2c", roughness: 0.88 }),
   stripe: new THREE.MeshStandardMaterial({ color: "#ece6d8", roughness: 0.85 }),
-  leaf: new THREE.MeshStandardMaterial({ color: "#3f9c3a", roughness: 0.95, flatShading: true }),
-  leafDark: new THREE.MeshStandardMaterial({ color: "#2f8130", roughness: 0.95, flatShading: true }),
   hedge: new THREE.MeshStandardMaterial({ color: "#2f8a2c", roughness: 0.96, flatShading: true }),
   fence: new THREE.MeshStandardMaterial({ color: "#efe7d6", roughness: 0.78 }),
   flowerStem: new THREE.MeshStandardMaterial({ color: "#3f8a28", roughness: 0.9 }),
@@ -80,10 +75,6 @@ const MAT = {
   // three tarafından parça shader'ında USE_COLOR ile devreye alınır; vertexColors
   // açmak geometride olmayan `color` özniteliğini okutup taç yaprakları siyaha boyar.
   flowerBloom: new THREE.MeshStandardMaterial({ roughness: 0.82 }),
-  // Çim kümeleri: `vertexColors` AÇILMAZ, renk örnek başına `instanceColor`
-  // ile gelir (çiçek taç yapraklarıyla aynı desen). Tek yüzlü üçgenler için
-  // DoubleSide şart. flatShading → low-poly bıçak görünümü.
-  grassTuft: new THREE.MeshStandardMaterial({ roughness: 0.95, flatShading: true, side: THREE.DoubleSide }),
   grassBorder: new THREE.MeshStandardMaterial({ color: GRASS_TONES.border, roughness: 0.95 }),
   binGreen: new THREE.MeshStandardMaterial({ color: "#3d6b52", roughness: 0.62, metalness: 0.18 }),
   binBlue: new THREE.MeshStandardMaterial({ color: "#2f5c8a", roughness: 0.62, metalness: 0.18 }),
@@ -166,95 +157,6 @@ export function GrassBorders() {
       ))}
     </>
   );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  ÇİM KÜMELERİ — low-poly bıçak demetleri (tek InstancedMesh)  */
-/* ═══════════════════════════════════════════════════════════ */
-
-/**
- * Low-poly çim kümesi: 3 çapraz yaprak dilimi (3 üçgen). Yükseklik 1 birim
- * kabul edilir; her örnek kendi ölçeğiyle yerleştirilir.
- */
-function makeTuftGeometry(): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const halfW = 0.19;
-  const heights = [1, 0.78, 0.9];
-  for (let b = 0; b < 3; b++) {
-    const a = (b / 3) * Math.PI;
-    const dx = Math.cos(a);
-    const dz = Math.sin(a);
-    const tipX = -0.3 * dx;
-    const tipZ = -0.3 * dz;
-    positions.push(-halfW * dx, 0, -halfW * dz);
-    positions.push(halfW * dx, 0, halfW * dz);
-    positions.push(tipX, heights[b], tipZ);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geo.computeVertexNormals();
-  return geo;
-}
-
-const TUFT_GEO = makeTuftGeometry();
-const TUFT_LIGHT = new THREE.Color(GRASS_TONES.bladeLight);
-const TUFT_DARK = new THREE.Color(GRASS_TONES.bladeDark);
-
-interface TuftInstance {
-  x: number;
-  z: number;
-  s: number;
-  rot: number;
-  tone: number;
-}
-
-export function StreetGrassTufts() {
-  const ref = useRef<THREE.InstancedMesh>(null);
-
-  const tufts = useMemo<TuftInstance[]>(() => {
-    const out: TuftInstance[] = [];
-    const inset = 0.14; // kaldırım bordürüne taşmasın
-    for (const zone of GRASS_TUFT_ZONES) {
-      const rnd = mulberry32(zone.seed);
-      const depth = Math.max(0.2, zone.depth - inset * 2);
-      const count = Math.max(1, Math.round(WORLD_WIDTH * depth * zone.density));
-      for (let i = 0; i < count; i++) {
-        out.push({
-          x: (rnd() - 0.5) * (WORLD_WIDTH - 0.6),
-          z: zone.z + (rnd() - 0.5) * depth,
-          s: 0.16 + rnd() * 0.22,
-          rot: rnd() * Math.PI * 2,
-          tone: rnd(),
-        });
-      }
-    }
-    return out;
-  }, []);
-
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    const c = new THREE.Color();
-    tufts.forEach((t, i) => {
-      q.setFromAxisAngle(up, t.rot);
-      m.compose(
-        new THREE.Vector3(t.x, GRASS_LIFT, t.z),
-        q,
-        new THREE.Vector3(t.s * 1.35, t.s, t.s * 1.35),
-      );
-      mesh.setMatrixAt(i, m);
-      c.copy(TUFT_DARK).lerp(TUFT_LIGHT, t.tone);
-      mesh.setColorAt(i, c);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [tufts]);
-
-  if (tufts.length === 0) return null;
-  return <instancedMesh ref={ref} args={[TUFT_GEO, MAT.grassTuft, tufts.length]} />;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -521,44 +423,6 @@ export function StreetDirectionSigns() {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  ÇALILAR                                                     */
-/* ═══════════════════════════════════════════════════════════ */
-
-export function StreetBushes() {
-  const refA = useRef<THREE.InstancedMesh>(null);
-  const refB = useRef<THREE.InstancedMesh>(null);
-  const count = BUSHES.length;
-
-  useLayoutEffect(() => {
-    const m = new THREE.Matrix4();
-    BUSHES.forEach((b, i) => {
-      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, b.x * 2.3, 0));
-      m.compose(
-        new THREE.Vector3(b.x, b.s * 0.42 + GRASS_LIFT, b.z),
-        q,
-        new THREE.Vector3(b.s * 1.15, b.s * 0.92, b.s),
-      );
-      refA.current?.setMatrixAt(i, m);
-      m.compose(
-        new THREE.Vector3(b.x + b.s * 0.3, b.s * 0.3 + GRASS_LIFT, b.z - b.s * 0.18),
-        q,
-        new THREE.Vector3(b.s * 0.72, b.s * 0.62, b.s * 0.7),
-      );
-      refB.current?.setMatrixAt(i, m);
-    });
-    if (refA.current) refA.current.instanceMatrix.needsUpdate = true;
-    if (refB.current) refB.current.instanceMatrix.needsUpdate = true;
-  }, []);
-
-  return (
-    <>
-      <instancedMesh ref={refA} args={[GEO.lowSphere, MAT.leaf, count]} castShadow />
-      <instancedMesh ref={refB} args={[GEO.lowSphere, MAT.leafDark, count]} />
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
 /*  ÇİÇEK TARHLARI — tek InstancedMesh (gövde + taç yaprağı)     */
 /* ═══════════════════════════════════════════════════════════ */
 
@@ -569,7 +433,8 @@ interface FlowerInstance {
   colorIndex: number;
 }
 
-function mulberry32(seed: number): () => number {
+/** Tohumlu PRNG — yerleşim/dağıtım her karede aynı kalsın (bitki örtüsü katmanı da kullanır). */
+export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
