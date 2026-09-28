@@ -12,6 +12,9 @@ import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { GlbAvatarTest } from "./GlbAvatarTest";
 import { GlbAvatar3D, SVG_DEBUG_MODE } from "./GlbAvatar3D";
+// Oyuncunun önüne giren binaları şeffaflaştırır (kamera occlusion).
+import { CameraOcclusion } from "./CameraOcclusion";
+import { BUILDING_USER_DATA } from "./buildingOcclusion";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -367,7 +370,9 @@ function Building({ def }: { def: BuildingDef }) {
   }, [def.signText, def.signBg, def.signFg]);
 
   return (
-    <group position={[def.x, def.h / 2, def.frontZ - def.d / 2]}>
+    // `BUILDING_USER_DATA` işareti kamera occlusion sistemine "bu bir bina"
+    // der; ışın bu grubun mesh'lerine çarparsa grup şeffaflaşır.
+    <group position={[def.x, def.h / 2, def.frontZ - def.d / 2]} userData={BUILDING_USER_DATA}>
       {/* Main body */}
       <mesh material={facadeMat} castShadow receiveShadow>
         <boxGeometry args={[def.w, def.h, def.d]} />
@@ -1066,6 +1071,10 @@ export function GameEngine3D({
       }}
     >
       <FollowCamera posRef={playerPosRef} />
+
+      {/* Kamera ile oyuncu arasına giren binalar 0.3 opaklığa iner; aradan
+          çıkınca yumuşakça tam opak hâle döner (bkz. `buildingOcclusion.ts`). */}
+      <CameraOcclusion playerPosRef={playerPosRef} isMobile={isMobile} />
 
       {/* Sky — soft warm blue */}
       <color attach="background" args={["#78c8e8"]} />
