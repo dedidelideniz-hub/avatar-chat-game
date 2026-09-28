@@ -28,12 +28,13 @@ import fs from "node:fs";
 import * as THREE from "three";
 import { GLTFLoader } from "three-stdlib";
 import {
-  BUSH_MODEL_CONFIG,
   GRASS_MODEL_CONFIG,
   TREE_MODEL_CONFIG,
   prepareVegetationModel,
+  type ModelPart,
   type VegModelConfig,
 } from "../src/engine/vegModelPrep";
+import { hasFoliageSway } from "../src/engine/foliageSway";
 import { GRASS_LIFT, TREE_ROWS, VEG_SIZES } from "../src/engine/constants";
 
 /** Tarayıcıdaki `useGLTF("/models/x.glb")` çağrısının Node karşılığı:
@@ -46,6 +47,44 @@ function loadModel(url: string): Promise<THREE.Object3D> {
   return new Promise((resolve, reject) => {
     loader.parse(buffer as ArrayBuffer, "", (gltf) => resolve(gltf.scene), reject);
   });
+}
+
+/**
+ * Yaprak salınımının shader'a gerçekten girdiğini kanıtlar: materyalin
+ * `onBeforeCompile`'ı three'nin standart vertex shader'ı ile çalıştırılır ve
+ * beklenen GLSL parçaları aranır. (Önizleme açılamadığı için shader'ın
+ * derlenmesini değil, doğru yerine enjekte edildiğini doğrular.)
+ */
+function checkSway(part: ModelPart) {
+  const sway = hasFoliageSway(part.material);
+  if (!sway) {
+    console.log(`     · ${part.key.padEnd(22)} salınım: — (sabit)`);
+    return;
+  }
+
+  const base = THREE.ShaderLib.standard.vertexShader;
+  const shader = {
+    uniforms: {} as Record<string, { value: unknown }>,
+    vertexShader: base,
+    fragmentShader: "",
+  };
+  part.material.onBeforeCompile(shader as never, undefined as never);
+
+  const anchorOk = shader.vertexShader.includes("#include <begin_vertex>");
+  const headerOk = shader.vertexShader.includes("uniform float uSwayTime;");
+  const bodyOk =
+    shader.vertexShader.includes("swayWeight") && shader.vertexShader.includes("instanceMatrix[3].xz");
+  const uniformsOk =
+    shader.uniforms.uSwayTime != null &&
+    shader.uniforms.uSwayAmount != null &&
+    shader.uniforms.uSwaySpeed != null;
+
+  console.log(
+    `     · ${part.key.padEnd(22)} salınım: ✔ amount=${sway ? (shader.uniforms.uSwayAmount.value as number) : 0}` +
+      ` · time uniform ${uniformsOk ? "bağlı" : "YOK ✘"}` +
+      ` · #include <begin_vertex> ${anchorOk ? "bulundu" : "YOK ✘"}` +
+      ` · gövde ${headerOk && bodyOk ? "enjekte edildi ✔" : "ENJEKTE EDİLEMEDİ ✘"}`,
+  );
 }
 
 function inspect(name: string, cfg: VegModelConfig, height: number, baseY: number) {
@@ -79,6 +118,10 @@ function inspect(name: string, cfg: VegModelConfig, height: number, baseY: numbe
       );
     }
 
+    // Sallanma enjeksiyonu: three'nin GERÇEK standart vertex shader'ı üzerinde
+    // `onBeforeCompile` çalıştırılır ve enjekte edilen kod aranır.
+    for (const part of parts) checkSway(part);
+
     // Caddedeki gerçek ölçü: normalize model 1 birim → dünya boyu `height`.
     const footprint = Math.max(size.x, size.z) / Math.max(size.y, 1e-6) * height;
     console.log(
@@ -99,5 +142,4 @@ console.log(`Ağaç sıraları: ${TREE_ROWS.length} sıra · ${treeCount} ağaç
 for (const row of TREE_ROWS) console.log(`  · z=${row.z} x=${row.startX}…${row.endX} adım ${row.spacing}`);
 
 await inspect("AĞAÇ (maple)", TREE_MODEL_CONFIG, VEG_SIZES.tree, GRASS_LIFT);
-await inspect("ÇALI (bush)", BUSH_MODEL_CONFIG, VEG_SIZES.bush, GRASS_LIFT);
 await inspect("ÇİM (grass_clump)", GRASS_MODEL_CONFIG, VEG_SIZES.grassClump, GRASS_LIFT);

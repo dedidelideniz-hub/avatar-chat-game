@@ -18,6 +18,7 @@
  *   5. aynı malzemeye ait tüm mesh'leri TEK geometride birleştirir (draw call).
  */
 import * as THREE from "three";
+import { enableFoliageSway, type FoliageSwayOptions } from "./foliageSway";
 
 export interface VegModelConfig {
   url: string;
@@ -36,6 +37,11 @@ export interface VegModelConfig {
   cardMaterial?: RegExp;
   /** Kart parçaların emissive çarpanı (GLB'de yaprak 0.55 — gün ışığında parlar). */
   cardEmissive?: number;
+  /**
+   * Yaprak KARTLARINA hafif sallanma ver (GPU'da — CPU'ya yük bindirmez,
+   * ek draw call açmaz). Verilmezse model tamamen sabit durur.
+   */
+  sway?: FoliageSwayOptions;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -60,6 +66,8 @@ export const TREE_MODEL_CONFIG: VegModelConfig = {
   skipMaterial: /groundcover|grass|ground|terrain/i,
   cardMaterial: /leaf|foliage|card/i,
   cardEmissive: 0.3,
+  // Yapraklar GPU'da hafifçe salınır (gövde sabit) — bkz. `foliageSway.ts`.
+  sway: { amount: 0.035, speed: 0.9 },
 };
 
 /** Çim öbeği — üretilen low-poly model. */
@@ -277,6 +285,9 @@ export function prepareVegetationModel(
       }
       material = clone;
       owned.push(clone);
+      // Salınım YALNIZCA yaprak kartlarına: gövde/dallar sabit kalır ve
+      // klonlanan materyal sayesinde paylaşılan GLB materyali kirlenmez.
+      if (cfg.sway) enableFoliageSway(clone, cfg.sway);
     }
 
     parts.push({ geometry, material, key: name, card });

@@ -25,7 +25,9 @@
  */
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { tickFoliageSway } from "./foliageSway";
 import { GRASS_CLUMP_ZONES, GRASS_LIFT, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
 import { mulberry32 } from "./StreetDetail";
 import {
@@ -239,6 +241,10 @@ function GlbInstancedModel(props: Parameters<typeof InstancedModel>[0]) {
  * Sokak ağaçları — `TREE_ROWS` ile EŞİT ARALIKLI iki sıra (kuzey/güney yeşillik
  * şeritleri). Her ağaca yerleştirilirken rastgele Y rotasyonu (0–360°) ve
  * ±%15 boyut farkı verilir; tohum sabit olduğu için kare kare aynı kalır.
+ *
+ * Yapraklar hafifçe salınır (`foliageSway.ts`): salınım vertex shader'da
+ * hesaplandığı için kare başına sadece TEK uniform yazılır — ağaç sayısı
+ * artınca CPU maliyeti artmaz, ek draw call açılmaz.
  */
 export function StreetTrees() {
   const placements = useMemo<VegPlacement[]>(() => {
@@ -257,6 +263,9 @@ export function StreetTrees() {
     });
     return out;
   }, []);
+
+  // Salınım saati (sahnedeki tüm sallanan materyaller bu tek değeri okur).
+  useFrame((state) => tickFoliageSway(state.clock.elapsedTime));
 
   return (
     <GlbInstancedModel
