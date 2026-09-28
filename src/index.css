@@ -4,6 +4,15 @@
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
 
+/* İçerik taraması: model/asset dizinleri KAYNAK DEĞİLDİR.
+   `public/models/*.glb` dosyaları tek dosya ASCII glTF (base64 gömülü) olduğu için
+   Tailwind bunları sınıf adı sanıp tarıyordu: ~86 MB metin -> milyonlarca sahte aday
+   -> CSS üretimi sırasında gigabaytlara çıkan bellek -> dev sunucusu OOM ile ölüyordu.
+   Bu üç dizinde hiçbir Tailwind sınıfı yok, güvenle hariç tutulur. */
+@source not "../public";
+@source not "../models-unused";
+@source not "../isolate";
+
 /* DO NOT CHANGE */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
