@@ -136,35 +136,29 @@ export const BUILDINGS: BuildingDef[] = [
   },
 ];
 
-// ─── TREE DEFINITIONS (3D positions) ───
-// Ağacın kendisi artık prosedürel değil: `public/models/tree.glb` yüklenir
-// (`src/engine/VegetationModels.tsx`). Buradaki liste yalnızca YERLEŞİM verisi:
-// konum, ağaç başına boy karakteri (`scale`) ve varyasyon tohumu (`variant`).
-export interface TreeDef {
-  x: number;
+// ─── AĞAÇ SIRALARI (caddenin yeşillik şeritleri) ───
+// Ağaçlar artık tek tek elle değil, EŞİT ARALIKLI sıralar hâlinde dizilir:
+// kuzeyde dükkanların önündeki çim şeridi, güneyde caddenin karşı çim şeridi.
+// Model `public/models/maple_tree.glb`'dir (bkz. `VegetationModels.tsx`).
+export interface TreeRowDef {
+  /** Sıranın Z konumu (kuzey şerit negatif, güney şerit pozitif). */
   z: number;
-  /** Ağaç başına boy karakteri — GLB ağacın boyuyla çarpılır. */
-  scale: number;
-  /** Şekil/rotasyon tohumu (aynı sürümde her ağaç farklı dursun). */
-  variant: number;
+  /** İlk ağacın X'i. */
+  startX: number;
+  /** Son ağacın X'i (dahil). */
+  endX: number;
+  /** Ağaçlar arası mesafe — sıra boyunca eşit. */
+  spacing: number;
 }
 
-export const TREES: TreeDef[] = [
-  // North grass — behind buildings
-  { x: -14.5, z: -5.3, scale: 0.9, variant: 0 },
-  { x: -10.5, z: -5.5, scale: 0.85, variant: 1 },
-  { x: -7.0,  z: -5.3, scale: 0.9, variant: 2 },
-  { x: -3.5,  z: -5.5, scale: 0.8, variant: 0 },
-  // Roadside trees — left and right
-  { x: 5.0,   z: -5.0, scale: 0.85, variant: 1 },
-  { x: 9.0,   z: -5.2, scale: 0.9, variant: 2 },
-  { x: 12.5,  z: -5.0, scale: 0.85, variant: 0 },
-  // South grass
-  { x: -12.0, z: 0.8,  scale: 0.9, variant: 1 },
-  { x: -7.0,  z: 1.0,  scale: 0.85, variant: 2 },
-  { x: -2.0,  z: 0.8,  scale: 0.9, variant: 0 },
-  { x: 4.0,   z: 1.0,  scale: 0.85, variant: 1 },
-  { x: 10.0,  z: 0.8,  scale: 0.9, variant: 2 },
+/**
+ * İki sıra. Güney sırası yarım aralık kaydırıldı (`startX` farkı):
+ * karşılıklı ağaçlar tam hizada durunca ızgara yapay görünüyor, kaydırma
+ * düzeni bozmadan doğallık katıyor.
+ */
+export const TREE_ROWS: TreeRowDef[] = [
+  { z: -5.3, startX: -14, endX: 14, spacing: 4 },
+  { z: 0.85, startX: -12, endX: 14, spacing: 4 },
 ];
 
 /* ════════════════════════════════════════════════════════════
@@ -224,12 +218,16 @@ export const GRASS_CLUMP_ZONES: GrassClumpZoneDef[] = [
  * GLB bitki örtüsü model boyları (dünya birimi).
  * Modeller 1 birim yüksekliğe normalize edilerek yüklenir (bkz.
  * `VegetationModels.tsx`), yani buradaki sayılar doğrudan "kaç birim boyunda
- * duracak" demektir. Çalı/ağaç boyu ayrıca yerleşim verisindeki ölçekle
- * (`BUSHES[].s`, `TREES[].scale`) çarpılır.
+ * duracak" demektir (örnek başına ayrıca ±%15 rastgele sapma biner).
+ * Çalı boyu yerleşim verisindeki ölçekle (`BUSHES[].s`) de çarpılır.
+ *
+ * Ölçek referansı: oyuncu 1.92 birim, dükkanlar 3.2–5 birim. `maple_tree.glb`
+ * ham hâlde ~312 birim boyunda geliyor → çalışma zamanında uygulanan gerçek
+ * ölçek ≈ 2.4 / 312 ≈ 0.0077 (normalizasyon ölçülerek yapılır).
  */
 export const VEG_SIZES = {
-  /** Ağaç boyu — TREES[].scale (0.8–0.9) ile çarpılır. */
-  tree: 2.5,
+  /** Ağaç boyu — karakterin ~1.25 katı, dükkan zemin katından kısa. */
+  tree: 2.4,
   /** Çalı boyu — BUSHES[].s (0.5–0.9) ile çarpılır. */
   bush: 0.9,
   /** Çim öbeği boyu. */

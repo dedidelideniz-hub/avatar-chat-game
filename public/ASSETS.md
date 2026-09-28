@@ -104,11 +104,71 @@ Malzeme adları sabittir:
 adla bulunup `emissiveIntensity` yükseltilir). Dosya yüklenemezse aynı uzayda
 üretilen prosedürel `buildStructuralBomb()` devreye girer — el boş kalmaz.
 
-### `models/tree.glb` · `models/bush.glb` · `models/grass_clump.glb` (cadde yeşilliği)
+### `models/maple_tree.glb` (cadde ağacı — depoya eklenen model)
 
-Caddenin ağaç / çalı / çim örtüsü bu üç modelden yüklenir
-(`src/engine/VegetationModels.tsx` → `useGLTF` + `InstancedMesh`). Prosedürel
-(üst üste küre/silindir) ağaç ve küre çalı fonksiyonları **tamamen kaldırıldı**.
+Caddenin ağaç sıraları bu modelden yüklenir. Dosya depoya **binary GLB** olarak
+eklendi (4.63MiB, `glTF` magic'li gerçek GLB): yukarıdaki kural gereği
+çevrilmeden servis edilemez, bu yüzden proje standardıyla ASCII'ye alındı:
+
+```bash
+node scripts/glb-to-embedded-json.mjs public/models/maple_tree.glb
+# 4.63MiB -> 5.43MiB (ascii-only, byte-exact base64 buffer, aynı yol/uzantı)
+```
+
+Yani `useGLTF("/models/maple_tree.glb")` değişmeden çalışır; dönüşüm
+**kayıpsızdır** (binary chunk base64 gömülü). Kaynak: Sketchfab "Maple tree"
+(atrodler), CC-BY-4.0.
+
+**Model bir SAHNE olarak geliyor, tek ağaç değil.** Ölçüm (`bun
+scripts/check-veg-models.ts`, gerçek vertex verisi):
+
+| Parça | Malzeme | Mesh | Vertex | Üçgen | İşlem |
+|---|---|---|---|---|---|
+| gövde + taç | `sugar_maple_bark` | 446 | 13 353 | 5 939 | çizilir |
+| yaprak kartları | `sugar_maple_leaf` | 1622 | 12 976 | 6 488 | çizilir (çift yüz, gölge yok) |
+| çim zemini | `grass` | 1 | 140 | 84 | **atılır** |
+| groundcover | `Groundcover_Wood_Mix` | 1 | 24 | 22 | **atılır** |
+
+Atılan iki kart 240×240 ve 84×84 birim: yerleştirilse her ağacın dibine
+caddeyi kaplayan bir zemin yaması basardı (`skipMaterial` → `vegModelPrep.ts`).
+
+**2070 mesh → 2 draw call.** Model her yaprak kartını ayrı bir node olarak
+taşıyor; aynı malzemeye ait bütün geometriler yükleme anında TEK geometride
+birleştirilir (`mergeGeometries`). Birleştirme olmasa malzeme başına 2070
+`InstancedMesh`, yani 2070 draw call olurdu.
+
+**Yön ve boy ölçülür, varsayılmaz:** gövde ham hâlde 239×325×242 birim
+(yani ~324 birim boyunda, oyuncunun ~170 katı). Yükleme anında zemin kartları
+"yer" kabul edilip ağacın hangi yöne uzandığı ölçülür; model baş aşağı
+kaydedilmişse 180° X düzeltmesi otomatik uygulanır (`flipped` bayrağı konsola
+yazılır). Sonra taban y=0'a, XZ merkezi orijine çekilir ve boy 1 birime
+ölçeklenir — sahne sadece "kaç birim boyunda duracak" der (`VEG_SIZES.tree =
+2.4` → uygulanan gerçek ölçek ≈ 0.0074, taç genişliği ≈ 1.8 birim).
+
+**Yaprak kartlarında iki malzeme düzeltmesi yapılır:** `side = DoubleSide`
+(GLB'de `doubleSided` yok; kartlar arkadan bakınca kaybolurdu) ve
+`emissiveIntensity = 0.3` (GLB yaprak emissive'i 0.55 — gün ışığında kendi
+kendine parlar). Kartlar ayrıca **gölge çizmez**: yaprak dokusunda alfa kanalı
+yok (`colorType=2` RGB), yani kartlar opak ve yere dikdörtgen gölge basardı.
+
+> Not: yaprak dokusu alfasız olduğu için taç, opak kartlardan oluşan bir kütle
+> olarak çizilir (Sketchfab'daki görünümün aynısı). Taç "kare kare" görünürse
+> çözüm modelin dokusuna alfa kanalı eklenip (`alphaMode: MASK`) dosyanın
+> yeniden çevrilmesidir — kod tarafında tek satırlık `alphaTest` ayarı kalır.
+
+Yerleşim: `constants.ts` → `TREE_ROWS` (iki sıra, eşit aralık; güney sırası
+yarım adım kaydırılmış), örnek başına rastgele Y rotasyonu + ±%15 boyut.
+
+### `models/tree.glb` · `models/bush.glb` · `models/grass_clump.glb`
+
+Çalı ve çim örtüsü bu modellerden yüklenir (`VegetationModels.tsx` → `useGLTF`
++ `InstancedMesh`); prosedürel (üst üste küre/silindir) ağaç ve küre çalı
+fonksiyonları **tamamen kaldırıldı**. `tree.glb` (üretilen low-poly ağaç,
+144 üçgen) artık sahnede kullanılmıyor: akçaağaç yerine o istenirse
+`vegModelPrep.ts` içindeki `TREE_MODEL_CONFIG`'in `url`'ünü `/models/tree.glb`
+yapmak yeterli (normalizasyon + instancing kodu aynı kalır).
+
+Bu üç dosya üretiliyor:
 
 Hazır bir GLB'den çevrilmediler, **üretildiler**: `scripts/build-foliage-glb.mjs`
 modelleri three.js geometrileriyle kurar, malzeme başına tek primitive olacak
@@ -124,7 +184,7 @@ node scripts/build-foliage-glb.mjs
 
 | Model | İçerik | Üçgen | Malzemeler |
 |---|---|---|---|
-| `tree.glb` | stilize yapraklı ağaç (gövde + 2 dal + 5 yaprak lobu) | 144 | `TreeTrunk`, `TreeFoliageLight`, `TreeFoliageDark` |
+| `tree.glb` | stilize yapraklı ağaç (gövde + 2 dal + 5 yaprak lobu) — kullanılmıyor | 144 | `TreeTrunk`, `TreeFoliageLight`, `TreeFoliageDark` |
 | `bush.glb` | şekilli organik çalı (6 iç içe lob) | 120 | `BushFoliage`, `BushFoliageDark` |
 | `grass_clump.glb` | 7 yapraklı 3D çim öbeği | 28 | `GrassBladeLight`, `GrassBladeDark` |
 
@@ -135,11 +195,16 @@ sahne tarafı sadece "kaç birim boyunda duracak" der (`VEG_SIZES`). Her örnek
 rastgele Y rotasyonu (0–360°) ve 0.85–1.15 boyut çarpanı alır; parlaklık
 0.9–1.1 arası `instanceColor` ile oynatılır (hepsi fabrikasyon durmasın).
 
-Yerleşim verisi `constants.ts`'tedir (`TREES`, `BUSHES`, `GRASS_CLUMP_ZONES`).
+Yerleşim verisi `constants.ts`'tedir (`TREE_ROWS`, `BUSHES`, `GRASS_CLUMP_ZONES`).
 Malzemeler örnekler arasında paylaşılır ve modelin her malzemesi tek bir
-`InstancedMesh`'e dönüşür → ~500 örnek için toplam 7 draw call. Modeller bir
-hata sınırının (`ModelErrorBoundary`) arkasında yüklenir: dosya bozuksa sadece
-o katman düşer, cadde çalışmaya devam eder (ilkel yedek çizilmez).
+`InstancedMesh`'e dönüşür → 15 ağaç + 19 çalı + ~244 çim öbeği için toplam
+**6 draw call**. Modeller bir hata sınırının (`ModelErrorBoundary`) arkasında
+yüklenir: dosya bozuksa sadece o katman düşer, cadde çalışmaya devam eder
+(ilkel yedek çizilmez).
+
+Doğrulama: `bun scripts/check-veg-models.ts` gerçek dosyaları sahnenin kullandığı
+AYNI hazırlık kodundan geçirir ve ölçümü yazar (draw call, yön düzeltmesi,
+normalize boy, caddedeki taç genişliği).
 
 Dokulu bir çalı istenirse depoda hazır model var: `/models/stylized_bush.glb`
 (Sketchfab "Stylized Bush", CC-BY-4.0, 1 mesh + PNG doku).

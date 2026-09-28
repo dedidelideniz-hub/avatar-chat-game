@@ -1,69 +1,52 @@
 /**
  * VAELOS CADDESİ — GLB bitki örtüsü katmanı (ağaç · çalı · çim öbeği).
  *
- * Cadde yeşilliği artık ilkel geometriyle (küre/silindir/konik) ÇİZİLMEZ:
- * `public/models/` altındaki gerçek low-poly modeller `useGLTF` ile yüklenir ve
- * yerleşim noktalarına InstancedMesh olarak kopyalanır.
+ * Caddenin yeşilliği ilkel geometriyle (küre/silindir/konik) ÇİZİLMEZ:
+ * `public/models/` altındaki modeller `useGLTF` ile BİR KEZ yüklenir ve
+ * yerleşim noktalarına `InstancedMesh` olarak kopyalanır.
  *
  * Modeller proje kuralı gereği TEK DOSYA ASCII glTF JSON'dur (bkz.
  * `public/ASSETS.md` + `src/lib/binaryAssets.ts` — hosting boru hattı binary
- * dosyayı bozuyor) ve `scripts/build-foliage-glb.mjs` ile üretilir.
+ * dosyayı bozar; `maple_tree.glb` bu yüzden
+ * `scripts/glb-to-embedded-json.mjs` ile çevrildi).
  *
- * NEDEN INSTANCEDMESH:
- *   · 12 ağaç + 19 çalı + ~300 çim öbeği tek tek mesh olsa yüzlerce draw call
- *     olurdu. Modelin HER MALZEMESİ tek bir InstancedMesh'e dönüşür:
- *     ağaç 3, çalı 2, çim 2 → toplam 7 draw call, ~500 örnek.
- *   · Geometri ve materyal örnekler arasında PAYLAŞILIR: `useGLTF` URL başına
- *     tek indirme yapar, ağaç başına klon/indirme YOKTUR (drei önbelleği).
- *   · Her örnek kendi `instanceMatrix`'ini ve `instanceColor`'unu taşır, yani
- *     rastgele Y rotasyonu + 0.85–1.15 boyut + hafif parlaklık farkı bedava
- *     gelir (ek draw call yok).
+ * PERFORMANS (istenen: "draw call / bellek şişmesin"):
+ *   · Dosya URL başına BİR kez inilir (drei `useGLTF` önbelleği) ve tüm
+ *     örnekler aynı geometri + materyali paylaşır; örnek başına klon YOK.
+ *   · Modelin her MALZEMESİ tek bir InstancedMesh'e indirilir. `maple_tree.glb`
+ *     tek başına 2070 mesh taşıyor: birleştirme olmasa 2070 draw call olurdu,
+ *     birleştirmeyle 2'ye iner (bkz. `vegModelPrep.ts`).
+ *   · Örnek başına rastgele Y rotasyonu + ±%15 boyut + hafif parlaklık
+ *     `instanceMatrix` / `instanceColor` ile verilir → ek draw call yok.
  *
- * NORMALİZASYON ÖLÇÜLEREK YAPILIR (model uzayına güvenilmez): yükleme anında
- * kaba kutu alınır, taban y=0'a, XZ merkezi orijine çekilir ve boy 1 birime
- * ölçeklenir. Böylece modeli değiştirip üretici script'i yeniden çalıştırmak
- * yerleşim kodunu bozmaz — bombadaki `measureBodyCenter` kuralının aynısı.
+ * Boyut ve yön ÖLÇÜLEREK uygulanır (model uzayına güvenilmez): ölçüm, yön
+ * düzeltmesi ve normalizasyon `vegModelPrep.ts` içinde, React'ten bağımsız
+ * saf fonksiyon olarak durur.
  */
-import {
-  Component,
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
+import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import {
-  BUSHES,
-  GRASS_CLUMP_ZONES,
-  GRASS_LIFT,
-  TREES,
-  VEG_SIZES,
-  WORLD_WIDTH,
-} from "./constants";
+import { BUSHES, GRASS_CLUMP_ZONES, GRASS_LIFT, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
 import { mulberry32 } from "./StreetDetail";
+import {
+  BUSH_MODEL_CONFIG,
+  BUSH_MODEL_URL,
+  GRASS_CLUMP_MODEL_URL,
+  GRASS_MODEL_CONFIG,
+  TREE_MODEL_CONFIG,
+  TREE_MODEL_URL,
+  prepareVegetationModel,
+  type ModelPart,
+  type VegModelConfig,
+} from "./vegModelPrep";
 
-/* ═══════════════════════════════════════════════════════════ */
-/*  Model URL'leri                                              */
-/* ═══════════════════════════════════════════════════════════ */
-
-export const TREE_MODEL_URL = "/models/tree.glb";
-/**
- * Çalı: üretilen aileye dahil edildi (ağaç/çim ile aynı stil, aynı üretici).
- * Depoda ayrıca gerçek bir Sketchfab çalısı var — `/models/stylized_bush.glb`
- * (bkz. `ArenaBushModels.tsx`). O model istenirse sadece bu satırı ona
- * çevirmek yeter; normalizasyon + instancing kodu aynı kalır.
- */
-export const BUSH_MODEL_URL = "/models/bush.glb";
-export const GRASS_CLUMP_MODEL_URL = "/models/grass_clump.glb";
+export { BUSH_MODEL_URL, GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL };
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Varyasyon sabitleri                                         */
 /* ═══════════════════════════════════════════════════════════ */
 
-/** Her örneğin alacağı boyut çarpanı aralığı. */
+/** Her örneğin alacağı boyut çarpanı aralığı (istenen: ±%15). */
 const SIZE_MIN = 0.85;
 const SIZE_MAX = 1.15;
 /** Hafif parlaklık farkı (örnek rengi) — hiçbiri birebir aynı durmasın. */
@@ -82,66 +65,39 @@ export interface VegPlacement {
   tint: number;
 }
 
-/** Modelden çıkarılmış, normalize edilmiş tek parça (malzeme başına bir tane). */
-interface ModelPart {
-  geometry: THREE.BufferGeometry;
-  material: THREE.Material;
-  key: string;
-}
-
 const _up = new THREE.Vector3(0, 1, 0);
 
 const span = (rnd: () => number, min: number, max: number): number =>
   min + rnd() * (max - min);
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  GLB → normalize edilmiş parçalar                            */
+/*  Yükleme + hazırlık                                          */
 /* ═══════════════════════════════════════════════════════════ */
 
-/**
- * GLB sahnesini yerleştirilebilir parçalara çevirir:
- *   · her mesh'in DÜNYA matrisi, kopyalanan geometriye gömülür (glTF'te
- *     dönüşümler node'larda durur; instancing düz geometri ister),
- *   · taban y=0'a, XZ merkezi orijine taşınır,
- *   · yükseklik (Y) tam 1 birime ölçeklenir → çağıran sadece "kaç birim
- *     boyunda duracak" der.
- *
- * drei önbelleğindeki sahne ASLA değiştirilmez (paylaşılır); sadece kopyalanan
- * geometriler dönüştürülür ve bileşen sökülürken bırakılır. Materyaller
- * paylaşılır — bırakılırsa GLB'yi kullanan diğer bileşenler bozulurdu.
- */
-function useModelParts(url: string): ModelPart[] {
-  const { scene } = useGLTF(url);
+function useModelParts(cfg: VegModelConfig): ModelPart[] {
+  const { scene } = useGLTF(cfg.url);
+  const prepared = useMemo(() => prepareVegetationModel(scene, cfg), [scene, cfg]);
+  const { parts, owned, report } = prepared;
 
-  const parts = useMemo(() => {
-    const root = scene.clone(true);
-    root.updateMatrixWorld(true);
+  // Kopyalanan geometriler ve klonlanan materyaller paylaşılan GLB önbelleğinden
+  // bağımsızdır → sökülürken bırakılır (paylaşılanlara dokunulmaz).
+  useEffect(
+    () => () => {
+      for (const item of owned) item.dispose();
+    },
+    [owned],
+  );
 
-    const box = new THREE.Box3().setFromObject(root);
-    const size = box.getSize(new THREE.Vector3());
-    const height = Math.max(size.y, 1e-4);
-    const centerX = box.min.x + size.x / 2;
-    const centerZ = box.min.z + size.z / 2;
-
-    const out: ModelPart[] = [];
-    root.traverse((object) => {
-      const mesh = object as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const geometry = mesh.geometry.clone();
-      geometry.applyMatrix4(mesh.matrixWorld);
-      geometry.translate(-centerX, -box.min.y, -centerZ);
-      geometry.scale(1 / height, 1 / height, 1 / height);
-      const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-      out.push({
-        geometry,
-        material,
-        key: mesh.name || material?.name || `part-${out.length}`,
-      });
-    });
-    return out;
-  }, [scene]);
-
-  useEffect(() => () => parts.forEach((part) => part.geometry.dispose()), [parts]);
+  // Model değişirse (yeni export) boyut/yön varsayımlarının hâlâ doğru
+  // olduğunu konsoldan doğrulamak için tek satırlık ölçüm raporu.
+  useEffect(() => {
+    const size = report.rawSize;
+    console.info(
+      `[bitki örtüsü] ${cfg.url} · ${report.sourceMeshes} mesh → ${report.drawCalls} draw call · ` +
+        `ham boy ${size.x.toFixed(1)}×${size.y.toFixed(1)}×${size.z.toFixed(1)} birim · ` +
+        `yön düzeltmesi: ${report.flipped ? "180° X (model -Y'ye büyüyor)" : "yok"}`,
+    );
+  }, [cfg.url, report]);
 
   return parts;
 }
@@ -184,9 +140,8 @@ function PartInstances({
       scaleV.set(s, s, s);
       matrix.compose(position, quat, scaleV);
       mesh.setMatrixAt(i, matrix);
-      // `instanceColor` materyalin rengiyle ÇARPILIR → 1 civarı değerler
-      // sadece parlaklığı oynatır, paletten çıkmaz (dokulu modellerde de
-      // doku tonunu korur).
+      // `instanceColor` materyalin rengiyle/dokusuyla ÇARPILIR → 1 civarı
+      // değerler sadece parlaklığı oynatır, paletten çıkmaz.
       color.setScalar(p.tint);
       mesh.setColorAt(i, color);
     });
@@ -202,28 +157,29 @@ function PartInstances({
     <instancedMesh
       ref={ref}
       args={[part.geometry, part.material, placements.length]}
-      castShadow={castShadow}
+      // Şeffaflığı olmayan kart yapraklar yere dikdörtgen gölge basar → gölge çizmez.
+      castShadow={castShadow && !part.card}
       receiveShadow={receiveShadow}
     />
   );
 }
 
 function InstancedModel({
-  url,
+  cfg,
   placements,
   height,
   baseY,
   castShadow = true,
   receiveShadow = true,
 }: {
-  url: string;
+  cfg: VegModelConfig;
   placements: VegPlacement[];
   height: number;
   baseY: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
 }) {
-  const parts = useModelParts(url);
+  const parts = useModelParts(cfg);
   if (placements.length === 0 || parts.length === 0) return null;
   return (
     <>
@@ -269,7 +225,7 @@ class ModelErrorBoundary extends Component<{ label: string; children: ReactNode 
  */
 function GlbInstancedModel(props: Parameters<typeof InstancedModel>[0]) {
   return (
-    <ModelErrorBoundary label={props.url}>
+    <ModelErrorBoundary label={props.cfg.url}>
       <Suspense fallback={null}>
         <InstancedModel {...props} />
       </Suspense>
@@ -282,30 +238,31 @@ function GlbInstancedModel(props: Parameters<typeof InstancedModel>[0]) {
 /* ═══════════════════════════════════════════════════════════ */
 
 /**
- * Sokak ağaçları — `TREES` koordinatları.
- * `def.scale` (0.8–0.9) ağaç başına boy karakterini verir; üstüne rastgele
- * 0.85–1.15 çarpanı ve 0–360° Y rotasyonu biner.
+ * Sokak ağaçları — `TREE_ROWS` ile EŞİT ARALIKLI iki sıra (kuzey/güney yeşillik
+ * şeritleri). Her ağaca yerleştirilirken rastgele Y rotasyonu (0–360°) ve
+ * ±%15 boyut farkı verilir; tohum sabit olduğu için kare kare aynı kalır.
  */
 export function StreetTrees() {
-  const placements = useMemo<VegPlacement[]>(
-    () =>
-      TREES.map((def, i) => {
-        // Tohum ağaç başına sabit → her karede aynı rotasyon/boyut.
-        const rnd = mulberry32(4711 + def.variant * 977 + i * 131);
-        return {
-          x: def.x,
-          z: def.z,
+  const placements = useMemo<VegPlacement[]>(() => {
+    const out: VegPlacement[] = [];
+    TREE_ROWS.forEach((row, rowIndex) => {
+      const rnd = mulberry32(4711 + rowIndex * 7919);
+      for (let x = row.startX; x <= row.endX + 1e-6; x += row.spacing) {
+        out.push({
+          x,
+          z: row.z,
           rot: rnd() * Math.PI * 2,
-          scale: def.scale * span(rnd, SIZE_MIN, SIZE_MAX),
+          scale: span(rnd, SIZE_MIN, SIZE_MAX),
           tint: span(rnd, TINT_MIN, TINT_MAX),
-        };
-      }),
-    [],
-  );
+        });
+      }
+    });
+    return out;
+  }, []);
 
   return (
     <GlbInstancedModel
-      url={TREE_MODEL_URL}
+      cfg={TREE_MODEL_CONFIG}
       placements={placements}
       height={VEG_SIZES.tree}
       baseY={GRASS_LIFT}
@@ -332,7 +289,7 @@ export function StreetBushes() {
 
   return (
     <GlbInstancedModel
-      url={BUSH_MODEL_URL}
+      cfg={BUSH_MODEL_CONFIG}
       placements={placements}
       height={VEG_SIZES.bush}
       baseY={GRASS_LIFT}
@@ -343,7 +300,7 @@ export function StreetBushes() {
 /**
  * Çim öbekleri — `GRASS_CLUMP_ZONES` bölgelerine tohumlu rastgele dağıtılır.
  * Öbekler küçük olduğu için gölge çizmezler (shadow pass maliyeti ikiye
- * katlanmasın); zemin gölgesini kendi karo dokusu ve çalılar taşır.
+ * katlanmasın); zemin gölgesini karo dokusu ve ağaç/çalılar taşır.
  */
 export function StreetGrassClumps() {
   const placements = useMemo<VegPlacement[]>(() => {
@@ -368,7 +325,7 @@ export function StreetGrassClumps() {
 
   return (
     <GlbInstancedModel
-      url={GRASS_CLUMP_MODEL_URL}
+      cfg={GRASS_MODEL_CONFIG}
       placements={placements}
       height={VEG_SIZES.grassClump}
       baseY={GRASS_LIFT}
