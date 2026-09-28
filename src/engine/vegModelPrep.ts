@@ -43,7 +43,6 @@ export interface VegModelConfig {
 /* ═══════════════════════════════════════════════════════════ */
 
 export const TREE_MODEL_URL = "/models/maple_tree.glb";
-export const BUSH_MODEL_URL = "/models/bush.glb";
 export const GRASS_CLUMP_MODEL_URL = "/models/grass_clump.glb";
 
 /**
@@ -62,9 +61,6 @@ export const TREE_MODEL_CONFIG: VegModelConfig = {
   cardMaterial: /leaf|foliage|card/i,
   cardEmissive: 0.3,
 };
-
-/** Çalı — ağaç/çim ile aynı stilde üretilen low-poly model. */
-export const BUSH_MODEL_CONFIG: VegModelConfig = { url: BUSH_MODEL_URL };
 
 /** Çim öbeği — üretilen low-poly model. */
 export const GRASS_MODEL_CONFIG: VegModelConfig = { url: GRASS_CLUMP_MODEL_URL };

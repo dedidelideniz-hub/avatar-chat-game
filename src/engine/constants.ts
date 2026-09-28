@@ -219,7 +219,6 @@ export const GRASS_CLUMP_ZONES: GrassClumpZoneDef[] = [
  * Modeller 1 birim yüksekliğe normalize edilerek yüklenir (bkz.
  * `VegetationModels.tsx`), yani buradaki sayılar doğrudan "kaç birim boyunda
  * duracak" demektir (örnek başına ayrıca ±%15 rastgele sapma biner).
- * Çalı boyu yerleşim verisindeki ölçekle (`BUSHES[].s`) de çarpılır.
  *
  * Ölçek referansı: oyuncu 1.92 birim, dükkanlar 3.2–5 birim. `maple_tree.glb`
  * ham hâlde ~312 birim boyunda geliyor → çalışma zamanında uygulanan gerçek
@@ -228,8 +227,6 @@ export const GRASS_CLUMP_ZONES: GrassClumpZoneDef[] = [
 export const VEG_SIZES = {
   /** Ağaç boyu — karakterin ~1.25 katı, dükkan zemin katından kısa. */
   tree: 2.4,
-  /** Çalı boyu — BUSHES[].s (0.5–0.9) ile çarpılır. */
-  bush: 0.9,
   /** Çim öbeği boyu. */
   grassClump: 0.34,
 } as const;
@@ -264,17 +261,6 @@ export const BENCHES: BenchDef[] = [
   { x: -9, z: -4.0 },   // north sidewalk, near shop
   { x: 3,  z: -0.4 },   // south sidewalk, near market
   { x: 11, z: -0.4 },   // south sidewalk, near trees
-];
-
-// ─── FLOWER BOX POSITIONS ───
-export interface FlowerBoxDef { x: number; z: number; }
-
-export const FLOWER_BOXES: FlowerBoxDef[] = [
-  { x: -11, z: -4.2 },  // north sidewalk, between buildings
-  { x: -4,  z: -4.2 },
-  { x: 2,   z: -4.2 },
-  { x: -6,  z: -0.2 },  // south sidewalk
-  { x: 6,   z: -0.2 },
 ];
 
 // ─── VENDOR STALL POSITIONS ───
@@ -348,74 +334,6 @@ export const DIRECTION_SIGNS: DirectionSignDef[] = [
       { text: "LİMAN", arrow: "right" },
     ],
   },
-];
-
-// ─── ÇALILAR (çim alanlar) ───
-export interface BushDef { x: number; z: number; s: number; }
-
-export const BUSHES: BushDef[] = [
-  // Kuzey çimen şeridi — binaların önü, ağaç araları
-  { x: -12.6, z: -5.30, s: 0.90 },
-  { x: -9.2, z: -5.28, s: 0.75 },
-  { x: -5.2, z: -5.30, s: 0.85 },
-  { x: -1.6, z: -5.28, s: 0.80 },
-  { x: 1.9, z: -5.30, s: 0.90 },
-  { x: 7.1, z: -5.28, s: 0.75 },
-  { x: 11.1, z: -5.30, s: 0.85 },
-  { x: 14.6, z: -5.28, s: 0.80 },
-  // Kaldırım kenarı (kuzey)
-  { x: -8.2, z: -4.92, s: 0.55 },
-  { x: 0.6, z: -4.92, s: 0.50 },
-  { x: 13.9, z: -4.92, s: 0.55 },
-  // Güney çimenlik
-  { x: -14.6, z: 1.30, s: 0.90 },
-  { x: -9.6, z: 1.35, s: 0.80 },
-  { x: -4.6, z: 1.30, s: 0.85 },
-  { x: 1.2, z: 1.35, s: 0.75 },
-  { x: 7.2, z: 1.30, s: 0.90 },
-  { x: 13.2, z: 1.35, s: 0.80 },
-  { x: 15.2, z: 0.90, s: 0.70 },
-  { x: -15.2, z: 0.50, s: 0.70 },
-];
-
-// ─── ÇİÇEK TARHLARI ───
-export interface FlowerPatchDef {
-  x: number;
-  z: number;
-  /** Tarh yarıçapı. */
-  r: number;
-  count: number;
-  /** Tohum — aynı tarh her karede aynı görünsün. */
-  seed: number;
-}
-
-export const FLOWER_PATCHES: FlowerPatchDef[] = [
-  { x: -15.2, z: -5.20, r: 0.55, count: 9, seed: 3 },
-  { x: -13.4, z: -4.95, r: 0.40, count: 6, seed: 7 },
-  { x: 3.2, z: -5.15, r: 0.50, count: 8, seed: 11 },
-  { x: 10.0, z: -5.50, r: 0.45, count: 7, seed: 13 },
-  { x: -15.4, z: 1.00, r: 0.50, count: 8, seed: 17 },
-  { x: -6.6, z: 1.15, r: 0.45, count: 7, seed: 19 },
-  { x: 2.6, z: 1.10, r: 0.50, count: 8, seed: 23 },
-  { x: 10.6, z: 1.20, r: 0.45, count: 7, seed: 29 },
-  { x: 15.0, z: 1.20, r: 0.40, count: 6, seed: 31 },
-];
-
-/** Çiçek taç yaprağı renkleri. */
-export const FLOWER_COLORS = [
-  "#ff6b8a", "#ffc848", "#a855f7", "#ff8f4a", "#5ec8f0", "#ff4d79", "#ffe066",
-];
-
-// ─── BUDANMIŞ ÇİT (çalı sıraları) ───
-export interface HedgeDef { x: number; z: number; len: number; }
-
-export const HEDGES: HedgeDef[] = [
-  { x: -11.5, z: 0.16, len: 3.4 },
-  { x: -3.0, z: 0.16, len: 3.0 },
-  { x: 5.0, z: 0.16, len: 2.6 },
-  { x: 12.0, z: 0.16, len: 2.4 },
-  { x: -2.0, z: -4.90, len: 2.6 },
-  { x: 9.0, z: -4.90, len: 2.2 },
 ];
 
 // ─── AHŞAP ÇİT ───

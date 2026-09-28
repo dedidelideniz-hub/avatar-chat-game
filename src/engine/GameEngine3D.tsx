@@ -21,19 +21,16 @@ import {
   CAMERA_ELEVATION,
   CAMERA_ZOOM,
   CAMERA_LERP_SPEED,
-  PLAYER_3D_HEIGHT,
   SPAWN_SVG,
   ZONE,
   BUILDINGS,
   LAMPS,
   BENCHES,
-  FLOWER_BOXES,
   STALLS,
   S,
   type BuildingDef,
   type LampDef,
   type BenchDef,
-  type FlowerBoxDef,
   type StallDef,
 } from "./constants";
 import {
@@ -46,14 +43,13 @@ import {
   StreetCrosswalks,
   StreetDirectionSigns,
   StreetFences,
-  StreetFlowerPatches,
-  StreetHedges,
   StreetTrashCans,
   useStreetGroundTextures,
 } from "./StreetDetail";
 import { makeSignTexture } from "./streetTextures";
-// Bitki örtüsü (ağaç/çalı/çim) GLB modellerden gelir — ilkel geometri kaldırıldı.
-import { StreetBushes, StreetGrassClumps, StreetTrees } from "./VegetationModels";
+// Yeşillik SADECE akçaağaç GLB'sinden (ağaç) ve çim öbeği GLB'sinden gelir:
+// ilkel ağaç/çalı/çiçek geometrisi (küre top, kutu çit, mantar çiçek) kaldırıldı.
+import { StreetGrassClumps, StreetTrees } from "./VegetationModels";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Helpers                                                    */
@@ -508,57 +504,10 @@ function Bench3D({ def }: { def: BenchDef }) {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  Flower Box                                                 */
-/* ═══════════════════════════════════════════════════════════ */
-
-function FlowerBox3D({ def }: { def: FlowerBoxDef }) {
-  return (
-    <group position={[def.x, 0, def.z]}>
-      {/* Planter box */}
-      <mesh position={[0, 0.12, 0]} castShadow>
-        <boxGeometry args={[0.45, 0.22, 0.22]} />
-        <meshStandardMaterial color="#8b6848" roughness={0.88} />
-      </mesh>
-      {/* Box rim */}
-      <mesh position={[0, 0.24, 0]}>
-        <boxGeometry args={[0.48, 0.03, 0.25]} />
-        <meshStandardMaterial color="#a07858" roughness={0.82} />
-      </mesh>
-      {/* Soil */}
-      <mesh position={[0, 0.22, 0]}>
-        <boxGeometry args={[0.42, 0.02, 0.2]} />
-        <meshStandardMaterial color="#4a3020" roughness={1} />
-      </mesh>
-      {/* Flowers — colorful spheres */}
-      {[
-        { pos: [-0.12, 0.3, 0] as [number, number, number], color: "#ff6b8a" },
-        { pos: [0, 0.33, 0.04] as [number, number, number], color: "#ffb347" },
-        { pos: [0.12, 0.29, -0.03] as [number, number, number], color: "#a855f7" },
-        { pos: [0.06, 0.31, 0.06] as [number, number, number], color: "#ff4080" },
-        { pos: [-0.08, 0.28, -0.05] as [number, number, number], color: "#ffc040" },
-      ].map((f, i) => (
-        <group key={i} position={f.pos}>
-          {/* Stem */}
-          <mesh position={[0, -0.04, 0]}>
-            <cylinderGeometry args={[0.005, 0.005, 0.06, 3]} />
-            <meshStandardMaterial color="#3a8020" roughness={0.9} />
-          </mesh>
-          {/* Bloom */}
-          <mesh>
-            <sphereGeometry args={[0.05, 6, 6]} />
-            <meshStandardMaterial color={f.color} roughness={0.9} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
 /*  Stall — vendor market stall                                */
 /* ═══════════════════════════════════════════════════════════ */
 
-function Stall3D({ def, index }: { def: StallDef; index: number }) {
+function Stall3D({ def }: { def: StallDef }) {
   const isWeaponStall = def.color === "#b91c1c"; // Silahçı unique look
   return (
     <group position={[def.x, 0, def.z]}>
@@ -1119,9 +1068,6 @@ export function GameEngine3D({
         <Building key={i} def={def} />
       ))}
 
-      {/* === TREES (GLB — `VegetationModels.tsx`) === */}
-      <StreetTrees />
-
       {/* === LAMPS === */}
       {LAMPS.map((def, i) => (
         <Lamp3D key={i} def={def} />
@@ -1129,12 +1075,7 @@ export function GameEngine3D({
 
       {/* === STALLS === */}
       {STALLS.map((def, i) => (
-        <Stall3D key={i} def={def} index={i} />
-      ))}
-
-      {/* === FLOWER BOXES === */}
-      {FLOWER_BOXES.map((def, i) => (
-        <FlowerBox3D key={i} def={def} />
+        <Stall3D key={i} def={def} />
       ))}
 
       {/* === BENCHES === */}
@@ -1145,12 +1086,11 @@ export function GameEngine3D({
       {/* ═══════════════════════════════════════════════════════
           MODÜLER CADDE DETAYLARI (yaşayan şehir katmanı)
           ═══════════════════════════════════════════════════════ */}
-      {/* Çim öbekleri + çalılar (GLB — `VegetationModels.tsx`), çiçek
-          tarhları, budanmış çitler ve ahşap çitler */}
+      {/* Yeşillik: SADECE akçaağaç sıraları (`StreetTrees`) + çim öbekleri.
+          Eski ilkel çalı kütleleri, kutu çitler ve çiçek tarhları kaldırıldı;
+          ahşap çitler şehir detayı olarak kalıyor. */}
+      <StreetTrees />
       <StreetGrassClumps />
-      <StreetBushes />
-      <StreetFlowerPatches />
-      <StreetHedges />
       <StreetFences />
 
       {/* Sokak mobilyası: çöp kutuları, otobüs durakları, yön tabelaları */}

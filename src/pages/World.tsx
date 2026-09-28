@@ -1,6 +1,5 @@
 // The Vaelos street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
-import { StreetScene } from "@/components/world/StreetScene";
 import {
   GameEngine3D,
   raycastScreenToSVG,

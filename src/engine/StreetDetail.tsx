@@ -8,8 +8,8 @@
  * Performans kuralları (mobil hedef):
  *   · Sahnedeki IŞIK SAYISI değişmez — tüm parıltı emissive + additive
  *     dokulardır (PointLight eklemek shader'ları yeniden derletir).
- *   · Çok sayıda tekrar eden parça (çiçek, çalı, çit, yaya geçidi) tek
- *     InstancedMesh ile çizilir → draw call sabit kalır.
+ *   · Çok sayıda tekrar eden parça (çöp kovası, tabela, çit, yaya geçidi)
+ *     tek InstancedMesh ile çizilir → draw call sabit kalır.
  *   · Geometri/materyal modül düzeyinde paylaşılır.
  */
 import { useLayoutEffect, useMemo, useRef } from "react";
@@ -20,13 +20,10 @@ import {
   DIRECTION_SIGNS,
   FENCES,
   FENCE_SPACING,
-  FLOWER_COLORS,
-  FLOWER_PATCHES,
   GRASS_BORDERS,
   GRASS_LIFT,
   GRASS_TILE,
   GRASS_TONES,
-  HEDGES,
   TRASH_CANS,
   ZONE,
   WORLD_WIDTH,
@@ -48,8 +45,6 @@ import {
 
 const GEO = {
   unitBox: new THREE.BoxGeometry(1, 1, 1),
-  unitCylinder: new THREE.CylinderGeometry(1, 1, 1, 10),
-  unitSphere: new THREE.SphereGeometry(1, 8, 6),
   unitPlane: new THREE.PlaneGeometry(1, 1),
 };
 
@@ -68,13 +63,7 @@ const MAT = {
   wood: new THREE.MeshStandardMaterial({ color: "#c49a60", roughness: 0.82 }),
   darkWood: new THREE.MeshStandardMaterial({ color: "#6b4a2c", roughness: 0.88 }),
   stripe: new THREE.MeshStandardMaterial({ color: "#ece6d8", roughness: 0.85 }),
-  hedge: new THREE.MeshStandardMaterial({ color: "#2f8a2c", roughness: 0.96, flatShading: true }),
   fence: new THREE.MeshStandardMaterial({ color: "#efe7d6", roughness: 0.78 }),
-  flowerStem: new THREE.MeshStandardMaterial({ color: "#3f8a28", roughness: 0.9 }),
-  // Not: `vertexColors` AÇILMAZ — InstancedMesh'in `instanceColor` özelliği
-  // three tarafından parça shader'ında USE_COLOR ile devreye alınır; vertexColors
-  // açmak geometride olmayan `color` özniteliğini okutup taç yaprakları siyaha boyar.
-  flowerBloom: new THREE.MeshStandardMaterial({ roughness: 0.82 }),
   grassBorder: new THREE.MeshStandardMaterial({ color: GRASS_TONES.border, roughness: 0.95 }),
   binGreen: new THREE.MeshStandardMaterial({ color: "#3d6b52", roughness: 0.62, metalness: 0.18 }),
   binBlue: new THREE.MeshStandardMaterial({ color: "#2f5c8a", roughness: 0.62, metalness: 0.18 }),
@@ -423,15 +412,8 @@ export function StreetDirectionSigns() {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  ÇİÇEK TARHLARI — tek InstancedMesh (gövde + taç yaprağı)     */
+/*  Yardımcılar                                                 */
 /* ═══════════════════════════════════════════════════════════ */
-
-interface FlowerInstance {
-  x: number;
-  z: number;
-  s: number;
-  colorIndex: number;
-}
 
 /** Tohumlu PRNG — yerleşim/dağıtım her karede aynı kalsın (bitki örtüsü katmanı da kullanır). */
 export function mulberry32(seed: number): () => number {
@@ -443,108 +425,6 @@ export function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-export function StreetFlowerPatches() {
-  const bloomRef = useRef<THREE.InstancedMesh>(null);
-  const stemRef = useRef<THREE.InstancedMesh>(null);
-
-  const flowers = useMemo<FlowerInstance[]>(() => {
-    const out: FlowerInstance[] = [];
-    for (const patch of FLOWER_PATCHES) {
-      const rnd = mulberry32(patch.seed);
-      for (let i = 0; i < patch.count; i++) {
-        const ang = rnd() * Math.PI * 2;
-        const dist = Math.sqrt(rnd()) * patch.r;
-        out.push({
-          x: patch.x + Math.cos(ang) * dist,
-          z: patch.z + Math.sin(ang) * dist,
-          s: 0.75 + rnd() * 0.6,
-          colorIndex: Math.floor(rnd() * FLOWER_COLORS.length),
-        });
-      }
-    }
-    return out;
-  }, []);
-
-  useLayoutEffect(() => {
-    const blooms = bloomRef.current;
-    const stems = stemRef.current;
-    if (!blooms || !stems) return;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const cam = new THREE.Color();
-    flowers.forEach((f, i) => {
-      const stemH = 0.13 * f.s;
-      m.compose(
-        new THREE.Vector3(f.x, GRASS_LIFT + stemH / 2, f.z),
-        q,
-        new THREE.Vector3(0.011 * f.s, stemH, 0.011 * f.s),
-      );
-      stems.setMatrixAt(i, m);
-      m.compose(
-        new THREE.Vector3(f.x, GRASS_LIFT + stemH + 0.02, f.z),
-        q,
-        new THREE.Vector3(0.042 * f.s, 0.036 * f.s, 0.042 * f.s),
-      );
-      blooms.setMatrixAt(i, m);
-      cam.set(FLOWER_COLORS[f.colorIndex]);
-      blooms.setColorAt(i, cam);
-    });
-    blooms.instanceMatrix.needsUpdate = true;
-    stems.instanceMatrix.needsUpdate = true;
-    if (blooms.instanceColor) blooms.instanceColor.needsUpdate = true;
-  }, [flowers]);
-
-  const count = flowers.length;
-  if (count === 0) return null;
-
-  return (
-    <>
-      <instancedMesh ref={stemRef} args={[GEO.unitCylinder, MAT.flowerStem, count]} />
-      <instancedMesh ref={bloomRef} args={[GEO.unitSphere, MAT.flowerBloom, count]} />
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════ */
-/*  BUDANMIŞ ÇİT                                                */
-/* ═══════════════════════════════════════════════════════════ */
-
-const HEDGE_SEGMENT = 0.55;
-
-export function StreetHedges() {
-  const ref = useRef<THREE.InstancedMesh>(null);
-
-  const segments = useMemo(() => {
-    const out: { x: number; z: number; len: number }[] = [];
-    for (const h of HEDGES) {
-      const n = Math.max(1, Math.round(h.len / HEDGE_SEGMENT));
-      const start = h.x - h.len / 2 + h.len / n / 2;
-      for (let i = 0; i < n; i++) {
-        out.push({ x: start + (i * h.len) / n, z: h.z, len: h.len / n });
-      }
-    }
-    return out;
-  }, []);
-
-  useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    segments.forEach((s, i) => {
-      m.compose(
-        new THREE.Vector3(s.x, 0.18 + GRASS_LIFT, s.z),
-        q,
-        new THREE.Vector3(s.len + 0.04, 0.36, 0.42),
-      );
-      mesh.setMatrixAt(i, m);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-  }, [segments]);
-
-  return <instancedMesh ref={ref} args={[GEO.unitBox, MAT.hedge, segments.length]} castShadow />;
 }
 
 /* ═══════════════════════════════════════════════════════════ */

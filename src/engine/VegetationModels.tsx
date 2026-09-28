@@ -1,5 +1,5 @@
 /**
- * VAELOS CADDESİ — GLB bitki örtüsü katmanı (ağaç · çalı · çim öbeği).
+ * VAELOS CADDESİ — GLB bitki örtüsü katmanı (akçaağaç · çim öbeği).
  *
  * Caddenin yeşilliği ilkel geometriyle (küre/silindir/konik) ÇİZİLMEZ:
  * `public/models/` altındaki modeller `useGLTF` ile BİR KEZ yüklenir ve
@@ -26,11 +26,9 @@
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { BUSHES, GRASS_CLUMP_ZONES, GRASS_LIFT, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
+import { GRASS_CLUMP_ZONES, GRASS_LIFT, TREE_ROWS, VEG_SIZES, WORLD_WIDTH } from "./constants";
 import { mulberry32 } from "./StreetDetail";
 import {
-  BUSH_MODEL_CONFIG,
-  BUSH_MODEL_URL,
   GRASS_CLUMP_MODEL_URL,
   GRASS_MODEL_CONFIG,
   TREE_MODEL_CONFIG,
@@ -40,7 +38,7 @@ import {
   type VegModelConfig,
 } from "./vegModelPrep";
 
-export { BUSH_MODEL_URL, GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL };
+export { GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL };
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Varyasyon sabitleri                                         */
@@ -270,33 +268,6 @@ export function StreetTrees() {
   );
 }
 
-/** Sokak çalıları — `BUSHES` koordinatları (çim şeritlerinin içi). */
-export function StreetBushes() {
-  const placements = useMemo<VegPlacement[]>(
-    () =>
-      BUSHES.map((def, i) => {
-        const rnd = mulberry32(8123 + i * 337);
-        return {
-          x: def.x,
-          z: def.z,
-          rot: rnd() * Math.PI * 2,
-          scale: def.s * span(rnd, SIZE_MIN, SIZE_MAX),
-          tint: span(rnd, TINT_MIN, TINT_MAX),
-        };
-      }),
-    [],
-  );
-
-  return (
-    <GlbInstancedModel
-      cfg={BUSH_MODEL_CONFIG}
-      placements={placements}
-      height={VEG_SIZES.bush}
-      baseY={GRASS_LIFT}
-    />
-  );
-}
-
 /**
  * Çim öbekleri — `GRASS_CLUMP_ZONES` bölgelerine tohumlu rastgele dağıtılır.
  * Öbekler küçük olduğu için gölge çizmezler (shadow pass maliyeti ikiye
@@ -337,5 +308,4 @@ export function StreetGrassClumps() {
 
 /* İndirme, sahne kurulmadan önce başlasın (cadde ilk karede yeşilsiz kalmasın). */
 useGLTF.preload(TREE_MODEL_URL);
-useGLTF.preload(BUSH_MODEL_URL);
 useGLTF.preload(GRASS_CLUMP_MODEL_URL);
