@@ -316,8 +316,15 @@ const _blended = new THREE.Quaternion();
 const _parentQ = new THREE.Quaternion();
 const _localQ = new THREE.Quaternion();
 const _IDENTITY = new THREE.Quaternion();
-const _thighDir = new THREE.Vector3();
-const _shinDir = new THREE.Vector3();
+const _thighDirL = new THREE.Vector3();
+const _thighDirR = new THREE.Vector3();
+const _shinDirL = new THREE.Vector3();
+const _shinDirR = new THREE.Vector3();
+const _sitForward = new THREE.Vector3();
+const _sitLateral = new THREE.Vector3();
+const _thighPosL = new THREE.Vector3();
+const _thighPosR = new THREE.Vector3();
+const _modelRight = new THREE.Vector3(1, 0, 0);
 
 
 /** Ayak kemiklerinin duruş (taban) konumu — bir kez yakalanır. */
@@ -437,16 +444,34 @@ export function applySitPose(
   // diz ≈ baldır boyu). Kalça yüksekliğini değiştirmek diziyi yukarı taşımaz,
   // sadece uyluğun eğimini değiştirir — yani pozu bozmadan bank yüksekliği
   // ayarlanabilir (`scripts/check-bench-sit.ts` bunu ölçer).
-  _thighDir.set(0, -0.19, facing).normalize();
-  _shinDir.set(0, -1, facing * 0.0875).normalize();
-
+  // Uyluklar öne ve hafif dışa gider; baldırlar dizden aşağı neredeyse
+  // dikey iner. Bu yaklaşık 85° diz açısı üretir: bacaklar düz kalmaz ve
+  // ayaklar üstten görülen kamerada gövdenin altından öne doğru seçilir.
+  root.updateMatrixWorld(true);
+  const forward = _sitForward.set(0, 0, facing);
+  let lateralLengthSq = 0;
+  if (bones.thighL && bones.thighR) {
+    bones.thighL.getWorldPosition(_thighPosL);
+    bones.thighR.getWorldPosition(_thighPosR);
+    _sitLateral.subVectors(_thighPosL, _thighPosR).setY(0);
+    lateralLengthSq = _sitLateral.lengthSq();
+  }
+  if (lateralLengthSq < 1e-8) {
+    root.getWorldQuaternion(_parentQ);
+    _sitLateral.copy(_modelRight).applyQuaternion(_parentQ).setY(0);
+  }
+  _sitLateral.normalize();
+  _thighDirL.copy(forward).addScaledVector(_sitLateral, 0.24).setY(-0.16).normalize();
+  _thighDirR.copy(forward).addScaledVector(_sitLateral, -0.24).setY(-0.16).normalize();
+  _shinDirL.copy(_sitLateral).multiplyScalar(0.08).addScaledVector(forward, 0.2).setY(-1).normalize();
+  _shinDirR.copy(_sitLateral).multiplyScalar(-0.08).addScaledVector(forward, 0.2).setY(-1).normalize();
   root.updateMatrixWorld(true);
   // GÖVDE GERİYE (bank oturuşu): sırt arkalığa yaslanır, gövde dik durmaz.
   // Omurga döndürülür — kalça/ bacaklar aşağıda AYRICA mutlak yönlerle
   // ayarlandığı için bu dönüş pozu bozmaz (sadece üst gövdeyi yatırır).
   leanTorso(root, bones.spine ?? bones.hips, facing, blend);
-  poseLeg(root, bones.thighL, bones.shinL, bones.footL, _thighDir, _shinDir, blend);
-  poseLeg(root, bones.thighR, bones.shinR, bones.footR, _thighDir, _shinDir, blend);
+  poseLeg(root, bones.thighL, bones.shinL, bones.footL, _thighDirL, _shinDirL, blend);
+  poseLeg(root, bones.thighR, bones.shinR, bones.footR, _thighDirR, _shinDirR, blend);
 }
 
 /**

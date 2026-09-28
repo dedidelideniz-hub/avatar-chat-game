@@ -109,6 +109,13 @@ async function buildSeated(file: string) {
   const posedHips = worldPos(bones.hips!).y;
   const posedKnee = worldPos(tipOf(bones.thighL!)!).y;
   const posedAnkle = worldPos(tipOf(bones.shinL!)!).y;
+  const thighDirection = worldPos(tipOf(bones.thighL!)!)
+    .sub(worldPos(bones.thighL!))
+    .normalize();
+  const shinDirection = worldPos(tipOf(bones.shinL!)!)
+    .sub(worldPos(bones.shinL!))
+    .normalize();
+  const kneeBendDot = thighDirection.dot(shinDirection);
   // Kalça dokusu mindere değecek kadar aşağıda mı (oyunla aynı ölçüm).
   const contact = measureSeatContact(outer, bones);
   // Kalçayı mindere oturt: oyunun formülü (minder + ölçülen kalça dokusu).
@@ -123,6 +130,7 @@ async function buildSeated(file: string) {
     ready,
     normScale,
     contact,
+    poseDirections: { thighDirection, shinDirection, kneeBendDot },
     boneVsMesh: Math.max(
       Math.abs(doneBox.min.y - restBox.min.y),
       Math.abs(doneBox.min.z - restBox.min.z),
@@ -156,6 +164,22 @@ for (const file of MODELS) {
     `sınır kutusu farkı ${r.boneVsMesh.toFixed(3)} birim`,
   );
   const h = r.hips;
+  const { thighDirection, shinDirection, kneeBendDot } = r.poseDirections;
+  check(
+    `${file}: uyluk bankın önüne uzanıyor`,
+    thighDirection.z > 0.75 && thighDirection.y < 0,
+    `uyluk yönü (${thighDirection.x.toFixed(2)}, ${thighDirection.y.toFixed(2)}, ${thighDirection.z.toFixed(2)})`,
+  );
+  check(
+    `${file}: baldır aşağı sarkıyor ve diz belirgin bükülüyor`,
+    shinDirection.y < -0.8 && kneeBendDot < 0.7,
+    `baldır (${shinDirection.x.toFixed(2)}, ${shinDirection.y.toFixed(2)}, ${shinDirection.z.toFixed(2)}) · eklem dot ${kneeBendDot.toFixed(2)}`,
+  );
+  check(
+    `${file}: diz kalça seviyesinin çok üstüne çıkmıyor`,
+    h.knee < h.hips + 0.05,
+    `kalça ${h.hips.toFixed(2)} → diz ${h.knee.toFixed(2)}`,
+  );
   console.log(
     `     ölçülen kalça dokusu derinliği ${r.contact.toFixed(3)} → gereken kalça yüksekliği ${(BENCH_SEAT_TOP + r.contact).toFixed(3)} · sabitimiz ${BENCH_SEAT_HEIGHT}`,
   );
@@ -163,12 +187,6 @@ for (const file of MODELS) {
     `${file}: minder yüksekliği kalça dokusunu gömüyor mu`,
     BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP >= r.contact - 0.01,
     `gömülme ${(r.contact - (BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP)).toFixed(3)} birim`,
-  );
-  // Poz gerçekten uygulandı mı: diz kalça seviyesinde/altında, bacak öne katlı.
-  check(
-    `${file}: bacaklar öne katlanmış (diz kalçanın 0.3 birim altına inmiyor)`,
-    h.knee > h.hips - 0.3,
-    `kalça ${h.hips.toFixed(2)} → diz ${h.knee.toFixed(2)}`,
   );
   // MİNDERE OTURMA: kalça dokusunun en alt noktası mindere değmeli — ne
   // derine gömülmeli ("bankın içine geçmiş" görünüm) ne de havada olmalı.

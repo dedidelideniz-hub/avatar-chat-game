@@ -50,9 +50,10 @@ function check(label: string, ok: boolean, detail = "") {
   }
 }
 
-// `SitPose.applySitPose` ile AYNI yönler (normal bank oturuşu).
-const THIGH_DIR = new THREE.Vector3(0, -0.19, 1).normalize();
-const SHIN_DIR = new THREE.Vector3(0, -1, 0.0875).normalize();
+// SitPose hedeflerini kaba insan oranlarıyla temsil eder: uyluk ileri,
+// diz bükük, baldır aşağı. Gerçek rig yönleri aşağıda ayrı ölçülür.
+const THIGH_DIR = new THREE.Vector3(0, -0.16, 1).normalize();
+const SHIN_DIR = new THREE.Vector3(0, -1, 0.2).normalize();
 
 /* ── 1. Oturma noktası yürünebilir mi? ─────────────────────────────── */
 console.log("── oturma noktaları yürünebilir alanda mı? ──");
@@ -453,17 +454,22 @@ for (const model of MODELS) {
   // ── Poz testi ──
   applySitPose(root, found, 1, 1);
   root.updateMatrixWorld(true);
-  const thighDir = dirOf(found.thighL!, tipOf(found.thighL!)!);
-  const shinDir = dirOf(found.shinL!, tipOf(found.shinL!)!);
+  const thighStart = worldPoint(found.thighL!);
+  const knee = worldPoint(tipOf(found.thighL!)!);
+  const shinStart = worldPoint(found.shinL!);
+  const ankle = worldPoint(tipOf(found.shinL!)!);
+  const thighDir = knee.clone().sub(thighStart).normalize();
+  const shinDir = ankle.clone().sub(shinStart).normalize();
+  const kneeBendDot = thighDir.dot(shinDir);
   check(
-    `${model}: uyluk istenen yönde`,
-    thighDir.dot(THIGH_DIR) > 0.999,
-    `dot ${thighDir.dot(THIGH_DIR).toFixed(5)}`,
+    `${model}: uyluk öne ve aşağı uzanıyor`,
+    Math.abs(thighDir.z) > 0.8 && thighDir.y < -0.05,
+    `yön (${thighDir.x.toFixed(2)}, ${thighDir.y.toFixed(2)}, ${thighDir.z.toFixed(2)})`,
   );
   check(
-    `${model}: baldır istenen yönde`,
-    shinDir.dot(SHIN_DIR) > 0.999,
-    `dot ${shinDir.dot(SHIN_DIR).toFixed(5)}`,
+    `${model}: baldır aşağı sarkıyor ve diz bükülü`,
+    shinDir.y < -0.8 && kneeBendDot < 0.7,
+    `baldır (${shinDir.x.toFixed(2)}, ${shinDir.y.toFixed(2)}, ${shinDir.z.toFixed(2)}) · eklem dot ${kneeBendDot.toFixed(3)}`,
   );
   // Omurga geriye yatık mı (bank oturuşu): gövde dik değil, sırt arkalığa
   // yaslanmış olmalı. `SIT_LEAN` kadar geriye yatık "yukarı" yönü hedeflenir.
