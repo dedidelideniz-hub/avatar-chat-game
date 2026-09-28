@@ -342,18 +342,29 @@ export const DIRECTION_SIGNS: DirectionSignDef[] = [
   },
 ];
 
-// ─── AHŞAP ÇİT ───
-export interface FenceDef {
-  x: number;
+// ─── SINIR ÇİTİ (kaldırım ↔ çim hattı) ───
+/**
+ * Çit artık tek tek parçalar hâlinde değil, kaldırım taşı ile çim karosunun
+ * BİRLEŞTİĞİ çizgi boyunca kesintisiz bir hat olarak döşenir:
+ *   · güney hat: güney kaldırım (…0.0) ↔ güney çim (0.0…)   → `southGrassTop`
+ *   · kuzey hat: kuzey çim (…-4.8) ↔ kuzey kaldırım (-4.8…)  → `northGrassBot`
+ * Bu iki çizgi aynı zamanda yürünebilir alanın (Z -4.8…0) sınırıdır, yani
+ * çit tam olarak kaldırımın kenar hizasına oturur.
+ */
+export interface FenceLineDef {
+  /** Hattın Z'si — kaldırım taşı ile çim karosunun kesiştiği çizgi. */
   z: number;
-  /** Çıta sayısı (aralık 0.28 birim). */
-  count: number;
+  /** Hattın başlangıç X'i (dahil). */
+  startX: number;
+  /** Hattın bitiş X'i (dahil). */
+  endX: number;
+  /** false → bu hat çizilmez (yalnızca güney hattı istenirse). */
+  enabled: boolean;
 }
 
-export const FENCES: FenceDef[] = [
-  { x: -15.2, z: 1.48, count: 9 },
-  { x: 4.0, z: 1.48, count: 6 },
-  { x: 12.6, z: 1.48, count: 9 },
+export const FENCE_LINES: FenceLineDef[] = [
+  { z: ZONE.southGrassTop, startX: -WORLD_WIDTH / 2, endX: WORLD_WIDTH / 2, enabled: true },
+  { z: ZONE.northGrassBot, startX: -WORLD_WIDTH / 2, endX: WORLD_WIDTH / 2, enabled: true },
 ];
 
 /** Çit aralığı (birim) — çıtalar ve korkuluklar bunu kullanır. */

@@ -33,7 +33,20 @@ import {
   buildGrassGroundPlacements,
   prepareGrassGround,
 } from "../src/engine/grassGroundPrep";
-import { GRASS_GROUND_Y, GRASS_GROUND_ZONES, VEG_SIZES } from "../src/engine/constants";
+import {
+  BENCHES,
+  BUS_STOPS,
+  FENCE_LINES,
+  FENCE_SPACING,
+  GRASS_GROUND_Y,
+  GRASS_GROUND_ZONES,
+  LAMPS,
+  STALLS,
+  TRASH_CANS,
+  VEG_SIZES,
+  ZONE,
+} from "../src/engine/constants";
+import { buildFenceLine } from "../src/engine/fenceLine";
 
 /**
  * GLB içindeki PNG'leri çözer (zlib + PNG filtre çözümü, ek bağımlılık yok) ve
@@ -194,4 +207,68 @@ console.log(
 );
 console.log(
   `  referans: asfalt y=0.008 · kaldırım y=0.005 → zemin ${groundY < 0.005 ? "ALTINDA ✔" : "ÜSTÜNDE ✘"}`,
+);
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  SINIR ÇİTİ — kaldırım ↔ çim hattı                           */
+/* ═══════════════════════════════════════════════════════════ */
+
+const SLAT_HEIGHT = 0.38;
+const SLAT_BOTTOM = 0.19 + GRASS_GROUND_Y - SLAT_HEIGHT / 2;
+const SIDEWALK_DEPTH = ZONE.northSidewalkBot - ZONE.northSidewalkTop; // 1.2
+const ROAD_WIDTH = ZONE.roadBot - ZONE.roadTop; // 2.4
+
+console.log("\n=== SINIR ÇİTİ (kaldırım ile çimin birleştiği çizgi)");
+let fenceSlats = 0;
+let fenceRails = 0;
+
+for (const line of FENCE_LINES) {
+  const built = buildFenceLine(line);
+  fenceSlats += built.slats.length;
+  fenceRails += built.rails.length;
+
+  const label =
+    Math.abs(line.z - ZONE.southGrassTop) < 1e-9
+      ? "güney kaldırım ↔ güney çim"
+      : Math.abs(line.z - ZONE.northGrassBot) < 1e-9
+        ? "kuzey çim ↔ kuzey kaldırım"
+        : "SERBEST (sınır çizgisi değil!)";
+  const first = built.slats[0]?.x ?? Number.NaN;
+  const last = built.slats[built.slats.length - 1]?.x ?? Number.NaN;
+  const maxGap = Math.max(0, ...built.slats.slice(1).map((s, i) => s.x - built.slats[i].x));
+  // En yakın YOL kenarı: çit kaldırımın dış kenarında olduğu için aradaki
+  // mesafe kaldırım derinliği (1.2) kadar olmalı — yola sarkma olmamalı.
+  const roadEdge =
+    Math.abs(line.z - ZONE.roadTop) < Math.abs(line.z - ZONE.roadBot)
+      ? ZONE.roadTop
+      : ZONE.roadBot;
+  const roadClearance = Math.abs(line.z - roadEdge) - SIDEWALK_DEPTH;
+
+  console.log(
+    `\n  hat z=${line.z} (${label}) · ${line.enabled ? "etkin" : "KAPALI"}\n` +
+      `    çıta ${built.slats.length} · korkuluk ${built.rails.length} · adım ${built.step.toFixed(4)} ` +
+      `(hedef ${FENCE_SPACING}) → ${Math.abs(built.step - FENCE_SPACING) < 0.01 ? "aralık korunuyor ✔" : "aralık saptı ✘"}\n` +
+      `    uçlar: ${first.toFixed(2)} … ${last.toFixed(2)} (istenen ${line.startX} … ${line.endX}) → ` +
+      `${Math.abs(first - line.startX) < 1e-9 && Math.abs(last - line.endX) < 1e-9 ? "TAM HAT ✔" : "UÇLAR TUTMUYOR ✘"}\n` +
+      `    kesintisizlik: en büyük çıta boşluğu ${maxGap.toFixed(4)} ≤ adım → ` +
+      `${maxGap <= built.step + 1e-9 ? "BOŞLUK YOK ✔" : "BOŞLUK VAR ✘"}\n` +
+      `    hiza: çıta tabanı y=${SLAT_BOTTOM.toFixed(3)} · zemin y=${GRASS_GROUND_Y.toFixed(3)} → ` +
+      `${Math.abs(SLAT_BOTTOM - GRASS_GROUND_Y) < 1e-9 ? "TAM ZEMİN ÜSTÜNDE ✔" : "HİZASIZ ✘"}\n` +
+      `    kaplama: çıta derinliği 0.035 → hat ${(0.035 / 2).toFixed(3)} birim taşar · ` +
+      `en yakın yol kenarına ${Math.abs(line.z - roadEdge).toFixed(2)} birim ` +
+      `(kaldırım derinliği ${SIDEWALK_DEPTH.toFixed(2)}, yol şeridi ${ROAD_WIDTH.toFixed(1)}) → ` +
+      `${roadClearance >= -1e-9 ? "YOLA TAŞMA YOK ✔" : "YOL ÜSTÜNDE ✘"}`,
+  );
+
+  const clash = [...LAMPS, ...BENCHES, ...STALLS, ...TRASH_CANS, ...BUS_STOPS].filter(
+    (prop) => Math.abs(prop.z - line.z) < 0.3,
+  );
+  console.log(
+    `    prop çakışması: ${clash.length === 0 ? "yok ✔" : `${clash.length} prop çok yakın ✘`}`,
+  );
+}
+
+console.log(
+  `\n  toplam: ${fenceSlats} çıta + ${fenceRails} korkuluk → 2 draw call ` +
+    `(${FENCE_LINES.filter((l) => l.enabled).length} hat × cadde boyu)`,
 );

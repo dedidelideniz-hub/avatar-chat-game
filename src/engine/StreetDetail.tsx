@@ -18,8 +18,7 @@ import {
   BUS_STOPS,
   CROSSWALKS,
   DIRECTION_SIGNS,
-  FENCES,
-  FENCE_SPACING,
+  FENCE_LINES,
   GRASS_GROUND_Y,
   TRASH_CANS,
   ZONE,
@@ -34,6 +33,7 @@ import {
   makePavementTexture,
   makeSignTexture,
 } from "./streetTextures";
+import { buildFenceLines } from "./fenceLine";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Paylaşılan geometri / materyaller                          */
@@ -362,30 +362,16 @@ export function mulberry32(seed: number): () => number {
 }
 
 /* ═══════════════════════════════════════════════════════════ */
-/*  AHŞAP ÇİT — çıtalar + iki korkuluk                           */
+/*  SINIR ÇİTİ — kaldırım ↔ çim hattı boyunca kesintisiz hat     */
 /* ═══════════════════════════════════════════════════════════ */
 
 export function StreetFences() {
   const slatRef = useRef<THREE.InstancedMesh>(null);
   const railRef = useRef<THREE.InstancedMesh>(null);
 
-  const slats = useMemo(() => {
-    const out: { x: number; z: number }[] = [];
-    for (const f of FENCES) {
-      for (let i = 0; i < f.count; i++) out.push({ x: f.x + i * FENCE_SPACING, z: f.z });
-    }
-    return out;
-  }, []);
-
-  const rails = useMemo(() => {
-    const out: { x: number; z: number }[] = [];
-    for (const f of FENCES) {
-      for (let i = 0; i < f.count - 1; i++) {
-        out.push({ x: f.x + (i + 0.5) * FENCE_SPACING, z: f.z });
-      }
-    }
-    return out;
-  }, []);
+  // Tüm hatlar TEK listede: kaç hat ve kaç çıta olursa olsun 2 draw call.
+  // Matematik `fenceLine.ts` içinde (saf) — uç uca, boşluksuz dizilim.
+  const { slats, rails } = useMemo(() => buildFenceLines(FENCE_LINES), []);
 
   useLayoutEffect(() => {
     const slatMesh = slatRef.current;
@@ -394,15 +380,21 @@ export function StreetFences() {
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     slats.forEach((s, i) => {
+      // Çıta tabanı TAM zemin seviyesi: 0.19 - 0.38/2 = 0 → havada durmaz,
+      // zemine gömülmez (GRASS_GROUND_Y zemin yüzeyi).
       m.compose(new THREE.Vector3(s.x, 0.19 + GRASS_GROUND_Y, s.z), q, new THREE.Vector3(0.05, 0.38, 0.035));
       slatMesh.setMatrixAt(i, m);
     });
     rails.forEach((r, i) => {
-      m.compose(new THREE.Vector3(r.x, 0.3 + GRASS_GROUND_Y, r.z), q, new THREE.Vector3(FENCE_SPACING + 0.02, 0.045, 0.03));
+      m.compose(new THREE.Vector3(r.x, 0.3 + GRASS_GROUND_Y, r.z), q, new THREE.Vector3(r.len, 0.045, 0.03));
       railMesh.setMatrixAt(i, m);
     });
     slatMesh.instanceMatrix.needsUpdate = true;
     railMesh.instanceMatrix.needsUpdate = true;
+    // Örnekler cadde boyunca yayılıyor: kaba küre örnek matrislerinden
+    // hesaplanmalı, yoksa hat kameradan çıkınca frustum'da elenip kaybolur.
+    slatMesh.computeBoundingSphere();
+    railMesh.computeBoundingSphere();
   }, [slats, rails]);
 
   return (
