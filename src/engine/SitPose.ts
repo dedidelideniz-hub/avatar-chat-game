@@ -1,35 +1,48 @@
 /**
- * OTURMA POZU — rig'den bağımsız prosedürel bankta oturma.
+ * OTURMA POZU — rig'den bağımsız prosedürel bankta oturma (Sanalika tarzı).
  *
  * NEDEN PROSEDÜREL: oyundaki dört karakter GLB'sinin yalnızca biri
  * (`character.glb`) hazır bir "Sitting" klibi taşıyor; deri modelleri
- * (savaşçı/samuray/şövalye) taşımıyor. Hazır klip bankın yüksekliğine göre de
- * ayarlanamıyordu: minder 0.46 birim, oturan kalça 0.56 birim yükseklikte
- * (bkz. `constants.ts` BENCH_*). Bu yüzden
- * oturma pozu KEMİK YÖNLERİNDEN türetilir: kemiğin mevcut dünya yönü
- * ölçülür ve istenen yöne döndürülür — böylece her rig'de aynı sonuç çıkar
- * ve kemik eksenleri (local axis) hakkında hiçbir varsayım yapılmaz.
+ * (savaşçı/samuray/şövalye) taşımıyor. Hazır klip ayrıca bankın yüksekliğine
+ * göre ayarlanamıyor. Bu yüzden oturma pozu KEMİK YÖNLERİNDEN türetilir:
+ * kemiğin mevcut dünya yönü ölçülür ve istenen yöne döndürülür — böylece her
+ * rig'de aynı sonuç çıkar ve kemik eksenleri (local axis) hakkında hiçbir
+ * varsayım yapılmaz.
+ *
+ * OTURMA NASIL OKUNUR (hepsi dünya uzayında, rig'den bağımsız):
+ *   1. KALÇA MİNDERE OTURUR. Kalça eklemi (uyluk kökleri) minderin üstüne
+ *      `pad` kadar yükseltilir; `pad` = kalça dokusunun kalça eklemine göre
+ *      derinliği ve MODELDEN ÖLÇÜLÜR (tıknaz avatarda ~0.06, ince insan
+ *      riginde ~0.20). Kalça EKLEMİ mindere oturmaz; mindere değen kısım
+ *      onun altındaki dokudur. Bu yüzden sabit bir yükseklik doğru değildir:
+ *      tıknaz avatarı havada bırakır, ince rigi banka gömer.
+ *   2. BACAKLAR BANKIN ÖNÜNDEN SARKAR. Uyluk öne ve biraz aşağı iner; eğim,
+ *      diz minder hizasına (minder + 3 cm) gelecek şekilde bacak uzunluğundan
+ *      hesaplanır (`thighDrop`), baldır dikey sarkar. Böylece karakter
+ *      çömelmiş gibi değil, minderin ön kenarına oturmuş gibi okunur.
+ *   3. GÖVDE hafifçe geriye yatıktır (`SIT_LEAN`), yüz caddeye dönüktür
+ *      (`benchSeatYaw` → `0` / `π`).
+ *   4. OTURURKEN HİÇBİR KLİP ÇALIŞMAZ (`mixer.stopAllAction()`); taban poz
+ *      olarak idle'ın ilk karesi yakalanır. Kalkışta bütün dönüşümler
+ *      kaydedilen hâline geri yüklenir ve idle yeniden başlar.
  *
  * RIG FARKLARI (ölçülerek doğrulandı, bkz. `scripts/check-bench-sit.ts`):
  *   • Mixamo derileri:  Hips → LeftUpLeg → LeftLeg → LeftFoot   (tek zincir)
- *   • character.glb   : Body → UpperLeg.L → LowerLeg.L          (uyluk/baldır)
+ *   • character.glb   : Body → UpperLegL → LowerLegL            (uyluk/baldır)
  *                       ve AYAKLAR zincirin altında DEĞİL —
- *                       `Bone` kökü altında ayrı dururlar. Ayrıca
- *                       `Leg.L` adlı düğüm kemik değil, mesh'tir.
+ *                       `Bone` kökü altında ayrı dururlar (bu yüzden ayak
+ *                       baldırın ucuna konumla taşınır). Ayrıca `LegL` adlı
+ *                       düğüm kemik değil, mesh'tir.
  * Bu yüzden: (1) baldır, altında ayak arayarak değil, AD SKORUYLA seçilir
  * ("LowerLeg" > "Leg"); (2) kemiğin ucu, alt kemik yoksa `_end` düğümünden
- * okunur; (3) ayak kemiği tüm iskelette aranır ve baldırın ucuna TAŞINIR —
- * böylece ayak, bacakla birlikte hareket eder.
- *
- * BenchSitController animasyonları durdurur, kaydedilmiş model pozundan
- * her kare deterministik oturma üretir ve kalkınca bütün dönüşümleri geri yükler.
+ * okunur; (3) ayak kemiği tüm iskelette aranır ve baldırın ucuna TAŞINIR.
  */
 import * as THREE from "three";
 import { BENCH_SEAT_TOP, SEAT_TRANSITION_SECONDS, SIT_LEAN } from "./constants";
 
 export interface SitBones {
   hips: THREE.Bone | null;
-  /** Omurga/göğüs kökü — otururken gövdeyi geriye yatırmak için. */
+  /** Omurga/göğüs kökü — otururken gövdeyi hafifçe geriye yatırmak için. */
   spine: THREE.Bone | null;
   thighL: THREE.Bone | null;
   thighR: THREE.Bone | null;
@@ -49,6 +62,38 @@ const SHIN_WEAK_RE = /leg/;
 const FOOT_RE = /foot|ankle/;
 /** Üç.js sentinel düğümleri (`_end`) kemik değildir. */
 const SENTINEL_RE = /_end/;
+
+/* ── Poz sabitleri ──────────────────────────────────────────────────── */
+
+/** Diz, minderin bu kadar üstüne nişanlanır (dünya birimi). */
+const KNEE_ABOVE_SEAT = 0.03;
+/** Ayak betona girmesin: en alçak ayak yüksekliği. */
+const FOOT_CLEARANCE = 0.02;
+/** Uyluğun aşağı eğim sınırları (yön vektörünün Y bileşeni ≈ sinüs). */
+const THIGH_DROP_MIN = 0.06;
+const THIGH_DROP_MAX = 0.8;
+/** Bacak uzunluğu ölçülemezse kullanılan eğim. */
+export const SIT_THIGH_DROP_DEFAULT = 0.18;
+/** Bacakların yanlara açılması (uyluk yönüne katılan yan bileşen). */
+const SIT_SPLAY = 0.08;
+/** Baldırın öne kaçması — tam dikey yerine hafif öne açık. */
+const SIT_SHIN_FORWARD = 0.06;
+
+/** Kalça payı ölçülemezse kullanılan değer (dünya birimi). */
+export const SEAT_PAD_FALLBACK = 0.12;
+/** Ölçülen payın sınırları — havada asılı kalmak ya da banka gömülmek yok. */
+const SEAT_PAD_MIN = 0.05;
+const SEAT_PAD_MAX = 0.25;
+/**
+ * Ölçüm bandı: kalça ekleminin ALTINDAKİ daire (dünya birimi).
+ *
+ * Daire (yön bandı değil): kalça ekleminin hemen altındaki yüzey oturma
+ * yüzeyidir ve bu bölge pürüzsüz bir kabuk olduğu için ölçüm kararlıdır.
+ * "Kalçanın gerisi" gibi yönlü bir bant, eğimli bir yüzeyi ortasından
+ * kestiği için bandın sınırına göre sonucu 5–10 cm değiştiriyordu.
+ */
+const PAD_RADIUS = 0.13;
+const PAD_DOWN = 0.4;
 
 /** Gerçek kemik mi? (mesh düğümleri aynı ismi taşıyabilir → elenir.) */
 function isBone(obj: THREE.Object3D): boolean {
@@ -137,12 +182,11 @@ export function findSitBones(root: THREE.Object3D): SitBones {
     }
   });
 
-  // ── Omurga: gövdeyi geriye yatırmak için.
+  // ── Omurga: gövdeyi hafifçe geriye yatırmak için.
   //    Sıra: "spine"/"chest" (3) > "torso" (2) > "body" (1).
-  //    `character.glb`de göğüs kökü `Torso`, alt gövde kökü `Body`dir; ikisi
+  //    `character.glb`de göğüs kökü `Torso_1`, alt gövde kökü `Body`dir; ikisi
   //    de kemik olduğu için skor AYIRT EDİCİ olmalı — `Body` aşağı bakar,
   //    onu döndürmek gövde yerine bacak köklerini savurur.
-  //    Hiçbiri yoksa gövde yatırılmaz, poz yine doğru çıkar.
   let spineScore = -1;
   root.traverse((obj) => {
     if (!isBone(obj)) return;
@@ -164,13 +208,12 @@ export function findSitBones(root: THREE.Object3D): SitBones {
   //    riglerde uyluklar `Hips`in altında değildir (`character.glb`de
   //    `Body` altında, `Hips` ile kardeş). ──
   for (const side of ["L", "R"] as const) {
-    const scope: THREE.Object3D = root;
     let thigh: THREE.Bone | null = null;
     let thighScoreBest = -1;
-    scope.traverse((obj) => {
-      if (obj === scope || !isBone(obj)) return;
+    root.traverse((obj) => {
+      if (obj === root || !isBone(obj)) return;
       // DİKKAT: yan işareti HAM addan okunur (üç.js ad temizliğinden sonra
-      // `UpperLegL` gibi adlarda büyük L/R ayırt edicidir); skor ise küçük harfle.
+      // `UpperLegL` gibi adlarda büyük L/R ayırt edicidir); skor küçük harfle.
       if (sideOf(obj.name) !== side) return;
       const score = thighScore(obj.name.toLowerCase());
       if (score > thighScoreBest) {
@@ -182,9 +225,9 @@ export function findSitBones(root: THREE.Object3D): SitBones {
     let shin: THREE.Bone | null = null;
     let shinScoreBest = -1;
     if (thigh) {
-      const parent: THREE.Object3D = thigh;
-      parent.traverse((obj) => {
-        if (obj === parent || !isBone(obj)) return;
+      const scope: THREE.Object3D = thigh;
+      scope.traverse((obj) => {
+        if (obj === scope || !isBone(obj)) return;
         if (sideOf(obj.name) !== side) return;
         const score = shinScore(obj.name.toLowerCase());
         if (score > shinScoreBest) {
@@ -197,7 +240,7 @@ export function findSitBones(root: THREE.Object3D): SitBones {
     // ── Ayak: bazı riglerde (character.glb) zincirin altında DEĞİL, tüm
     //    iskelette aranır. Önce baldırın altına bakılır. ──
     let foot: THREE.Bone | null = null;
-    const footScope: THREE.Object3D = shin ?? thigh ?? scope;
+    const footScope: THREE.Object3D = shin ?? thigh ?? root;
     footScope.traverse((obj) => {
       if (foot || obj === footScope || !isBone(obj)) return;
       if (sideOf(obj.name) === side && FOOT_RE.test(obj.name.toLowerCase()))
@@ -233,85 +276,22 @@ export function canSit(bones: SitBones): boolean {
   );
 }
 
-/**
- * MİNDER TEMASI — kalça dokusunun kalça kemiğine göre derinliği.
- *
- * NEDEN ÖLÇÜLÜR: mindere değen kısım kalça KEMİĞİ değil, onun altındaki
- * kalça/uyluk DOKUSUDUR ve bu doku modelden modele değişir (tıknaz avatarda
- * kalça kemiği gövdenin içinde kalır, ince insan riginde ~0.10 birimdir).
- * Sabit bir yükseklik (eski `BENCH_SEAT_HEIGHT = 0.56`) tıknaz modellerde
- * karakteri bankın İÇİNE gömüyordu — ekran görüntüsündeki "bankın içine
- * geçmiş" görünüm. Bu ölçüm, `BENCH_SEAT_HEIGHT` sabitinin kalibrasyonudur ve
- * `scripts/check-sit-model-pose.ts` her avatar için hâlâ geçerli olduğunu
- * doğrular (ölçülen derinlik + minder üstü ≤ sabit).
- */
-/** Ölçüm yapılamazsa (mesh/örnek yok) kullanılan güvenli değer. */
-export const SEAT_CONTACT_FALLBACK = 0.15;
-/** Ölçüm bandı: kalçanın altında kalan bu yarıçaptaki geometri (dünya birimi). */
-const SEAT_CONTACT_RADIUS = 0.18;
-
-const _measureP = new THREE.Vector3();
-const _measureV = new THREE.Vector3();
-
-/**
- * Kalça dokusunun kalça kemiğinin ne kadar altına indiğini ölçer (dünya
- * birimi) — OTURMA POZU UYGULANMIŞ iskelette çağrılmalıdır.
- *
- * BANT: kalçanın ±0.18 birim çevresindeki, kalçanın ALTINDAKİ geometri.
- * Baldır/ayak dışarıda kalsın diye alt sınır DİZ seviyesidir; diz kalçanın
- * üstüne çıkan modellerde (tıknaz avatarlar) bacaklar öne katlandığı için
- * alt sınır gerekmez.
- */
-export function measureSeatContact(
-  root: THREE.Object3D,
-  bones: SitBones,
-): number {
-  if (!bones.hips) return SEAT_CONTACT_FALLBACK;
-  root.updateMatrixWorld(true);
-  const hips = bones.hips;
-  hips.getWorldPosition(_measureP);
-  const kneeBone = bones.thighL ? tipOf(bones.thighL) : null;
-  const kneeY = kneeBone ? kneeBone.getWorldPosition(_measureV).y : _measureP.y;
-  const lowerBound = kneeY < _measureP.y ? kneeY - 0.02 : _measureP.y - 0.45;
-  let lowest = Infinity;
-  root.traverse((obj) => {
-    const mesh = obj as THREE.SkinnedMesh;
-    if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
-    const pos = mesh.geometry?.getAttribute?.("position") as
-      | THREE.BufferAttribute
-      | undefined;
-    if (!pos) return;
-    // Örnekleme: büyük modellerde (16k tepe) her 4. tepe yeterli.
-    const step = Math.max(1, Math.floor(pos.count / 4000));
-    for (let i = 0; i < pos.count; i += step) {
-      if ((mesh as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
-        mesh.getVertexPosition(i, _measureV);
-      } else {
-        _measureV.fromBufferAttribute(pos, i);
-      }
-      mesh.localToWorld(_measureV);
-      if (
-        _measureV.y < _measureP.y &&
-        _measureV.y > lowerBound &&
-        Math.abs(_measureV.x - _measureP.x) < SEAT_CONTACT_RADIUS &&
-        Math.abs(_measureV.z - _measureP.z) < SEAT_CONTACT_RADIUS &&
-        _measureV.y < lowest
-      ) {
-        lowest = _measureV.y;
-      }
-    }
-  });
-  if (!Number.isFinite(lowest)) return SEAT_CONTACT_FALLBACK;
-  return _measureP.y - lowest;
-}
-
-/* ── Yeniden kullanılan geçici nesneler (kare başına çöp üretmemek için) ── */
-/** Modelin animasyon öncesi dönüşümleri; mesh düğümleri de animasyon alabilir. */
+/** Modelin bütün dönüşümlerini yakalar; dönen fonksiyon onları geri yükler. */
 export function captureStandingPose(root: THREE.Object3D) {
-  const transforms: { object: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 }[] = [];
-  root.traverse((object) => transforms.push({
-    object, position: object.position.clone(), quaternion: object.quaternion.clone(), scale: object.scale.clone(),
-  }));
+  const transforms: {
+    object: THREE.Object3D;
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    scale: THREE.Vector3;
+  }[] = [];
+  root.traverse((object) =>
+    transforms.push({
+      object,
+      position: object.position.clone(),
+      quaternion: object.quaternion.clone(),
+      scale: object.scale.clone(),
+    }),
+  );
   return () => {
     for (const t of transforms) {
       t.object.position.copy(t.position);
@@ -322,176 +302,122 @@ export function captureStandingPose(root: THREE.Object3D) {
   };
 }
 
-/** Tek oturma yaşam döngüsü: giriş → sabit referanstan poz → eksiksiz kalkış. */
-export class BenchSitController {
-  seated = false;
-  private elapsed = 0;
-  private contact = 0.2;
-  private measured = false;
-  private restoreSeat: (() => void) | null = null;
-  private anchor = new THREE.Vector3();
-  private other = new THREE.Vector3();
-  private correction = new THREE.Vector3();
-
-  private root: THREE.Object3D;
-  private bones: SitBones;
-  private restore: () => void;
-
-  constructor(root: THREE.Object3D, bones: SitBones, restore: () => void) {
-    this.root = root;
-    this.bones = bones;
-    this.restore = restore;
-  }
-
-  sitOnBench(mixer: THREE.AnimationMixer, idle?: THREE.AnimationAction | null) {
-    mixer.stopAllAction();
-    mixer.timeScale = 1;
-    this.restore();
-    // Kollar bind/T pozunda kalmasın: idle'ın ilk karesini bir kez örnekle,
-    // sonra eylemi gerçekten durdur. Otururken hiçbir klip çalışmaz.
-    if (idle) {
-      idle.reset().play();
-      mixer.update(0);
-    }
-    this.restoreSeat = captureStandingPose(this.root);
-    mixer.stopAllAction();
-    this.restoreSeat();
-    this.measured = false;
-    this.elapsed = 0;
-    this.seated = true;
-    this.contact = 0.2;
-  }
-
-  unsit(mixer: THREE.AnimationMixer) {
-    if (!this.seated) return;
-    mixer.stopAllAction();
-    this.restore();
-    mixer.timeScale = 1;
-    this.seated = false;
-  }
-
-  /**
-   * Uyluğun aşağı eğimini modelin KENDİ bacak uzunluğundan ölçer.
-   *
-   * Kalça yüksekliği (minder + kalça dokusu) sabittir; bacak uzunluğu
-   * modelden modele değişir. Hedef: diz kalçanın ALTINA insin ve ayaklar
-   * yere mümkün olduğunca yaklaşsın:
-   *   sin(eğim) = (kalça yüksekliği − baldır) / uyluk
-   * Uzun bacaklı deri modellerinde bu değer küçüktür → ayaklar tam yere
-   * basar. Kısa bacaklı avatarda üst sınıra takılır → bacaklar bankın ön
-   * kenarından sarkar (ama diz yine kalçanın altında kalır).
-   */
-  private thighTilt(): number {
-    const { thighL, thighR, shinL, shinR } = this.bones;
-    const thigh = Math.max(
-      thighL ? this.boneLength(thighL, tipOf(thighL)) : 0,
-      thighR ? this.boneLength(thighR, tipOf(thighR)) : 0,
-    );
-    const shin = Math.max(
-      shinL ? this.boneLength(shinL, tipOf(shinL)) : 0,
-      shinR ? this.boneLength(shinR, tipOf(shinR)) : 0,
-    );
-    if (thigh <= 1e-5 || shin <= 1e-5) return SIT_THIGH_TILT_MIN * 0.1;
-    const hipY = BENCH_SEAT_TOP + this.contact;
-    return Math.min(
-      SIT_THIGH_TILT_MAX,
-      Math.max(SIT_THIGH_TILT_MIN, (hipY - shin) / thigh),
-    );
-  }
-
-  /** İki kemiğin dünya uzaklığı (taban pozda çağrılır). */
-  private boneLength(a: THREE.Object3D, b: THREE.Object3D | null): number {
-    if (!b) return 0;
-    a.getWorldPosition(this.anchor);
-    b.getWorldPosition(this.other);
-    return this.anchor.distanceTo(this.other);
-  }
-
-  update(inner: THREE.Group, group: THREE.Group, facing: 1 | -1, dt: number) {
-    if (!this.seated) return;
-    this.elapsed = Math.min(SEAT_TRANSITION_SECONDS, this.elapsed + dt);
-    const t = this.elapsed / SEAT_TRANSITION_SECONDS;
-    const blend = t * t * (3 - 2 * t);
-    this.restoreSeat?.();
-    inner.position.x = 0;
-    inner.position.z = 0;
-    inner.rotation.x = 0;
-    group.updateMatrixWorld(true);
-    const tilt = this.thighTilt();
-    if (canSit(this.bones)) applySitPose(this.root, this.bones, facing, blend, tilt);
-    else inner.rotation.x = -SIT_LEAN * blend;
-    group.updateMatrixWorld(true);
-
-    // Hips bazı riglerde uyluklarla kardeştir: gerçek pelvis merkezi iki
-    // uyluğun başlangıcıdır, dekoratif Hips düğümünün yüksekliği değildir.
-    const { thighL, thighR, hips } = this.bones;
-    if (thighL && thighR) {
-      thighL.getWorldPosition(this.anchor);
-      thighR.getWorldPosition(this.other);
-      this.anchor.add(this.other).multiplyScalar(0.5);
-    } else if (hips) hips.getWorldPosition(this.anchor);
-    else this.anchor.set(group.position.x, group.position.y + 0.9, group.position.z);
-
-    if (t === 1 && hips && !this.measured) {
-      this.measured = true;
-      hips.getWorldPosition(this.other);
-      this.contact = Math.max(0.2, measureSeatContact(this.root, this.bones) + this.anchor.y - this.other.y);
-    }
-    this.correction.set(group.position.x, BENCH_SEAT_TOP + this.contact, group.position.z);
-    group.worldToLocal(this.correction);
-    group.worldToLocal(this.anchor);
-    this.correction.sub(this.anchor).multiplyScalar(blend);
-    inner.position.add(this.correction);
-    group.updateMatrixWorld(true);
-  }
-}
-
+/* ── Yeniden kullanılan geçici nesneler (kare başına çöp üretmemek için) ── */
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
+const _pelvis = new THREE.Vector3();
+const _desired = new THREE.Vector3();
 const _target = new THREE.Vector3();
-const _delta = new THREE.Vector3();
+const _offset = new THREE.Vector3();
 const _full = new THREE.Quaternion();
 const _blended = new THREE.Quaternion();
 const _parentQ = new THREE.Quaternion();
 const _localQ = new THREE.Quaternion();
 const _IDENTITY = new THREE.Quaternion();
+const _forward = new THREE.Vector3();
+const _lateral = new THREE.Vector3();
 const _thighDirL = new THREE.Vector3();
 const _thighDirR = new THREE.Vector3();
 const _shinDirL = new THREE.Vector3();
 const _shinDirR = new THREE.Vector3();
-const _sitForward = new THREE.Vector3();
-const _sitLateral = new THREE.Vector3();
-const _thighPosL = new THREE.Vector3();
-const _thighPosR = new THREE.Vector3();
 const _modelRight = new THREE.Vector3(1, 0, 0);
 
-
-/**
- * Otururken uyluğun öne-aşağı eğimi: sinüsü. NEDEN GEREKLİ:
- * uyluk TAM YATAY olduğunda diz kalça ile AYNI yükseklikte kalır ve karakter
- * "dizlerini toplamış" gibi okunur (ölçüldü: kalça 0.61 · diz 0.68 — diz
- * kalçanın ÜSTÜNDE). Gerçek bank oturuşunda uyluk öne ve AŞAĞI iner, diz
- * kalçanın altına düşer, baldır dikey kalır ve ayaklar yere yaklaşır.
- *
- * Eğim modele göre ölçeklenir: bacak uzunluğu bank yüksekliğine yetiyorsa
- * ayaklar tam yere basar; kısa bacaklı tıknaz avatarlarda ise en fazla bu
- * açıya kadar inilir ve bacaklar bankın ön kenarından doğal şekilde sarkar.
- */
-export const SIT_THIGH_TILT_MAX = 0.65; // ≈ 41° aşağı
-const SIT_THIGH_TILT_MIN = -0.35; // ayaklar betona girmesin diye üst sınır
-
-/** Ayak kemiklerinin duruş (taban) konumu — bir kez yakalanır. */
-const basePosition = new WeakMap<THREE.Object3D, THREE.Vector3>();
-function basePositionOf(bone: THREE.Object3D): THREE.Vector3 {
-  let base = basePosition.get(bone);
-  if (!base) {
-    base = bone.position.clone();
-    basePosition.set(bone, base);
-  }
-  return base;
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** Kemiği, `target` yönüne bakan eksenini `desired` yönüne çevirecek şekilde döndürür. */
+/**
+ * Uyluğun aşağı eğimi — DİZ MİNDER HİZASINA gelsin diye bacak uzunluğundan
+ * hesaplanır.
+ *
+ * NEDEN: uyluk tam yatay olduğunda diz kalça ile aynı yükseklikte kalır ve
+ * karakter "dizlerini toplamış/çömelmiş" gibi okunur (ölçüldü: kalça 0.61 ·
+ * diz 0.68). Gerçek bank oturuşunda uyluk öne ve AŞAĞI iner, diz minder
+ * hizasına düşer, baldır dikey sarkar.
+ *
+ * @param pelvisY Kalça ekleminin hedef dünya yüksekliği (minder + pay).
+ */
+export function thighDrop(pelvisY: number, thighLen: number, shinLen: number): number {
+  if (thighLen <= 1e-5) return SIT_THIGH_DROP_DEFAULT;
+  // Diz mindere nişanlanır…
+  const kneeTarget = (pelvisY - (BENCH_SEAT_TOP + KNEE_ABOVE_SEAT)) / thighLen;
+  // …ama ayak betona girmesin (baldır dikey sarkar).
+  const footFloor = (pelvisY - shinLen - FOOT_CLEARANCE) / thighLen;
+  return clamp(Math.min(kneeTarget, footFloor), THIGH_DROP_MIN, THIGH_DROP_MAX);
+}
+
+/**
+ * KALÇA PAYI — kalça dokusunun kalça eklemine göre derinliği.
+ *
+ * Kalça EKLEMİ mindere oturmaz; mindere değen kısım onun altındaki ve biraz
+ * gerisindeki dokudur. Bu doku modelden modele çok değişir: ölçülen değerler
+ * `character` 0.06 · `skin-samuray` 0.07 · `skin-savasci` 0.20 (dünya
+ * birimi). Sabit bir yükseklik tıknaz avatarı minderin ÜSTÜNDE havada
+ * bırakıyordu (ekran görüntüsündeki "oturmuyor" görünümü), ince rigi ise
+ * bankın içine gömüyordu.
+ *
+ * Ölçüm, kalça ekleminin ALTINDAKİ dairede yapılır: mindere değen yüzey
+ * (but/kalça altı) tam oradadır. Poz UYGULANDIKTAN SONRA çağrılmalıdır.
+ *
+ * @param pelvis Kalça ekleminin DÜNYA konumu.
+ */
+export function measureSeatPad(
+  root: THREE.Object3D,
+  pelvis: THREE.Vector3,
+): number {
+  root.updateMatrixWorld(true);
+  let lowest = Infinity;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.SkinnedMesh;
+    if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
+    const pos = mesh.geometry?.getAttribute?.("position") as
+      | THREE.BufferAttribute
+      | undefined;
+    if (!pos) return;
+    // Örnekleme YOĞUN: ölçüm oturma başına BİR kez yapılır (kare başına
+    // değil) ama seyrek örnekleme giysinin/bacağın en alçak tepesini
+    // kaçırıp kalçayı havada bırakabiliyordu (ölçüldü: 0.20 yerine 0.30).
+    const step = Math.max(1, Math.floor(pos.count / 12000));
+    for (let i = 0; i < pos.count; i += step) {
+      if ((mesh as unknown as { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+        mesh.getVertexPosition(i, _a);
+      } else {
+        _a.fromBufferAttribute(pos, i);
+      }
+      mesh.localToWorld(_a);
+      const dx = _a.x - pelvis.x;
+      const dz = _a.z - pelvis.z;
+      if (dx * dx + dz * dz > PAD_RADIUS * PAD_RADIUS) continue;
+      const below = pelvis.y - _a.y;
+      if (below <= 0 || below > PAD_DOWN) continue;
+      if (_a.y < lowest) lowest = _a.y;
+    }
+  });
+  if (!Number.isFinite(lowest)) return NaN;
+  return pelvis.y - lowest;
+}
+
+/**
+ * Ölçülen payı GÜVENİLİR aralığa süzer.
+ *
+ * SORUN: kalça ekleminin altında aşağı sarkan giysi (samuray hakaması,
+ * şövalye zırhı) da ölçüme girer. Olduğu gibi kullanılırsa karakter mindere
+ * hiç İNMEZ — ölçüldü: `skin-samuray` 0.28 · `skin-sevalye` 0.29, yani
+ * uyluğu kadar. Oysa oyuncu karakterin banka OTURDUĞUNU görmek ister: kalça
+ * aşağı inmeli, diz kırılmalı, bacaklar sarkmalı.
+ *
+ * Bu yüzden pay, uyluk boyunun %60'ı ile sınırlanır (insan kalça dokusu
+ * uyluğun yarısından derin olamaz). Sarkan giysi bu durumda çıtanın birkaç
+ * santim içinden geçer — oyunlarda olağan ve "havada asılı kalmaktan" çok
+ * daha az rahatsız edicidir.
+ */
+function plausiblePad(raw: number, thighLen: number): number {
+  if (!Number.isFinite(raw)) return SEAT_PAD_FALLBACK;
+  const cap = thighLen > 1e-4 ? thighLen * 0.6 : SEAT_PAD_MAX;
+  return clamp(raw, SEAT_PAD_MIN, Math.min(SEAT_PAD_MAX, cap));
+}
+
+/** Kemiği, `tip`e bakan ekseni `desired` yönüne çevirecek şekilde döndürür. */
 function rotateBoneToward(
   root: THREE.Object3D,
   bone: THREE.Bone,
@@ -522,35 +448,45 @@ function rotateBoneToward(
   root.updateMatrixWorld(true);
 }
 
+/** Ayak kemiklerinin duruş (taban) konumu — bir kez yakalanır. */
+const basePosition = new WeakMap<THREE.Object3D, THREE.Vector3>();
+function basePositionOf(bone: THREE.Object3D): THREE.Vector3 {
+  let base = basePosition.get(bone);
+  if (!base) {
+    base = bone.position.clone();
+    basePosition.set(bone, base);
+  }
+  return base;
+}
+
 /**
  * Kemiği dünya uzayındaki `target` noktasına taşır.
  *
  * ADDITIVE DEĞİL, mutlak: konum = taban + (hedef − taban) × blend. Böylece
- * fonksiyon İDEMPOTENT olur — aynı karede iki kez çağrılsa ya da mixer
- * konumu her karede sıfırlasa bile kemik titremez/zıplamaz.
+ * fonksiyon İDEMPOTENT olur — aynı karede iki kez çağrılsa bile titremez.
  *
  * `character.glb`de ayak kemikleri baldırın altında olmadığı için bacak
  * dönerken ayaklar geride kalırdı; bu onları baldırın ucuna taşır. Mixamo
  * riglerinde hedef ≈ taban olduğundan hiçbir değişiklik yapılmaz.
  */
-function alignBoneToPoint(
-  bone: THREE.Bone,
-  target: THREE.Vector3,
-  blend: number,
-): void {
+function alignBoneToPoint(bone: THREE.Bone, target: THREE.Vector3, blend: number): void {
   const parent = bone.parent;
   if (!parent) return;
-  // Dünya noktasını ebeveynin YEREL uzayına çevir (ölçek dâhil).
-  _delta.copy(target);
-  parent.worldToLocal(_delta);
+  _offset.copy(target);
+  parent.worldToLocal(_offset);
   const base = basePositionOf(bone);
   bone.position.set(
-    base.x + (_delta.x - base.x) * blend,
-    base.y + (_delta.y - base.y) * blend,
-    base.z + (_delta.z - base.z) * blend,
+    base.x + (_offset.x - base.x) * blend,
+    base.y + (_offset.y - base.y) * blend,
+    base.z + (_offset.z - base.z) * blend,
   );
 }
 
+/**
+ * Bir bacak zincirini oturma pozuna getirir: uyluk `thighDir`e, baldır
+ * `shinDir`e döner; ayak baldırın ucuna taşınır ve tabanı yere paralel
+ * (`footDir`) hâle getirilir.
+ */
 function poseLeg(
   root: THREE.Object3D,
   thigh: THREE.Bone | null,
@@ -558,74 +494,88 @@ function poseLeg(
   foot: THREE.Bone | null,
   thighDir: THREE.Vector3,
   shinDir: THREE.Vector3,
+  footDir: THREE.Vector3,
   blend: number,
 ) {
   if (!thigh || !shin) return;
   rotateBoneToward(root, thigh, tipOf(thigh), thighDir, blend);
   const shinTip = tipOf(shin);
   rotateBoneToward(root, shin, shinTip, shinDir, blend);
-  // Ayak, baldırın ucuna taşınır (ayak zaten oradaysa kayma yoktur).
-  if (foot && shinTip) {
-    shinTip.getWorldPosition(_target);
-    alignBoneToPoint(foot, _target, blend);
-    root.updateMatrixWorld(true);
+  if (foot) {
+    if (shinTip) {
+      shinTip.getWorldPosition(_target);
+      alignBoneToPoint(foot, _target, blend);
+      root.updateMatrixWorld(true);
+    }
+    // Ayak tabanı yere paralel kalsın (baldırdan gelen eğimi al).
+    rotateBoneToward(root, foot, tipOf(foot), footDir, blend);
   }
 }
 
 /**
  * Bacakları oturma pozuna getirir. `blend` = 0 → hiç dokunmaz (ayakta),
- * 1 → tam oturma pozu. Her karede çağrılır.
+ * 1 → tam oturma pozu. Her karede çağrılabilir (İDEMPOTENT).
  *
  * @param facing Bankın baktığı yön (+1 = +Z, -1 = -Z).
- * @param thighTilt Uyluğun aşağı eğim sinüsü (bkz. `SIT_THIGH_TILT_MAX`).
- *   Çağıran (koltuğa yerleştiren `BenchSitController`) modelin bacak
- *   uzunluğuna göre ölçer; doğrudan çağrılarda neredeyse yatay kalır.
+ * @param drop Uyluğun aşağı eğimi (bkz. `thighDrop`).
  */
 export function applySitPose(
   root: THREE.Object3D,
   bones: SitBones,
   facing: 1 | -1,
   blend: number,
-  thighTilt = 0.04,
+  drop = SIT_THIGH_DROP_DEFAULT,
 ) {
   if (blend <= 0) return;
-  // Riglerin yerel X eksenleri farklıdır. Dünya uzayında yatay uyluk +
-  // dikey baldır hedeflemek, her rigde -90°/+90° diz kırmanın karşılığıdır.
+  // Riglerin yerel X eksenleri farklıdır. Dünya uzayında uyluğu öne-aşağı,
+  // baldırı aşağı hedeflemek, her rigde "diz kırıldı" demenin karşılığıdır.
   root.updateMatrixWorld(true);
-  const forward = _sitForward.set(0, 0, facing);
+  const forward = _forward.set(0, 0, facing);
+
+  // Yan eksen, uyluk köklerinin GERÇEK konumundan ölçülür (rig'in X'i değil).
   let lateralLengthSq = 0;
   if (bones.thighL && bones.thighR) {
-    bones.thighL.getWorldPosition(_thighPosL);
-    bones.thighR.getWorldPosition(_thighPosR);
-    _sitLateral.subVectors(_thighPosL, _thighPosR).setY(0);
-    lateralLengthSq = _sitLateral.lengthSq();
+    bones.thighL.getWorldPosition(_a);
+    bones.thighR.getWorldPosition(_b);
+    _lateral.subVectors(_a, _b).setY(0);
+    lateralLengthSq = _lateral.lengthSq();
   }
   if (lateralLengthSq < 1e-8) {
     root.getWorldQuaternion(_parentQ);
-    _sitLateral.copy(_modelRight).applyQuaternion(_parentQ).setY(0);
+    _lateral.copy(_modelRight).applyQuaternion(_parentQ).setY(0);
   }
-  _sitLateral.normalize();
-  const cosTilt = Math.sqrt(Math.max(0, 1 - thighTilt * thighTilt));
-  _thighDirL.copy(forward).multiplyScalar(cosTilt).addScaledVector(_sitLateral, 0.12).setY(-thighTilt).normalize();
-  _thighDirR.copy(forward).multiplyScalar(cosTilt).addScaledVector(_sitLateral, -0.12).setY(-thighTilt).normalize();
-  _shinDirL.copy(_sitLateral).multiplyScalar(0.04).addScaledVector(forward, 0.04).setY(-1).normalize();
-  _shinDirR.copy(_sitLateral).multiplyScalar(-0.04).addScaledVector(forward, 0.04).setY(-1).normalize();
-  root.updateMatrixWorld(true);
-  // GÖVDE GERİYE (bank oturuşu): sırt arkalığa yaslanır, gövde dik durmaz.
-  // Omurga döndürülür — kalça/ bacaklar aşağıda AYRICA mutlak yönlerle
-  // ayarlandığı için bu dönüş pozu bozmaz (sadece üst gövdeyi yatırır).
+  _lateral.normalize();
+
+  const cosDrop = Math.sqrt(Math.max(0, 1 - drop * drop));
+  _thighDirL
+    .copy(forward)
+    .multiplyScalar(cosDrop)
+    .addScaledVector(_lateral, SIT_SPLAY)
+    .setY(-drop)
+    .normalize();
+  _thighDirR
+    .copy(forward)
+    .multiplyScalar(cosDrop)
+    .addScaledVector(_lateral, -SIT_SPLAY)
+    .setY(-drop)
+    .normalize();
+  _shinDirL.copy(forward).multiplyScalar(SIT_SHIN_FORWARD).addScaledVector(_lateral, 0.03).setY(-1).normalize();
+  _shinDirR.copy(forward).multiplyScalar(SIT_SHIN_FORWARD).addScaledVector(_lateral, -0.03).setY(-1).normalize();
+
+  // Gövde: sırt arkalığa yaslanır, dik durmaz (bkz. `leanTorso`).
   leanTorso(root, bones.spine ?? bones.hips, facing, blend);
-  poseLeg(root, bones.thighL, bones.shinL, bones.footL, _thighDirL, _shinDirL, blend);
-  poseLeg(root, bones.thighR, bones.shinR, bones.footR, _thighDirR, _shinDirR, blend);
+
+  _desired.copy(forward);
+  poseLeg(root, bones.thighL, bones.shinL, bones.footL, _thighDirL, _shinDirL, _desired, blend);
+  poseLeg(root, bones.thighR, bones.shinR, bones.footR, _thighDirR, _shinDirR, _desired, blend);
 }
 
 /**
- * Üst gövdeyi bank oturuşuna uygun şekilde geriye yatırır.
+ * Üst gövdeyi bank oturuşuna uygun şekilde hafifçe geriye yatırır.
  *
  * MUTLAK HEDEF: omurganın dünya yönü "yukarı, `SIT_LEAN` kadar geriye
  * yatık" yönüne çevrilir — açı eklemek gibi birikmediği için fonksiyon
- * İDEMPOTENT kalır (her kare çağrılabilir). Omurga dikey değilse (tanınmayan
- * rig) hiç dokunulmaz; poz yine geçerli olur.
+ * İDEMPOTENT kalır. Omurga dikey değilse (tanınmayan rig) hiç dokunulmaz.
  */
 function leanTorso(
   root: THREE.Object3D,
@@ -642,6 +592,175 @@ function leanTorso(
   if (_b.lengthSq() < 1e-10) return;
   _b.normalize();
   if (_b.y < 0.5) return; // omurga dikey değil → yatırmaya kalkma
-  _target.set(0, Math.cos(SIT_LEAN), -facing * Math.sin(SIT_LEAN));
-  rotateBoneToward(root, bone, tip, _target, blend);
+  _desired.set(0, Math.cos(SIT_LEAN), -facing * Math.sin(SIT_LEAN));
+  rotateBoneToward(root, bone, tip, _desired, blend);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   OTURMA YAŞAM DÖNGÜSÜ
+   ════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Tek oturma yaşam döngüsü: giriş → sabit tabandan deterministik poz → kalkış.
+ *
+ * - `sitOnBench`: bütün klipleri DURDURUR, idle'ın ilk karesini taban alır
+ *   (kollar doğal kalsın), sonra klibi gerçekten durdurur. Otururken hiçbir
+ *   animasyon kemikleri ezmez.
+ * - `update`: her karede tabandan poz üretir, kalçayı mindere oturtur.
+ * - `unsit`: bütün dönüşümleri kaydedilen hâline geri yükler (kemikler eğik
+ *   kalmaz) ve animasyon yeniden başlatılabilir olur.
+ */
+export class BenchSitController {
+  /** Şu anda bankta mı? */
+  seated = false;
+  /** Poz karışımı 0→1 (`SEAT_TRANSITION_SECONDS`). */
+  private blend = 0;
+  /** Ölçülen kalça payı. */
+  private pad = SEAT_PAD_FALLBACK;
+  /** Ölçülen paya yumuşak yaklaşan UYGULANAN pay (sıçrama olmasın). */
+  private appliedPad = SEAT_PAD_FALLBACK;
+  private padMeasured = false;
+  /** Oturma tabanı: idle'ın ilk karesinin dönüşümleri. */
+  private baseline: (() => void) | null = null;
+
+  private readonly root: THREE.Object3D;
+  private readonly bones: SitBones;
+  private readonly restore: () => void;
+
+  constructor(root: THREE.Object3D, bones: SitBones, restore: () => void) {
+    this.root = root;
+    this.bones = bones;
+    this.restore = restore;
+  }
+
+  /** Banka otur — animasyonları durdur ve doğal duruşu taban al. */
+  sitOnBench(mixer: THREE.AnimationMixer, idle?: THREE.AnimationAction | null): void {
+    mixer.stopAllAction();
+    mixer.timeScale = 1;
+    this.restore(); // yazılı (bind) dönüşümler
+    // Kollar bind/T pozunda kalmasın: idle'ın ilk karesini bir kez örnekle.
+    // DİKKAT: yürüyüşten çıkan `fadeOut` aksiyonun AĞIRLIĞINI 0 bırakır;
+    // ağırlık geri verilmezse `mixer.update(0)` hiçbir şey uygulamaz ve taban
+    // poz bind (T) pozu olur — oturan karakterin kolları öne uzanmış kalır.
+    if (idle) {
+      idle.reset();
+      idle.setEffectiveWeight(1);
+      idle.play();
+      mixer.update(0);
+    }
+    this.baseline = captureStandingPose(this.root);
+    mixer.stopAllAction(); // otururken hiçbir klip çalışmaz
+    this.baseline();
+    this.seated = true;
+    this.blend = 0;
+    this.pad = SEAT_PAD_FALLBACK;
+    this.appliedPad = SEAT_PAD_FALLBACK;
+    this.padMeasured = false;
+  }
+
+  /** Kalk — bütün dönüşümleri geri yükle (kemikler eğik kalmaz). */
+  unsit(mixer: THREE.AnimationMixer): void {
+    if (!this.seated) return;
+    mixer.stopAllAction();
+    mixer.timeScale = 1;
+    this.baseline = null;
+    this.seated = false;
+    this.blend = 0;
+    this.restore();
+  }
+
+  /** Bacak kemik uzunluğu (dönüşümden bağımsız, dünya birimi). */
+  private boneLength(bone: THREE.Bone | null): number {
+    if (!bone) return 0;
+    const tip = tipOf(bone);
+    if (!tip) return 0;
+    bone.getWorldPosition(_a);
+    tip.getWorldPosition(_b);
+    return _a.distanceTo(_b);
+  }
+
+  /** Kalça ekleminin (iki uyluk kökünün ortası) dünya konumu. */
+  private pelvisWorld(out: THREE.Vector3): boolean {
+    const { thighL, thighR, hips } = this.bones;
+    if (thighL && thighR) {
+      thighL.getWorldPosition(out);
+      thighR.getWorldPosition(_b);
+      out.add(_b).multiplyScalar(0.5);
+      return true;
+    }
+    const single = thighL ?? thighR;
+    if (single) {
+      single.getWorldPosition(out);
+      return true;
+    }
+    if (hips) {
+      hips.getWorldPosition(out);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Her karede çağrılır. `inner` = modelin ölçek/konum grubu,
+   * `group` = karakterin dünya konumunu/yönünü taşıyan dış grup.
+   */
+  update(inner: THREE.Group, group: THREE.Group, facing: 1 | -1, dt: number): void {
+    if (!this.seated) return;
+    this.baseline?.();
+    inner.position.x = 0;
+    inner.position.z = 0;
+    inner.rotation.x = 0;
+    group.updateMatrixWorld(true);
+
+    this.blend = Math.min(1, this.blend + dt / SEAT_TRANSITION_SECONDS);
+    const k = this.blend * this.blend * (3 - 2 * this.blend);
+
+    const thighLen = Math.max(
+      this.boneLength(this.bones.thighL),
+      this.boneLength(this.bones.thighR),
+    );
+    const shinLen = Math.max(
+      this.boneLength(this.bones.shinL),
+      this.boneLength(this.bones.shinR),
+    );
+
+    // ── İskelet yoksa: gövdeyi geriye yatır, kalça pivotunu alçalt ──
+    if (!canSit(this.bones)) {
+      inner.rotation.x = -SIT_LEAN * k;
+      inner.position.y -= SEAT_PAD_FALLBACK * k;
+      return;
+    }
+
+    // ── Poz ──
+    const pelvisY = BENCH_SEAT_TOP + this.appliedPad;
+    applySitPose(
+      this.root,
+      this.bones,
+      facing,
+      k,
+      thighDrop(pelvisY, thighLen, shinLen),
+    );
+
+    // ── Kalçayı mindere oturt (konum dünya uzayında, sonra gruba çevrilir) ──
+    if (!this.pelvisWorld(_pelvis)) return;
+    _target.set(group.position.x, pelvisY, group.position.z);
+    group.worldToLocal(_target);
+    _offset.copy(_pelvis);
+    group.worldToLocal(_offset);
+    inner.position.add(_target.sub(_offset).multiplyScalar(k));
+    group.updateMatrixWorld(true);
+
+    // ── Kalça payını ÖLÇ (geçiş bitince bir kez) ve yumuşakça uygula ──
+    // `_pelvis` DÜNYA uzayındadır (konum düzeltmesi onu değiştirmez).
+    if (!this.padMeasured && this.blend >= 0.999) {
+      this.padMeasured = true;
+      // DİKKAT: `_pelvis` konum düzeltmesinden ÖNCE okunmuştu. Ölçüm, model
+      // mindere yerleştirildikten SONRAKİ kalçaya göre yapılmalıdır; aksi
+      // hâlde daire kalçanın altında değil, yarım birim yukarısında kalır ve
+      // ölçüm anlamsız çıkar (ölçüldü: 0.12 yerine 0.07 / 0.20 yerine 0.40).
+      this.pelvisWorld(_pelvis);
+      this.pad = plausiblePad(measureSeatPad(this.root, _pelvis), thighLen);
+    }
+    this.appliedPad += (this.pad - this.appliedPad) * Math.min(1, 9 * dt);
+  }
 }

@@ -50,10 +50,11 @@ function check(label: string, ok: boolean, detail = "") {
   }
 }
 
-// SitPose hedeflerini kaba insan oranlarıyla temsil eder: uyluk ileri,
-// diz bükük, baldır aşağı. Gerçek rig yönleri aşağıda ayrı ölçülür.
-const THIGH_DIR = new THREE.Vector3(0, -0.35, 1).normalize();
-const SHIN_DIR = new THREE.Vector3(0, -1, 0.04).normalize();
+// SitPose hedeflerini kaba insan oranlarıyla temsil eder: uyluk İLERİ ve
+// hafif aşağı (diz minder hizasına insin), baldır dikey sarksın. Gerçek rig
+// yönleri aşağıda ayrı ölçülür (`SIT_THIGH_DROP_DEFAULT` = 0.18).
+const THIGH_DIR = new THREE.Vector3(0, -0.18, 1).normalize();
+const SHIN_DIR = new THREE.Vector3(0, -1, 0.06).normalize();
 
 /* ── 1. Oturma noktası yürünebilir mi? ─────────────────────────────── */
 console.log("── oturma noktaları yürünebilir alanda mı? ──");
@@ -118,10 +119,10 @@ check(
   `${BENCH_SEAT_TOP} birim`,
 );
 check(
-  "Kalça eklemi minderin 10–20 cm üstünde (kalça dokusu mindere oturur)",
-  BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP > 0.1 &&
-    BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP < 0.2,
-  `minder ${BENCH_SEAT_TOP} → kalça ${BENCH_SEAT_HEIGHT} (ölçüm: check-sit-model-pose.ts)`,
+  "Nominal kalça eklemi minderin 5–25 cm üstünde (gerçek pay her modelde ölçülür)",
+  BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP > 0.05 &&
+    BENCH_SEAT_HEIGHT - BENCH_SEAT_TOP < 0.25,
+  `minder ${BENCH_SEAT_TOP} → nominal kalça ${BENCH_SEAT_HEIGHT} (gerçek: SitPose.measureSeatPad)`,
 );
 check(
   "Bank eni karakterin sırtından geniş (≥ 1.2 birim)",
@@ -140,12 +141,14 @@ check(
   BENCH_BACK_OFFSET > BENCH_SEAT_DEPTH / 2,
   `arkalık ${BENCH_BACK_OFFSET} > minder arka kenarı ${BENCH_SEAT_DEPTH / 2}`,
 );
+// Kalça mindere OTURUR (havada/kenarda değil): oturma noktası bankın
+// ortasından biraz öndedir ki uyluklar ön kenarı aşıp baldırlar sarkabilsin,
+// ama kalça dokusu hâlâ minderin üstünde kalsın.
 check(
-  "Kalça minderin ön kenarında (bacaklar sarkar)",
+  "Kalça mindere oturuyor (hafif önde, ön kenarın gerisinde)",
   BENCH_SEAT_FORWARD > 0 &&
-    Math.abs(BENCH_SEAT_FORWARD) > 0.05 &&
-    Math.abs(BENCH_SEAT_FORWARD) < BENCH_SEAT_DEPTH / 2,
-  `kayma ${BENCH_SEAT_FORWARD} birim`,
+    BENCH_SEAT_FORWARD < BENCH_SEAT_DEPTH / 2 - 0.05,
+  `kayma ${BENCH_SEAT_FORWARD} birim · minder yarı derinliği ${BENCH_SEAT_DEPTH / 2}`,
 );
 check(
   "Oturma noktası mindere denk geliyor",
@@ -462,8 +465,8 @@ for (const model of MODELS) {
   const shinDir = ankle.clone().sub(shinStart).normalize();
   const kneeBendDot = thighDir.dot(shinDir);
   check(
-    `${model}: uyluk öne ve aşağı uzanıyor`,
-    thighDir.z > 0.8 && thighDir.y < 0 && thighDir.y > -0.1,
+    `${model}: uyluk öne uzanıyor ve diz kalçanın altına iniyor`,
+    thighDir.z > 0.8 && thighDir.y < 0 && thighDir.y > -0.45,
     `yön (${thighDir.x.toFixed(2)}, ${thighDir.y.toFixed(2)}, ${thighDir.z.toFixed(2)})`,
   );
   check(

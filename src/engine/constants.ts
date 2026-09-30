@@ -452,32 +452,36 @@ export const BENCH_SEAT_DEPTH = 0.56;
 /** Oturma çıtalarının üst yüzeyi (bkz. `GameEngine3D › Bench3D`). */
 export const BENCH_SEAT_TOP = 0.46;
 /**
- * Oturan KALÇA kemiğinin dünya yüksekliği — oturma yüzeyinin 15 cm üstü.
+ * Oturan KALÇA EKLEMİNİN (uyluk kökleri) NOMİNAL dünya yüksekliği — yalnızca
+ * kaba geometri kontrolü (`scripts/check-bench-sit.ts`) içindir.
  *
- * NEDEN 15 CM: kalça KEMİĞİ (pelvis merkezi) mindere oturmaz; mindere değen
- * kısım onun altındaki kalça/but DOKUSUdur. Bu doku modelden modele değişir,
- * bu yüzden değer tahminle değil DÖRT GERÇEK AVATAR ölçülerek seçildi:
- * `scripts/check-sit-model-pose.ts` gerçek GLB'leri (GLTFLoader + Meshopt)
- * yükleyip oturma pozunu uygular, minder temas dokusunun kalçaya göre
- * derinliğini ölçer. Ölçüm (kalça 0.63 iken mindere göre fark):
- *   character +0.020 · savaşçı +0.010 · samuray +0.019 · şövalye +0.065
- * (pozitif = dokunun birkaç cm ÜSTÜNDE durması; çıtalar gövdenin altında
- * görünür kalır). Eski 0.56'da dördü de mindere GÖMÜLÜYDÜ — ekrandaki
- * "bankın içine geçmiş" görünüm buydu.
- *
- * YÜKSEKLİK POZU BELİRLER: kalçayı yükseltmek diziyi bozmaz, sadece ayakları
- * da yukarı taşır (uyluk yatay kaldığı sürece). Uzun bacaklı modellerde
- * (savaşçı, bacak 0.99) ayaklar 0.61'de tam yere basar; kısa bacaklılarda
- * (şövalye 0.59, varsayılan avatar 0.69) ayaklar havada kalır — alçak bir
- * bankta oturan kısa boylu bir karakter gibi. bkz. `SitPose.ts`.
+ * NEDEN MİNDER + ~15 CM: kalça KEMİĞİ mindere oturmaz; mindere değen kısım
+ * onun altındaki kalça/but DOKUSUdur. Bu doku modelden modele değişir, bu
+ * yüzden ÇALIŞMA ZAMANINDA her model için AYRICA ÖLÇÜLÜR (`SitPose.ts`
+ * `measureSeatPad`: kalça ekleminin altındaki en alçak tepe noktası) ve kalça
+ * mindere tam oturtulur. Buradaki sabit yalnızca o ölçümün tipik değeridir
+ * (ölçülen: varsayılan avatar 0.07, savaşçı 0.17, samuray 0.23, şövalye 0.16).
  */
-export const BENCH_SEAT_HEIGHT = 0.63;
+export const BENCH_SEAT_HEIGHT = 0.61;
 /**
- * Kalça bankın ön kenarına yerleşir. İşaret bankın yönünden türetilir:
- * kuzey bankında +Z, güney/arka bankında -Z. Diz ve ayaklar çıtaların
- * önünde kalır; bacaklar oturma tahtasının içine katlanmaz.
+ * Kalça, bankın ORTASINDAN baktığı yöne bu kadar öne kayar (dünya birimi).
+ *
+ * NEDEN MİNDERİN ÜSTÜNDE (ön kenarda değil): kalça tam ön kenara
+ * yerleştirildiğinde karakter bankın üstünde değil, havada/kenarda duruyormuş
+ * gibi okunuyordu (ekran görüntüsündeki "oturmuyor" görünümü: minder
+ * karakterin ARKASINDA kalıyordu). Gerçek oturuşta kalça mindere oturur,
+ * uyluklar öne uzanıp minderin ön kenarını aşar ve baldırlar ön kenardan
+ * sarkar — `SitPose.ts` bunu uyluk eğimi + dikey baldırla üretir.
+ *
+ * NEDEN TAM ORTADA DEĞİL: tıknaz avatarda bacak kısadır (uyluk ~0.25 birim);
+ * kalça tam ortada olsaydı diz minderin ön kenarının GERİSİNDE kalır ve
+ * baldır ön çıtaların içinden geçerdi. 0.12'de diz ön çıtanın önüne taşar,
+ * baldır serbest sarkar, kalça dokusu yine de tamamen minderin üstünde kalır
+ * (ölçüm: `scripts/check-sit-model-pose.ts`).
+ *
+ * İşaret bankın yönünden türetilir: kuzey bankında +Z, güney/arka bankında -Z.
  */
-export const BENCH_SEAT_FORWARD = 0.25;
+export const BENCH_SEAT_FORWARD = 0.12;
 /**
  * Otururken gövdenin (omurga) geriye yatma açısı (radyan) — sırt arkalığa
  * yaslanır. Pozu uygulayan `SitPose.applySitPose` omurga kemiğini bu kadar
@@ -489,16 +493,18 @@ export const BENCH_INTERACT_RADIUS = 1.35;
 /**
  * Bankın ÖNÜNDE durulacak mesafe (dünya birimi) — karakter ışınlanmaz,
  * önce buraya YÜRÜR, sonra oturma geçişi başlar (bkz. World.tsx `requestSit`).
+ * Kısa tutulur: kalkarken ve otururken karakterin mindere kaydığı mesafe bu
+ * kadardır; uzun mesafede "kayıyor" gibi görünüyordu.
  */
-export const BENCH_STAND_OFFSET = 0.8;
+export const BENCH_STAND_OFFSET = 0.6;
 /** Ayakta durulacak nokta yürünebilir değilse denenecek daha kısa mesafeler. */
 export const BENCH_STAND_FALLBACKS = [
-  0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1,
+  0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.2, 0.1,
 ] as const;
 /**
  * BANKIN ARKALIK DÜZLEMİ (bank merkezinden, dünya birimi).
  *
- * Oturma yüzeyi 0.44 derin (arkası −0.22); arkalık bu yüzeyin 8 cm gerisinde
+ * Oturma yüzeyi 0.56 derin (arkası −0.28); arkalık bu yüzeyin 10 cm gerisinde
  * durur. Sebep: oturan karakterin SIRTI arkalığa yaslandığında çıtaların
  * içine girmesin — özellikle tıknaz avatarlarda gövde derinliği minderi
  * aştığı için arkalık geride olmalı (`GameEngine3D › Bench3D`).
