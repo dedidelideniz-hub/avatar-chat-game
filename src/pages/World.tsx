@@ -1325,9 +1325,19 @@ export default function World() {
       if (seatBenchRef.current === index) return;
       if (seatBenchRef.current !== null || seatMoveRef.current !== null) return;
       const stand = benchStandPx(index);
+      const seat = BENCH_SEATS[index];
       const p = posRef.current;
-      // Zaten bankın yanındaysak doğrudan oturma geçişi başlar.
-      if (Math.hypot(p.x - stand.x, p.y - stand.y) <= SIT_ARRIVE_PX) {
+      // Bankın MENZİLİNDEYSEK (yani "Otur" düğmesi görünüyorsa) doğrudan
+      // oturma geçişi başlar. Eskiden yalnızca bankın ÖNÜNDEKİ duraktan 22 px
+      // yakınsak oturuluyordu; menzil içinde ama duraktan uzaktayken karakter
+      // durağa yürütülüyordu — kullanıcı bankın yanındayken bu "Bankın yanına
+      // gidiliyor" diyip hatalı okunuyordu. Menzil ölçüsü, "Otur" düğmesinin
+      // görünme koşuluyla AYNIDIR (`BENCH_RADIUS_PX`), böylece düğmeyi gören
+      // oyuncu bastığında tereddütsüz oturur.
+      if (
+        Math.hypot(p.x - seat.x, p.y - seat.y) <= BENCH_RADIUS_PX ||
+        Math.hypot(p.x - stand.x, p.y - stand.y) <= SIT_ARRIVE_PX
+      ) {
         sitOnBench(index);
         return;
       }
@@ -1546,6 +1556,27 @@ export default function World() {
                 waypointIdxRef.current = 0;
                 setTargetMarker(null);
               }
+            }
+          } else if (targetRef.current) {
+            // YOL DÜĞÜMÜ YOK — hedefle aynı ızgara hücresindeyiz (A* tek düğüm
+            // döndürdü, bkz. `findPath`in `startNode === goalNode` dalı).
+            // Eskiden bu durumda YALNIZCA yukarıdaki `wp.length > 0` dalı
+            // çalıştığı için hiçbir şey olmuyordu: hedef asılı kalıyor,
+            // karakter yerinden kıpırdamıyordu. Bankın önünde donup "Bankın
+            // yanına gidiliyor" yazmasının sebebi buydu. Doğrudan hedefe yürü
+            // ve varınca temizle (varış eşiği, yol düğümüyle aynı: 18 px).
+            const t = targetRef.current;
+            const tdx = t.x - pos.x;
+            const tdy = t.y - pos.y;
+            if (Math.hypot(tdx, tdy) <= 18) {
+              targetRef.current = null;
+              waypointsRef.current = [];
+              waypointIdxRef.current = 0;
+              setTargetMarker(null);
+            } else if (Math.abs(tdx) >= Math.abs(tdy)) {
+              vx = tdx > 0 ? 1 : -1;
+            } else {
+              vy = tdy > 0 ? 1 : -1;
             }
           }
           const len = Math.hypot(vx, vy);
