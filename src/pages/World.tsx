@@ -34,6 +34,7 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import BattleScene from "@/components/world/BattleScene";
+import { BattleJoystick } from "@/components/world/battle/BattleJoystick";
 import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { api } from "@/convex/_generated/api";
@@ -947,6 +948,7 @@ export default function World() {
   const movingRef = useRef(false);
   const vyRef = useRef(0); // vertical direction: -1 up, +1 down, 0 idle
   const keysRef = useRef(new Set<string>());
+  const joystickRef = useRef({ x: 0, y: 0 });
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
 
@@ -1283,7 +1285,7 @@ export default function World() {
    * ikisi aynı sürede (`SEAT_TRANSITION_SECONDS`) bittiği için karakter
    * "yürüyerek yerleşiyor" gibi okunur.
    */
-  const sitDown = useCallback(
+  const sitOnBench = useCallback(
     (index: number) => {
       if (index < 0 || index >= BENCH_SEATS.length) return;
       if (seatBenchRef.current === index) return;
@@ -1328,7 +1330,7 @@ export default function World() {
       const p = posRef.current;
       // Zaten bankın yanındaysak doğrudan oturma geçişi başlar.
       if (Math.hypot(p.x - stand.x, p.y - stand.y) <= SIT_ARRIVE_PX) {
-        sitDown(index);
+        sitOnBench(index);
         return;
       }
       sitRequestRef.current = { index, x: stand.x, y: stand.y };
@@ -1346,28 +1348,23 @@ export default function World() {
       playSound("click");
       toast.info("Bankın yanına gidiliyor 🚶");
     },
-    [sitDown],
+    [sitOnBench],
   );
 
   /**
-   * Banktan kalk — karakter mindere oturduğu yerden kalkıp bankın önüne
-   * kayar (ışınlanma yok). Önü yürünebilir değilse olduğu yerde doğrulur.
+   * Hareket girdisinde bankın yürünebilir ön noktasına kalk; avatar aynı
+   * karede kayıtlı kemik dönüşümlerini ve ayakta durma animasyonunu geri alır.
    */
   const standUp = useCallback(() => {
     const index = seatBenchRef.current;
     if (index === null) return;
-    const seat = BENCH_SEATS[index];
     seatBenchRef.current = null;
     setSeatBench(null);
     sitRequestRef.current = null;
     const stand = benchStandPx(index);
-    seatMoveRef.current = {
-      fromX: seat.x,
-      fromY: seat.y,
-      toX: stand.x,
-      toY: stand.y,
-      t: 0,
-    };
+    seatMoveRef.current = null;
+    posRef.current.x = stand.x;
+    posRef.current.y = stand.y;
     // Bankın üstüne dokunulmuşsa hedef SİLİNİR: aksi hâlde kalktıktan sonra
     // döngüdeki "banka dokunuldu" tespiti aynı banka yeniden oturturdu.
     const t = targetRef.current;
@@ -1440,8 +1437,8 @@ export default function World() {
           // Tuşa basmak ya da yere dokunmak kalkma sayılır; dokunma hedefi
           // SİLİNMEZ, böylece karakter kalkıp o noktaya yürür.
           if (
-            seatMoveRef.current === null &&
-            (keysRef.current.size > 0 || targetRef.current !== null)
+            keysRef.current.size > 0 || targetRef.current !== null ||
+            Math.hypot(joystickRef.current.x, joystickRef.current.y) > 0.1
           ) {
             standUp();
           } else if (seatMoveRef.current === null) {
@@ -1453,7 +1450,7 @@ export default function World() {
           // 🪑 Bankın önündeki durağa VARINCA oturulur.
           const req = sitRequestRef.current;
           if (Math.hypot(req.x - pos.x, req.y - pos.y) <= SIT_ARRIVE_PX) {
-            sitDown(req.index);
+            sitOnBench(req.index);
           } else if (
             targetRef.current === null &&
             waypointsRef.current.length === 0
@@ -1495,13 +1492,19 @@ export default function World() {
           if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
           if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
           if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
+          const stick = joystickRef.current;
+          const stickMoving = Math.hypot(stick.x, stick.y) > 0.1;
+          if (vx === 0 && vy === 0 && stickMoving) {
+            vx = stick.x;
+            vy = stick.y;
+          }
           // Clamp to 4 cardinal directions only — no diagonal movement.
           if (vx !== 0 && vy !== 0) {
             if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
             else vx = 0;
           }
           // Cancel auto-walk when the player takes over with the keyboard.
-          if (keysRef.current.size > 0 && targetRef.current) {
+          if ((keysRef.current.size > 0 || stickMoving) && targetRef.current) {
             targetRef.current = null;
             waypointsRef.current = [];
             waypointIdxRef.current = 0;
@@ -2671,6 +2674,8 @@ export default function World() {
             glbTest={glbTestParam}
             presenceSessionId={sessionId}
           />
+
+          {!battle && !pvpBattle && <BattleJoystick stickRef={joystickRef} streetOnly />}
 
           {/* character profile card — tapping a character opens it here */}
           <AnimatePresence>

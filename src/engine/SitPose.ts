@@ -12,7 +12,7 @@
  *
  * RIG FARKLARI (ölçülerek doğrulandı, bkz. `scripts/check-bench-sit.ts`):
  *   • Mixamo derileri:  Hips → LeftUpLeg → LeftLeg → LeftFoot   (tek zincir)
- *   • character.glb   : Hips → UpperLeg.L → LowerLeg.L          (uyluk/baldır)
+ *   • character.glb   : Body → UpperLeg.L → LowerLeg.L          (uyluk/baldır)
  *                       ve AYAKLAR zincirin altında DEĞİL —
  *                       `Bone` kökü altında ayrı dururlar. Ayrıca
  *                       `Leg.L` adlı düğüm kemik değil, mesh'tir.
@@ -21,12 +21,11 @@
  * okunur; (3) ayak kemiği tüm iskelette aranır ve baldırın ucuna TAŞINIR —
  * böylece ayak, bacakla birlikte hareket eder.
  *
- * KULLANIM SIRASI ÖNEMLİ: `applySitPose` her karede, `AnimationMixer`
- * güncellemesinden SONRA çağrılmalıdır (üst gövde idle klibinden gelir,
- * sadece bacaklar ve kök yüksekliği burada ezilir).
+ * BenchSitController animasyonları durdurur, kaydedilmiş model pozundan
+ * her kare deterministik oturma üretir ve kalkınca bütün dönüşümleri geri yükler.
  */
 import * as THREE from "three";
-import { SIT_LEAN } from "./constants";
+import { BENCH_SEAT_TOP, SEAT_TRANSITION_SECONDS, SIT_LEAN } from "./constants";
 
 export interface SitBones {
   hips: THREE.Bone | null;
@@ -41,7 +40,7 @@ export interface SitBones {
 }
 
 const PELVIS_RE = /pelvis/;
-const HIPS_RE = /hips/;
+const HIPS_RE = /hips|bip\d*hip/;
 /** Üst bacak: "lowerleg"/"leftleg" bunlara takılmamalı. */
 const THIGH_RE = /thigh|upleg|upperleg/;
 /** Alt bacak — spesifik olan kazanır. */
@@ -82,7 +81,7 @@ function thighScore(name: string): number {
 
 /** Baldır adı skoru — "LowerLeg"/"shin"/"knee" > "Leg"; uyluk isimleri elenir. */
 function shinScore(name: string): number {
-  if (THIGH_RE.test(name) || !SHIN_WEAK_RE.test(name)) return -1;
+  if (THIGH_RE.test(name) || !(SHIN_WEAK_RE.test(name) || SHIN_STRONG_RE.test(name))) return -1;
   return SHIN_STRONG_RE.test(name) ? 2 : 1;
 }
 
@@ -307,6 +306,108 @@ export function measureSeatContact(
 }
 
 /* ── Yeniden kullanılan geçici nesneler (kare başına çöp üretmemek için) ── */
+/** Modelin animasyon öncesi dönüşümleri; mesh düğümleri de animasyon alabilir. */
+export function captureStandingPose(root: THREE.Object3D) {
+  const transforms: { object: THREE.Object3D; position: THREE.Vector3; quaternion: THREE.Quaternion; scale: THREE.Vector3 }[] = [];
+  root.traverse((object) => transforms.push({
+    object, position: object.position.clone(), quaternion: object.quaternion.clone(), scale: object.scale.clone(),
+  }));
+  return () => {
+    for (const t of transforms) {
+      t.object.position.copy(t.position);
+      t.object.quaternion.copy(t.quaternion);
+      t.object.scale.copy(t.scale);
+    }
+    root.updateMatrixWorld(true);
+  };
+}
+
+/** Tek oturma yaşam döngüsü: giriş → sabit referanstan poz → eksiksiz kalkış. */
+export class BenchSitController {
+  seated = false;
+  private elapsed = 0;
+  private contact = 0.2;
+  private measured = false;
+  private restoreSeat: (() => void) | null = null;
+  private anchor = new THREE.Vector3();
+  private other = new THREE.Vector3();
+  private correction = new THREE.Vector3();
+
+  private root: THREE.Object3D;
+  private bones: SitBones;
+  private restore: () => void;
+
+  constructor(root: THREE.Object3D, bones: SitBones, restore: () => void) {
+    this.root = root;
+    this.bones = bones;
+    this.restore = restore;
+  }
+
+  sitOnBench(mixer: THREE.AnimationMixer, idle?: THREE.AnimationAction | null) {
+    mixer.stopAllAction();
+    mixer.timeScale = 1;
+    this.restore();
+    // Kollar bind/T pozunda kalmasın: idle'ın ilk karesini bir kez örnekle,
+    // sonra eylemi gerçekten durdur. Otururken hiçbir klip çalışmaz.
+    if (idle) {
+      idle.reset().play();
+      mixer.update(0);
+    }
+    this.restoreSeat = captureStandingPose(this.root);
+    mixer.stopAllAction();
+    this.restoreSeat();
+    this.measured = false;
+    this.elapsed = 0;
+    this.seated = true;
+    this.contact = 0.2;
+  }
+
+  unsit(mixer: THREE.AnimationMixer) {
+    if (!this.seated) return;
+    mixer.stopAllAction();
+    this.restore();
+    mixer.timeScale = 1;
+    this.seated = false;
+  }
+
+  update(inner: THREE.Group, group: THREE.Group, facing: 1 | -1, dt: number) {
+    if (!this.seated) return;
+    this.elapsed = Math.min(SEAT_TRANSITION_SECONDS, this.elapsed + dt);
+    const t = this.elapsed / SEAT_TRANSITION_SECONDS;
+    const blend = t * t * (3 - 2 * t);
+    this.restoreSeat?.();
+    inner.position.x = 0;
+    inner.position.z = 0;
+    inner.rotation.x = 0;
+    group.updateMatrixWorld(true);
+    if (canSit(this.bones)) applySitPose(this.root, this.bones, facing, blend);
+    else inner.rotation.x = -SIT_LEAN * blend;
+    group.updateMatrixWorld(true);
+
+    // Hips bazı riglerde uyluklarla kardeştir: gerçek pelvis merkezi iki
+    // uyluğun başlangıcıdır, dekoratif Hips düğümünün yüksekliği değildir.
+    const { thighL, thighR, hips } = this.bones;
+    if (thighL && thighR) {
+      thighL.getWorldPosition(this.anchor);
+      thighR.getWorldPosition(this.other);
+      this.anchor.add(this.other).multiplyScalar(0.5);
+    } else if (hips) hips.getWorldPosition(this.anchor);
+    else this.anchor.set(group.position.x, group.position.y + 0.9, group.position.z);
+
+    if (t === 1 && hips && !this.measured) {
+      this.measured = true;
+      hips.getWorldPosition(this.other);
+      this.contact = Math.max(0.2, measureSeatContact(this.root, this.bones) + this.anchor.y - this.other.y);
+    }
+    this.correction.set(group.position.x, BENCH_SEAT_TOP + this.contact, group.position.z);
+    group.worldToLocal(this.correction);
+    group.worldToLocal(this.anchor);
+    this.correction.sub(this.anchor).multiplyScalar(blend);
+    inner.position.add(this.correction);
+    group.updateMatrixWorld(true);
+  }
+}
+
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
 const _target = new THREE.Vector3();
@@ -432,21 +533,8 @@ export function applySitPose(
   blend: number,
 ) {
   if (blend <= 0) return;
-  // NORMAL BANK OTURUŞU (minder 0.46, kalça 0.61 — bkz. BENCH_SEAT_HEIGHT):
-  //   • uyluk yataydan ~11° aşağı (diz kalçanın ~9 cm altında),
-  //   • baldır neredeyse DİKEY (5° öne açık),
-  //   • ayaklar yere basar: kalça 0.56 − uyluk dikey payı 0.088 −
-  //     baldır 0.470 ≈ 0.002 birim pay.
-  // Eski alçak bankta (0.25) uyluk yukarı, baldır 40° öne bakıyordu; bacaklar
-  // katlanıp dizler göğse yaklaşıyordu ve "bankta oturuyor" okunmuyordu.
-  //
-  // DİKKAT: diz konumu bu iki yönle SABİTLENİR (ayak yerde + baldır dikey →
-  // diz ≈ baldır boyu). Kalça yüksekliğini değiştirmek diziyi yukarı taşımaz,
-  // sadece uyluğun eğimini değiştirir — yani pozu bozmadan bank yüksekliği
-  // ayarlanabilir (`scripts/check-bench-sit.ts` bunu ölçer).
-  // Uyluklar öne ve hafif dışa gider; baldırlar dizden aşağı neredeyse
-  // dikey iner. Bu yaklaşık 85° diz açısı üretir: bacaklar düz kalmaz ve
-  // ayaklar üstten görülen kamerada gövdenin altından öne doğru seçilir.
+  // Riglerin yerel X eksenleri farklıdır. Dünya uzayında yatay uyluk +
+  // dikey baldır hedeflemek, her rigde -90°/+90° diz kırmanın karşılığıdır.
   root.updateMatrixWorld(true);
   const forward = _sitForward.set(0, 0, facing);
   let lateralLengthSq = 0;
@@ -461,10 +549,10 @@ export function applySitPose(
     _sitLateral.copy(_modelRight).applyQuaternion(_parentQ).setY(0);
   }
   _sitLateral.normalize();
-  _thighDirL.copy(forward).addScaledVector(_sitLateral, 0.24).setY(-0.16).normalize();
-  _thighDirR.copy(forward).addScaledVector(_sitLateral, -0.24).setY(-0.16).normalize();
-  _shinDirL.copy(_sitLateral).multiplyScalar(0.08).addScaledVector(forward, 0.2).setY(-1).normalize();
-  _shinDirR.copy(_sitLateral).multiplyScalar(-0.08).addScaledVector(forward, 0.2).setY(-1).normalize();
+  _thighDirL.copy(forward).addScaledVector(_sitLateral, 0.12).setY(-0.04).normalize();
+  _thighDirR.copy(forward).addScaledVector(_sitLateral, -0.12).setY(-0.04).normalize();
+  _shinDirL.copy(_sitLateral).multiplyScalar(0.04).addScaledVector(forward, 0.04).setY(-1).normalize();
+  _shinDirR.copy(_sitLateral).multiplyScalar(-0.04).addScaledVector(forward, 0.04).setY(-1).normalize();
   root.updateMatrixWorld(true);
   // GÖVDE GERİYE (bank oturuşu): sırt arkalığa yaslanır, gövde dik durmaz.
   // Omurga döndürülür — kalça/ bacaklar aşağıda AYRICA mutlak yönlerle

@@ -5,14 +5,13 @@ import { SkeletonUtils } from "three-stdlib";
 import { useGLTF, useAnimations } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
-  BENCH_SEAT_HEIGHT,
   PLAYER_3D_HEIGHT,
   WORLD_WIDTH,
   WORLD_Z_MAX,
   S,
   type SeatState,
 } from "./constants";
-import { applySitPose, canSit, findSitBones } from "./SitPose";
+import { BenchSitController, captureStandingPose, findSitBones } from "./SitPose";
 import { getSeatState } from "./benchSeat";
 import {
   type EquipSlot,
@@ -99,12 +98,6 @@ const SKIN_ACCENT: Record<string, string> = {
 const MODEL_YAW_OFFSET: Record<string, number> = {
   "/models/skin-savasci.glb": Math.PI,
 };
-
-/**
- * Oturma / kalkma geçişinin yumuşaklığı (1/sn). Geçiş bir smoothstep ile
- * ölçeklendiği için ~0.6 sn sürer — ani zıplama olmadan banka yerleşir.
- */
-const SIT_BLEND_SPEED = 3.4;
 
 /** Tint a clone toward an accent color, cloning materials so skins stay
  *  independent from each other and from the shared cached GLB. */
@@ -589,7 +582,9 @@ function GlbAvatarCore({
   // oyun döngüsüne prop eklemek gerekmez. Her karede okunduğu için ref'te
   // tutulur (kare başına re-render yok).
   const seatRef = useRef<SeatState | null>(null);
-  seatRef.current = seat ?? (readSeatStore ? getSeatState() : null);
+  useFrame(() => {
+    seatRef.current = seat !== undefined ? seat : (readSeatStore ? getSeatState() : null);
+  }, -1);
 
   // Skin system: if any equipped item has a skinUrl, use that character model instead.
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
@@ -605,6 +600,9 @@ function GlbAvatarCore({
 
   // Per-instance clone with independent skeleton (shares GPU resources).
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene, effectiveUrl]);
+  const sitting = useMemo(() => new BenchSitController(
+    clone, findSitBones(clone), captureStandingPose(clone),
+  ), [clone]);
   // Force a fresh React subtree when a remote player changes skin. This
   // prevents an old mixer/action set from continuing to drive the new rig.
   useEffect(() => {
@@ -693,17 +691,6 @@ function GlbAvatarCore({
   // feet visibly alternate while the avatar moves through the world.
   const clips = useMemo(() => resolveIdleWalkClips(actions), [actions]);
 
-  // Play idle initially.
-  useEffect(() => {
-    const key = clips.idle ?? Object.keys(actions)[0];
-    const action = key ? actions[key] : undefined;
-    if (!action) return;
-    action.reset().fadeIn(0.3).play();
-    return () => {
-      action.fadeOut(0.3);
-    };
-  }, [actions, clips]);
-
   // Movement/animation state (refs — zero React re-renders per frame).
   const movingRef = useRef(false);
   const currentClip = useRef<"idle" | "walk">("idle");
@@ -713,7 +700,9 @@ function GlbAvatarCore({
     Object.values(actions).forEach((action) => action?.reset());
     movingRef.current = false;
     currentClip.current = "idle";
-  }, [effectiveUrl, mixer, actions]);
+    const key = clips.idle ?? Object.keys(actions)[0];
+    if (key) actions[key]?.reset().play();
+  }, [effectiveUrl, mixer, actions, clips]);
 
   const smoothPos = useRef<{ x: number; y: number } | null>(null);
   // Initial yaw from the ±1 facing flag; afterwards yaw follows movement.
@@ -803,11 +792,14 @@ function GlbAvatarCore({
 
     // Idle breathing bob (paused while moving so walk cycles stay clean).
     idleBobPhase.current += dt;
-    const bob = movingRef.current ? 0 : 0.012 + Math.sin(idleBobPhase.current * 2.2) * 0.012;
+    const bob = seatRef.current || movingRef.current ? 0 : 0.012 + Math.sin(idleBobPhase.current * 2.2) * 0.012;
     inner.position.y = feetOffset * normScale + bob;
 
     // Short eased scale pulse.
-    if (bounceRef.current > 0) {
+    if (seatRef.current) {
+      bounceRef.current = 0;
+      inner.scale.setScalar(normScale);
+    } else if (bounceRef.current > 0) {
       bounceRef.current = Math.max(0, bounceRef.current - dt);
       const t = bounceRef.current / 0.3; // 1 → 0
       inner.scale.setScalar(normScale * (1 + Math.sin(t * Math.PI) * 0.05));
@@ -890,13 +882,30 @@ function GlbAvatarCore({
     sp.y += (p.y - sp.y) * lerpFactor;
     group.position.set(sp.x / S - WORLD_W, 0.02, WORLD_Z0 - sp.y / S);
 
+    const activeSeat = seatRef.current;
+    if (activeSeat && !sitting.seated) {
+      const idleKey = clips.idle ?? Object.keys(actions)[0];
+      sitting.sitOnBench(mixer, idleKey ? actions[idleKey] : null);
+      movingRef.current = false;
+      currentClip.current = "idle";
+    } else if (!activeSeat && sitting.seated) {
+      sitting.unsit(mixer);
+      if (innerRef.current) innerRef.current.rotation.x = 0;
+      const key = clips.idle ?? Object.keys(actions)[0];
+      if (key) actions[key]?.reset().play();
+      // Kalkışta bankın üzerinden lerp etme; oyun döngüsü ön noktayı seçer.
+      sp.x = p.x;
+      sp.y = p.y;
+      group.position.set(p.x / S - WORLD_W, 0.02, WORLD_Z0 - p.y / S);
+    }
+
     // Walking detection from position delta (same threshold as SVG avatar).
     const dx = Math.abs(p.x - sp.x);
     const dy = Math.abs(p.y - sp.y);
-    const moving = dx > 0.3 || dy > 0.3;
+    const moving = !activeSeat && (dx > 0.3 || dy > 0.3);
 
     // Crossfade idle ↔ walk.
-    if (moving !== movingRef.current) {
+    if (!activeSeat && moving !== movingRef.current) {
       movingRef.current = moving;
       const nextClip: "idle" | "walk" = moving ? "walk" : "idle";
       if (nextClip !== currentClip.current) {
@@ -919,16 +928,13 @@ function GlbAvatarCore({
     //   down   (dx=0,  dz=+1) → yaw=0     (faces +Z, toward camera)
     // Diagonals interpolate naturally. When idle we KEEP the last yaw so
     // the character doesn't snap back to a default facing.
-    if (moving) {
+    if (activeSeat) {
+      targetYaw.current = activeSeat.yaw;
+      group.rotation.y = activeSeat.yaw;
+    } else if (moving) {
       const dxw = (p.x - sp.x) / S;
       const dzw = -(p.y - sp.y) / S;
       targetYaw.current = Math.atan2(dxw, dzw);
-    } else if (seatRef.current) {
-      // Bankta otururken yön bankın baktığı yöne kilitlenir (oturmadan önce
-      // nereye baktığı önemsiz): `benchSeatYaw` = 0 (kamera/güney) ya da π
-      // (kuzey/cadde) — yani karakter her zaman CADDEYE bakar.
-      const activeSeat = seatRef.current;
-      targetYaw.current = activeSeat.yaw;
     }
     let diff = targetYaw.current - group.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1033,63 +1039,13 @@ function GlbAvatarCore({
     return () => { cleanupEquipRef.current?.(); };
   }, []);
 
-  // ── 🪑 Bankta oturma (prosedürel, rig'den bağımsız) ────────────
-  // SIRA KRİTİK: bu `useFrame`, `useAnimations` (mixer) ve gövde konum
-  // çerçevesinden SONRA kaydolur. Yani her karede önce üst gövde idle
-  // klibinden yazılır, hemen ardından bacaklar + kök yüksekliği burada
-  // ezilir. Bu sayede hazır "Sitting" klibi olmayan deri modelleri de
-  // varsayılan karakterle birebir aynı şekilde oturur.
-  const sitBones = useMemo(() => findSitBones(clone), [clone]);
-  const sitReady = useMemo(() => canSit(sitBones), [sitBones]);
-  const sitBlend = useRef(0);
-  const seatMeasure = useRef(new THREE.Vector3());
-
+  // Mixer, konum ve ekipman güncellemelerinden sonra deterministik poz.
   useFrame((_, dt) => {
     const inner = innerRef.current;
     const group = groupRef.current;
-    if (!inner || !group) return;
     const activeSeat = seatRef.current;
-    // OTURMA DURUMU poz şartına BAĞLI DEĞİL: iskelet tanınmasa bile karakter
-    // bankın içine gömülmesin diye kalça hizalaması uygulanır. Yalnızca
-    // bacak/ gövde pozu için kemik zinciri gerekir.
-    const want = activeSeat ? 1 : 0;
-    // Ayakta ve geçiş bitmişse hiçbir maliyet yok.
-    if (want <= 0 && sitBlend.current <= 0) return;
-
-    sitBlend.current += (want - sitBlend.current) * Math.min(1, SIT_BLEND_SPEED * dt);
-    if (Math.abs(sitBlend.current - want) < 0.002) sitBlend.current = want;
-    if (sitBlend.current <= 0) {
-      // Kalktı: animasyon yeniden akar (aktif kalırsa karakter donuk kalırdı).
-      if (mixer && mixer.timeScale === 0) mixer.timeScale = 1;
-      return;
-    }
-
-    // ANİMASYON DONDURMA (kullanıcı isteği: idle'ı dondur): bankta otururken
-    // ayakta durma/yürüme klibi DURUR — alt gövde tamamen prosedürel pozdan
-    // gelir, bekleyen animasyon pozu ezmesin. Geçiş BİTİNCE dondurulur ki
-    // kollar idle duruşuna yerleşmiş olsun (yarım yürüyüş pozunda donmasın).
-    // Eşik yüksek: yürüyüş → idle geçişi (0.2 sn) bitmeden dondurulursa
-    // kollar yarım salınım pozunda kalır.
-    const freeze = activeSeat !== null && sitBlend.current > 0.97;
-    const pace = freeze ? 0 : 1;
-    if (mixer && mixer.timeScale !== pace) mixer.timeScale = pace;
-
-    // smoothstep → oturma/kalkma başı ve sonu yumuşak.
-    const eased = sitBlend.current * sitBlend.current * (3 - 2 * sitBlend.current);
-    // Kök konumu bu karede az önce yazıldı → dünya matrisleri taze olmalı.
-    group.updateMatrixWorld(true);
-    if (activeSeat && sitReady) {
-      applySitPose(clone, sitBones, activeSeat.facing, eased);
-    }
-
-    // Kalçayı bank minderi hizasına indir: bacak pozu uygulandıktan SONRA
-    // ölçülen kalça yüksekliği ile hedef arasındaki fark kadar kökü kaydır.
-    const hips = sitBones.hips;
-    if (activeSeat && hips) {
-      hips.getWorldPosition(seatMeasure.current);
-      inner.position.y += (BENCH_SEAT_HEIGHT - seatMeasure.current.y) * eased;
-      group.updateMatrixWorld(true);
-    }
+    if (!inner || !group || !activeSeat) return;
+    sitting.update(inner, group, activeSeat.facing, dt);
   });
 
   // Inner group carries the model scale + ground offset. The outer

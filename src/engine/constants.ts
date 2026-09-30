@@ -473,14 +473,11 @@ export const BENCH_SEAT_TOP = 0.46;
  */
 export const BENCH_SEAT_HEIGHT = 0.63;
 /**
- * Oturan kalçanın bank merkezinden baktığı yöne kayması. Negatif = arkalığa
- * doğru: kalça oturma yüzeyinin ortasında, sırt arkalığa yakın durur.
- * −0.14: kalça oturma yüzeyinin ARKA yarısında durur — sırt arkalığa
- * yaslanır, uyluklar ön kenardan taşarak görünür ("bankta oturuyor"
- * okunurluğu). Arkalık ayrıca geriye alındı (`BENCH_BACK_OFFSET`) ki yaslanan
- * sırt çıtaların içine girmesin.
+ * Kalça bankın ön kenarına yerleşir. İşaret bankın yönünden türetilir:
+ * kuzey bankında +Z, güney/arka bankında -Z. Diz ve ayaklar çıtaların
+ * önünde kalır; bacaklar oturma tahtasının içine katlanmaz.
  */
-export const BENCH_SEAT_FORWARD = -0.14;
+export const BENCH_SEAT_FORWARD = 0.25;
 /**
  * Otururken gövdenin (omurga) geriye yatma açısı (radyan) — sırt arkalığa
  * yaslanır. Pozu uygulayan `SitPose.applySitPose` omurga kemiğini bu kadar
