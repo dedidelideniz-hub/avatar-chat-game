@@ -577,13 +577,21 @@ function GlbAvatarCore({
   // the per-frame world position on the outer group can never clobber it.
   const innerRef = useRef<THREE.Group>(null);
 
-  // Oturma durumu: prop açıkça verilmişse o; yoksa YALNIZCA yerel oyuncuda
-  // (`readSeatStore`) px katmanının deposu (`benchSeat`) okunur — böylece
-  // oyun döngüsüne prop eklemek gerekmez. Her karede okunduğu için ref'te
-  // tutulur (kare başına re-render yok).
+  // Oturma durumu: prop açıkça DOLU verilmişse o; yoksa YALNIZCA yerel
+  // oyuncuda (`readSeatStore`) px katmanının deposu (`benchSeat`) okunur —
+  // böylece oyun döngüsüne prop eklemek gerekmez. Her karede okunduğu için
+  // ref'te tutulur (kare başına re-render yok).
+  //
+  // ⚠️ `??` ZORUNLU: `seat` prop'unun varsayılanı `null` (GlbAvatarCore,
+  // GameEngine3D ve PlayerAvatar3D hepsi `null` geçirir). Eski kod
+  // `seat !== undefined ? seat : …` yazıyordu; `null !== undefined` her zaman
+  // TRUE olduğu için depo DALDA KOD hâline geliyordu ve `getSeatState()` HİÇ
+  // çağrılmıyordu. Sonuç: "Otur" düğmesi banka durumunu yazıyor (toast çıkıyor)
+  // ama avatar `null` okuduğu için ASLA oturmuyordu. `??` yalnızca dolu prop'ta
+  // prop'u, null/undefined'da depoyu seçer.
   const seatRef = useRef<SeatState | null>(null);
   useFrame(() => {
-    seatRef.current = seat !== undefined ? seat : (readSeatStore ? getSeatState() : null);
+    seatRef.current = seat ?? (readSeatStore ? getSeatState() : null);
   }, -1);
 
   // Skin system: if any equipped item has a skinUrl, use that character model instead.

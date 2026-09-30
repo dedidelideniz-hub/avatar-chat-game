@@ -38,6 +38,7 @@ import {
   findSitBones,
   tipOf,
 } from "../src/engine/SitPose";
+import { getSeatState, setBenchSeatState } from "../src/engine/benchSeat";
 
 (globalThis as any).ProgressEvent = class {
   constructor(type: string, init = {}) { Object.assign(this, init, { type }); }
@@ -295,6 +296,42 @@ check(
   "rigsiz model: gövde geriye yatar ve pivot alçalır",
   bareInner.rotation.x < 0 && bareInner.position.y < 0,
   `açı ${bareInner.rotation.x.toFixed(3)} · y ${bareInner.position.y.toFixed(3)}`,
+);
+
+// ── REGRESYON: "Otur" düğmesi → depo → avatar bağlantısı ─────────────
+// Oyun ağacında `seat` prop'u HER ZAMAN `null` geçirilir (World.tsx prop
+// vermez → GameEngine3D `seat = null` → PlayerAvatar3D `seat={null}`).
+// Eski kod `seat !== undefined ? seat : (readSeatStore ? getSeatState() : null)`
+// yazıyordu; `null !== undefined` her zaman true olduğu için depo dalı ÖLÜ
+// KODDU ve `getSeatState()` hiç çağrılmıyordu. Bu yüzden "Banka oturuldu"
+// bildirimi çıkıyor ama karakter ASLA oturmuyordu. Avatarın okuma ifadesi
+// mutlaka `??` kullanmalı.
+const avatarSrc = readFileSync("src/engine/GlbAvatar3D.tsx", "utf8");
+check(
+  "avatar oturma durumunu `??` ile okuyor (null prop depoyu ezmiyor)",
+  /seatRef\.current\s*=\s*seat\s*\?\?/.test(avatarSrc),
+);
+check(
+  "avatar eski `seat !== undefined ?` tuzağını kullanmıyor",
+  !/seatRef\.current\s*=\s*seat\s*!==/.test(avatarSrc),
+);
+
+// Depo davranışı: banka oturulunca geçerli SeatState, kalkınca null.
+setBenchSeatState({ near: 3, seated: 3 });
+const storeSeat = getSeatState();
+check(
+  "banka oturulunca depo geçerli oturma durumu (facing + yaw) veriyor",
+  !!storeSeat &&
+    (storeSeat.facing === 1 || storeSeat.facing === -1) &&
+    Math.abs(Math.abs(storeSeat.yaw) - (storeSeat.facing < 0 ? Math.PI : 0)) < 1e-6,
+  storeSeat
+    ? `facing ${storeSeat.facing} · yaw ${storeSeat.yaw.toFixed(3)}`
+    : "null",
+);
+setBenchSeatState({ near: null, seated: null });
+check(
+  "oturulmuyorken depo null döner (ayakta/yürüyen hâl)",
+  getSeatState() === null,
 );
 
 console.log(`${passed}/${passed + failures.length} kontrol geçti`);
