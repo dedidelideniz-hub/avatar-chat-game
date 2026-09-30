@@ -890,7 +890,10 @@ function GlbAvatarCore({
       currentClip.current = "idle";
     } else if (!activeSeat && sitting.seated) {
       sitting.unsit(mixer);
-      if (innerRef.current) innerRef.current.rotation.x = 0;
+      if (innerRef.current) {
+        innerRef.current.rotation.x = 0;
+        innerRef.current.position.set(0, feetOffset * normScale, 0);
+      }
       const key = clips.idle ?? Object.keys(actions)[0];
       if (key) actions[key]?.reset().play();
       // Kalkışta bankın üzerinden lerp etme; oyun döngüsü ön noktayı seçer.
