@@ -36,17 +36,21 @@ import {
 import {
   BENCHES,
   BUS_STOPS,
+  FENCE_CAPS,
+  FENCE_EDGES,
   FENCE_LINES,
   FENCE_SPACING,
   GRASS_GROUND_Y,
   GRASS_GROUND_ZONES,
   LAMPS,
+  SIDE_STREET_SOUTH,
+  SIDE_STREET_W,
   STALLS,
   TRASH_CANS,
   VEG_SIZES,
   ZONE,
 } from "../src/engine/constants";
-import { buildFenceLine } from "../src/engine/fenceLine";
+import { buildFenceEdge, buildFenceLine } from "../src/engine/fenceLine";
 
 /**
  * GLB içindeki PNG'leri çözer (zlib + PNG filtre çözümü, ek bağımlılık yok) ve
@@ -268,7 +272,87 @@ for (const line of FENCE_LINES) {
   );
 }
 
+/* ── Dikey sokak kenarı çitleri — çime geçişi kesen hatlar ──────
+   Yatay sınır hatları sokak ağızlarında bölündüğü için sokak kenarında hiç
+   çit yoktu; oyuncu asfalt şeritte dururken iki yanı çitsiz çim görünüyordu.
+   Bu bölüm dikey koşuların da aynı aralık/hiza kurallarına uyduğunu ölçer. */
+console.log("\n=== SOKAK KENARI ÇİTLERİ (dikey) + SOKAK UCU KAPAKLARI");
+let edgeSlats = 0;
+let edgeRails = 0;
+let edgeBad = 0;
+
+for (const edge of FENCE_EDGES) {
+  const built = buildFenceEdge(edge);
+  edgeSlats += built.slats.length;
+  edgeRails += built.rails.length;
+
+  const zs = built.slats.map((s) => s.z);
+  const spanNorth = Math.min(...zs);
+  const spanSouth = Math.max(...zs);
+  const maxGap = Math.max(0, ...zs.slice(1).map((z, i) => z - zs[i]));
+  const stepOk = Math.abs(built.step - FENCE_SPACING) < 0.01;
+  const endsOk =
+    Math.abs(spanNorth - Math.min(edge.startZ, edge.endZ)) < 1e-9 &&
+    Math.abs(spanSouth - Math.max(edge.startZ, edge.endZ)) < 1e-9;
+  const xOk = built.slats.every((s) => Math.abs(s.x - edge.x) < 1e-9);
+  // Tüm çıtalar aynı formülü kullanır: taban 0.19 - 0.38/2 = 0 = GRASS_GROUND_Y.
+  const bottomOk = Math.abs(SLAT_BOTTOM - GRASS_GROUND_Y) < 1e-9;
+  const spanOk = maxGap <= built.step + 1e-9;
+  if (!(stepOk && endsOk && xOk && bottomOk && spanOk)) edgeBad++;
+
+  const label =
+    Math.abs(spanSouth - SIDE_STREET_SOUTH) < 1e-9
+      ? "güney ağız (kaldırım → sokak ucu)"
+      : Math.abs(spanNorth - ZONE.northGrassTop) < 1e-9
+        ? "kuzey çim şeridi (kaldırım → dükkan önü)"
+        : "SERBEST (çim bandı değil!)";
+
+  const clash = [...LAMPS, ...BENCHES, ...STALLS, ...TRASH_CANS, ...BUS_STOPS].filter(
+    (prop) =>
+      Math.abs(prop.x - edge.x) < 0.35 &&
+      prop.z < spanSouth + 0.2 &&
+      prop.z > spanNorth - 0.2,
+  );
+
+  console.log(
+    `\n  kenar X=${edge.x} (${label})\n` +
+      `    çıta ${built.slats.length} · korkuluk ${built.rails.length} · adım ${built.step.toFixed(4)} ` +
+      `(hedef ${FENCE_SPACING}) → ${stepOk ? "aralık korunuyor ✔" : "aralık saptı ✘"}\n` +
+      `    uçlar: Z ${spanNorth.toFixed(2)} … ${spanSouth.toFixed(2)} (istenen ${edge.endZ} … ${edge.startZ}) → ` +
+      `${endsOk ? "TAM HAT ✔" : "UÇLAR TUTMUYOR ✘"} · X sabit → ${xOk ? "hizada ✔" : "kaymış ✘"}\n` +
+      `    kesintisizlik: en büyük çıta boşluğu ${maxGap.toFixed(4)} ≤ adım → ${spanOk ? "BOŞLUK YOK ✔" : "BOŞLUK VAR ✘"}\n` +
+      `    hiza: çıta tabanı y=${SLAT_BOTTOM.toFixed(3)} · zemin y=${GRASS_GROUND_Y.toFixed(3)} → ` +
+      `${bottomOk ? "TAM ZEMİN ÜSTÜNDE ✔" : "HİZASIZ ✘"}\n` +
+      `    prop çakışması: ${clash.length === 0 ? "yok ✔" : `${clash.length} prop çok yakın ✘`}`,
+  );
+}
+
 console.log(
-  `\n  toplam: ${fenceSlats} çıta + ${fenceRails} korkuluk → 2 draw call ` +
-    `(${FENCE_LINES.filter((l) => l.enabled).length} hat × cadde boyu)`,
+  `\n  kenar toplamı: ${edgeSlats} çıta + ${edgeRails} korkuluk · ` +
+    `${FENCE_EDGES.length} kenar (${SIDE_STREET_W} birim sokak genişliğinin iki yanı) → ` +
+    `${edgeBad === 0 ? "TÜM KENARLAR GEÇTİ ✔" : `${edgeBad} KENAR HATALI ✘`}`,
+);
+
+// Sokak ucunu kapatan yatay kapaklar: sokak genişliğinde mi, tam uçta mı?
+const capBad = FENCE_CAPS.filter((cap) => {
+  const built = buildFenceLine(cap);
+  const first = built.slats[0]?.x ?? Number.NaN;
+  const last = built.slats[built.slats.length - 1]?.x ?? Number.NaN;
+  return (
+    built.slats.length === 0 ||
+    Math.abs(first - cap.startX) > 1e-9 ||
+    Math.abs(last - cap.endX) > 1e-9 ||
+    Math.abs(cap.endX - cap.startX - SIDE_STREET_W) > 1e-9
+  );
+});
+console.log(
+  `  sokak ucu kapakları: ${FENCE_CAPS.length} kapak · her biri ${SIDE_STREET_W} birim ` +
+    `(sokak genişliği) · Z ${SIDE_STREET_SOUTH} → ` +
+    `${capBad.length === 0 ? "SOKAK UCU KAPALI ✔" : `${capBad.length} kapak hatalı ✘`}`,
+);
+
+console.log(
+  `\n  toplam: ${fenceSlats + edgeSlats} çıta + ${fenceRails + edgeRails} korkuluk → 2 draw call ` +
+    `(${FENCE_LINES.filter((l) => l.enabled).length} yatay hat + ${FENCE_CAPS.length} kapak + ` +
+    `${FENCE_EDGES.length} dikey kenar)`,
 );

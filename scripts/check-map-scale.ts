@@ -22,6 +22,8 @@ import {
   BUILDINGS,
   BUS_STOPS,
   DIRECTION_SIGNS,
+  FENCE_CAPS,
+  FENCE_EDGES,
   FENCE_LINES,
   LAMPS,
   S,
@@ -428,6 +430,102 @@ for (const [name, px] of backEnds) {
 // Arka sıra binaların önündeki çim yürünebilir OLMAMALI (çit hattı).
 check(!inWalkable(svgX(-4.4), svgY(-19.0)), "arka çim şeridi yürünebilir değil (çit korunuyor)");
 check(!inWalkable(svgX(-4.4), svgY(-9.0)), "kuzey çim şeridi yürünebilir değil (çit korunuyor)");
+
+/* ── 10) Dikey sokak kenarı çitleri (çime geçişi kesen hatlar) ── */
+// Sınır çitleri yalnızca YATAYDI; dikey sokak ağızlarında çit kalmıyordu.
+// Bu bölüm oyuncunun asfalt şeritten çime geçemediği çit hattını ölçer.
+console.log("\nDİKEY SOKAK ÇİTLERİ (sokak asfaltı ↔ çim)");
+const streetEdges = FENCE_EDGES.filter((e) => e.enabled);
+check(
+  streetEdges.length === SIDE_STREETS.length * 4,
+  "her sokakta iki kenar × iki çim bandı",
+  `${streetEdges.length} kenar (${SIDE_STREETS.length} sokak × 2 yan × 2 bant)`,
+);
+
+// Kenarlar TAM sokak asfaltının kenarında mı? (X = sokak ± SIDE_STREET_W/2)
+const badEdgeX = streetEdges.filter(
+  (e) =>
+    !SIDE_STREETS.some(
+      (sx) => Math.abs(Math.abs(e.x - sx) - SIDE_STREET_W / 2) < 1e-9,
+    ),
+);
+check(
+  badEdgeX.length === 0,
+  "her kenar sokak asfaltının tam kenarında",
+  badEdgeX.length
+    ? `${badEdgeX.length} hatalı`
+    : `X = sokak ± ${f(SIDE_STREET_W / 2)}`,
+);
+
+// Kenarın Z aralığı YALNIZCA çim bandında olmalı (kaldırım/cadde boyunca çit olmaz).
+const pavedBands = BANDS.filter((b) => !b.name.includes("çim"));
+const edgeOnPavement = streetEdges.filter((e) => {
+  const south = Math.max(e.startZ, e.endZ);
+  const north = Math.min(e.startZ, e.endZ);
+  return pavedBands.some((b) => south > b.north + 1e-9 && north < b.south - 1e-9);
+});
+check(
+  edgeOnPavement.length === 0,
+  "kenar çitleri yalnızca çim boyunca uzanıyor",
+  edgeOnPavement.length
+    ? edgeOnPavement.map((e) => `X ${f(e.x)}`).join(", ")
+    : "kaldırım/cadde üstünde çit yok",
+);
+
+// Kenar çitleri proplara (ağaç/lamba/çöp…) girmemeli.
+const edgeHits: string[] = [];
+for (const e of streetEdges) {
+  const south = Math.max(e.startZ, e.endZ);
+  const north = Math.min(e.startZ, e.endZ);
+  for (const p of props) {
+    if (Math.abs(p.x - e.x) < p.hx && p.z + p.hz > north && p.z - p.hz < south)
+      edgeHits.push(`${p.name} ↔ kenar X ${f(e.x)}`);
+  }
+}
+check(
+  edgeHits.length === 0,
+  "kenar çitleri proplara girmiyor",
+  edgeHits.slice(0, 4).join(" · ") || "temiz",
+);
+
+// Sokak ucunu kapatan yatay hat: tam sokak genişliğinde, tam sokak ucunda.
+const capsOk = SIDE_STREETS.every((sx) =>
+  FENCE_CAPS.some(
+    (c) =>
+      Math.abs(c.z - SIDE_STREET_SOUTH) < 1e-9 &&
+      Math.abs(c.startX - (sx - SIDE_STREET_W / 2)) < 1e-9 &&
+      Math.abs(c.endX - (sx + SIDE_STREET_W / 2)) < 1e-9,
+  ),
+);
+check(
+  capsOk,
+  "her sokağın güney ucu kapakla kapanıyor",
+  `${FENCE_CAPS.length} kapak · Z ${SIDE_STREET_SOUTH} (yürünebilir sınırın üstünde)`,
+);
+
+/* ASIL KURAL: çitin DIŞI çim kalmalı ve o çim YÜRÜNEBİLİR OLMAMALI,
+   çitin İÇİ (sokak) yürünebilir kalmalı. */
+let grassLeak = 0;
+let alleyOpen = 0;
+for (const e of streetEdges) {
+  const nearest = SIDE_STREETS.reduce((best, c) =>
+    Math.abs(c - e.x) < Math.abs(best - e.x) ? c : best,
+  );
+  const outward = Math.sign(e.x - nearest) || 1;
+  const midZ = (e.startZ + e.endZ) / 2;
+  if (inWalkable(svgX(e.x + outward * 0.6), svgY(midZ))) grassLeak++;
+  if (inWalkable(svgX(nearest), svgY(midZ))) alleyOpen++;
+}
+check(
+  grassLeak === 0,
+  "çitlerin dışındaki çim yürünebilir değil",
+  grassLeak ? `${grassLeak} nokta sızıyor` : `${streetEdges.length} nokta tarandı · hepsi çit dışı`,
+);
+check(
+  alleyOpen === streetEdges.length,
+  "sokaklar çitlerin arasında hâlâ yürünebilir",
+  `${alleyOpen}/${streetEdges.length}`,
+);
 
 /* ── Sonuç ────────────────────────────────────────────────── */
 console.log(failures === 0 ? "\nTÜM KONTROLLER GEÇTİ ✔" : `\n${failures} KONTROL BAŞARISIZ ✘`);

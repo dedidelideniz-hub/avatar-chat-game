@@ -18,6 +18,8 @@ import {
   BUS_STOPS,
   CROSSWALKS,
   DIRECTION_SIGNS,
+  FENCE_CAPS,
+  FENCE_EDGES,
   FENCE_LINES,
   GRASS_GROUND_Y,
   TRASH_CANS,
@@ -33,7 +35,7 @@ import {
   makePavementTexture,
   makeSignTexture,
 } from "./streetTextures";
-import { buildFenceLines } from "./fenceLine";
+import { buildFences } from "./fenceLine";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Paylaşılan geometri / materyaller                          */
@@ -370,8 +372,14 @@ export function StreetFences() {
   const railRef = useRef<THREE.InstancedMesh>(null);
 
   // Tüm hatlar TEK listede: kaç hat ve kaç çıta olursa olsun 2 draw call.
+  // Üç tür bir arada: cadde boyu yatay sınır hatları (`FENCE_LINES`), sokak
+  // ağzını kapatan kısa yatay kapaklar (`FENCE_CAPS`) ve sokak kenarlarında
+  // çime geçişi kesen DİKEY kenarlar (`FENCE_EDGES`).
   // Matematik `fenceLine.ts` içinde (saf) — uç uca, boşluksuz dizilim.
-  const { slats, rails } = useMemo(() => buildFenceLines(FENCE_LINES), []);
+  const { slats, rails } = useMemo(
+    () => buildFences([...FENCE_LINES, ...FENCE_CAPS], FENCE_EDGES),
+    [],
+  );
 
   useLayoutEffect(() => {
     const slatMesh = slatRef.current;
@@ -379,14 +387,21 @@ export function StreetFences() {
     if (!slatMesh || !railMesh) return;
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3();
     slats.forEach((s, i) => {
       // Çıta tabanı TAM zemin seviyesi: 0.19 - 0.38/2 = 0 → havada durmaz,
       // zemine gömülmez (GRASS_GROUND_Y zemin yüzeyi).
-      m.compose(new THREE.Vector3(s.x, 0.19 + GRASS_GROUND_Y, s.z), q, new THREE.Vector3(0.05, 0.38, 0.035));
+      m.compose(pos.set(s.x, 0.19 + GRASS_GROUND_Y, s.z), q, scl.set(0.05, 0.38, 0.035));
       slatMesh.setMatrixAt(i, m);
     });
     rails.forEach((r, i) => {
-      m.compose(new THREE.Vector3(r.x, 0.3 + GRASS_GROUND_Y, r.z), q, new THREE.Vector3(r.len, 0.045, 0.03));
+      // Korkuluk kendi ekseninde uzanır: yatay hatta X, dikey sokak kenarında Z.
+      m.compose(
+        pos.set(r.x, 0.3 + GRASS_GROUND_Y, r.z),
+        q,
+        r.axis === "z" ? scl.set(0.03, 0.045, r.len) : scl.set(r.len, 0.045, 0.03),
+      );
       railMesh.setMatrixAt(i, m);
     });
     slatMesh.instanceMatrix.needsUpdate = true;

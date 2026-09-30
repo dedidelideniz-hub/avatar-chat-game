@@ -722,6 +722,63 @@ export const FENCE_LINES: FenceLineDef[] = [
 /** Çit aralığı (birim) — çıtalar ve korkuluklar bunu kullanır. */
 export const FENCE_SPACING = 0.28;
 
+/* ════════════════════════════════════════════════════════════
+   DİKEY SOKAK KENARI ÇİTLERİ — çime geçişi kesen hatlar
+
+   Sınır çitleri (`FENCE_LINES`) yalnızca YATAYDI (sabit Z). Dikey ara sokaklar
+   bu hatları kestiği için sokak ağzında hiç çit kalmıyordu: oyuncu asfalt
+   şeritte dururken iki yanı (ve güneyde önü) çitsiz çim olarak görünüyordu —
+   ekran görüntüsündeki "yolun ortasında çimen" hissi. Aşağıdaki kenarlar
+   sokağın TAM asfalt kenarına oturur (X = sokak ± `SIDE_STREET_W`/2) ve
+   yalnızca ÇİM boyunca çekilir; kaldırım/cadde bantlarında (oralarda zaten
+   çim yok) çit yoktur.
+   ════════════════════════════════════════════════════════════ */
+/** Z boyunca uzanan (sabit X) çit kenarı — sokak asfaltı ↔ çim sınırı. */
+export interface FenceEdgeDef {
+  /** Hattın sabit X'i — sokak asfaltı ile çimin birleştiği çizgi. */
+  x: number;
+  /** Güney ucu (büyük Z). */
+  startZ: number;
+  /** Kuzey ucu (küçük Z). */
+  endZ: number;
+  enabled: boolean;
+}
+
+/**
+ * Sokak kenarında çit gereken çim aralıkları. İki bant:
+ *   · güney ağız : güney kaldırım ↔ çim hattından (0.0) sokağın güney ucuna (4.0)
+ *   · kuzey çim  : kuzey kaldırım (-7.2) ↔ dükkan önü çim tepesi (-11.2)
+ */
+const FENCE_EDGE_SPANS: readonly { south: number; north: number }[] = [
+  { south: SIDE_STREET_SOUTH, north: ZONE.southGrassTop },
+  { south: ZONE.northGrassBot, north: ZONE.northGrassTop },
+];
+
+/** Her sokak için iki kenar (batı/doğu) × iki çim bandı = 4 kenar. */
+export const FENCE_EDGES: FenceEdgeDef[] = SIDE_STREETS.flatMap((sx) =>
+  [-1, 1].flatMap((side) =>
+    FENCE_EDGE_SPANS.map((span) => ({
+      x: sx + side * (SIDE_STREET_W / 2),
+      startZ: span.south,
+      endZ: span.north,
+      enabled: true,
+    })),
+  ),
+);
+
+/**
+ * Sokağın GÜNEY UCUNU kapatan yatay hat (Z = sokak ağzının bittiği çizgi).
+ * Sokak burada harita kenarında çıkmaza girer; kapak olmadan asfalt çim içinde
+ * yarıda kesilmiş gibi görünüyordu. Kapak, yürünebilir sınırın (`WORLD_BOUNDS`)
+ * tam üstünde durur: görünen çit ile çarpışma hattı aynı yerdir.
+ */
+export const FENCE_CAPS: FenceLineDef[] = SIDE_STREETS.map((sx) => ({
+  z: SIDE_STREET_SOUTH,
+  startX: sx - SIDE_STREET_W / 2,
+  endX: sx + SIDE_STREET_W / 2,
+  enabled: true,
+}));
+
 // ─── SVG WORLD DIMENSIONS (for backward compatibility) ───
 export const SVG_WORLD_W = WORLD_WIDTH * S;
 export const SVG_WORLD_H = WORLD_DEPTH * S;
