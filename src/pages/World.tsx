@@ -34,7 +34,6 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import BattleScene from "@/components/world/BattleScene";
-import { BattleJoystick } from "@/components/world/battle/BattleJoystick";
 import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import { api } from "@/convex/_generated/api";
@@ -948,7 +947,6 @@ export default function World() {
   const movingRef = useRef(false);
   const vyRef = useRef(0); // vertical direction: -1 up, +1 down, 0 idle
   const keysRef = useRef(new Set<string>());
-  const joystickRef = useRef({ x: 0, y: 0 });
   const viewRef = useRef({ vw: WORLD_W, vh: WORLD_H });
   const camRef = useRef({ x: -1, y: -1 });
 
@@ -1436,10 +1434,7 @@ export default function World() {
           }
           // Tuşa basmak ya da yere dokunmak kalkma sayılır; dokunma hedefi
           // SİLİNMEZ, böylece karakter kalkıp o noktaya yürür.
-          if (
-            keysRef.current.size > 0 || targetRef.current !== null ||
-            Math.hypot(joystickRef.current.x, joystickRef.current.y) > 0.1
-          ) {
+          if (keysRef.current.size > 0 || targetRef.current !== null) {
             standUp();
           } else if (seatMoveRef.current === null) {
             targetRef.current = null;
@@ -1492,19 +1487,13 @@ export default function World() {
           if (keys.has("ArrowRight") || keys.has("KeyD")) vx += 1;
           if (keys.has("ArrowUp") || keys.has("KeyW")) vy -= 1;
           if (keys.has("ArrowDown") || keys.has("KeyS")) vy += 1;
-          const stick = joystickRef.current;
-          const stickMoving = Math.hypot(stick.x, stick.y) > 0.1;
-          if (vx === 0 && vy === 0 && stickMoving) {
-            vx = stick.x;
-            vy = stick.y;
-          }
           // Clamp to 4 cardinal directions only — no diagonal movement.
           if (vx !== 0 && vy !== 0) {
             if (Math.abs(vx) >= Math.abs(vy)) vy = 0;
             else vx = 0;
           }
           // Cancel auto-walk when the player takes over with the keyboard.
-          if ((keysRef.current.size > 0 || stickMoving) && targetRef.current) {
+          if (keysRef.current.size > 0 && targetRef.current) {
             targetRef.current = null;
             waypointsRef.current = [];
             waypointIdxRef.current = 0;
@@ -2674,8 +2663,6 @@ export default function World() {
             glbTest={glbTestParam}
             presenceSessionId={sessionId}
           />
-
-          {!battle && !pvpBattle && <BattleJoystick stickRef={joystickRef} streetOnly />}
 
           {/* character profile card — tapping a character opens it here */}
           <AnimatePresence>

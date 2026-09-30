@@ -26,20 +26,17 @@ import { useEffect, useRef } from "react";
 export function BattleJoystick({
   stickRef,
   disabled = false,
-  streetOnly = false,
 }: {
   stickRef: MutableRefObject<{ x: number; y: number }>;
   /** Ek olarak kilitlenmek istendiğinde (örn. sonuç ekranı açıkken). */
   disabled?: boolean;
-  /** Cadde: savaş HUD'u ve yatay ekran zorunluluğu olmadan hareket kolu. */
-  streetOnly?: boolean;
 }) {
   // Savaş alanı yatay (landscape) düzende oynanır. Telefon dikeyken kol
   // girdisi yok sayılır ve "yan çevir" yönergesi ekranı kaplar; yönerge
   // burada render edilir çünkü bu katman iki arenada da (bot + PvP) her
   // zaman takılıdır.
   const gate = useLandscapeGate();
-  const locked = disabled || (!streetOnly && gate.required);
+  const locked = disabled || gate.required;
   const baseRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -122,17 +119,17 @@ export function BattleJoystick({
       {/* MOBA savaş arayüzü: üst şerit, minimap, sağ ray, yetenek barı ve
           rakip kartı arena üzerine buradan bindirilir. Sahne store kaydını
           yapar; kayıt yoksa hiçbir şey render edilmez (eski HUD yedek kalır). */}
-      {!streetOnly && <MobaArenaChrome storeKey={stickRef} />}
+      <MobaArenaChrome storeKey={stickRef} />
       {/* ⚔️ Yakın dövüş düğmesi (Kraliyet Savaşçısı'nın 3. yeteneği) sağ-alt
           kümenin kavis noktasına ayrı bir katman olarak çizilir: sahne
           dosyalarındaki küme JSX'i araç penceresinin dışında kalıyor.
           Dokunuş yine sahnenin `actions.melee()` eylemine gider. */}
-      {!streetOnly && <MobaMeleeAction storeKey={stickRef} />}
+      <MobaMeleeAction storeKey={stickRef} />
       {/* 🧨 Samurayın ulti düğmesi (bomba fırlatma): Kraliyet ultisi sahne
           dosyalarında yaşadığı, samurayınki orada çizilmediği için buradan
           bindirilir. Yalnız bomba kitinde görünür (live.bomb). */}
-      {!streetOnly && <MobaUltAction storeKey={stickRef} />}
-      {!streetOnly && <QaPanel />}
+      <MobaUltAction storeKey={stickRef} />
+      <QaPanel />
       <div
         ref={baseRef}
         className="battle-joystick battle-hud-stick pointer-events-auto absolute bottom-4 left-4 z-10 size-28 touch-none rounded-full border-4 border-white/40 bg-white/15 backdrop-blur-[2px]"
@@ -163,7 +160,6 @@ export function BattleJoystick({
         onLostPointerCapture={(e) => {
           if (activePointerRef.current === e.pointerId) reset();
         }}
-        onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => e.preventDefault()}
         aria-label="Hareket joystick"
       >
@@ -176,7 +172,7 @@ export function BattleJoystick({
       {/* Telefon yatay değilse savaş başlamaz: tüm ekranı kaplayan yönerge
           ekranı (z-[100]) kontrol katmanıyla birlikte gelir. */}
       <LandscapeGate
-        visible={!streetOnly && gate.required}
+        visible={gate.required}
         touch={gate.touch}
         canLock={gate.canLock}
       />
