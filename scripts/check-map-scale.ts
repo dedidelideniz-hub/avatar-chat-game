@@ -291,22 +291,46 @@ for (let i = 0; i < props.length; i++) {
 check(clashes.length === 0, `prop ayak izleri çakışmıyor (${props.length} prop tarandı)`, clashes.slice(0, 5).join(" · ") || "çakışma yok");
 
 // Çit hatları proplardan ve sokak ağızlarından uzak olmalı.
+// Dikey sokak asfaltı YALNIZCA Z `SIDE_STREET_SOUTH` … `backNorthWalkTop`
+// arasında uzanır; yalnızca bu aralıktaki hatlar bir sokak ağzından geçer.
+// Arka çim hattı (-17.4) bu aralığın dışındadır → ağız yok, bölünmemeli.
+const crossedByAlley = (z: number) =>
+  z <= SIDE_STREET_SOUTH + 1e-9 && z >= ZONE.backNorthWalkTop - 1e-9;
 const fenceHits: string[] = [];
 const fenceInStreet: string[] = [];
+const splitLines = FENCE_LINES.filter((l) => crossedByAlley(l.z));
+const solidLines = FENCE_LINES.filter((l) => !crossedByAlley(l.z));
 for (const line of FENCE_LINES.filter((l) => l.enabled)) {
   for (const p of props) {
     if (p.x >= line.startX - p.hx && p.x <= line.endX + p.hx && Math.abs(p.z - line.z) < p.hz)
       fenceHits.push(`${p.name} ↔ çit z=${line.z}`);
   }
-  if (SIDE_STREETS.some((sx) => sx + SIDE_STREET_W / 2 > line.startX && sx - SIDE_STREET_W / 2 < line.endX))
+  if (
+    crossedByAlley(line.z) &&
+    SIDE_STREETS.some((sx) => sx + SIDE_STREET_W / 2 > line.startX && sx - SIDE_STREET_W / 2 < line.endX)
+  )
     fenceInStreet.push(`çit z=${line.z} x ${f(line.startX)}..${f(line.endX)}`);
 }
 check(fenceHits.length === 0, "sınır çitleri proplara girmiyor", fenceHits.slice(0, 4).join(" · ") || "temiz");
-check(fenceInStreet.length === 0, "çitler dikey sokak ağızlarını kapatmıyor", fenceInStreet.join(" · ") || `${FENCE_LINES.length} parça`);
 check(
-  FENCE_LINES.length === 4 * 3,
-  "üç çit hattı da sokak ağızlarında bölünüyor",
-  `${FENCE_LINES.length} parça (3 hat × 4 parça)`,
+  fenceInStreet.length === 0,
+  "sokak ağzından geçen çitler ağzı kapatmıyor",
+  fenceInStreet.join(" · ") || `${splitLines.length} parça bölündü`,
+);
+check(
+  splitLines.length === 4 * 2 && solidLines.length === 1,
+  "yalnızca sokağın kestiği hatlar ağızlarda bölünüyor",
+  `${splitLines.length} parça (2 hat × 4) + arka hat ${solidLines.length} parça`,
+);
+check(
+  solidLines.length === 1 &&
+    Math.abs(solidLines[0].startX + WORLD_WIDTH / 2) < 1e-9 &&
+    Math.abs(solidLines[0].endX - WORLD_WIDTH / 2) < 1e-9 &&
+    Math.abs(solidLines[0].z - ZONE.backGrassTop) < 1e-9,
+  "arka yol çiti kesintisiz (ağız yok, duvar gibi kesilmiyor)",
+  solidLines.length === 1
+    ? `Z ${solidLines[0].z} · X ${solidLines[0].startX}..${solidLines[0].endX}`
+    : "tek parça değil",
 );
 
 /* ── 7) Binalar ───────────────────────────────────────────── */
@@ -472,7 +496,7 @@ check(
     : "kaldırım/cadde üstünde çit yok",
 );
 
-// Kenar çitleri proplara (ağaç/lamba/çöp…) girmemeli.
+// Kenar çitleri proplara (ağaç/lamba/çöp…) ve BİNALARA girmemeli.
 const edgeHits: string[] = [];
 for (const e of streetEdges) {
   const south = Math.max(e.startZ, e.endZ);
@@ -480,6 +504,10 @@ for (const e of streetEdges) {
   for (const p of props) {
     if (Math.abs(p.x - e.x) < p.hx && p.z + p.hz > north && p.z - p.hz < south)
       edgeHits.push(`${p.name} ↔ kenar X ${f(e.x)}`);
+  }
+  for (const b of BUILDINGS) {
+    if (Math.abs(b.x - e.x) < b.w / 2 && b.frontZ > north && b.frontZ - b.d < south)
+      edgeHits.push(`${b.signText} ↔ kenar X ${f(e.x)}`);
   }
 }
 check(

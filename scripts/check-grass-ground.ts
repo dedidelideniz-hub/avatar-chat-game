@@ -35,6 +35,7 @@ import {
 } from "../src/engine/grassGroundPrep";
 import {
   BENCHES,
+  BUILDINGS,
   BUS_STOPS,
   FENCE_CAPS,
   FENCE_EDGES,
@@ -303,15 +304,28 @@ for (const edge of FENCE_EDGES) {
   const label =
     Math.abs(spanSouth - SIDE_STREET_SOUTH) < 1e-9
       ? "güney ağız (kaldırım → sokak ucu)"
-      : Math.abs(spanNorth - ZONE.northGrassTop) < 1e-9
-        ? "kuzey çim şeridi (kaldırım → dükkan önü)"
+      : Math.abs(spanNorth - ZONE.backWalkTop) < 1e-9
+        ? "kuzey: çim şeridi + bina arası (kaldırım → arka kaldırım)"
         : "SERBEST (çim bandı değil!)";
 
-  const clash = [...LAMPS, ...BENCHES, ...STALLS, ...TRASH_CANS, ...BUS_STOPS].filter(
+  const clash = [
+    ...LAMPS,
+    ...BENCHES,
+    ...STALLS,
+    ...TRASH_CANS,
+    ...BUS_STOPS,
+  ].filter(
     (prop) =>
       Math.abs(prop.x - edge.x) < 0.35 &&
       prop.z < spanSouth + 0.2 &&
       prop.z > spanNorth - 0.2,
+  );
+  // Binalar da ayak izi: kenar çiti dükkan bloklarına girmemeli.
+  const clashBuildings = BUILDINGS.filter(
+    (b) =>
+      Math.abs(b.x - edge.x) < b.w / 2 &&
+      b.frontZ > spanNorth &&
+      b.frontZ - b.d < spanSouth,
   );
 
   console.log(
@@ -323,7 +337,8 @@ for (const edge of FENCE_EDGES) {
       `    kesintisizlik: en büyük çıta boşluğu ${maxGap.toFixed(4)} ≤ adım → ${spanOk ? "BOŞLUK YOK ✔" : "BOŞLUK VAR ✘"}\n` +
       `    hiza: çıta tabanı y=${SLAT_BOTTOM.toFixed(3)} · zemin y=${GRASS_GROUND_Y.toFixed(3)} → ` +
       `${bottomOk ? "TAM ZEMİN ÜSTÜNDE ✔" : "HİZASIZ ✘"}\n` +
-      `    prop çakışması: ${clash.length === 0 ? "yok ✔" : `${clash.length} prop çok yakın ✘`}`,
+      `    prop çakışması: ${clash.length === 0 ? "yok ✔" : `${clash.length} prop çok yakın ✘`} · ` +
+      `bina çakışması: ${clashBuildings.length === 0 ? "yok ✔" : `${clashBuildings.length} bina ✘`}`,
   );
 }
 

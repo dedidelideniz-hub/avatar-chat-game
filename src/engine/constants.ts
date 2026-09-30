@@ -710,13 +710,20 @@ function fenceSegments(z: number): FenceLineDef[] {
 }
 
 /**
- * Üç hat: güney çim (0.0), kuzey çim (-7.2) ve arka çim (-17.4). Dikey
- * sokaklar bu hatların hepsini kestiği için her hat sokak ağızlarında bölünür.
+ * Üç hat: güney çim (0.0), kuzey çim (-7.2) ve arka çim (-17.4).
+ *
+ * Yalnızca DİKEY SOKAKLARIN KESTİĞİ hatlar bölünür: sokak asfaltı Z
+ * `SIDE_STREET_SOUTH` (+4.0) ile `backNorthWalkTop` (-16.4) arasında uzanır, yani
+ * güney (+0.0) ve kuzey (-7.2) hatlarını keser, ARKA hat (-17.4) ile
+ * kesişmez. Arka hat da eskiden bölünüyordu → oyuncu arka yolun kuzey
+ * sınırında (`WORLD_BOUNDS`) çitin ortasındaki boşlukta çıplak çimle
+ * kalıyordu (ekran görüntüsü). Arka hat artık KESİNTİSİZDİR: sokak ağzı
+ * olmadığı için çit duvar gibi kesilmemeli.
  */
 export const FENCE_LINES: FenceLineDef[] = [
   ...fenceSegments(ZONE.southGrassTop),
   ...fenceSegments(ZONE.northGrassBot),
-  ...fenceSegments(ZONE.backGrassTop),
+  { z: ZONE.backGrassTop, startX: -WORLD_WIDTH / 2, endX: WORLD_WIDTH / 2, enabled: true },
 ];
 
 /** Çit aralığı (birim) — çıtalar ve korkuluklar bunu kullanır. */
@@ -747,11 +754,16 @@ export interface FenceEdgeDef {
 /**
  * Sokak kenarında çit gereken çim aralıkları. İki bant:
  *   · güney ağız : güney kaldırım ↔ çim hattından (0.0) sokağın güney ucuna (4.0)
- *   · kuzey çim  : kuzey kaldırım (-7.2) ↔ dükkan önü çim tepesi (-11.2)
+ *   · kuzey taraf: kuzey kaldırım (-7.2) ↔ ARKA KALDIRIM (-13.0)
+ *
+ * Kuzey kenar çim şeridinde (…-11.2) bitmez, arka kaldırıma kadar iner: dükkan
+ * bloklarının ARASINDA da (Z -10.9…-12.9) sokağın iki yanında ~0.6 birimlik
+ * çıplak çim dilimi kalıyor ve orası arka yola bakar — çit olmadan tam da
+ * ekran görüntüsündeki "çitsiz çim" görünümü oluşuyordu.
  */
 const FENCE_EDGE_SPANS: readonly { south: number; north: number }[] = [
   { south: SIDE_STREET_SOUTH, north: ZONE.southGrassTop },
-  { south: ZONE.northGrassBot, north: ZONE.northGrassTop },
+  { south: ZONE.northGrassBot, north: ZONE.backWalkTop },
 ];
 
 /** Her sokak için iki kenar (batı/doğu) × iki çim bandı = 4 kenar. */
