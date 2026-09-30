@@ -498,6 +498,74 @@ export const WALKABLE_ZONES: Rect[] = [
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace
 export const PLAYER_RADIUS = 20;
 
+/**
+ * Bir nokta yürünebilir caddede mi? (tezgâhların içi hariç)
+ *
+ * Yürünebilirlik MANTIKSAL alandır, görünen zemine göre değil: çitlerin
+ * ÇİM tarafında kalan her yer yürünemez. Bu yüzden oyuncunun konumu her karede
+ * bu testten geçmek zorundadır (bkz. `nearestWalkable`).
+ */
+export function inWalkable(x: number, y: number): boolean {
+  return (
+    WALKABLE_ZONES.some(
+      (z) => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h,
+    ) &&
+    !OBSTACLES.some(
+      (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+    )
+  );
+}
+
+/**
+ * Konumu YÜRÜNEBİLİR alana geri çeker — oyuncu çitin ilerisine geçemez.
+ *
+ * Neden gerekli: konumu değiştiren tek şey oyuncunun kendi girdisi değil.
+ * Karakter AYRIŞTIRMA itmesi (botlar, satıcılar, diğer oyuncular) konumu
+ * `PLAYER_RADIUS * 2.2` kadar yana taşır; bu itme eskiden yalnızca
+ * `WORLD_BOUNDS`e kırpılıyordu. Yani bir bot oyuncuyu çitin ÖTESİNE, çime
+ * itebiliyordu ve orada yürünebilir hiçbir komşu olmadığı için karakter
+ * kilitlenip "takılıp kalıyordu".
+ *
+ * Çözüm: yürünebilir bölgelerin birleşimine EN YAKIN nokta bulunur (kenarlara
+ * dik izdüşüm) ve oyuncu oraya alınır:
+ *   · zaten geçerliyse konum AYNEN korunur (gereksiz oynama yok),
+ *   · çitin ötesine taşmışsa en yakın cadde kenarına geri çekilir,
+ *   · izdüşüm bir tezgâhın (engel) içine düşerse eski GEÇERLİ konum korunur.
+ *
+ * Böylece oyuncu çim üzerinde ASLA kalamaz ve sıkışamaz.
+ */
+export function nearestWalkable(
+  x: number,
+  y: number,
+  /** İzdüşüm de geçersiz olursa dönülecek son geçerli konum. */
+  fallback?: { x: number; y: number },
+): { x: number; y: number } {
+  if (inWalkable(x, y)) return { x, y };
+
+  let best = Number.POSITIVE_INFINITY;
+  let bx = x;
+  let by = y;
+  for (const z of WALKABLE_ZONES) {
+    const cx = Math.min(Math.max(x, z.x), z.x + z.w);
+    const cy = Math.min(Math.max(y, z.y), z.y + z.h);
+    const d = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+    if (d < best) {
+      best = d;
+      bx = cx;
+      by = cy;
+    }
+  }
+
+  // İzdüşüm noktası geçerliyse (yani tezgâha denk gelmiyorsa) onu kullan.
+  if (inWalkable(bx, by)) return { x: bx, y: by };
+
+  // Aksi hâlde son geçerli konuma dön (yoksa izdüşümü kullan).
+  if (fallback && inWalkable(fallback.x, fallback.y)) {
+    return { x: fallback.x, y: fallback.y };
+  }
+  return { x: bx, y: by };
+}
+
 /** Axis-aligned rectangle in world coordinates. */
 export interface Rect {
   x: number;

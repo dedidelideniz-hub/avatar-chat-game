@@ -57,8 +57,10 @@ import {
   formatCoins,
   GIFT_BOX,
   GIFT_CLICK_RADIUS,
+  inWalkable,
   MAP_H,
   MAP_W,
+  nearestWalkable,
   OBSTACLES,
   PLAYER_RADIUS,
   PLAYER_SPEED,
@@ -801,17 +803,11 @@ function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   return dx * dx + dy * dy < r * r;
 }
 
-/** True when the point is on the walkable street (and not inside an obstacle). */
-function inWalkable(x: number, y: number) {
-  return (
-    WALKABLE_ZONES.some(
-      (z) => x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h,
-    ) &&
-    !OBSTACLES.some(
-      (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
-    )
-  );
-}
+/* Yürünebilirlik testi ve konumu caddeye geri çeken yardımcılar
+   (`inWalkable`, `nearestWalkable`) `@/lib/shop` içindedir: çitlerin
+   belirlediği yürünebilir alan oradaki `WALKABLE_ZONES` ile tanımlıdır ve
+   bu fonksiyonlar ölçüm betiklerinden de çağrılır
+   (bkz. `scripts/check-walkable-clamp.ts`). */
 
 /**
  * 🪑 Bank oturma noktaları (px) — 3D dünyada tanımlı BENCHES'ten türetilir,
@@ -1760,10 +1756,15 @@ export default function World() {
                 }
               }
             }
-            if (!inWalkable(px, py)) {
-              px = pos.x;
-              py = pos.y;
-            }
+            // ── 2b. Çit sınırı: İPTAL değil, KAYMA ──
+            // Eskiden hedef geçersizse konum tümden iptal ediliyordu
+            // (`px = pos.x`); çapraz joystick girdisinde ya da çite
+            // dayanınca karakter "takılıp kalıyordu". Artık konum
+            // yürünebilir alana İZDÜŞÜRÜLÜR: kenar boyunca kayar, ama
+            // asla çitin ilerisine (çime) çıkamaz.
+            const snapped = nearestWalkable(px, py, pos);
+            px = snapped.x;
+            py = snapped.y;
 
             // ── 3. Character separation: push apart if overlapping ──
             const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
@@ -1797,12 +1798,17 @@ export default function World() {
                 py += (dy / dist) * push;
               }
             }
-            // Clamp back to world bounds after separation
+            // ── 4. Ayrıştırma itmesinden sonra SON GEÇERLİ KONUM ──
+            // İtme (botlar / diğer oyuncular) oyuncuyu caddenin dışına
+            // taşıyabilir; eskiden burada yalnızca `WORLD_BOUNDS`
+            // uygulanıyordu, yani oyuncu çimin üzerinde kalıp sıkışabiliyordu.
+            // Artık konum her karede yürünebilir alana geri çekilir.
             px = Math.min(Math.max(px, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
             py = Math.min(Math.max(py, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
+            const settled = nearestWalkable(px, py, pos);
 
-            pos.x = px;
-            pos.y = py;
+            pos.x = settled.x;
+            pos.y = settled.y;
             // Update facing from horizontal movement direction. When moving
             // purely vertically, preserve the last horizontal facing so the
             // character doesn't snap to an arbitrary direction.
