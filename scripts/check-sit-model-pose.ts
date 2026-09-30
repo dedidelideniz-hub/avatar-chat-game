@@ -112,7 +112,11 @@ for (const file of FILES) {
     const group = new THREE.Group();
     group.add(inner);
 
-    const bench = BENCHES.find((b) => (b.facing ?? 1) === facing)!;
+    // Poz testi bankın KONUMUNDAN bağımsızdır; önemli olan yöndür (facing).
+    // Haritada o yönde bank yoksa (ör. hepsi kuzey kaldırımda, facing 1)
+    // sentetik bir tanım kullanılır ki poz geometrisi yine iki yönde sınansın.
+    const bench =
+      BENCHES.find((b) => (b.facing ?? 1) === facing) ?? { x: 0, z: -6.85, facing };
     const spot = benchSeatSpot(bench);
     group.position.set(spot.x, 0.02, spot.z);
     group.rotation.y = benchSeatYaw(bench);
@@ -317,7 +321,9 @@ check(
 );
 
 // Depo davranışı: banka oturulunca geçerli SeatState, kalkınca null.
-setBenchSeatState({ near: 3, seated: 3 });
+// Dizin BENCHES'ten türetilir (sabit "3" yazmak bank listesi kısalınca kırılır).
+const storeIndex = BENCHES.length - 1;
+setBenchSeatState({ near: storeIndex, seated: storeIndex });
 const storeSeat = getSeatState();
 check(
   "banka oturulunca depo geçerli oturma durumu (facing + yaw) veriyor",

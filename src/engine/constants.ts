@@ -415,17 +415,14 @@ export interface BenchDef {
 }
 
 export const BENCHES: BenchDef[] = [
-  // Kuzey kaldırım — bank kaldırımın ORTASINDA değil KENARINDA durur: arkası
-  // çim/çit hattına (-7.2) dönük, önü CADDEYE bakar. `z = -6.85`, çit hattına
-  // 0.35 birim mesafede kalır; böylece yolu tıkamaz, "yolun ortasında"
-  // görünmez. İkisi de bir otobüs durağının yanındadır (durak kenarı).
-  { x: -3.9, z: -6.85 },  // kuzey kaldırım, 34 durağının yanı (lamba -3 ile durak -5.3 arası)
-  { x: 4.5,  z: -6.85 },  // kuzey kaldırım, PASTANE/ÇİÇEKÇİ önü, kaldırım kenarı
-  // Güney kaldırım — arkası çim/çit hattına (0.0) dönük, yüz CADDEYE dönük.
-  { x: -15,  z: -0.35, facing: -1 },
-  // Arka kaldırım — TEK bank, o da 7 durağının yanında (görünmeyen köşelere
-  // dağıtılmadı). Sırtı dükkân arka duvarına (-12.9), yüz arka caddeye dönük.
-  { x: 7.5,  z: -13.3, facing: -1 },
+  // Sadece 3 bank, hepsi ANA CADDE (kuzey) kaldırımının ÇİM/ÇİT KENARINDA:
+  // `z = -6.85` → arkalık çit hattına (-7.2) yaslanır, önü CADDEYE bakar.
+  // Kaldırımın ortasında (yürüyüş hattında) bank YOK; yaya geçitlerinin (X
+  // -16/0/16) ve otobüs duraklarının (sokak mobilyası) üzerinde de bank YOK.
+  // Bank ayak izi 1.6 birim geniş → komşu prop'lardan en az ~1.7 birim uzak.
+  { x: -10.5, z: -6.85 },  // lamba -14 ile -7 arası (OYUNCAK/FIRIN önü)
+  { x: 4.5,   z: -6.85 },  // PASTANE/ÇİÇEKÇİ önü (çöp 2.4 ile lamba 7 arası)
+  { x: 19,    z: -6.85 },  // doğu ucu (lamba 21 ile geçit 16 arası, AYAKKABI/KUYUM önü)
 ];
 
 // ─── BENCH SITTING GEOMETRY ───

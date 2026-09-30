@@ -26,6 +26,8 @@ import {
   benchSeatYaw,
   benchStandSpot,
   BUILDINGS,
+  BUS_STOPS,
+  LAMPS,
   PLAYER_3D_HEIGHT,
   S,
   SIT_LEAN,
@@ -218,31 +220,47 @@ const inBand = (z: number, a: number, b: number) =>
   z > Math.min(a, b) && z < Math.max(a, b);
 const inNorthWalk = (z: number) =>
   inBand(z, ZONE.northSidewalkTop, ZONE.northSidewalkBot);
-const inSouthWalk = (z: number) => inBand(z, ZONE.southGrassTop, ZONE.roadTop);
-const inBackWalk = (z: number) => inBand(z, ZONE.backWalkTop, ZONE.backWalkBot);
+const southWalkBenches = BENCHES.filter((b) =>
+  inBand(b.z, ZONE.southGrassTop, ZONE.roadTop),
+);
+const backWalkBenches = BENCHES.filter((b) =>
+  inBand(b.z, ZONE.backWalkTop, ZONE.backWalkBot),
+);
 const northWalkBenches = BENCHES.filter((b) => inNorthWalk(b.z));
-const southWalkBenches = BENCHES.filter((b) => inSouthWalk(b.z));
-const backWalkBenches = BENCHES.filter((b) => inBackWalk(b.z));
+check(
+  "Tüm banklar ANA CADDE kaldırımında (yola/arka sokağa konmadı)",
+  northWalkBenches.length === BENCHES.length &&
+    southWalkBenches.length === 0 &&
+    backWalkBenches.length === 0,
+  `${northWalkBenches.length} kuzey · ${southWalkBenches.length} güney · ${backWalkBenches.length} arka`,
+);
 check(
   "Kuzey kaldırım bankları CADDEYE bakar (facing 1)",
   northWalkBenches.length > 0 && northWalkBenches.every((b) => benchFacing(b) === 1),
   `${northWalkBenches.length} bank`,
 );
+// Bank ayak izi (1.6 × ~0.56) ne yaya geçidine (dikey sokak ağzı) ne de bir
+// otobüs durağına/lambaya girmeli. Ekran görüntüsündeki "bank lambaya/durağa
+// yapışmış" ve "yaya geçidinin ortasında" görüntüleri bunları yakalar.
+const BENCH_HALF_W = BENCH_WIDTH / 2;
+const benchBlockers = [...BUS_STOPS, ...LAMPS];
+const blockedOverlap = BENCHES.filter((b) => {
+  const inCrossing = SIDE_STREETS.some(
+    (sx) => Math.abs(b.x - sx) < SIDE_STREET_W / 2 + BENCH_HALF_W,
+  );
+  const onProp = benchBlockers.some(
+    (p) =>
+      Math.abs(b.x - p.x) < BENCH_HALF_W + 0.95 &&
+      Math.abs(b.z - p.z) < 0.6,
+  );
+  return inCrossing || onProp;
+});
 check(
-  "Güney kaldırım bankları CADDEYE bakar (facing -1)",
-  southWalkBenches.length > 0 && southWalkBenches.every((b) => benchFacing(b) === -1),
-  `${southWalkBenches.length} bank`,
-);
-check(
-  "Arka sokak bankları sokağa bakar (duvara sırt, facing -1)",
-  backWalkBenches.length > 0 && backWalkBenches.every((b) => benchFacing(b) === -1),
-  `${backWalkBenches.length} bank`,
-);
-check(
-  "Tüm banklar sınıflandırıldı (kaldırım bandı dışında bank yok)",
-  northWalkBenches.length + southWalkBenches.length + backWalkBenches.length ===
-    BENCHES.length,
-  `${northWalkBenches.length}+${southWalkBenches.length}+${backWalkBenches.length} / ${BENCHES.length}`,
+  "Hiçbir bank yaya geçidinin ya da durağın/lambanın üstünde değil",
+  blockedOverlap.length === 0,
+  blockedOverlap.length
+    ? blockedOverlap.map((b) => `x ${b.x}`).join(", ")
+    : "hepsi temiz",
 );
 
 // KESİN KURAL: oturan karakterin YÖNÜ yola bakar. `benchSeatYaw` (avatarın
@@ -301,21 +319,13 @@ for (let i = 0; i < seats.length; i++) {
 }
 check("Hiçbir bankta bacaklar binanın içine girmiyor", clear);
 
-const shopBackWalls = BUILDINGS.filter((b) => b.frontZ > ZONE.northGrassTop).map(
-  (b) => b.frontZ - b.d,
-);
-const shopBackWall = Math.min(...shopBackWalls);
+// Banklar artık arka sokağa / görünmeyen köşelere dağıtılmıyor: hepsi ana
+// cadde kaldırımının çim/çit kenarında. Arka sokakta bank YOK.
 const backBenches = BENCHES.filter((b) => b.z < ZONE.backWalkTop + 0.5);
 check(
-  "Arka sokak bankları arkalığı duvara dönük (facing -1)",
-  backBenches.length > 0 && backBenches.every((b) => benchFacing(b) === -1),
-  `${backBenches.length} bank, duvar Z ${shopBackWall.toFixed(2)}`,
-);
-const backSeat = backBenches[0];
-check(
-  "Arka bankın bacakları sokakta (duvarın kuzeyinde)",
-  backSeat.z + reach * benchFacing(backSeat) < shopBackWall,
-  `ayak z ${(backSeat.z + reach * benchFacing(backSeat)).toFixed(2)} < duvar ${shopBackWall.toFixed(2)}`,
+  "Arka sokakta bank yok (görünmeyen köşelere konmadı)",
+  backBenches.length === 0,
+  backBenches.length ? backBenches.map((b) => `x ${b.x}`).join(", ") : "yok",
 );
 check(
   "Kuzey kaldırım bankları caddeden yana (facing 1)",

@@ -18,6 +18,7 @@
  */
 import {
   BENCHES,
+  BENCH_WIDTH,
   BUILDINGS,
   BUS_STOPS,
   DIRECTION_SIGNS,
@@ -236,7 +237,9 @@ const add = (name: string, x: number, z: number, hx: number, hz: number) => {
 
 STALLS.forEach((s, i) => add(`tezgâh ${VENDORS[i].short}`, s.x, s.z, 0.8, 0.3));
 LAMPS.forEach((l, i) => add(`lamba ${i + 1}`, l.x, l.z, 0.3, 0.15));
-BENCHES.forEach((b, i) => add(`bank ${i + 1}`, b.x, b.z, 0.28, 0.12));
+// Bank ayak izi gerçek genişliğidir (BENCH_WIDTH) — dar sanılırsa banklar
+// lambaya/durağa yapışsa bile kontrol kaçırır.
+BENCHES.forEach((b, i) => add(`bank ${i + 1}`, b.x, b.z, BENCH_WIDTH / 2, 0.12));
 TRASH_CANS.forEach((t, i) => add(`çöp ${i + 1}`, t.x, t.z, 0.2, 0.2));
 BUS_STOPS.forEach((b) => add(`durak ${b.route}`, b.x, b.z, 0.9, 0.36));
 DIRECTION_SIGNS.forEach((d, i) => add(`tabela ${i + 1}`, d.x, d.z, 0.31, 0.1));
