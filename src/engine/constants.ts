@@ -415,18 +415,17 @@ export interface BenchDef {
 }
 
 export const BENCHES: BenchDef[] = [
-  { x: -10.5, z: -6.2 },  // kuzey kaldırım, lambaların arası
-  { x: 4.5,   z: -6.2 },  // kuzey kaldırım
-  { x: 18.5,  z: -6.2 },  // kuzey kaldırım, doğu ucu
-  // Güney kaldırım: arkalık çimenliğe, yüz CADDEYE dönük.
-  { x: -16,   z: -0.4, facing: -1 },
-  { x: -1,    z: -0.4, facing: -1 },
-  { x: 17,    z: -0.4, facing: -1 },
-  // Arka kaldırım — sokak ağızlarının dışında (|x| = 16 ve 0 boş kalır)
-  // Duvar (-12.9) hemen güneyde kaldığı için bu üçü kuzeye dönüktür.
-  { x: -9.6,  z: -13.5, facing: -1 },
-  { x: 3.6,   z: -13.5, facing: -1 },
-  { x: 18.6,  z: -13.5, facing: -1 },
+  // Kuzey kaldırım — bank kaldırımın ORTASINDA değil KENARINDA durur: arkası
+  // çim/çit hattına (-7.2) dönük, önü CADDEYE bakar. `z = -6.85`, çit hattına
+  // 0.35 birim mesafede kalır; böylece yolu tıkamaz, "yolun ortasında"
+  // görünmez. İkisi de bir otobüs durağının yanındadır (durak kenarı).
+  { x: -3.9, z: -6.85 },  // kuzey kaldırım, 34 durağının yanı (lamba -3 ile durak -5.3 arası)
+  { x: 4.5,  z: -6.85 },  // kuzey kaldırım, PASTANE/ÇİÇEKÇİ önü, kaldırım kenarı
+  // Güney kaldırım — arkası çim/çit hattına (0.0) dönük, yüz CADDEYE dönük.
+  { x: -15,  z: -0.35, facing: -1 },
+  // Arka kaldırım — TEK bank, o da 7 durağının yanında (görünmeyen köşelere
+  // dağıtılmadı). Sırtı dükkân arka duvarına (-12.9), yüz arka caddeye dönük.
+  { x: 7.5,  z: -13.3, facing: -1 },
 ];
 
 // ─── BENCH SITTING GEOMETRY ───
@@ -596,7 +595,7 @@ export interface TrashCanDef { x: number; z: number; }
 export const TRASH_CANS: TrashCanDef[] = [
   { x: -16.5, z: -5.55 }, // kuzey kaldırım, yol kenarı
   { x: 2.4,   z: -5.55 }, // kuzey kaldırım
-  { x: 9.5,   z: -5.55 }, // kuzey kaldırım, bankın yanı
+  { x: 9.5,   z: -5.55 }, // kuzey kaldırım, yol kenarı
   { x: 19.5,  z: -5.55 }, // kuzey kaldırım, doğu ucu
   { x: -19,   z: -0.55 }, // güney kaldırım
   { x: -8,    z: -0.55 }, // güney kaldırım
