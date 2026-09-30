@@ -370,6 +370,43 @@ export class BenchSitController {
     this.seated = false;
   }
 
+  /**
+   * Uyluğun aşağı eğimini modelin KENDİ bacak uzunluğundan ölçer.
+   *
+   * Kalça yüksekliği (minder + kalça dokusu) sabittir; bacak uzunluğu
+   * modelden modele değişir. Hedef: diz kalçanın ALTINA insin ve ayaklar
+   * yere mümkün olduğunca yaklaşsın:
+   *   sin(eğim) = (kalça yüksekliği − baldır) / uyluk
+   * Uzun bacaklı deri modellerinde bu değer küçüktür → ayaklar tam yere
+   * basar. Kısa bacaklı avatarda üst sınıra takılır → bacaklar bankın ön
+   * kenarından sarkar (ama diz yine kalçanın altında kalır).
+   */
+  private thighTilt(): number {
+    const { thighL, thighR, shinL, shinR } = this.bones;
+    const thigh = Math.max(
+      thighL ? this.boneLength(thighL, tipOf(thighL)) : 0,
+      thighR ? this.boneLength(thighR, tipOf(thighR)) : 0,
+    );
+    const shin = Math.max(
+      shinL ? this.boneLength(shinL, tipOf(shinL)) : 0,
+      shinR ? this.boneLength(shinR, tipOf(shinR)) : 0,
+    );
+    if (thigh <= 1e-5 || shin <= 1e-5) return SIT_THIGH_TILT_MIN * 0.1;
+    const hipY = BENCH_SEAT_TOP + this.contact;
+    return Math.min(
+      SIT_THIGH_TILT_MAX,
+      Math.max(SIT_THIGH_TILT_MIN, (hipY - shin) / thigh),
+    );
+  }
+
+  /** İki kemiğin dünya uzaklığı (taban pozda çağrılır). */
+  private boneLength(a: THREE.Object3D, b: THREE.Object3D | null): number {
+    if (!b) return 0;
+    a.getWorldPosition(this.anchor);
+    b.getWorldPosition(this.other);
+    return this.anchor.distanceTo(this.other);
+  }
+
   update(inner: THREE.Group, group: THREE.Group, facing: 1 | -1, dt: number) {
     if (!this.seated) return;
     this.elapsed = Math.min(SEAT_TRANSITION_SECONDS, this.elapsed + dt);
@@ -380,7 +417,8 @@ export class BenchSitController {
     inner.position.z = 0;
     inner.rotation.x = 0;
     group.updateMatrixWorld(true);
-    if (canSit(this.bones)) applySitPose(this.root, this.bones, facing, blend);
+    const tilt = this.thighTilt();
+    if (canSit(this.bones)) applySitPose(this.root, this.bones, facing, blend, tilt);
     else inner.rotation.x = -SIT_LEAN * blend;
     group.updateMatrixWorld(true);
 
@@ -427,6 +465,20 @@ const _thighPosL = new THREE.Vector3();
 const _thighPosR = new THREE.Vector3();
 const _modelRight = new THREE.Vector3(1, 0, 0);
 
+
+/**
+ * Otururken uyluğun öne-aşağı eğimi: sinüsü. NEDEN GEREKLİ:
+ * uyluk TAM YATAY olduğunda diz kalça ile AYNI yükseklikte kalır ve karakter
+ * "dizlerini toplamış" gibi okunur (ölçüldü: kalça 0.61 · diz 0.68 — diz
+ * kalçanın ÜSTÜNDE). Gerçek bank oturuşunda uyluk öne ve AŞAĞI iner, diz
+ * kalçanın altına düşer, baldır dikey kalır ve ayaklar yere yaklaşır.
+ *
+ * Eğim modele göre ölçeklenir: bacak uzunluğu bank yüksekliğine yetiyorsa
+ * ayaklar tam yere basar; kısa bacaklı tıknaz avatarlarda ise en fazla bu
+ * açıya kadar inilir ve bacaklar bankın ön kenarından doğal şekilde sarkar.
+ */
+export const SIT_THIGH_TILT_MAX = 0.65; // ≈ 41° aşağı
+const SIT_THIGH_TILT_MIN = -0.35; // ayaklar betona girmesin diye üst sınır
 
 /** Ayak kemiklerinin duruş (taban) konumu — bir kez yakalanır. */
 const basePosition = new WeakMap<THREE.Object3D, THREE.Vector3>();
@@ -525,12 +577,16 @@ function poseLeg(
  * 1 → tam oturma pozu. Her karede çağrılır.
  *
  * @param facing Bankın baktığı yön (+1 = +Z, -1 = -Z).
+ * @param thighTilt Uyluğun aşağı eğim sinüsü (bkz. `SIT_THIGH_TILT_MAX`).
+ *   Çağıran (koltuğa yerleştiren `BenchSitController`) modelin bacak
+ *   uzunluğuna göre ölçer; doğrudan çağrılarda neredeyse yatay kalır.
  */
 export function applySitPose(
   root: THREE.Object3D,
   bones: SitBones,
   facing: 1 | -1,
   blend: number,
+  thighTilt = 0.04,
 ) {
   if (blend <= 0) return;
   // Riglerin yerel X eksenleri farklıdır. Dünya uzayında yatay uyluk +
@@ -549,8 +605,9 @@ export function applySitPose(
     _sitLateral.copy(_modelRight).applyQuaternion(_parentQ).setY(0);
   }
   _sitLateral.normalize();
-  _thighDirL.copy(forward).addScaledVector(_sitLateral, 0.12).setY(-0.04).normalize();
-  _thighDirR.copy(forward).addScaledVector(_sitLateral, -0.12).setY(-0.04).normalize();
+  const cosTilt = Math.sqrt(Math.max(0, 1 - thighTilt * thighTilt));
+  _thighDirL.copy(forward).multiplyScalar(cosTilt).addScaledVector(_sitLateral, 0.12).setY(-thighTilt).normalize();
+  _thighDirR.copy(forward).multiplyScalar(cosTilt).addScaledVector(_sitLateral, -0.12).setY(-thighTilt).normalize();
   _shinDirL.copy(_sitLateral).multiplyScalar(0.04).addScaledVector(forward, 0.04).setY(-1).normalize();
   _shinDirR.copy(_sitLateral).multiplyScalar(-0.04).addScaledVector(forward, 0.04).setY(-1).normalize();
   root.updateMatrixWorld(true);

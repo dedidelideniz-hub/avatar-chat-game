@@ -9,8 +9,8 @@ import { BenchSitController, captureStandingPose, canSit, findSitBones, tipOf } 
 };
 let passed = 0;
 const failures: string[] = [];
-function check(label: string, ok: boolean) {
-  console.log(`${ok ? "✔" : "✘"} ${label}`);
+function check(label: string, ok: boolean, detail = "") {
+  console.log((ok ? "✔ " : "✘ ") + label + (detail ? " - " + detail : ""));
   if (ok) passed++; else failures.push(label);
 }
 const loader = new GLTFLoader();
@@ -66,12 +66,26 @@ for (const file of ["character", "skin-savasci", "skin-samuray", "skin-sevalye"]
       const start = pos(thigh), knee = pos(tipOf(thigh)!), ankle = pos(tipOf(shin)!);
       const td = knee.clone().sub(start).normalize();
       const sd = ankle.clone().sub(pos(shin)).normalize();
-      check(`${label} ${side}: uyluk yatay ve yola uzanıyor`, td.z * facing > 0.95 && Math.abs(td.y) < 0.08);
-      check(`${label} ${side}: diz yaklaşık 90°, baldır dikey`, sd.y < -0.98 && Math.abs(td.dot(sd)) < 0.15);
+      check(
+        `${label} ${side}: uyluk yola uzanıyor ve diz ALTINA iniyor (çömelme yok)`,
+        td.z * facing > 0.55 && td.y < -0.1 && knee.y < start.y - 0.02,
+      );
+      // Uyluk öne-aşağı eğikken diz açısı 130° civarındadır (baldır dikey).
+      check(`${label} ${side}: diz belirgin bükülü, baldır dikey`, sd.y < -0.98 && Math.abs(td.dot(sd)) < 0.8);
+      check(
+        `${label} ${side}: ayak betona girmiyor, doğal yükseklikte`,
+        ankle.y > -0.03 && ankle.y < 0.35,
+        `ayak y ${ankle.y.toFixed(3)}`,
+      );
       check(`${label} ${side}: diz ve ayak ön kenarın dışında`, (knee.z - bench.z) * facing > BENCH_SEAT_DEPTH / 2 && (ankle.z - bench.z) * facing > BENCH_SEAT_DEPTH / 2);
       check(`${label} ${side}: bacak minderden aşağı sarkıyor`, ankle.y < BENCH_SEAT_TOP && ankle.y > -0.06 && start.y >= BENCH_SEAT_TOP + 0.19);
       check(`${label} ${side}: ayrık ayak da bacağı izliyor`, pos(foot).distanceTo(ankle) < 1e-4);
     }
+    const grounded = pos(tipOf(bones.shinL!)!).y < 0.06;
+    check(
+      `${label}: ayak yere basıyor (uzun bacaklar) veya doğal sarkıyor`,
+      grounded || pos(tipOf(bones.shinL!)!).y < 0.3,
+    );
     const before = pos(bones.footL!);
     for (let frame = 0; frame < 120; frame++) {
       mixer.update(1 / 60);

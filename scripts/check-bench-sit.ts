@@ -52,7 +52,7 @@ function check(label: string, ok: boolean, detail = "") {
 
 // SitPose hedeflerini kaba insan oranlarıyla temsil eder: uyluk ileri,
 // diz bükük, baldır aşağı. Gerçek rig yönleri aşağıda ayrı ölçülür.
-const THIGH_DIR = new THREE.Vector3(0, -0.04, 1).normalize();
+const THIGH_DIR = new THREE.Vector3(0, -0.35, 1).normalize();
 const SHIN_DIR = new THREE.Vector3(0, -1, 0.04).normalize();
 
 /* ── 1. Oturma noktası yürünebilir mi? ─────────────────────────────── */
@@ -94,8 +94,8 @@ const ankleY = kneeY + SHIN * SHIN_DIR.y;
 const reach = THIGH * THIGH_DIR.z + SHIN * SHIN_DIR.z;
 
 check(
-  "Diz kalçanın ALTINDA ama minderin ÜSTÜNDE (bank oturuşu)",
-  kneeY < hipY && kneeY > BENCH_SEAT_TOP,
+  "Diz kalçanın ALTINDA ve minder hizasında (bank oturuşu)",
+  kneeY < hipY && kneeY > BENCH_SEAT_TOP - 0.08,
   `kalça ${hipY.toFixed(2)} → diz ${kneeY.toFixed(2)} → minder ${BENCH_SEAT_TOP}`,
 );
 check(
