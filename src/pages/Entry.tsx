@@ -1,3 +1,4 @@
+import { CharacterColorPicker } from "@/components/entry/CharacterColorPicker";
 import { EntryCharacterStage } from "@/components/entry/EntryCharacterStage";
 import { EntryLoader } from "@/components/entry/EntryLoader";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,6 @@ import {
   Crown,
   Flame,
   Gamepad2,
-  Lock,
   LogOut,
   Palette,
   Trophy,
@@ -419,116 +419,17 @@ export default function Entry() {
               renkleriyle oynanır — onlarda renk seçilmez.
             </p>
 
-            {skinWorn ? (
-              <p className="mt-3 flex items-start gap-2 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2.5 text-[11px] font-bold leading-5 text-amber-100">
-                <Crown className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  <strong>{skinWorn.name}</strong> görünümü orijinal renklerini
-                  kullanır — hazır karakter modelleri boyanmaz. Kendi rengini
-                  seçmek için Stüdyodan <strong>varsayılan</strong> görünüme
-                  geç.
-                </span>
-              </p>
-            ) : (
-              <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-6">
-                {CHARACTER_COLORS.map((c) => {
-                  const selected = c.hex === color;
-                  const premium = c.vip === true;
-                  const locked = premium && !isVip;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        if (locked) {
-                          // VIP'ye özel premium renk: kilitliyken seçilemez,
-                          // nereden alınacağı söylenir.
-                          toast.info(
-                            `👑 ${c.label} VIP üyeliğe özel — VIP alınca çantana eklenir.`,
-                          );
-                          return;
-                        }
-                        // Renk hakkı kullanıldıysa palet kilitlidir.
-                        if (colorLocked && c.hex !== color) {
-                          toast.info(
-                            "🎨 Rengini bir kez seçtin — değiştirmek için 👑 VIP üyelik gerekiyor.",
-                          );
-                          return;
-                        }
-                        setColor(c.hex);
-                      }}
-                      aria-label={c.label}
-                      aria-pressed={selected}
-                      title={locked ? `${c.label} — VIP üyeliğe özel` : c.label}
-                      className={`group relative aspect-square w-full overflow-hidden rounded-2xl border transition-transform active:scale-95 ${
-                        selected
-                          ? "border-white/80 ring-2 ring-amber-300 ring-offset-2 ring-offset-[#0a0f1c]"
-                          : locked
-                            ? "border-amber-300/40"
-                            : "border-white/15 hover:border-white/40"
-                      } ${locked ? "opacity-60" : colorLocked ? "opacity-70" : ""}`}
-                      style={
-                        premium
-                          ? {
-                              // Premium renkler düz değil: parlayan ve yarı
-                              // saydam görünen bir küre (oyun içindeki
-                              // parlama + şeffaflık efektinin palet hali).
-                              background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${c.hex} 58%)`,
-                              boxShadow: `0 0 16px ${c.hex}, inset 0 0 12px rgba(255,255,255,0.35)`,
-                              borderColor: c.hex,
-                              opacity: locked ? 0.6 : 0.9,
-                            }
-                          : { backgroundColor: c.hex }
-                      }
-                    >
-                      {premium && (
-                        <span className="absolute right-1 top-1 flex items-center gap-0.5 rounded-full bg-black/55 px-1 py-0.5 text-[7px] font-black tracking-wider text-amber-200 backdrop-blur">
-                          {locked ? (
-                            <Lock className="size-2" />
-                          ) : (
-                            <Crown className="size-2" />
-                          )}
-                          VIP
-                        </span>
-                      )}
-                      {selected && (
-                        <span className="entry-color-pop absolute inset-0 rounded-2xl shadow-[0_0_22px_rgba(255,255,255,0.35)]" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {colorLocked ? (
-              <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-amber-100">
-                <Lock className="mt-0.5 size-3 shrink-0" />
-                Renk hakkını kullandın! Karakter rengi tek sefer seçilir —
-                değiştirmek için 👑 VIP üyelik gerekiyor.
-              </p>
-            ) : skinWorn ? (
-              <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
-                🎨 Renk hakkın harcanmadı: renk seçimi yalnızca varsayılan
-                görünümde yapılır.
-              </p>
-            ) : (
-              <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
-                ⚠️ Renk hakkın <strong>tek seferlik</strong>: seçtiğin renk
-                kalıcı olur (VIP üyeler serbestçe değiştirir).
-              </p>
-            )}
-
-            <p className="mt-2 text-[10px] font-bold leading-4 text-amber-200/70">
-              👑 VIP renkleri parlar ve yarı saydam boyanır — VIP alınca çantana
-              düşer.
-            </p>
-
-            <p className="mt-3 flex items-center justify-between text-[11px] font-bold text-white/50">
-              <span>{skinWorn ? "Görünüm" : "Seçilen renk"}</span>
-              <span className="text-amber-200">
-                {skinWorn ? skinWorn.name : characterColorLabel(color)}
-              </span>
-            </p>
+            {/* Rengi TEK kaynaktan seç: aynı bileşen Avatar Stüdyosu'nda da
+                kullanılır (bkz. CharacterColorPicker) — iki ekran da aynı
+                paleti, aynı VIP kilitlerini ve aynı tek-seferlik kuralı
+                gösterir. */}
+            <CharacterColorPicker
+              color={color}
+              onSelect={setColor}
+              isVip={isVip}
+              locked={colorLocked}
+              wornSkinName={skinWorn?.name}
+            />
           </div>
 
           {/* eylemler */}

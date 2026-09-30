@@ -91,7 +91,7 @@ function StepBadge({
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
-  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, signIn, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirect = resolveRedirectAfterAuth(
@@ -103,11 +103,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // MİSAFİR (anonim) oyuncu bu ekranı KULLANABİLİR: e-postasını ekleyerek
+  // hesabını kalıcı hâle getirir. Bu yüzden otomatik yönlendirme yalnızca
+  // GERÇEK hesaplar için çalışır; yoksa misafir buraya gelir gelmez geri
+  // gönderilir ve hesabını asla yükseltemezdi.
+  const isGuestUser = user?.isAnonymous === true;
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
+    if (!authLoading && isAuthenticated && !isGuestUser) {
       navigate(redirect);
     }
-  }, [authLoading, isAuthenticated, navigate, redirect]);
+  }, [authLoading, isAuthenticated, isGuestUser, navigate, redirect]);
 
   const handleEmailSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -231,6 +236,13 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   title="E-posta ile giriş / kayıt"
                   detail="İlk girişte hesabın otomatik açılır."
                 />
+
+                {isGuestUser && (
+                  <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-[10px] font-bold leading-4 text-amber-100">
+                    👤 Şu an misafir olarak oynuyorsun — e-postanı ekleyerek
+                    hesabını kalıcı hâle getir.
+                  </p>
+                )}
 
                 <form onSubmit={handleEmailSubmit} className="mt-3">
                   <label

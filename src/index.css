@@ -2173,6 +2173,17 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   --entry-gate: clamp(104px, 21vh, 168px);
 }
 
+/* Avatar Stüdyosu karakter vitrini: karakter burada tek başına gösterilir,
+   bu yüzden kapı masaüstünde daha büyüktür. */
+.entry-stage-studio {
+  --entry-gate: clamp(168px, 30vh, 340px);
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .entry-stage-studio {
+    --entry-gate: clamp(130px, 52vh, 210px);
+  }
+}
+
 /* Disable animations for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
