@@ -52,8 +52,8 @@ function check(label: string, ok: boolean, detail = "") {
 
 // SitPose hedeflerini kaba insan oranlarıyla temsil eder: uyluk ileri,
 // diz bükük, baldır aşağı. Gerçek rig yönleri aşağıda ayrı ölçülür.
-const THIGH_DIR = new THREE.Vector3(0, -0.16, 1).normalize();
-const SHIN_DIR = new THREE.Vector3(0, -1, 0.2).normalize();
+const THIGH_DIR = new THREE.Vector3(0, -0.04, 1).normalize();
+const SHIN_DIR = new THREE.Vector3(0, -1, 0.04).normalize();
 
 /* ── 1. Oturma noktası yürünebilir mi? ─────────────────────────────── */
 console.log("── oturma noktaları yürünebilir alanda mı? ──");
@@ -106,7 +106,7 @@ check(
 // Birkaç cm hava payı bilinçli: minder dokusu çıtalara değmesin (z-fighting)
 // ve tıknaz avatarların gövdesi çıtaların içine girmesin. Gerçek avatarların
 // ölçümü `scripts/check-sit-model-pose.ts` içinde.
-check("Ayak havada kalmıyor", ankleY < 0.1, `ayak y ${ankleY.toFixed(3)}`);
+check("Ayak doğal sarkma yüksekliğinde", ankleY < 0.2, `ayak y ${ankleY.toFixed(3)}`);
 check(
   "Bacak erişi gerçekçi (0.45–0.75 birim)",
   reach > 0.45 && reach < 0.75,
@@ -141,8 +141,8 @@ check(
   `arkalık ${BENCH_BACK_OFFSET} > minder arka kenarı ${BENCH_SEAT_DEPTH / 2}`,
 );
 check(
-  "Kalça minderin arka yarısında (sırt arkalığa yakın)",
-  BENCH_SEAT_FORWARD < 0 &&
+  "Kalça minderin ön kenarında (bacaklar sarkar)",
+  BENCH_SEAT_FORWARD > 0 &&
     Math.abs(BENCH_SEAT_FORWARD) > 0.05 &&
     Math.abs(BENCH_SEAT_FORWARD) < BENCH_SEAT_DEPTH / 2,
   `kayma ${BENCH_SEAT_FORWARD} birim`,
@@ -463,7 +463,7 @@ for (const model of MODELS) {
   const kneeBendDot = thighDir.dot(shinDir);
   check(
     `${model}: uyluk öne ve aşağı uzanıyor`,
-    Math.abs(thighDir.z) > 0.8 && thighDir.y < -0.05,
+    thighDir.z > 0.8 && thighDir.y < 0 && thighDir.y > -0.1,
     `yön (${thighDir.x.toFixed(2)}, ${thighDir.y.toFixed(2)}, ${thighDir.z.toFixed(2)})`,
   );
   check(
