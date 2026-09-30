@@ -2683,6 +2683,11 @@ export default function World() {
           style={{ zIndex: 1, isolation: "isolate" }}
           onClick={handleWorldClick}
         >
+          {/* Oturma durumu 3D katmana AYRICA prop olarak da geçilir: avatarın
+              oturup oturmadığı tek bir paylaşılan modül deposuna bağlı
+              kalmasın. Prop dolu olduğunda avatar onu kullanır, boşken depoya
+              düşer; böylece "Otur" → oturma zincirinde sessiz bir kopukluk
+              olamaz. */}
           <GameEngine3D
             playerPosRef={posRef}
             playerConfig={config}
@@ -2693,6 +2698,14 @@ export default function World() {
             isMobile={isMobile}
             glbTest={glbTestParam}
             presenceSessionId={sessionId}
+            seat={
+              seatBench !== null
+                ? {
+                    facing: BENCH_SEATS[seatBench].facing,
+                    yaw: BENCH_SEATS[seatBench].facing === 1 ? 0 : Math.PI,
+                  }
+                : null
+            }
           />
 
           {/* character profile card — tapping a character opens it here */}
