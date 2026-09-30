@@ -2166,6 +2166,13 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   }
 }
 
+/* Giriş / kayıt kapısı (Auth): yükleme ekranındaki altıgenin daha küçük
+   hâli — altında hesap formu da tek ekrana sığsın diye kapı küçültülür.
+   `entry-stage`den SONRA geldiği için onu geçersiz kılar (aynı özgüllük). */
+.entry-stage-form {
+  --entry-gate: clamp(104px, 21vh, 168px);
+}
+
 /* Disable animations for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -6,7 +6,7 @@
  */
 import React, { useRef, useMemo, useState, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -19,6 +19,7 @@ import { cameraFraming, cameraOpenAmount } from "./cameraFraming";
 // zararsız meta veri olarak kalıyor (sistem gerekirse yeniden açılabilir).
 import { BUILDING_USER_DATA } from "./buildingOcclusion";
 import { getBenchNear, requestBenchSit } from "./benchSeat";
+import { STREET_MODELS } from "./streetPreload";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -1106,6 +1107,91 @@ function SvgBotAvatar3D({
 /*  Main GameEngine3D                                          */
 /* ═══════════════════════════════════════════════════════════ */
 
+/**
+ * SAHNE HAZIR SİNYALİ
+ *
+ * İlk kareler pahalıdır: tüm materyallerin shader'ları derlenir, dokular
+ * GPU'ya yüklenir. Yükleme ekranı (World'deki cadde kapısı) bu sinyali
+ * beklediği için oyuncu caddeyi ilk kez DONARAK değil, hazır hâlde görür —
+ * yani "girdikten sonra render oluyor" durumu ortadan kalkar.
+ *
+ * Sinyal, canvas gerçekten birkaç kare çizdikten sonra BİR kez verilir.
+ */
+function SceneReadyPing({
+  armed,
+  onReady,
+  frames = 8,
+}: {
+  /** Varlıklar hazır olmadan sayaç işlemez (bkz. `StreetAssetsProbe`). */
+  armed: boolean;
+  onReady: () => void;
+  frames?: number;
+}) {
+  const count = useRef(0);
+  const done = useRef(false);
+  useFrame(() => {
+    if (!armed || done.current) return;
+    count.current += 1;
+    if (count.current >= frames) {
+      done.current = true;
+      onReady();
+    }
+  });
+  return null;
+}
+
+/**
+ * Cadde varlıkları kapısı — `streetPreload.STREET_MODELS` listesindeki
+ * modelleri SAHNENİN KULLANDIĞI `useGLTF` önbelleğiyle bekler. Hepsi çözülene
+ * kadar (suspense) alt bileşenler bağlanmaz; bu yüzden `SceneReadyPing` bu
+ * bileşenle aynı suspense sınırında durur ve ilk kareler ancak modeller
+ * hazırken sayılır.
+ *
+ * Ek modeller (ör. oyuncunun kuşandığı karakter skini) `ModelProbe` ile
+ * eklenir; aynı sınırda bekledikleri için "itibar sırası" yoktur.
+ */
+function StreetAssetsProbe({ onReady }: { onReady: () => void }) {
+  useGLTF(STREET_MODELS.ground);
+  useGLTF(STREET_MODELS.tree);
+  useGLTF(STREET_MODELS.grass);
+  useGLTF(STREET_MODELS.character);
+
+  React.useEffect(() => {
+    onReady();
+  }, [onReady]);
+
+  return null;
+}
+
+/** Tek bir ek modeli yalnızca BEKLER (önbelleği ısıtır, sahneye bir şey eklemez). */
+function ModelProbe({ url }: { url: string }) {
+  useGLTF(url);
+  return null;
+}
+
+/**
+ * Kapı yüklenemezse sahneyi düşürmesin: `GrassGroundBoundary` ile aynı desen.
+ * Kapı açılmazsa `World`'deki emniyet supabı oyunu yine de başlatır.
+ */
+class StreetAssetBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("[cadde kapısı] varlıklar yüklenemedi:", error);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 export interface GameEngine3DProps {
   playerPosRef: React.RefObject<{ x: number; y: number }>;
   playerConfig: AvatarConfig;
@@ -1132,6 +1218,17 @@ export interface GameEngine3DProps {
   remotePlayerSelectRef?: React.MutableRefObject<((entry: PresenceEntry<StreetPresence>) => void) | null>;
   /** Doluysa yerel oyuncu bir bankta oturuyor (bkz. `SeatState`). */
   seat?: SeatState | null;
+  /**
+   * Sahne birkaç kare çizildikten sonra BİR kez çağrılır — yükleme ekranı
+   * bunu bekleyip oyunu açar (bkz. `SceneReadyPing`).
+   */
+  onSceneReady?: () => void;
+  /**
+   * `onSceneReady`den ÖNCE beklenmesi gereken ek model URL'leri (ör. oyuncunun
+   * kuşandığı karakter skini). Caddenin temel modelleri `streetPreload.ts`
+   * içindedir, buraya yazılmaz.
+   */
+  readyModelUrls?: readonly string[];
 }
 
 export function GameEngine3D({
@@ -1147,7 +1244,13 @@ export function GameEngine3D({
   onRemotePlayerSelect,
   remotePlayerSelectRef,
   seat = null,
+  onSceneReady,
+  readyModelUrls,
 }: GameEngine3DProps) {
+  // Yükleme kapısı için: cadde varlıkları çözüldü mü? (`onSceneReady`
+  // verilmediyse hiç kullanılmaz — durum makinesi boşta durur.)
+  const [assetsReady, setAssetsReady] = useState(false);
+  const handleAssetsReady = useCallback(() => setAssetsReady(true), []);
   const remoteSelect = useCallback((entry: PresenceEntry<StreetPresence>) => {
     onRemotePlayerSelect?.(entry);
   }, [onRemotePlayerSelect]);
@@ -1189,6 +1292,25 @@ export function GameEngine3D({
         });
       }}
     >
+      {/* ── CADDE HAZIRLIK KAPISI ────────────────────────────────────
+          Yükleme ekranı (`World`) bu sinyali bekler: önce caddenin temel
+          modelleri (çim zemin, ağaçlar, çim öbekleri, karakter) ve varsa
+          oyuncuya özel skini çözülür, SONRA ilk kareler çizilir. Böylece
+          oyuncu caddeyi ilk kez donarak/eksik görmez. */}
+      {onSceneReady && (
+        <>
+          <StreetAssetBoundary>
+            <React.Suspense fallback={null}>
+              <StreetAssetsProbe onReady={handleAssetsReady} />
+              {(readyModelUrls ?? []).map((url) => (
+                <ModelProbe key={url} url={url} />
+              ))}
+            </React.Suspense>
+          </StreetAssetBoundary>
+          <SceneReadyPing armed={assetsReady} onReady={onSceneReady} />
+        </>
+      )}
+
       <FollowCamera posRef={playerPosRef} />
 
       {/* Kamera, oyuncu binaların arkasına / üst sokağa girince otomatik

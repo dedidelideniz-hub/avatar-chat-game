@@ -31,6 +31,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
+import { EntryLoader } from "@/components/entry/EntryLoader";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import BattleScene from "@/components/world/BattleScene";
@@ -67,6 +68,7 @@ import {
   VIP_VENDOR_ID,
   WALKABLE_ZONES,
   WORLD_BOUNDS,
+  wornCharacterSkin,
   type AbilityId,
   type Rect,
   type Vendor,
@@ -92,11 +94,13 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
-import { levelFromWins, WINS_PER_LEVEL } from "@/lib/levels";
+import { levelFromWins, rankFromLevel, WINS_PER_LEVEL } from "@/lib/levels";
+import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
+import { useProgress } from "@react-three/drei";
 
 // Harita px katmanı: 1 dünya birimi = `S` px (bkz. `engine/constants`).
 // Boyutlar artık elle yazılmıyor — dünya büyüyünce kendiliğinden ölçeklenir.
@@ -899,6 +903,18 @@ function RemotePlayers({
   );
 }
 
+/**
+ * Cadde yükleme ekranının adımları — sırayla yanar. Metinler gerçekten
+ * yapılan işi anlatır: sahne kapının ARKASINDA kurulurken bunlar çalışır.
+ */
+const STREET_LOAD_STEPS = [
+  "Kimlik doğrulanıyor",
+  "Cadde verileri alınıyor",
+  "Çevre modelleri indiriliyor",
+  "Karakter yerleştiriliyor",
+  "Ana cadde çiziliyor",
+];
+
 export default function World() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -1110,6 +1126,93 @@ export default function World() {
   const giftClaimed =
     profile !== undefined &&
     (profile?.lastDailyClaim ?? 0) > Date.now() - DAILY_BONUS_MS;
+  const rank = rankFromLevel(level);
+
+  /* ── CADDE YÜKLEME KAPISI ─────────────────────────────────────────
+     Sahne kapının ARKASINDA kurulur: `GameEngine3D` caddenin temel
+     modellerini (çim zemin, ağaçlar, çim öbekleri, karakter) sahnenin kendi
+     `useGLTF` önbelleğiyle bekler, ilk kareleri çizer ve `onSceneReady` ile
+     haber verir. Kapı bu iki sinyali beklediği için oyuncu caddeyi ilk kez
+     donarak/eksik görmez — eskiden "girdikten sonra render oluyordu". */
+  const { progress: assetProgress } = useProgress();
+  const [gateSceneReady, setGateSceneReady] = useState(false);
+  const [gateForced, setGateForced] = useState(false);
+  const [gatePct, setGatePct] = useState(0);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [gateTipIndex, setGateTipIndex] = useState(0);
+
+  const handleSceneReady = useCallback(() => setGateSceneReady(true), []);
+
+  // Oyuncuya özel model (kuşanılmış karakter skini) varsa kapı onu da bekler.
+  const gateModelUrls = useMemo<readonly string[]>(() => {
+    const skin = wornCharacterSkin(equipped);
+    return skin?.skinUrl ? [skin.skinUrl] : [];
+  }, [equipped]);
+
+  // Cadde modellerini mümkün olan en erken anda indirmeye başla (kapı açılmadan
+  // önce önbelleğe alınır; ikinci girişte kapı neredeyse anında biter).
+  useEffect(() => {
+    preloadStreetModels(gateModelUrls);
+  }, [gateModelUrls]);
+
+  // İlerleme hedefi.
+  //
+  // TEK gerçek "hazır" sinyali `gateSceneReady`dir: `GameEngine3D` caddenin
+  // temel modellerini `useGLTF` önbelleğiyle bekler ve ilk kareler ÇİZİLDİKTEN
+  // sonra haber verir. İndirme yüzdesi (`useProgress`) yalnızca çubuğun
+  // akmasını sağlar; %92'de DURUR ki oyuncuya asla hak etmediği bir %100
+  // gösterilmesin. Sahne gerçekten hazır olduğunda hedef %100 olur ve kapı açılır.
+  const gateTarget = useMemo(() => {
+    if (gateForced || gateSceneReady) return 100;
+    const assets = Math.min(0.9, Math.max(0, assetProgress) / 100);
+    return 14 + assets * 78;
+  }, [assetProgress, gateForced, gateSceneReady]);
+
+  useEffect(() => {
+    if (gateOpen) return;
+    const cap = gateTarget >= 99.5 ? 100 : 92;
+    const id = window.setInterval(() => {
+      setGatePct((p) =>
+        Math.min(cap, gateTarget, p + (p < 60 ? 4.5 : p < 88 ? 2 : 0.9)),
+      );
+    }, 60);
+    return () => window.clearInterval(id);
+  }, [gateOpen, gateTarget]);
+
+  // Emniyet supabı: ağ takılırsa yükleme ekranı sonsuza kadar kalmasın.
+  useEffect(() => {
+    const id = window.setTimeout(() => setGateForced(true), 12000);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  useEffect(() => {
+    if (gateOpen) return;
+    const id = window.setInterval(
+      () => setGateTipIndex((i) => (i + 1) % STREET_TIPS.length),
+      2600,
+    );
+    return () => window.clearInterval(id);
+  }, [gateOpen]);
+
+  useEffect(() => {
+    if (gateOpen || gatePct < 99.5) return;
+    const id = window.setTimeout(() => setGateOpen(true), 420);
+    return () => window.clearTimeout(id);
+  }, [gateOpen, gatePct]);
+
+  // Kapı yalnızca hesap hazır olduğunda çizilir: profil yoksa/banlıysa zaten
+  // kendi bilgi katmanı görünür (aşağıdaki `profile === null` blokları).
+  const gateVisible =
+    !gateOpen && profile !== undefined && profile !== null && !profile.banned;
+  const gateStepIndex =
+    gatePct < 20 ? 0 : gatePct < 40 ? 1 : gatePct < 62 ? 2 : gatePct < 84 ? 3 : 4;
+
+  // Kapı açılana kadar sahne "hazır" sayılmaz: kapı kapanmadan yürümeye
+  // başlamayalım (jest/klavye girdisi kapı açıldıktan sonra işlenir).
+  const gateOpenRef = useRef(false);
+  useEffect(() => {
+    gateOpenRef.current = gateOpen;
+  }, [gateOpen]);
   // Speech bubble width adapts to the message and the sender's name.
   const bubbleW = bubble
     ? Math.min(
@@ -1399,6 +1502,9 @@ export default function World() {
       ) {
         e.preventDefault();
       }
+      // Yükleme kapısı açılmadan klavye girdisi işlenmez (karakter sahne
+      // kurulurken yürümeye başlamasın).
+      if (!gateOpenRef.current) return;
       keysRef.current.add(e.code);
     };
     const onKeyUp = (e: KeyboardEvent) => keysRef.current.delete(e.code);
@@ -2698,6 +2804,8 @@ export default function World() {
             isMobile={isMobile}
             glbTest={glbTestParam}
             presenceSessionId={sessionId}
+            onSceneReady={handleSceneReady}
+            readyModelUrls={gateModelUrls}
             seat={
               seatBench !== null
                 ? {
@@ -3250,6 +3358,40 @@ export default function World() {
           </div>
         </div>
       )}
+
+      {/* ── CADDE YÜKLEME EKRANI ──────────────────────────────────────
+          Oyun girişindeki ekranın (EntryLoader) AYNISI: sahne arkada kurulur,
+          varlıklar + ilk kareler hazır olunca ekran yumuşakça açılır. Cadde
+          hazır olmadan oyuncu sahneyi görmez. */}
+      <AnimatePresence>
+        {gateVisible && (
+          <motion.div
+            key="street-gate"
+            className="fixed inset-0 z-[80]"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+          >
+            <EntryLoader
+              pct={gatePct}
+              stepIndex={gateStepIndex}
+              tip={STREET_TIPS[gateTipIndex]}
+              subtitle="Ana caddeye bağlanılıyor"
+              crestLabel="Cadde kuruluyor"
+              pendingLabel="Cadde hazırlanıyor"
+              steps={STREET_LOAD_STEPS}
+              player={{
+                name: username,
+                rankName: rank.name,
+                rankIcon: rank.icon,
+                rankGradient: rank.gradient,
+                vip: isVip,
+                level,
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Visual Debug — always-visible DEV button + conditional panel */}
       <button

@@ -11,6 +11,7 @@ import {
   winsToNextLevel,
 } from "@/lib/levels";
 import { wornCharacterSkin } from "@/lib/shop";
+import { preloadStreetModels } from "@/engine/streetPreload";
 import { useProgress } from "@react-three/drei";
 import { useMutation, useQuery } from "convex/react";
 import { motion } from "framer-motion";
@@ -72,6 +73,19 @@ export default function Entry() {
   useEffect(() => {
     if (profile === null) navigate("/studio", { replace: true });
   }, [profile, navigate]);
+
+  // OYUNCU RENGİNİ SEÇERKEN CADDEYİ İNDİR.
+  //
+  // Caddenin modelleri (çim zemini, ağaçlar, çim öbekleri, karakter) çok
+  // büyük; eskiden `/world` açıldığında inmeye başlıyorlardı, bu yüzden cadde
+  // ancak girdikten sonra doluyordu. İndirme, giriş yükleme ekranı BİTTİKTEN
+  // sonra (lobi aşamasında) başlar: böylece karakter yüklemesi birkaç büyük
+  // cadde modelini beklemek zorunda kalmaz, ama oyuncu lig kartına bakarken
+  // cadde arka planda iner ve `/world` kapısı önbellekten beslenir.
+  useEffect(() => {
+    if (phase !== "lobby") return;
+    preloadStreetModels();
+  }, [phase]);
 
   // Kayıtlı rengi bir kez yükle (kullanıcı seçim yaparken üzerine yazmasın).
   useEffect(() => {
