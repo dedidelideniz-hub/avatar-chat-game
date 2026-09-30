@@ -1320,6 +1320,17 @@ export function GameEngine3D({
       {/* Sky — soft warm blue */}
       <color attach="background" args={["#78c8e8"]} />
 
+      {/* UZAKLIK SİSİ — ufku gökyüzüne bağlar.
+          Çim döşemesi oynanabilir alanın çok ötesine uzansa da bir yerde
+          bitiyor; sis o kenarı yutar ve eskiden harita dışına bakınca görünen
+          düz mavi dikdörtgen kaybolur.
+
+          Sis rengi arka planla BİREBİR aynı olmak ZORUNDA, yoksa ufukta renk
+          bandı oluşur. Haritanın kendisi sisi görmez: kamera oyuncunun
+          10-14 birim arkasında olduğu için cadde ve binalar `near`in
+          (65) altında kalır; sis yalnızca çok uzaktaki zemini etkiler. */}
+      <fog attach="fog" args={["#78c8e8", 65, 120]} />
+
       {/* ═══ LIGHTING — warm stylized mobile-game lighting ═══
           Ortam ışığı yükseltildi: çim zeminin dokusu koyu ve AO haritası
           kapatıldı, yani zemin dolaylı ışığın tamamını artık alıyor — gölgede

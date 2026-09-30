@@ -302,12 +302,41 @@ export interface GrassGroundZoneDef {
 }
 
 /**
+ * Çim örtüsünün toplam açıklığı (kare).
+ *
+ * Oynanabilir alan yalnızca 48×28 birim olsa da zemin ÇOK daha geniş
+ * döşenir: oyuncu haritanın kenarına gidip dışarı baktığında artık düz mavi
+ * bir boşluk değil, ufka kadar uzanan çim görür. Ufuk `GameEngine3D`'deki
+ * uzaklık sisiyle (fog) gökyüzü rengine bağlanır — sisi geçen mesafede
+ * zemin biter, yani döşemenin kenarı HİÇ görünmez.
+ *
+ * Ölçü: kameranın merkezden en uzak konumu ≈ 45 birim (oynanabilir alanın
+ * köşesi + takip mesafesi). Sis `far` = 120 olduğu için kenarın sisin
+ * dışında kalması yeterli: 400/2 − 45 = 155 > 120 ✔
+ */
+export const GRASS_GROUND_SPAN = 400;
+
+/**
  * Tek bölge: caddenin ve binaların altındaki tüm zemin (eski "arka plan çimi"
- * + kuzey ve güney yeşil şeritleri). Yol (0.008) ve kaldırım (0.005) bu
- * zeminin hemen üstünde kaldığı için çim sadece yeşil alanlarda görünür.
+ * + kuzey ve güney yeşil şeritleri) ve onun çok geniş uzantısı.
+ *
+ * Yol (0.008) ve kaldırım (0.005) bu zeminin hemen üstünde kaldığı için çim
+ * sadece yeşil alanlarda görünür. Bölge TEK olduğundan karo ızgarası da
+ * tektir → dikiş ya da desen kayması olmaz (`buildGrassGroundPlacements`
+ * ızgarayı bölge merkezine göre kurar).
+ *
+ * NOT: Yürünebilirlik bu bölgeye göre DEĞİL `WALKABLE_ZONES`e göre
+ * belirlenir; uzayan çim oynanabilir alanı büyütmez — çitlerin dışı hâlâ
+ * yürünemez (bkz. `lib/shop.ts` → `inWalkable`).
  */
 export const GRASS_GROUND_ZONES: GrassGroundZoneDef[] = [
-  { x: 0, z: WORLD_CENTER_Z, w: WORLD_WIDTH + 4, d: WORLD_DEPTH + 4, y: GRASS_GROUND_Y },
+  {
+    x: 0,
+    z: WORLD_CENTER_Z,
+    w: GRASS_GROUND_SPAN,
+    d: GRASS_GROUND_SPAN,
+    y: GRASS_GROUND_Y,
+  },
 ];
 
 /** Çim kümesi (GLB çim öbeği) dağıtım bölgesi. */
