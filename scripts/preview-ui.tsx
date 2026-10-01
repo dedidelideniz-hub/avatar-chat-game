@@ -319,16 +319,38 @@ async function mockAppLayer() {
     default: () => <div data-stub="3d-sahne" />,
   }));
   // Model indirme zinciri: sunucu yok → indirme tamamlanmış varsay.
-  mock.module("@react-three/drei", () => ({
-    // drei'nin DOM katmanı: sahne olmadan yalnızca çocukları çiz (baloncuk
-    // bileşeni bu modülü import ediyor).
-    Html: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-    useProgress: () => ({ progress: 100, active: false, loaded: 4, total: 4, errors: [] }),
-    useGLTF: Object.assign(() => ({ scene: {}, nodes: {}, materials: {} }), {
-      preload: () => {},
-      clear: () => {},
-    }),
-  }));
+  //
+  // ⚠️ Dışa aktarım listesi `src/`deki GERÇEK drei importlarıyla birebir
+  // olmalı (`grep -r "@react-three/drei" src/`). Eksik tek bir isim
+  // "Export named 'X' not found" ile modül yüklemesini tümden düşürüyor ve
+  // o zaman World modülü hiç import edilemediği için modül başlatma (TDZ)
+  // hatalarını göremiyoruz. Proxy burada İŞE YARAMAZ: bun `mock.module`
+  // fabrikasının kendi numaralı anahtarlarını okur, `get` tuzağını kullanmaz.
+  mock.module("@react-three/drei", () => {
+    const passthrough = ({ children }: { children?: React.ReactNode }) => (
+      <div>{children}</div>
+    );
+    return {
+      // drei'nin DOM katmanı: sahne olmadan yalnızca çocukları çiz.
+      Html: passthrough,
+      // Sahne süsleri — WebGL yok, çocuklarını geçir.
+      Environment: passthrough,
+      Lightformer: passthrough,
+      RoundedBox: passthrough,
+      useProgress: () => ({
+        progress: 100,
+        active: false,
+        loaded: 4,
+        total: 4,
+        errors: [],
+      }),
+      useGLTF: Object.assign(
+        () => ({ scene: {}, nodes: {}, materials: {}, animations: [] }),
+        { preload: () => {}, clear: () => {} },
+      ),
+      useAnimations: () => ({ actions: {}, mixer: null, names: [], clips: [] }),
+    };
+  });
   mock.module("@/engine/streetPreload", () => ({
     preloadStreetModels: () => {},
     STREET_MODELS: {},
@@ -1143,6 +1165,31 @@ const scenarios: Scenario[] = [
           "'bump' throttle'ı kenar tetiklemesinden kısa (< 200ms)",
           Number.isFinite(throttle) && throttle < 200,
           Number.isFinite(throttle) ? `throttle ${throttle}ms` : "throttleMs bulunamadı",
+        ),
+      );
+
+      // ── 6) World modülü GERÇEKTEN yüklenebiliyor mu?
+      //       Modül yüklenirken bir kez kurulan değerler (`BOT_PATHS`, bot
+      //       yolları ve `BOT_RADIUS` gibi) yalnızca ÇALIŞMA ZAMANINDA patlar:
+      //       yanlışlıkla aşağıda tanımlanan bir `const`a dokunulursa
+      //       "Cannot access 'X' before initialization" verir. `tsc` bunu
+      //       GÖREMEZ (sözdizimsel olarak geçerlidir) — bu yüzden modülü
+      //       burada gerçekten import edip başlatma yolunu çalıştırıyoruz.
+      let worldLoaded = false;
+      let worldErr = "";
+      try {
+        await mockAppLayer();
+        const mod = (await import("../src/pages/World")) as { default?: unknown };
+        worldLoaded = typeof mod.default === "function";
+        if (!worldLoaded) worldErr = "default export bir bileşen değil";
+      } catch (e) {
+        worldErr = e instanceof Error ? e.message : String(e);
+      }
+      checks.push(
+        check(
+          "World modülü hatasız yükleniyor (modül başlatma / TDZ hatası yok)",
+          worldLoaded,
+          worldErr,
         ),
       );
 

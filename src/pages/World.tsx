@@ -112,6 +112,24 @@ const WORLD_W = MAP_W;
 const WORLD_H = MAP_H;
 const PLAYER_W = 70;
 const PLAYER_H = 96;
+/**
+ * ⚠️ BU İKİ SABİT BURADA (modülün en başında) TANIMLI OLMAK ZORUNDA.
+ *
+ * `BOT_PATHS` modül yüklenirken bir kez kurulur ve bot yolları `BOT_RADIUS`
+ * ile doğrulanır — yani `BOT_RADIUS` okunması modül başlatılmasının EN
+ * BAŞINDA olur. Aşağıda (propların yanında) tanımlanırsa `const`un geçici
+ * ölü bölgesine (TDZ) düşer ve uygulama “Cannot access 'BOT_RADIUS' before
+ * initialization” ile çöker. Tip denetimi bunu yakalamaz; çalışma zamanı
+ * hatasıdır.
+ */
+/** İki karakter merkezi bu mesafeden yakınsa birbirlerinin İÇİNDEN geçemesinler. */
+const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
+/**
+ * 🚶‍♂️ Botların GÖVDE YARIÇAPI — yol doğrulamasında kullanılır.
+ * Botlar oyuncuyla aynı sprite'ı taşır: yolları nokta nokta değil,
+ * `PLAYER_RADIUS` kadar şişirilmiş engellerle doğrulanır.
+ */
+const BOT_RADIUS = PLAYER_RADIUS;
 // Spawn on the open road, clear of every stall obstacle — the old spawn
 // point sat inside the VIP stand's collision box, which pinned the player
 // and made walking impossible. `SPAWN_SVG` dünya merkezine göre tanımlıdır.
@@ -862,20 +880,6 @@ function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   const dy = cy - ny;
   return dx * dx + dy * dy < r * r;
 }
-
-/**
- * İki karakter merkezi bu mesafeden yakınsa birbirlerinin İÇİNDEN geçemesinler
- * diye yarım yarım itilirler (gövde genişliği + pay).
- */
-const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
-
-/**
- * 🚶‍♂️ BOTLARIN GÖVDE YARIÇAPI — yol doğrulamasında kullanılır.
- *
- * Botlar oyuncuyla aynı sprite'ı taşır, yani aynı genişliktedir: yolları
- * nokta nokta değil, `PLAYER_RADIUS` kadar şişirilmiş engellerle doğrulanır.
- */
-const BOT_RADIUS = PLAYER_RADIUS;
 
 /* Yürünebilirlik testi ve konumu caddeye geri çeken yardımcılar
    (`inWalkable`, `nearestWalkable`) `@/lib/shop` içindedir: çitlerin
