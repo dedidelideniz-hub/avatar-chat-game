@@ -35,6 +35,7 @@ import {
   TRASH_CANS,
   TREE_ROWS,
   WITCH_SHOP_DEF,
+  WITCH_SHOP_WALKWAY,
   WORLD_DEPTH,
   WORLD_WIDTH,
   WORLD_Z_MAX,
@@ -320,11 +321,31 @@ check(
   "sokak ağzından geçen çitler ağzı kapatmıyor",
   fenceInStreet.join(" · ") || `${splitLines.length} parça bölündü`,
 );
+// +1: kuzey hattı AYRICA cadı dükkânının kapı yolunda bölünür — yol o hattı
+// keserek kaldırımdan çime geçer (bkz. `WITCH_SHOP_WALKWAY`). Güney hattında
+// yol yok, orada ek boşluk açılmaz.
 check(
-  splitLines.length === 4 * 2 && solidLines.length === 1,
+  splitLines.length === 4 * 2 + 1 && solidLines.length === 1,
   "yalnızca sokağın kestiği hatlar ağızlarda bölünüyor",
-  `${splitLines.length} parça (2 hat × 4) + arka hat ${solidLines.length} parça`,
+  `${splitLines.length} parça (2 hat × 4 + cadı yolu) + arka hat ${solidLines.length} parça`,
 );
+// Cadı dükkânı boşluğunun gerçekten açıldığını doğrula: kuzey hattında
+// yolun X'inde çit OLMAMALI.
+{
+  const witchLine = FENCE_LINES.filter(
+    (l) => Math.abs(l.z - ZONE.northGrassBot) < 1e-9 && l.enabled,
+  );
+  const covers = (x: number) =>
+    witchLine.some((l) => x >= l.startX - 1e-9 && x <= l.endX + 1e-9);
+  const pathX = WITCH_SHOP_WALKWAY.x;
+  check(
+    !covers(pathX) &&
+      !covers(pathX - WITCH_SHOP_WALKWAY.pathHalfW) &&
+      !covers(pathX + WITCH_SHOP_WALKWAY.pathHalfW),
+    "cadı dükkânı yolu kuzey çitinde boşluk buluyor (çit yolun üstünden geçmiyor)",
+    `boşluk X ${f(pathX - WITCH_SHOP_WALKWAY.fenceGapHalf)}..${f(pathX + WITCH_SHOP_WALKWAY.fenceGapHalf)}`,
+  );
+}
 check(
   solidLines.length === 1 &&
     Math.abs(solidLines[0].startX + WORLD_WIDTH / 2) < 1e-9 &&
@@ -467,12 +488,10 @@ check(!inWalkable(svgX(-4.4), svgY(-9.0)), "kuzey çim şeridi yürünebilir de�
 // Bu bölüm oyuncunun asfalt şeritten çime geçemediği çit hattını ölçer.
 console.log("\nDİKEY SOKAK ÇİTLERİ (sokak asfaltı ↔ çim)");
 const streetEdges = FENCE_EDGES.filter((e) => e.enabled);
-// Cadı dükkânının kapı yolu ara sokağın doğu çitini kestiği için o kenar
-// İKİYE bölünür → beklenen kenar sayısı bir fazladır (bkz. `FENCE_EDGES`).
 check(
-  streetEdges.length === SIDE_STREETS.length * 4 + 1,
-  "her sokakta iki kenar × iki çim bandı (+ cadı yolu için bölünmüş kenar)",
-  `${streetEdges.length} kenar (${SIDE_STREETS.length} sokak × 2 yan × 2 bant + 1 bölünme)`,
+  streetEdges.length === SIDE_STREETS.length * 4,
+  "her sokakta iki kenar × iki çim bandı",
+  `${streetEdges.length} kenar (${SIDE_STREETS.length} sokak × 2 yan × 2 bant)`,
 );
 
 // Kenarlar TAM sokak asfaltının kenarında mı? (X = sokak ± SIDE_STREET_W/2)

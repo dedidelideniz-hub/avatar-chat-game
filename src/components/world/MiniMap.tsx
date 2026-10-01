@@ -123,9 +123,11 @@ export const MiniMap = forwardRef<
         {SIDE_STREETS_PX.map((s) => (
           <rect key={s.x} x={s.x} y={s.y} width={s.w} height={s.h} fill={ROAD} />
         ))}
-        {/* binalar — iki sıra: cadde dükkanları + arka caddenin arkasındakiler.
-            Gövde, cephe hattından kuzeye (haritada aşağı) doğru uzanır. */}
-        {BUILDINGS.map((b, i) => (
+        {/* binalar — YALNIZCA dikili olanlar (`modelUrl`). Bina satırı artık
+            boş gözlerden oluşur ve yeni GLB eklendikçe dolar; harita da sahneyle
+            aynı şeyi göstermeli (boş arsaya bina çizilmez). Gövde, cephe
+            hattından kuzeye (haritada aşağı) doğru uzanır. */}
+        {BUILDINGS.filter((b) => b.modelUrl).map((b, i) => (
           <rect
             key={i}
             x={svgX(b.x) - (b.w * S) / 2}

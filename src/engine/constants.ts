@@ -274,46 +274,44 @@ export const BUILDINGS: BuildingDef[] = [
 export const WITCH_SHOP_DEF: BuildingDef = BUILDINGS[WITCH_SHOP_INDEX];
 
 /**
- * Cadı dükkânına giden en yakın DİKEY ARA SOKAK (X) — dükkânın batı komşusu.
- * `SIDE_STREETS`ten türetilir: dükkânın batı duvarının batısındaki en yakın
- * sokak (X −13.0 için −16).
- */
-export const WITCH_SHOP_ALLEY_X =
-  [...SIDE_STREETS]
-    .sort((a, b) => b - a)
-    .find((sx) => sx < WITCH_SHOP_DEF.x - WITCH_SHOP_DEF.w / 2) ??
-  WITCH_SHOP_DEF.x;
-
-/**
  * CADI DÜKKÂNI GİRİŞ YOLU — ölçüler tek yerde.
  *
- * İki parçadan oluşur (bkz. `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`):
+ * Yol AŞAĞIDAKİ CADDEYE BAĞLANIR: asfaltın içinden başlar, güney kaldırımını
+ * ve kuzey kaldırımı geçer, çimi aşar, kapının önünde genişleyip dükkânın
+ * İÇİNE girer (bkz. `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). İki parçadır:
  *
- *   1) YOL BANDI (`pathWestX` → `entryEastX`, `pathSouthZ` … `pathNorthZ`):
- *      ara sokaktan çıkıp dükkân cephesi boyunca kapıya uzanan şerit. Bant
- *      çimin İÇİNDE kalır (cephe hattı −10.9, bant −11.0…−10.0) ve hiçbir
- *      sokak mobilyası bu Z aralığında yoktur.
- *   2) GİRİŞ KORİDORU (`entryWestX` → `entryEastX`, `pathNorthZ` … `insideZ`):
- *      kapıdan binanın İÇİNE giren yürünebilir alan.
+ *   1) YOL ŞERİDİ (`x ± pathHalfW`, `pathSouthZ` … `pathNorthZ`):
+ *      dar (0.8 birim) taş yol. Kaldırımı, caddenin hemen kuzeyindeki lamba
+ *      (−14) ile yön tabelası (−12) ARASINDAKİ boşluktan geçer — kaldırım
+ *      şeridinin tamamı sokak mobilyasıyla dolu olduğu için yolun geçebileceği
+ *      tek temiz aralık burasıdır.
+ *   2) ÖN AVLU + GİRİŞ (`x ± foreHalfW`, `pathNorthZ` … `insideZ`):
+ *      kapının önünde genişleyen avlu ve binanın içine giren koridor.
  *
- * Ölçüler karaktere göre: `PLAYER_RADIUS` 0.4 birim. Giriş koridoru 1.4 birim
- * geniş → gövde duvarlara değmeden geçer. İçeride yürünebilir derinlik
- * (`insideZ`) binanın derinliğinden (~2.0) kısa tutulur ki karakter modelin
- * arka duvarına girmesin.
+ * Ölçüler karaktere göre: `PLAYER_RADIUS` 0.4 birim. Avlu/giriş 1.4 birim
+ * geniş → gövde duvarlara değmeden geçer. Yol şeridi 0.8 birim: lamba ile
+ * tabelanın bıraktığı 1.65 birimlik aralıkta `pushOutOfObstacles` yarıçapı
+ * (0.4) kadarı düşülünce karaktere kalan tam koridor budur — yani karakter
+ * iki propa da değmeden geçer. İçeride yürünebilir derinlik (`insideZ`)
+ * binanın derinliğinden (~2.0) kısa tutulur ki karakter modelin arka duvarına
+ * girmesin.
  */
 export const WITCH_SHOP_WALKWAY = {
   /** Binanın (ve kapının) X merkezi. */
   x: WITCH_SHOP_DEF.x,
-  /** Bant + koridorun ortak Z sınırları (güney = caddeye bakan kenar). */
-  pathSouthZ: -10.0,
-  pathNorthZ: -11.0,
-  /** Yol bandının BATI ucu — ara sokak kolonunun içine taşar (kesintisiz bağ). */
-  pathWestX: WITCH_SHOP_ALLEY_X + SIDE_STREET_W / 2 - 0.6,
-  /** Yol bandının DOĞU ucu = giriş koridorunun doğu kenarı. */
-  entryEastX: WITCH_SHOP_DEF.x + 0.7,
-  /** Giriş koridorunun batı kenarı. */
-  entryWestX: WITCH_SHOP_DEF.x - 0.7,
-  /** Binanın cephe hattı — yolun kapıyla buluştuğu Z. */
+  /** Yol şeridinin yarı genişliği (dar taş yol). */
+  pathHalfW: 0.4,
+  /** Avlunun/girişin yarı genişliği (kapı genişliği). */
+  foreHalfW: 0.7,
+  /**
+   * Yolun başladığı Z — ana caddenin (asfalt) İÇİNDE. Caddeye kesintisiz
+   * bağlanır; `ZONE.roadBot` = −1.2 (caddenin güney kenarı), yani yol
+   * asfaltın 0.8 birim içinden başlar.
+   */
+  pathSouthZ: ZONE.roadBot - 0.8,
+  /** Yol şeridinin bittiği, avlunun başladığı Z (binanın 0.9 önü). */
+  pathNorthZ: WITCH_SHOP_DEF.frontZ + 0.9,
+  /** Binanın cephe hattı — avlunun kapıyla buluştuğu Z. */
   frontZ: WITCH_SHOP_DEF.frontZ,
   /**
    * İçeride yürünebilir alanın kuzey ucu.
@@ -325,10 +323,11 @@ export const WITCH_SHOP_WALKWAY = {
    */
   insideZ: WITCH_SHOP_DEF.frontZ - 0.85,
   /**
-   * Çit kenarında (ara sokağın doğu çiti) yolun açtığı boşluk — Z aralığı.
-   * Yol bu çiti kestiği için çit iki parçaya bölünür (bkz. `FENCE_EDGES`).
+   * Kuzey sınır çitinde yolun açtığı boşluk yarı genişliği (`fenceSegments`).
+   * Yol, kaldırımı çimden ayıran hattı (Z = `ZONE.northGrassBot`) kestiği için
+   * çit orada bölünür; yoksa görünen çit yolun ortasından geçerdi.
    */
-  fenceGapZ: [-9.75, -11.25] as const,
+  fenceGapHalf: 0.4 + 0.2,
 } as const;
 
 // ─── AĞAÇ SIRALARI (caddenin yeşillik şeritleri) ───
@@ -822,18 +821,42 @@ export interface FenceLineDef {
 /** Sokak ağzında çitin bıraktığı boşluk (sokak yarı genişliği + pay). */
 const FENCE_GAP = SIDE_STREET_W / 2 + 0.15;
 
+/** Hatta açılacak boşluk (merkez X + yarı genişlik). */
+interface FenceOpening {
+  x: number;
+  half: number;
+}
+
 /**
- * Bir çit hattını dikey sokak ağızlarında bölerek kesintisiz parçalara ayırır:
- * böylece yürünebilir sokak boşluğunun içinde çit kalmaz.
+ * Bir çit hattını boşlukların bulunduğu yerlerde bölerek kesintisiz parçalara
+ * ayırır: böylece yürünebilir sokak boşluğunun (veya dükkân yolunun) içinde
+ * çit kalmaz.
+ *
+ * `extraOpenings` hat başına eklenen boşluklardır — ör. cadı dükkânının kapı
+ * yolu kuzey hattı kestiği için o hat ayrıca bölünür (bkz. `FENCE_LINES`).
  */
-function fenceSegments(z: number): FenceLineDef[] {
+function fenceSegments(
+  z: number,
+  extraOpenings: readonly FenceOpening[] = [],
+): FenceLineDef[] {
+  const openings = [
+    ...SIDE_STREETS.map((x) => ({ x, half: FENCE_GAP })),
+    ...extraOpenings,
+  ].sort((a, b) => a.x - b.x);
+
   const lines: FenceLineDef[] = [];
   const limit = WORLD_WIDTH / 2;
   let start = -limit;
-  for (const street of SIDE_STREETS) {
-    const cut = street - FENCE_GAP;
-    if (cut > start) lines.push({ z, startX: start, endX: cut, enabled: true });
-    start = street + FENCE_GAP;
+  for (const opening of openings) {
+    const cut = opening.x - opening.half;
+    const resume = opening.x + opening.half;
+    // Boşluk hattın dışında/geriye kalmışsa hattı bozmadan atla.
+    if (resume <= start) continue;
+    const cutAt = Math.max(cut, start);
+    if (cutAt > start) {
+      lines.push({ z, startX: start, endX: cutAt, enabled: true });
+    }
+    start = resume;
   }
   if (start < limit) lines.push({ z, startX: start, endX: limit, enabled: true });
   return lines;
@@ -849,10 +872,16 @@ function fenceSegments(z: number): FenceLineDef[] {
  * sınırında (`WORLD_BOUNDS`) çitin ortasındaki boşlukta çıplak çimle
  * kalıyordu (ekran görüntüsü). Arka hat artık KESİNTİSİZDİR: sokak ağzı
  * olmadığı için çit duvar gibi kesilmemeli.
+ *
+ * KUZEY hattı ayrıca CADI DÜKKÂNI yolunda da bölünür: yol kaldırımdan çime
+ * tam o hattan geçer (bkz. `WITCH_SHOP_WALKWAY`). Bu boşluk YALNIZCA kuzey
+ * hattına verilir — güney hattında (Z 0.0) yol yok, orada çit kesilemezdi.
  */
 export const FENCE_LINES: FenceLineDef[] = [
   ...fenceSegments(ZONE.southGrassTop),
-  ...fenceSegments(ZONE.northGrassBot),
+  ...fenceSegments(ZONE.northGrassBot, [
+    { x: WITCH_SHOP_WALKWAY.x, half: WITCH_SHOP_WALKWAY.fenceGapHalf },
+  ]),
   { z: ZONE.backGrassTop, startX: -WORLD_WIDTH / 2, endX: WORLD_WIDTH / 2, enabled: true },
 ];
 
@@ -897,7 +926,7 @@ const FENCE_EDGE_SPANS: readonly { south: number; north: number }[] = [
 ];
 
 /** Her sokak için iki kenar (batı/doğu) × iki çim bandı = 4 kenar. */
-const FENCE_EDGES_BASE: FenceEdgeDef[] = SIDE_STREETS.flatMap((sx) =>
+export const FENCE_EDGES: FenceEdgeDef[] = SIDE_STREETS.flatMap((sx) =>
   [-1, 1].flatMap((side) =>
     FENCE_EDGE_SPANS.map((span) => ({
       x: sx + side * (SIDE_STREET_W / 2),
@@ -907,37 +936,6 @@ const FENCE_EDGES_BASE: FenceEdgeDef[] = SIDE_STREETS.flatMap((sx) =>
     })),
   ),
 );
-
-/**
- * Cadı dükkânı yolunun AÇTIĞI çit boşluğu (bkz. `WITCH_SHOP_WALKWAY`).
- *
- * Yol, ara sokağın (X −16) doğu kenarından (X −14.6) çıkıp dükkân cephesi
- * boyunca ilerler — yani tam o kenarın çit hattını KESER. Çit bölünmezse
- * görünen çit yolun ortasından geçerdi (yürünebilirlik etkilenmez, çitlerin
- * çarpışması yok; sorun tamamen görseldir).
- */
-const WITCH_FENCE_GAP = {
-  x: WITCH_SHOP_WALKWAY.pathWestX + 0.6,
-  startZ: WITCH_SHOP_WALKWAY.fenceGapZ[0],
-  endZ: WITCH_SHOP_WALKWAY.fenceGapZ[1],
-};
-
-/**
- * Herbir kenarı cadı dükkânı boşluğunda İKİYE böler (boşluğa denk gelmiyorsa
- * kenar aynen kalır). Boşluk kenarın ucundaysa yalnızca kalan parça döner.
- */
-export const FENCE_EDGES: FenceEdgeDef[] = FENCE_EDGES_BASE.flatMap((edge) => {
-  const gap = WITCH_FENCE_GAP;
-  const overlaps =
-    Math.abs(edge.x - gap.x) < 0.01 &&
-    gap.startZ > edge.endZ + 0.01 &&
-    gap.endZ < edge.startZ - 0.01;
-  if (!overlaps) return [edge];
-  return [
-    { ...edge, endZ: gap.startZ },
-    { ...edge, startZ: gap.endZ },
-  ];
-});
 
 /**
  * Sokağın GÜNEY UCUNU kapatan yatay hat (Z = sokak ağzının bittiği çizgi).

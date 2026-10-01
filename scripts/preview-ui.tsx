@@ -1257,8 +1257,8 @@ const scenarios: Scenario[] = [
       );
       checks.push(
         check(
-          "seçilen bina kaldırım mobilyalarına çarpmayan bir X'te",
-          def.x === W.x && Number.isFinite(W.pathWestX),
+          "seçilen bina kaldırım mobilyalarının bıraktığı boşlukta",
+          def.x === W.x && W.pathHalfW > 0,
           `X ${def.x}`,
         ),
       );
@@ -1277,55 +1277,88 @@ const scenarios: Scenario[] = [
       checks.push(
         check(
           "görünen yol ↔ yürünebilir şerit sınırları birebir",
-          Math.abs(walkZone.x - svgX(W.pathWestX)) < 1e-6 &&
+          Math.abs(walkZone.x - svgX(W.x - W.pathHalfW)) < 1e-6 &&
             Math.abs(walkZone.y - svgY(W.pathSouthZ)) < 1e-6 &&
-            Math.abs(walkZone.w - (W.entryEastX - W.pathWestX) * K.S) < 1e-6 &&
+            Math.abs(walkZone.w - W.pathHalfW * 2 * K.S) < 1e-6 &&
             Math.abs(walkZone.h - (W.pathSouthZ - W.pathNorthZ) * K.S) < 1e-6,
         ),
       );
-
-      // ── 2) Çit, yolun geçtiği yerde bölündü (görünen çit yolun ortasından
-      //       geçmesin). Ölçüt: sokak kenarındaki (X −14.6) Z bandı DİKİŞSİZ.
-      const edgeX = W.pathWestX + 0.6;
-      const edge = K.FENCE_EDGES.filter((e) => Math.abs(e.x - edgeX) < 0.01).sort(
-        (a, b) => b.startZ - a.startZ,
-      );
-      const covered = (z: number) =>
-        edge.some((e) => z <= e.startZ + 1e-6 && z >= e.endZ - 1e-6);
-      // Yol bandının tamamı (yürünebilir şerit) çitsiz olmalı.
-      const steps = 12;
-      let blockedZ = 0;
-      for (let i = 0; i <= steps; i++) {
-        const z = W.pathSouthZ + ((W.pathNorthZ - W.pathSouthZ) * i) / steps;
-        // Uçlar çit parçalarının bittiği noktalardır; 1e-3 pay bırakılır.
-        const edgeTouch =
-          Math.abs(z - W.pathSouthZ) < 1e-3 || Math.abs(z - W.pathNorthZ) < 1e-3;
-        if (!edgeTouch && covered(z)) blockedZ++;
-      }
+      // Yolun AŞAĞIDAKİ CADDEYE bağlandığı: şeridin güney ucu asfaltın içinde
+      // olmalı (aksi hâlde yol kaldırımda/çimde başlar, caddeden kopuk durur).
       checks.push(
         check(
-          "ara sokak çiti yolun Z bandında BOŞLUK bırakıyor (çit yolun ortasından geçmiyor)",
-          blockedZ === 0 && edge.length === 3,
-          `kenar X ${edgeX}, parça ${edge.length}, bloke örnek ${blockedZ}`,
+          "yol CADDEYE (asfaltın içine) bağlanıyor",
+          W.pathSouthZ > K.ZONE.roadTop && W.pathSouthZ < K.ZONE.roadBot,
+          `başlangıç Z ${W.pathSouthZ} (asfalt ${K.ZONE.roadTop}..${K.ZONE.roadBot})`,
         ),
       );
 
-      // ── 3) Yürünebilirlik: yol bandı + kapı koridoru gerçekten yürünebilir,
-      //       koridorun DIŞI (binanın içi ama duvar tarafı) yürünemez kalır.
-      const pathMid = {
-        x: svgX(W.pathWestX + 0.4),
-        y: svgY((W.pathSouthZ + W.pathNorthZ) / 2),
-      };
+      // ── 2) Kuzey sınır çiti yolun geçtiği yerde bölündü (görünen çit yolun
+      //       ortasından geçmesin). Ölçüt: Z = northGrassBot hattının parça
+      //       sayısı ve yolun X'inde çit OLMAMASI.
+      const northLine = K.FENCE_LINES.filter(
+        (l) => Math.abs(l.z - K.ZONE.northGrassBot) < 1e-9 && l.enabled,
+      );
+      const covered = (x: number) =>
+        northLine.some((l) => x >= l.startX - 1e-6 && x <= l.endX + 1e-6);
+      checks.push(
+        check(
+          "kuzey sınır çiti yolun X'inde BOŞLUK bırakıyor (yolun üstünden geçmiyor)",
+          !covered(W.x) &&
+            !covered(W.x - W.pathHalfW) &&
+            !covered(W.x + W.pathHalfW) &&
+            northLine.length === 5,
+          `hat Z ${K.ZONE.northGrassBot}, parça ${northLine.length}`,
+        ),
+      );
+
+      // ── 3) Yürünebilirlik: yolun HER AŞAMASI yürünebilir olmalı — asfalt,
+      //       güney kaldırımı, kuzey kaldırımı (propların arasından), çim,
+      //       avlu ve binanın içi. Koridorun DIŞI (duvar tarafı) yürünemez.
+      const at = (z: number) => ({ x: svgX(W.x), y: svgY(z) });
+      const onRoad = at((W.pathSouthZ + K.ZONE.roadTop) / 2);
+      // Yolun güney ucu caddenin İÇİNDE biter; hemen güneyi de yürünebilir
+      // olmalı (yol asfalta kesintisiz bağlı, kopuk bir çıkıntı değil).
+      const justSouth = at(W.pathSouthZ + 0.4);
+      const onNorthWalk = at((K.ZONE.northSidewalkTop + K.ZONE.northSidewalkBot) / 2);
+      const onGrass = at(W.pathNorthZ + 0.5);
+      const onCourt = at((W.pathNorthZ + W.frontZ) / 2);
       const door = { x: svgX(W.x), y: svgY(W.frontZ) };
       const inside = { x: svgX(W.x), y: svgY(W.insideZ + 0.25) };
-      const wallSide = { x: svgX(W.entryEastX + 0.6), y: svgY(W.insideZ + 0.25) };
+      const wallSide = {
+        x: svgX(W.x + W.foreHalfW + 0.6),
+        y: svgY(W.insideZ + 0.25),
+      };
       checks.push(
-        check("yol bandı yürünebilir", inWalkable(pathMid.x, pathMid.y)),
+        check("yol asfaltta (caddede) yürünebilir", inWalkable(onRoad.x, onRoad.y)),
+        check(
+          "yol asfalta KESİNTİSİZ bağlı (güneyi hâlâ cadde)",
+          inWalkable(justSouth.x, justSouth.y),
+        ),
+        check(
+          "yol kuzey kaldırımını propların ARASINDAN geçebiliyor",
+          inWalkable(onNorthWalk.x, onNorthWalk.y),
+        ),
+        check("yol çimde yürünebilir", inWalkable(onGrass.x, onGrass.y)),
+        check("kapı önü avlu yürünebilir", inWalkable(onCourt.x, onCourt.y)),
         check("kapı (cephe hattı) yürünebilir", inWalkable(door.x, door.y)),
         check("binanın İÇİ yürünebilir", inWalkable(inside.x, inside.y)),
         check(
           "koridorun dışı (duvar tarafı) yürünemez — duvarlar geçirgen değil",
           !inWalkable(wallSide.x, wallSide.y),
+        ),
+      );
+      // Yolun iki yanındaki proplar yerinde duruyor olmalı: yol onları
+      // "yutmuş" olamaz (lamba −14 ve yön tabelası −12 hâlâ katı cisim).
+      const lamp = K.LAMPS.find((l) => Math.abs(l.x + 14) < 1e-9);
+      const sign = K.DIRECTION_SIGNS.find((d) => Math.abs(d.x + 12) < 1e-9);
+      checks.push(
+        check(
+          "yolun iki yanındaki proplar hâlâ katı (lamba −14 · tabela −12)",
+          !!lamp &&
+            !!sign &&
+            !inWalkable(svgX(lamp.x), svgY(lamp.z)) &&
+            !inWalkable(svgX(sign.x), svgY(sign.z)),
         ),
       );
       checks.push(
@@ -1336,12 +1369,33 @@ const scenarios: Scenario[] = [
         ),
       );
 
-      // ── 4) A*: caddeden (doğuş noktası) dükkânın İÇİNE yol var. Kapının
-      //       önündeki cadde kapalı olsaydı (kaldırım mobilyası) yol
-      //       bulunamazdı — ara sokağa bağlılık bu testle doğrulanır.
+      // ── 4) A*: caddeden (doğuş noktası) dükkânın İÇİNE yol var ve bu yol
+      //       KALDIRIMI YOL ŞERİDİNDEN geçiyor — etrafından dolaşmıyor.
+      //       (Kaldırım mobilyası yolu kapatsaydı A* engeli dolaşırdı ve yol
+      //       şeridinin X'inden çıkardı.)
       const spawn = { x: 1200, y: 460 };
       const toDoor = findPath(spawn.x, spawn.y, door.x, door.y);
       const toInside = findPath(spawn.x, spawn.y, inside.x, inside.y);
+      const corridorX = {
+        west: svgX(W.x - W.foreHalfW),
+        east: svgX(W.x + W.foreHalfW),
+      };
+      // Yolun doğuş noktası caddededir (yol şeridinin DIŞINDA); ölçüt, kaldırıma
+      // ve ötesine geçen düğümlerin HEPSİNİN yol şeridinde olması.
+      // DİKKAT: px katmanında kuzey = BÜYÜK y (`svgY` ters çevirir).
+      const roadNorthEdge = svgY(K.ZONE.roadTop);
+      const crossing = toInside.filter((p) => p.y > roadNorthEdge + 8);
+      const strayed = crossing.filter(
+        (p) => p.x < corridorX.west - 16 || p.x > corridorX.east + 16,
+      );
+      checks.push(
+        check(
+          "A* yolu kaldırımı yol şeridinden geçiyor (engelleri dolaşmıyor)",
+          crossing.length > 0 && strayed.length === 0,
+          `şerit X ${corridorX.west.toFixed(0)}..${corridorX.east.toFixed(0)} px · ` +
+            `kaldırım/çim düğümü ${crossing.length} · dışarı sapan ${strayed.length}`,
+        ),
+      );
       checks.push(
         check(
           "caddeden kapıya A* yolu var",

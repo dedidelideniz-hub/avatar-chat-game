@@ -510,27 +510,29 @@ function span(westX: number, southZ: number, eastX: number, northZ: number): Rec
 /**
  * CADI DÜKKÂNI GİRİŞ YOLU (bkz. `constants.WITCH_SHOP_WALKWAY`).
  *
- * NEDEN CADDEDEN DEĞİL, ARA SOKAKTAN: kuzey kaldırımı sokak mobilyalarıyla
- * (lamba/bank/otobüs durağı/tabela) doludur ve hepsi KATI cisimdir. Kaldırımı
- * en seyrek yerinden kesen dikey bir koridor bile A* ızgarasında — engeller
- * `PLAYER_RADIUS` kadar şişirildiği için — tek hücreye düşüyor ve karakter
- * sıkışıyordu. Ara sokağın (X −16) asfaltı Z −17.4'e kadar kesintisiz
- * yürünebilir; yol oradan çıkıp dükkân cephesi boyunca (Z −11.0…−10.0, yani
- * çimin içinde, HİÇBİR propla kesişmeyen bir bant) kapıya uzanır.
+ * Yol AŞAĞIDAKİ CADDEYE BAĞLANIR: asfaltın içinden başlar, güney ve kuzey
+ * kaldırımı geçer, çimi aşar, kapının önünde genişleyip binanın İÇİNE girer.
+ *
+ * NEDEN DAR (0.8 birim): kuzey kaldırımı sokak mobilyasıyla (lamba/bank/
+ * otobüs durağı/tabela) dolu ve hepsi KATI cisimdir; engeller A* ızgarasına
+ * `PLAYER_RADIUS` kadar şişirilerek yakılır. Dükkânın önündeki lamba (−14) ile
+ * yön tabelası (−12) arasında kalan temiz aralık 1.65 birimdir; şişirme
+ * düşülünce karaktere kalan tam koridor bu 0.8 birimdir — yani yol, İKİ PROPA
+ * DA DEĞMEDEN geçen tek güzergâhtır (karakter yarıçapı 0.4 birim).
  */
 export const WITCH_SHOP_WALK_ZONES: Rect[] = [
-  // 1) Ara sokaktan dükkân cephesi boyunca uzanan yol bandı.
+  // 1) Caddeye bağlanan dar yol şeridi (asfalt → kaldırımlar → çim → avlu).
   span(
-    WITCH_SHOP_WALKWAY.pathWestX,
+    WITCH_SHOP_WALKWAY.x - WITCH_SHOP_WALKWAY.pathHalfW,
     WITCH_SHOP_WALKWAY.pathSouthZ,
-    WITCH_SHOP_WALKWAY.entryEastX,
+    WITCH_SHOP_WALKWAY.x + WITCH_SHOP_WALKWAY.pathHalfW,
     WITCH_SHOP_WALKWAY.pathNorthZ,
   ),
-  // 2) Kapıdan binanın İÇİNE giren koridor.
+  // 2) Kapının önündeki avlu + binanın İÇİNE giren koridor.
   span(
-    WITCH_SHOP_WALKWAY.entryWestX,
+    WITCH_SHOP_WALKWAY.x - WITCH_SHOP_WALKWAY.foreHalfW,
     WITCH_SHOP_WALKWAY.pathNorthZ,
-    WITCH_SHOP_WALKWAY.entryEastX,
+    WITCH_SHOP_WALKWAY.x + WITCH_SHOP_WALKWAY.foreHalfW,
     WITCH_SHOP_WALKWAY.insideZ,
   ),
 ];

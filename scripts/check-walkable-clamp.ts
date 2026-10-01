@@ -49,21 +49,22 @@ function check(label: string, ok: boolean, detail = "") {
 const px = (x: number, z: number) => ({ x: svgX(x), y: svgY(z) });
 
 /**
- * CADI DÜKKÂNI İSTİSNASI — kapı yolu ve binanın iç koridoru bilinçli olarak
- * yürünebilir (bkz. `constants.WITCH_SHOP_WALKWAY` + `lib/shop.ts`).
- * Bu betiğin "çime çıkış yok" kuralı yalnızca ÇİTİN arkası için geçerlidir;
- * yol çitin bu tarafında, dükkânın kendi parselinde uzanır.
+ * CADI DÜKKÂNI İSTİSNASI — caddeye bağlanan kapı yolu ve binanın iç koridoru
+ * bilinçli olarak yürünebilir (bkz. `constants.WITCH_SHOP_WALKWAY` +
+ * `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). Çitlerin çarpışması yoktur;
+ * bu betiğin "çime çıkış yok" kuralı yalnızca ÇİTİN ARKASI için geçerlidir ve
+ * yol tam olarak o hattı geçerek dükkâna girdiği için istisna edilir.
  */
 const W = WITCH_SHOP_WALKWAY;
 const inWitchWalk = (x: number, z: number) =>
   (z <= W.pathSouthZ &&
     z >= W.pathNorthZ &&
-    x >= W.pathWestX &&
-    x <= W.entryEastX) ||
+    x >= W.x - W.pathHalfW &&
+    x <= W.x + W.pathHalfW) ||
   (z <= W.pathNorthZ &&
     z >= W.insideZ &&
-    x >= W.entryWestX &&
-    x <= W.entryEastX);
+    x >= W.x - W.foreHalfW &&
+    x <= W.x + W.foreHalfW);
 
 console.log("\n=== YÜRÜNEBİLİRLİK SINIRI ===\n");
 

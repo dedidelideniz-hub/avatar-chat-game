@@ -46,41 +46,63 @@ function Plane({
 }
 
 /**
- * Ara sokaktan (batı) dükkân cephesi boyunca kapıya uzanan taş şerit +
- * kapı eşiği. Şerit çimin 0.013 birim üstüne oturur (kaldırım 0.005,
- * asfalt 0.008), yani yürünebilir bandın tamamı görünür biçimde döşelidir.
+ * CADDEDEN dükkânın kapısına uzanan taş yol: asfaltın içinden başlayıp
+ * kaldırımı ve çimi geçen dar şerit, kapının önünde genişleyen avlu ve kapı
+ * eşiği. Şerit çimin 0.013 birim üstüne oturur (kaldırım 0.005, asfalt 0.008).
+ *
+ * Üç parçanın sınırları `WITCH_SHOP_WALK_ZONES` ile BİREBİR aynı kaynaktan
+ * türer: oyuncunun yürüdüğü yer ile gördüğü yol ayrışmaz.
  */
 export function WitchShopWalkway() {
-  const { pathWestX, entryEastX, pathSouthZ, pathNorthZ, entryWestX, frontZ } =
+  const { x, pathHalfW, foreHalfW, pathSouthZ, pathNorthZ, frontZ } =
     WITCH_SHOP_WALKWAY;
 
   return (
     <group>
-      {/* 1) Cephe boyunca uzanan ana şerit. */}
+      {/* 1) YOL ŞERİDİ — caddeden (asfalt) avluya kadar dar taş yol. */}
       <Plane
-        westX={pathWestX}
-        eastX={entryEastX}
+        westX={x - pathHalfW}
+        eastX={x + pathHalfW}
         southZ={pathSouthZ}
         northZ={pathNorthZ}
         y={WALKWAY_Y}
         color="#c9bda2"
         roughness={0.94}
       />
-      {/* Kenar bordürü — şeridin caddeye bakan kenarını belirginleştirir. */}
+      {/* Kenar bordürü — yolu çimden/taştan ayırır, "patika" gibi okunur. */}
       <Plane
-        westX={pathWestX}
-        eastX={entryEastX}
+        westX={x - pathHalfW - 0.07}
+        eastX={x - pathHalfW}
         southZ={pathSouthZ}
-        northZ={pathSouthZ - 0.12}
+        northZ={pathNorthZ}
         y={WALKWAY_Y + 0.002}
         color="#a8977a"
         roughness={0.9}
       />
-      {/* 2) Kapı eşiği — koridorun cepheyle buluştuğu yerde koyu ahşap. */}
       <Plane
-        westX={entryWestX}
-        eastX={entryEastX}
+        westX={x + pathHalfW}
+        eastX={x + pathHalfW + 0.07}
+        southZ={pathSouthZ}
+        northZ={pathNorthZ}
+        y={WALKWAY_Y + 0.002}
+        color="#a8977a"
+        roughness={0.9}
+      />
+      {/* 2) ÖN AVLU — kapının önünde genişleyen taş alan. */}
+      <Plane
+        westX={x - foreHalfW}
+        eastX={x + foreHalfW}
         southZ={pathNorthZ}
+        northZ={frontZ}
+        y={WALKWAY_Y + 0.002}
+        color="#cfc4a9"
+        roughness={0.93}
+      />
+      {/* 3) Kapı eşiği — avlunun cepheyle buluştuğu yerde koyu ahşap. */}
+      <Plane
+        westX={x - foreHalfW}
+        eastX={x + foreHalfW}
+        southZ={frontZ}
         northZ={frontZ - 0.35}
         y={WALKWAY_Y + 0.004}
         color="#6b4a2e"
