@@ -1,4 +1,5 @@
 import { useGLTF } from "@react-three/drei";
+import { BUILDING_MODEL_URLS } from "./constants";
 import { CHARACTER_MODEL_URL } from "./GlbAvatar3D";
 import { GRASS_GROUND_URL } from "./grassGroundPrep";
 import { GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL } from "./vegModelPrep";
@@ -36,6 +37,21 @@ export const STREET_MODELS = {
   character: CHARACTER_MODEL_URL,
 } as const;
 
+/**
+ * CADDE BİNALARININ MODELLERİ (`constants.BUILDING_MODEL_URLS`).
+ *
+ * `STREET_MODELS`ten AYRI tutulur ama ön yüklemeye o da dahildir:
+ *   · İndirme GİRİŞ ekranında başlar (`Entry` → `preloadStreetModels`), yani
+ *     oyuncu caddeye girmeden çok önce ağ trafiği başlar.
+ *   · `World` bu listeyi yükleme kapısına verir (`readyModelUrls`), yani
+ *     cadde AÇILDIĞINDA binalar yerinde olur — eskiden model cadde
+ *     kurulduktan SONRA inmeye başlıyordu ve oyuncu boş arsaya bakıyordu
+ *     ("ev gelmemiş").
+ *   · `STREET_MODELS`ten ayrı olmasının sebebi: `StreetAssetsProbe` yalnızca
+ *     onu bekler, yani acil olmayan ağır modeller sahne kurulumunu geciktirmez.
+ */
+export const STREET_BUILDING_MODELS: readonly string[] = BUILDING_MODEL_URLS;
+
 /** Ön yüklemesi başlatılmış URL'ler — tekrar tetiklemeyi engeller. */
 const started = new Set<string>();
 
@@ -44,7 +60,12 @@ const started = new Set<string>();
  * (kuşanılmış karakter skini gibi) da kuyruğa eklenebilir.
  */
 export function preloadStreetModels(extra: readonly string[] = []): void {
-  for (const url of [...Object.values(STREET_MODELS), ...extra]) {
+  const urls = [
+    ...Object.values(STREET_MODELS),
+    ...STREET_BUILDING_MODELS,
+    ...extra,
+  ];
+  for (const url of urls) {
     if (!url || started.has(url)) continue;
     started.add(url);
     useGLTF.preload(url);

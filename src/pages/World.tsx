@@ -103,7 +103,11 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
 import { levelFromWins, rankFromLevel, WINS_PER_LEVEL } from "@/lib/levels";
-import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
+import {
+  preloadStreetModels,
+  STREET_BUILDING_MODELS,
+  STREET_TIPS,
+} from "@/engine/streetPreload";
 import { useProgress } from "@react-three/drei";
 
 // Harita px katmanı: 1 dünya birimi = `S` px (bkz. `engine/constants`).
@@ -1225,10 +1229,17 @@ export default function World() {
 
   const handleSceneReady = useCallback(() => setGateSceneReady(true), []);
 
-  // Oyuncuya özel model (kuşanılmış karakter skini) varsa kapı onu da bekler.
+  // Kapının beklediği EK modeller: oyuncuya özel karakter skini (varsa) +
+  // CADDE BİNALARININ modelleri. Bina modelleri ağır olabilir (ör.
+  // `witch_shop.glb` ~26 MB); kapı onları beklemezse oyuncu caddeyi açar ve
+  // arsa BOŞ görünür ("ev gelmemiş"). Emniyet supabı (12 sn) yine devrede:
+  // ağ takılırsa oyun yine de başlar, model arkadan gelir.
   const gateModelUrls = useMemo<readonly string[]>(() => {
     const skin = wornCharacterSkin(equipped);
-    return skin?.skinUrl ? [skin.skinUrl] : [];
+    return [
+      ...STREET_BUILDING_MODELS,
+      ...(skin?.skinUrl ? [skin.skinUrl] : []),
+    ];
   }, [equipped]);
 
   // Cadde modellerini mümkün olan en erken anda indirmeye başla (kapı açılmadan

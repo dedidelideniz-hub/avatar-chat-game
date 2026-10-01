@@ -354,6 +354,7 @@ async function mockAppLayer() {
   mock.module("@/engine/streetPreload", () => ({
     preloadStreetModels: () => {},
     STREET_MODELS: {},
+    STREET_BUILDING_MODELS: [],
     STREET_TIPS: ["Önizleme"],
     StreetAssetsProbe: () => null,
   }));
@@ -1283,13 +1284,17 @@ const scenarios: Scenario[] = [
             Math.abs(walkZone.h - (W.pathSouthZ - W.pathNorthZ) * K.S) < 1e-6,
         ),
       );
-      // Yolun AŞAĞIDAKİ CADDEYE bağlandığı: şeridin güney ucu asfaltın içinde
-      // olmalı (aksi hâlde yol kaldırımda/çimde başlar, caddeden kopuk durur).
+      // Yol KUZEY KALDIRIMINA kadar gelir ve orada biter (ana caddeye inmez),
+      // ama kaldırımın İÇİNDE bitmeli ki caddeye kaldırım üzerinden kesintisiz
+      // bağlansın.
       checks.push(
         check(
-          "yol CADDEYE (asfaltın içine) bağlanıyor",
-          W.pathSouthZ > K.ZONE.roadTop && W.pathSouthZ < K.ZONE.roadBot,
-          `başlangıç Z ${W.pathSouthZ} (asfalt ${K.ZONE.roadTop}..${K.ZONE.roadBot})`,
+          "yol KUZEY KALDIRIMINDA bitiyor (ana caddeye inmiyor)",
+          W.pathSouthZ <= K.ZONE.northSidewalkBot &&
+            W.pathSouthZ >= K.ZONE.northSidewalkTop &&
+            // Caddenin kuzey kenarından (roadTop = −5.2) DAHA KUZEYDE kalmalı.
+            W.pathSouthZ < K.ZONE.roadTop,
+          `bitiş Z ${W.pathSouthZ} (kaldırım ${K.ZONE.northSidewalkTop}..${K.ZONE.northSidewalkBot})`,
         ),
       );
 
@@ -1312,14 +1317,14 @@ const scenarios: Scenario[] = [
         ),
       );
 
-      // ── 3) Yürünebilirlik: yolun HER AŞAMASI yürünebilir olmalı — asfalt,
-      //       güney kaldırımı, kuzey kaldırımı (propların arasından), çim,
-      //       avlu ve binanın içi. Koridorun DIŞI (duvar tarafı) yürünemez.
+      // ── 3) Yürünebilirlik: yolun HER AŞAMASI yürünebilir olmalı — kuzey
+      //       kaldırımı (propların arasından), çim, avlu ve binanın içi.
+      //       Koridorun DIŞI (duvar tarafı) yürünemez.
       const at = (z: number) => ({ x: svgX(W.x), y: svgY(z) });
-      const onRoad = at((W.pathSouthZ + K.ZONE.roadTop) / 2);
-      // Yolun güney ucu caddenin İÇİNDE biter; hemen güneyi de yürünebilir
-      // olmalı (yol asfalta kesintisiz bağlı, kopuk bir çıkıntı değil).
-      const justSouth = at(W.pathSouthZ + 0.4);
+      // Yolun güney ucu kaldırımda biter; hemen güneyi (kaldırımın cadde
+      // kenarına doğru) de yürünebilir olmalı — yani yol kaldırımdan kopuk
+      // bir çıkıntı değil, kaldırıma bitişik.
+      const justSouth = at(W.pathSouthZ + 0.15);
       const onNorthWalk = at((K.ZONE.northSidewalkTop + K.ZONE.northSidewalkBot) / 2);
       const onGrass = at(W.pathNorthZ + 0.5);
       const onCourt = at((W.pathNorthZ + W.frontZ) / 2);
@@ -1330,9 +1335,8 @@ const scenarios: Scenario[] = [
         y: svgY(W.insideZ + 0.25),
       };
       checks.push(
-        check("yol asfaltta (caddede) yürünebilir", inWalkable(onRoad.x, onRoad.y)),
         check(
-          "yol asfalta KESİNTİSİZ bağlı (güneyi hâlâ cadde)",
+          "yolun güneyi kaldırım (caddeden kopuk değil)",
           inWalkable(justSouth.x, justSouth.y),
         ),
         check(
@@ -1485,6 +1489,32 @@ const scenarios: Scenario[] = [
           "witch_shop.glb ASCII gömülü JSON glTF (binary glTF değil)",
           head !== "glTF" && head.trimStart().startsWith("{"),
           `${(raw.length / 1048576).toFixed(1)}MiB, ilk 4 bayt "${head.trim()}"`,
+        ),
+      );
+
+      // ── 6b) MODEL ÖN YÜKLEME + YÜKLEME KAPISI: bina modeli ağır olduğu için
+      //        cadde açıldıktan SONRA inmeye başlarsa oyuncu boş arsaya bakar.
+      //        İndirme giriş ekranında başlamalı ve kapı onu beklemeli.
+      const preload = read("../src/engine/streetPreload.ts");
+      const world = read("../src/pages/World.tsx");
+      checks.push(
+        check(
+          "bina modelleri ön yüklemeye dahil (indirme giriş ekranında başlar)",
+          preload.includes("STREET_BUILDING_MODELS") &&
+            preload.includes("...STREET_BUILDING_MODELS") &&
+            read("../src/pages/Entry.tsx").includes("preloadStreetModels()"),
+        ),
+        check(
+          "yükleme kapısı bina modelini bekliyor (cadde boş açılmasın)",
+          world.includes("STREET_BUILDING_MODELS") &&
+            /gateModelUrls[\s\S]{0,400}STREET_BUILDING_MODELS/.test(world) &&
+            world.includes("readyModelUrls={gateModelUrls}"),
+        ),
+        check(
+          "ön yükleme listesi gerçekten cadı dükkânı modelini içeriyor",
+          K.BUILDING_MODEL_URLS.includes(K.WITCH_SHOP_MODEL_URL) &&
+            K.BUILDING_MODEL_URLS.length === withModel.length,
+          K.BUILDING_MODEL_URLS.join(", "),
         ),
       );
 

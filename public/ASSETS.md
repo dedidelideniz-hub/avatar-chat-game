@@ -34,8 +34,16 @@ node scripts/glb-to-embedded-json.mjs public/models/witch_shop.glb
 ```
 
 Model 18 mesh + 43 PNG doku taşır (uzantı gerektirmez; `EXT_meshopt` yok).
-Ağır olduğu için caddenin yükleme kapısına (`streetPreload.STREET_MODELS`)
-**eklenmez**: arka planda iner, hazır olana kadar satırdaki yer boş kalır.
+Dosya ~26.7MiB olduğu için ÖN YÜKLEME listesine (`streetPreload.STREET_BUILDING_MODELS`)
+eklenmiştir: indirme **giriş ekranında** başlar ve oyuncu caddeye girdiğinde
+bina yerinde olur. Eskiden cadde kurulduktan SONRA inmeye başlıyordu ve oyuncu
+bir süre BOŞ ARSAYA bakıyordu ("ev gelmemiş") — bu yüzden `World` yükleme
+kapısı bu modelleri de bekler (`readyModelUrls`), 12 sn'lik emniyet supabı
+yine devredir.
+
+NOT: Dosya boyutunun ~21MiB'ı 43 PNG dokudur. Görünüşü bozmadan küçültmek
+(dokuları 1K'ya indirmek) yüklemeyi belirgin hızlandırır; yapılırsa bu satır
+güncellenmelidir.
 
 Model bir dioramadır: dükkânın yanı sıra önünde bir `Road` ve dökülmüş
 yapraklar içerir. Bunlar binanın parçası sayılmaz; ölçek/konum yalnızca bina

@@ -274,11 +274,23 @@ export const BUILDINGS: BuildingDef[] = [
 export const WITCH_SHOP_DEF: BuildingDef = BUILDINGS[WITCH_SHOP_INDEX];
 
 /**
+ * Satırda DİKİLİ binaların model URL'leri (`BUILDINGS`ten türetilir).
+ *
+ * Ön yükleme ve yükleme kapısı bu listeyi kullanır: bina modelleri ağır
+ * olabilir (ör. `witch_shop.glb` ~26 MB) ve cadde açıldıktan SONRA inmeye
+ * başlarlarsa oyuncu boş arsaya bakar ("ev gelmemiş"). Bu yüzden indirme
+ * giriş ekranında başlar ve yükleme kapısı bu modelleri bekler.
+ */
+export const BUILDING_MODEL_URLS: readonly string[] = BUILDINGS.map(
+  (b) => b.modelUrl,
+).filter((url): url is string => typeof url === "string" && url.length > 0);
+
+/**
  * CADI DÜKKÂNI GİRİŞ YOLU — ölçüler tek yerde.
  *
- * Yol AŞAĞIDAKİ CADDEYE BAĞLANIR: asfaltın içinden başlar, güney kaldırımını
- * ve kuzey kaldırımı geçer, çimi aşar, kapının önünde genişleyip dükkânın
- * İÇİNE girer (bkz. `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). İki parçadır:
+ * Yol, KUZEY KALDIRIMINDAN başlar (ana caddeye kadar inmez): kaldırımdan çime
+ * geçer, çimi aşar, kapının önünde genişleyip dükkânın İÇİNE girer
+ * (bkz. `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). İki parçadır:
  *
  *   1) YOL ŞERİDİ (`x ± pathHalfW`, `pathSouthZ` … `pathNorthZ`):
  *      dar (0.8 birim) taş yol. Kaldırımı, caddenin hemen kuzeyindeki lamba
@@ -304,11 +316,15 @@ export const WITCH_SHOP_WALKWAY = {
   /** Avlunun/girişin yarı genişliği (kapı genişliği). */
   foreHalfW: 0.7,
   /**
-   * Yolun başladığı Z — ana caddenin (asfalt) İÇİNDE. Caddeye kesintisiz
-   * bağlanır; `ZONE.roadBot` = −1.2 (caddenin güney kenarı), yani yol
-   * asfaltın 0.8 birim içinden başlar.
+   * Yolun GÜNEY ucunun Z'si — KUZEY KALDIRIMININ içinde biter.
+   *
+   * Yol ana caddeye kadar inmez: kaldırıma kadar gelmesi yeter. Kuzey
+   * kaldırımı Z −7.2…−5.2'dir; yol `northSidewalkBot`ın 0.2 birim kuzeyinde
+   * (−5.4) biter, yani kaldırımın İÇİNDE durur ve kaldırım bandıyla
+   * KESİNTİSİZ birleşir (A* ızgarasında da ortak hücre oluşur → yol, caddeye
+   * kaldırım üzerinden bağlıdır).
    */
-  pathSouthZ: ZONE.roadBot - 0.8,
+  pathSouthZ: ZONE.northSidewalkBot - 0.2,
   /** Yol şeridinin bittiği, avlunun başladığı Z (binanın 0.9 önü). */
   pathNorthZ: WITCH_SHOP_DEF.frontZ + 0.9,
   /** Binanın cephe hattı — avlunun kapıyla buluştuğu Z. */
