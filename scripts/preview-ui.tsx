@@ -291,8 +291,9 @@ export const defaultProfile = (over: Partial<MockProfile> = {}): MockProfile => 
 });
 
 let profileStub: MockProfile = defaultProfile();
-/** 🏠 `api.houses.enter/rename` taklidi — oyuncunun KENDİ odası. */
+/** 🏠 `api.houses.enter/rename` taklidi — oyuncunun KENDİ odası (instance kimlikli). */
 let houseStub = {
+  roomId: "room_dkddkk0001",
   ownerName: "Dkdkdkk",
   name: "Dkdkdkk Odası",
   visits: 4,
@@ -301,6 +302,7 @@ let houseStub = {
 };
 /** 🏠 `api.houses.visit` taklidi — KOMŞUNUN odası (misafir görünümü). */
 let guestStub = {
+  roomId: "room_ali00000002",
   ownerName: "Ali",
   name: "Ali Odası",
   visits: 2,
@@ -1133,6 +1135,11 @@ const scenarios: Scenario[] = [
           roomSnap.text.includes("Ali") && roomSnap.text.includes("Zeynep"),
         ),
         check(
+          "odanın ÖRNEK KİMLİĞİ görünüyor (room instance id)",
+          roomSnap.text.includes("dkddkk0001"),
+          roomSnap.text.slice(0, 90),
+        ),
+        check(
           "oda adı düzenlenebiliyor (sahibi)",
           roomSnap.text.includes("Oda adını değiştir"),
         ),
@@ -1838,6 +1845,15 @@ const scenarios: Scenario[] = [
             housesSrc.includes("export const visit") &&
             housesSrc.includes("export const rename") &&
             housesSrc.includes("by_ownerName"),
+        ),
+        check(
+          "her oda DB'de KİMLİKLİ bir örnek (instance / room id)",
+          housesSrc.includes("export const ROOM_ID_PREFIX") &&
+            housesSrc.includes("export function roomIdFor") &&
+            housesSrc.includes("export const byRoom") &&
+            housesSrc.includes('withIndex("by_roomId"') &&
+            room.includes("view.roomId") &&
+            room.includes("shortRoomId"),
         ),
         check(
           "menzil px katmanında kapı menzilinden türetiliyor",

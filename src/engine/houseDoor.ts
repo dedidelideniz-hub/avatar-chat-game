@@ -9,8 +9,9 @@
  *
  * Oda her oyuncuya özeldir ve sunucuda tutulur (`convex/houses.ts`): ilk
  * girişte OTOMATİK oluşur — arsa seçme/kurulum yoktur. Adı, giriş sayısı ve
- * ziyaretçi defteri oyuncuya aittir. Kapı ise caddede TEK tanedir; herkes aynı
- * kapıyı kullanır.
+ * ziyaretçi defteri oyuncuya aittir. Her odanın ayrıca bir ÖRNEK KİMLİĞİ
+ * (`roomId`) vardır; kapı ise caddede TEK tanedir ve herkes aynı kapıyı
+ * kullanır.
  *
  * Bu dosya, `benchSeat.ts` ile aynı desendeki KÜÇÜK DEPOYU tutar: oyun döngüsü
  * (px katmanı) menzil durumunu yazar, 3D katman (`GameEngine3D`) okur ve
@@ -23,6 +24,14 @@ export const HOUSE_ENTER_LABEL = { emoji: "🏠", label: "Evine gir" } as const;
 
 /** Odanın arayüze giden özeti (`convex/houses.ts` → `enter`/`visit` döner). */
 export interface HouseView {
+  /**
+   * ODA ÖRNEĞİ KİMLİĞİ (`room_…`) — odanın veritabanındaki INSTANCE kimliği.
+   *
+   * Sunucu üretir (`houses.ts` → `roomIdFor`), yani odayı ADIYLA değil
+   * KİMLİĞİYLE çağırabiliriz: aynı oda adını iki oyuncu seçse bile karışmaz.
+   * Odada gösterilir (paylaşılabilir kimlik).
+   */
+  roomId: string;
   /** Odanın sahibinin görünen adı. */
   ownerName: string;
   /** Odanın adı — sahibi değiştirebilir. */

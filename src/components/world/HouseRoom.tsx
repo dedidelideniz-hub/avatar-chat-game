@@ -21,6 +21,19 @@ import { DoorOpen, Home, Pencil, Users } from "lucide-react";
 import { useState } from "react";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
 
+/**
+ * Oda örneği kimliğinin kısa gösterimi (`room_kd7…4a9`).
+ *
+ * Kimlik sunucunun ürettiği INSTANCE kimliğidir ve odada görünür: oda artık
+ * adıyla değil KİMLİĞİYLE de çağrılabilir (aynı oda adını iki oyuncu seçse bile
+ * karışmaz). Uzun uuid'yi ekranda şişirmemek için baş/son parçalar gösterilir.
+ */
+export function shortRoomId(roomId: string): string {
+  const body = roomId.startsWith("room_") ? roomId.slice(5) : roomId;
+  if (body.length <= 10) return body;
+  return `${body.slice(0, 4)}…${body.slice(-4)}`;
+}
+
 /** Kapıdan girerken yükleme ekranında yanan adımlar. */
 export const HOUSE_STEPS = [
   "Kapı açılıyor",
@@ -87,6 +100,13 @@ export function HouseRoom({
           <p className="truncate text-[11px] font-semibold text-white/60">
             🚪 {view.visits} giriş
             {view.isMine ? " · senin evin" : " · misafir olarak geziyorsun"}
+            {" · "}
+            <span
+              className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-white/70"
+              title={`Oda örneği kimliği: ${view.roomId}`}
+            >
+              #{shortRoomId(view.roomId)}
+            </span>
           </p>
         </div>
         <Button

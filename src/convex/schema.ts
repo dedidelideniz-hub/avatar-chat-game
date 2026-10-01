@@ -113,13 +113,28 @@ const schema = defineSchema(
       userId: v.id("users"), // odanın sahibi
       ownerName: v.string(), // sahibin görünen adı (levhada yazar)
       name: v.string(), // odanın adı (sahibi değiştirebilir)
+      /**
+       * ODA ÖRNEĞİ KİMLİĞİ (instance id) — `room_<satır _id>` biçiminde.
+       *
+       * NEDEN: oda artık bir "satır" değil, çağrılabilir bir ÖRNEKTİR; kimlik
+       * olmadan odayı adıyla bulmak (aynı ad iki oyuncuda olabilir) veya ileride
+       * oda başına durum (mobilya, davet, eşzamanlı ziyaretçiler) tutmak mümkün
+       * değildir. Kimlik satır `_id`inden TÜRETİLİR: sunucu üretir, istemci
+       * uyduramaz ve sunucunun ürettiği değerle çakışmaz.
+       *
+       * `optional`: bu alan eklenmeden önce açılmış odalar var; okuma tarafı
+       * kimliği yine de türetir (`houses.ts` → `roomIdFor`), sahip ilk girişte
+       * kalıcı olarak yazılır.
+       */
+      roomId: v.optional(v.string()),
       visits: v.number(), // odaya giriş sayısı (sahip + ziyaretçiler)
       visitors: v.array(v.string()), // son ziyaretçi adları (en yeni başta)
       createdAt: v.number(),
       updatedAt: v.number(),
     })
       .index("by_userId", ["userId"])
-      .index("by_ownerName", ["ownerName"]),
+      .index("by_ownerName", ["ownerName"])
+      .index("by_roomId", ["roomId"]),
 
     profiles: defineTable({
       userId: v.id("users"),

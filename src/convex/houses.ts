@@ -23,12 +23,28 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+// `Id` tipi `roomIdFor` ve `byRoom` içinde kullanılır.
 import type { Doc, Id } from "./_generated/dataModel";
 
 /** Defterde tutulan son ziyaretçi sayısı. */
 export const MAX_VISITORS = 8;
 /** Oda adı en fazla bu kadar karakter. */
 export const NAME_MAX = 24;
+
+/** Oda örneği kimliklerinin ön eki (`room_ab12…`). */
+export const ROOM_ID_PREFIX = "room_";
+
+/**
+ * Bir ev satırının ODA ÖRNEĞİ KİMLİĞİ.
+ *
+ * Kimlik satırın `_id`inden türetilir: sunucu üretir (istemci uyduramaz),
+ * benzersizdir ve bir odayı ADIYLA değil KİMLİĞİYLE çağırmanı sağlar (aynı oda
+ * adını iki oyuncu seçebilir). Alan eklenmeden açılmış satırlarda da AYNI değer
+ * türetilir, yani okuma tarafı hiçbir zaman boş kimlik görmez.
+ */
+export function roomIdFor(rowId: Id<"houses"> | string): string {
+  return `${ROOM_ID_PREFIX}${rowId}`;
+}
 
 /** Okuma gerektiren yardımcılar hem sorguda hem mutation'da çalışır. */
 type ReadCtx = QueryCtx | MutationCtx;
@@ -57,12 +73,22 @@ async function houseOfUser(ctx: ReadCtx, userId: Id<"users">) {
 
 function toView(house: Doc<"houses">, userId: Id<"users"> | null) {
   return {
+    /** Oda örneği kimliği — istemci bunu odayı "çağırmak" için kullanır. */
+    roomId: house.roomId ?? roomIdFor(house._id),
     ownerName: house.ownerName,
     name: house.name,
     visits: house.visits,
     visitors: house.visitors,
     isMine: userId !== null && house.userId === userId,
   };
+}
+
+/** Kimliği eksik (eski) satıra kalıcı kimliğini yazar ve satırı döner. */
+async function ensureRoomId(ctx: MutationCtx, house: Doc<"houses">) {
+  if (house.roomId) return house;
+  await ctx.db.patch(house._id, { roomId: roomIdFor(house._id) });
+  const fresh = await ctx.db.get(house._id);
+  return fresh ?? house;
 }
 
 /** Benim odam (henüz hiç girmemişsem `null` — kayıt ilk girişte açılır). */
@@ -72,6 +98,7 @@ export const mine = query({
     const userId = await getAuthUserId(ctx);
     if (userId === null) return null;
     const house = await houseOfUser(ctx, userId);
+    // Sorgu YAZMAZ: kimlik yazılmamışsa `toView` türetilmiş değeri döner.
     return house ? toView(house, userId) : null;
   },
 });
@@ -90,6 +117,29 @@ export const view = query({
 });
 
 /**
+ * ODAYI ÖRNEK KİMLİĞİYLE çağır — `room_…`.
+ *
+ * Kimlik sabittir ve paylaşılabilir (ör. ileride "odaya katıl" bağlantısı).
+ * Kimliği henüz yazılmamış eski odalar için türetilmiş değer taranır.
+ */
+export const byRoom = query({
+  args: { roomId: v.string() },
+  handler: async (ctx, { roomId }) => {
+    const userId = await getAuthUserId(ctx);
+    const house = await ctx.db
+      .query("houses")
+      .withIndex("by_roomId", (q) => q.eq("roomId", roomId))
+      .first();
+    if (house) return toView(house, userId);
+    // Kimlik yazılmadan ÖNCE açılmış oda: satırı doğrudan çöz.
+    if (!roomId.startsWith(ROOM_ID_PREFIX)) return null;
+    const rowId = roomId.slice(ROOM_ID_PREFIX.length);
+    const legacy = await ctx.db.get(rowId as Id<"houses">).catch(() => null);
+    return legacy ? toView(legacy, userId) : null;
+  },
+});
+
+/**
  * EVİNE GİR — odamı açar. Kayıt yoksa OTOMATİK oluşturulur (arsa/kurulum yok),
  * her giriş giriş sayacını artırır. Dönen değer, odayı çizecek veridir.
  */
@@ -103,7 +153,9 @@ export const enter = mutation({
     const existing = await houseOfUser(ctx, userId);
 
     if (existing === null) {
-      await ctx.db.insert("houses", {
+      // 1) Satır açılır, 2) kimlik satır `_id`inden türetilip yazılır: oda
+      //    böylece DB'de KİMLİKLİ bir ÖRNEK olur (`room_…`).
+      const rowId = await ctx.db.insert("houses", {
         userId,
         ownerName,
         name: normalizeName(undefined, ownerName),
@@ -112,17 +164,20 @@ export const enter = mutation({
         createdAt: now,
         updatedAt: now,
       });
+      await ctx.db.patch(rowId, { roomId: roomIdFor(rowId) });
     } else {
-      // Ad, oyuncunun profiliyle aynı kalsın (kullanıcı adı değişmişse).
+      // Ad, oyuncunun profiliyle aynı kalsın (kullanıcı adı değişmişse) ve
+      // eski odalarda eksik kalan örnek kimliği kalıcı olarak yazılsın.
       await ctx.db.patch(existing._id, {
         ownerName,
+        roomId: existing.roomId ?? roomIdFor(existing._id),
         visits: existing.visits + 1,
         updatedAt: now,
       });
     }
 
     const house = await houseOfUser(ctx, userId);
-    return house ? toView(house, userId) : null;
+    return house ? toView(await ensureRoomId(ctx, house), userId) : null;
   },
 });
 
@@ -136,10 +191,12 @@ export const rename = mutation({
     if (house === null) throw new Error("Önce evine gir.");
     await ctx.db.patch(house._id, {
       name: normalizeName(name, house.ownerName),
+      // Eski odada eksik kalan örnek kimliği de kalıcı olarak yazılır.
+      roomId: house.roomId ?? roomIdFor(house._id),
       updatedAt: Date.now(),
     });
     const saved = await houseOfUser(ctx, userId);
-    return saved ? toView(saved, userId) : null;
+    return saved ? toView(await ensureRoomId(ctx, saved), userId) : null;
   },
 });
 
@@ -147,18 +204,31 @@ export const rename = mutation({
  * Komşunun odasına gir: adın onun ziyaretçi defterine yazılır (en yeni başta,
  * tekrar eden ad başa alınır) ve giriş sayısı artar. Kendi odanı ziyaret
  * saymaz.
+ *
+ * Oda `ownerName` VEYA örnek kimliğiyle (`roomId`) çağrılabilir; kimlik
+ * verilirse aynı adı taşıyan iki oyuncu karışmaz (asıl örnek çağrısı budur).
  */
 export const visit = mutation({
-  args: { ownerName: v.string() },
-  handler: async (ctx, { ownerName }) => {
+  args: { ownerName: v.string(), roomId: v.optional(v.string()) },
+  handler: async (ctx, { ownerName, roomId }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Oturum açman gerekiyor.");
-    const house = await ctx.db
-      .query("houses")
-      .withIndex("by_ownerName", (q) => q.eq("ownerName", ownerName))
-      .first();
+    // Örnek kimliği verildiyse ODOĞRUDAN o oda: aynı adı taşıyan iki oyuncunun
+    // odası birbirine karışmaz.
+    const house =
+      roomId !== undefined
+        ? await ctx.db
+            .query("houses")
+            .withIndex("by_roomId", (q) => q.eq("roomId", roomId))
+            .first()
+        : await ctx.db
+            .query("houses")
+            .withIndex("by_ownerName", (q) => q.eq("ownerName", ownerName))
+            .first();
     if (house === null) throw new Error("Bu oyuncunun evi yok.");
-    if (house.userId === userId) return toView(house, userId);
+    if (house.userId === userId) {
+      return toView(await ensureRoomId(ctx, house), userId);
+    }
 
     const guest = await usernameOf(ctx, userId);
     const visitors = [guest, ...house.visitors.filter((n) => n !== guest)].slice(
@@ -168,12 +238,10 @@ export const visit = mutation({
     await ctx.db.patch(house._id, {
       visits: house.visits + 1,
       visitors,
+      roomId: house.roomId ?? roomIdFor(house._id),
       updatedAt: Date.now(),
     });
-    const saved = await ctx.db
-      .query("houses")
-      .withIndex("by_ownerName", (q) => q.eq("ownerName", ownerName))
-      .first();
+    const saved = await ctx.db.get(house._id);
     return saved ? toView(saved, userId) : null;
   },
 });
