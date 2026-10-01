@@ -42,8 +42,9 @@ kapısı bu modelleri de bekler (`readyModelUrls`), 12 sn'lik emniyet supabı
 yine devredir.
 
 Bu model caddedeki OYUNCU EVİDİR: kapısına gelince "Evine gir" düğmesi çıkar,
-oyuncunun KENDİ odası açılır (oda içi DOM sahne + gerçek 3D karakter — bkz.
-`src/components/world/HouseRoom.tsx`). Evin içi yürünemez; bina katıdır.
+oyuncunun KENDİ odası açılır (odanın İÇİ ayrı bir modeldir — bkz.
+`models/room.glb`, `src/engine/RoomStage.tsx`). Evin içi yürünemez; bina
+katıdır.
 
 NOT: Dosya boyutunun ~21MiB'ı 43 PNG dokudur. Görünüşü bozmadan küçültmek
 (dokuları 1K'ya indirmek) yüklemeyi belirgin hızlandırır; yapılırsa bu satır
@@ -53,6 +54,29 @@ Model bir dioramadır: dükkânın yanı sıra önünde bir `Road` ve dökülmü
 yapraklar içerir. Bunlar binanın parçası sayılmaz; ölçek/konum yalnızca bina
 gövdesinden ÖLÇÜLEREK hesaplanır (`src/engine/witchShopPrep.ts`) — cephe hattı
 komşu dükkânlarla aynı hizaya oturur, önündeki yol o hattın önüne taşar.
+
+### `models/room.glb` (oyuncu evinin ODASI — iç mekân)
+
+Evin kapısından girilen odanın içi bu modeldir (`src/engine/constants.ts` →
+`ROOM_MODEL_URL`, `src/engine/RoomStage.tsx`). Diğer modeller gibi **embedded
+JSON glTF** olarak durmalıdır (yukarıdaki kural: hosting boru hattı binary
+dosyayı bozar). Gerçek bir GLB geldiğinde:
+
+```bash
+node scripts/glb-to-embedded-json.mjs public/models/room.glb
+```
+
+Ölçek/konum SABİT DEĞİLDİR: model `Box3` ile ölçülür, en geniş yatay kenarı
+`ROOM_FIT.span`e (8 birim) ölçeklenir, tabanı zemine (y 0) oturtulur ve merkezi
+orijine alınır (`src/engine/roomModelPrep.ts`). Kamera odanın ön kenarında,
+göz hizasında durur; ortada sokaktaki karakterin TA KENDİSİ
+(`GlbCharacterPortrait`) durur.
+
+**Dosya yoksa/bozuksa oyun çökmez:** oda, kodla çizilen YEDEK odaya
+(`HouseRoom` → `ProceduralRoom`) düşer ve oyuncu yine odasını görür; model
+hazır olduğunda 3D oda yumuşakça üstüne açılır. Model, cadde ön yüklemesine
+EKLENMEZ (ağır iç mekân caddenin açılışını geciktirmesin); indirme kapıdaki
+"Evine gir" yükleme ekranı sırasında başlar (`preloadRoomModel`).
 
 ### `models/comical_bomb.glb` (samurayın elindeki bomba — birincil model)
 

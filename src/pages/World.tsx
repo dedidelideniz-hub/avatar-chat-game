@@ -43,6 +43,7 @@ import {
   HOUSE_STEPS,
   HOUSE_TIPS,
 } from "@/components/world/HouseRoom";
+import { preloadRoomModel } from "@/engine/RoomStage";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -1560,6 +1561,9 @@ export default function World() {
     if (roomBusyRef.current || roomOpenRef.current) return;
     roomBusyRef.current = true;
     playSound("click");
+    // Oda modeli ağır olabilir: indirme YÜKLEME EKRANI açıkken başlar, oyuncu
+    // odaya girdiğinde model ya hazırdır ya da yedek oda görünürken tamamlanır.
+    preloadRoomModel();
     setRoomPct(6);
     setRoomStep(0);
     setRoomTipIndex(0);
@@ -1594,6 +1598,7 @@ export default function World() {
     async (ownerName: string) => {
       if (roomBusyRef.current) return;
       roomBusyRef.current = true;
+      preloadRoomModel();
       setRoomGate(true);
       setRoomPct(6);
       setRoomStep(0);

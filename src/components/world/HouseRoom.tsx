@@ -1,10 +1,13 @@
 /**
  * 🏠 ODA — evin İÇİ. Kapıdaki "Evine gir" düğmesine basınca açılan ekran.
  *
- * Oda, sokaktaki karakteri taşıyan AYNI 3D modelle kurulur: duvar/zemin/eşya
- * katmanı DOM (Tailwind) ile çizilir, ortada duran karakter ise gerçek GLB
- * avatardır (`GlbProfileAvatar` — kendi şeffaf canvas'ı vardır). Böylece odaya
- * giren karakter, sokakta gördüğün karakterin TA KENDİSİDİR (renk/kuşam dahil).
+ * Odanın içi gerçek bir GLB modelidir (`constants.ROOM_MODEL_URL`) ve ortada
+ * sokaktaki karakterin TA KENDİSİ durur (`RoomStage` → aynı GLB avatar,
+ * kuşamıyla). Bileşen:
+ *   · modeli ölçüp odaya oturtur (sabit ölçek yok — `roomModelPrep.ts`),
+ *   · model HAZIR OLANA KADAR ve dosya eksik/bozuksa kodla çizilen YEDEK
+ *     odayı gösterir (`ProceduralRoom`): oyuncu hiçbir koşulda boş ekranla
+ *     kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır.
  *
  * Oda her oyuncuya özeldir: sahibi adını değiştirebilir, giriş sayısını ve
  * ziyaretçi defterini görür. Komşular listesinden başka bir oyuncunun odasına
@@ -20,6 +23,7 @@ import { motion } from "framer-motion";
 import { DoorOpen, Home, Pencil, Users } from "lucide-react";
 import { useState } from "react";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
+import { RoomStage } from "@/engine/RoomStage";
 
 /**
  * Oda örneği kimliğinin kısa gösterimi (`room_kd7…4a9`).
@@ -62,6 +66,73 @@ export interface HouseRoomProps {
   onVisit: (ownerName: string) => void;
   /** Kapıdan çık (caddeye dön). */
   onExit: () => void;
+}
+
+/**
+ * YEDEK ODA — kodla çizilen iç mekân (model yüklenene kadar / yüklenemezse).
+ *
+ * Katmanlar tek ekranlık bir "diorama" gibi üst üste bindirilir: duvar, zemin,
+ * pencere, eşyalar DOM (Tailwind) ile; ortadaki karakter ise gerçek GLB
+ * avatardır (`GlbProfileAvatar` — kendi şeffaf canvas'ı vardır).
+ */
+function ProceduralRoom({ equipped }: { equipped: string[] }) {
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Duvar: sıcak badana + hafif dikey doku. */}
+      <div className="absolute inset-0 bg-[#e9d6bb]" />
+      <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(0,0,0,0.035)_0px,rgba(0,0,0,0.035)_1px,transparent_1px,transparent_34px)]" />
+      {/* Zemin: ahşap tahta (perspektif hissi için üstte koyu şerit). */}
+      <div className="absolute inset-x-0 bottom-0 h-[38%] bg-[#8a5a34]" />
+      <div className="absolute inset-x-0 bottom-[37%] h-[3%] bg-[#6d4526]" />
+      <div className="absolute inset-x-0 bottom-0 h-[38%] bg-[repeating-linear-gradient(90deg,rgba(0,0,0,0.12)_0px,rgba(0,0,0,0.12)_2px,transparent_2px,transparent_58px)]" />
+
+      {/* Pencere: gündüz dışarısı (caddenin yeşili) + cam bölmeleri. */}
+      <div className="absolute left-[8%] top-[10%] h-[34%] w-[30%] overflow-hidden rounded-t-[40%] border-4 border-[#b98a5c] bg-gradient-to-b from-[#89c7ee] via-[#bfe4f5] to-[#dff0c9] shadow-inner">
+        <div className="absolute bottom-0 h-1/3 w-full bg-[#7cc04f]" />
+        <div className="absolute bottom-[18%] left-[18%] h-[30%] w-[22%] rounded-full bg-[#5faa38]" />
+        <div className="absolute bottom-[16%] right-[14%] h-[38%] w-[26%] rounded-full bg-[#69b640]" />
+        <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-[#b98a5c]" />
+        <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 bg-[#b98a5c]" />
+      </div>
+
+      {/* Duvar süsü: çerçeveli ev resmi. */}
+      <div className="absolute right-[12%] top-[12%] flex size-16 items-center justify-center rounded-xl border-4 border-[#b98a5c] bg-[#fdf3e0] text-2xl shadow-md">
+        🏡
+      </div>
+
+      {/* Komodin + saksı (sağ alt). */}
+      <div className="absolute bottom-[30%] right-[6%] h-[16%] w-[22%] rounded-t-md bg-[#a9713f] shadow-lg">
+        <div className="absolute -top-1 inset-x-0 h-2 rounded bg-[#c98d55]" />
+      </div>
+      <div className="absolute bottom-[44%] right-[10%] text-3xl drop-shadow">
+        🪴
+      </div>
+
+      {/* Yatak (sol alt). */}
+      <div className="absolute bottom-[22%] left-[-4%] h-[22%] w-[42%] rounded-r-2xl bg-[#d9c3a1] shadow-lg">
+        <div className="absolute left-0 top-[14%] h-[72%] w-[26%] rounded-r-xl bg-[#f4efe4]" />
+        <div className="absolute left-[30%] top-[8%] h-[26%] w-[40%] rounded-lg bg-[#c0533f]" />
+      </div>
+
+      {/* Kilim: karakterin üstünde durduğu halı. */}
+      <div className="absolute bottom-[6%] left-1/2 h-[16%] w-[62%] -translate-x-1/2 rounded-[50%] border-4 border-[#a8433a] bg-[#c85a4a]/80 shadow-inner">
+        <div className="absolute inset-[18%] rounded-[50%] border-2 border-[#f0d9a8]/70" />
+      </div>
+
+      {/* Karakter: sokaktakiyle AYNI model/kuşam. */}
+      <div className="absolute bottom-[8%] left-1/2 -translate-x-1/2">
+        <GlbProfileAvatar
+          equipped={equipped}
+          height={2}
+          className="pointer-events-none h-56 w-40 sm:h-72 sm:w-52"
+        />
+      </div>
+
+      {/* Tavan lambası + sıcak ışık halkası. */}
+      <div className="absolute left-1/2 top-0 h-[18%] w-1 -translate-x-1/2 bg-[#4a3527]" />
+      <div className="absolute left-1/2 top-[16%] size-10 -translate-x-1/2 rounded-full bg-[#ffe9a8] shadow-[0_0_60px_30px_rgba(255,226,150,0.35)]" />
+    </div>
+  );
 }
 
 export function HouseRoom({
@@ -120,60 +191,14 @@ export function HouseRoom({
       </div>
 
       {/* ── ODA SAHNESİ ───────────────────────────────────────────
-          Duvar + zemin + eşyalar DOM ile çizilir; ortada gerçek 3D karakter
-          durur. Katmanlar, tek ekranlık bir "diorama" gibi üst üste bindirilir. */}
+          İç mekân gerçek GLB modeliyle kurulur; model hazır olana kadar
+          (ya da dosya eksikse) yedek oda gösterilir. Ortada sokaktaki
+          karakterin ta kendisi durur. */}
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        {/* Duvar: sıcak badana + hafif dikey doku. */}
-        <div className="absolute inset-0 bg-[#e9d6bb]" />
-        <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(0,0,0,0.035)_0px,rgba(0,0,0,0.035)_1px,transparent_1px,transparent_34px)]" />
-        {/* Zemin: ahşap tahta (perspektif hissi için üstte koyu şerit). */}
-        <div className="absolute inset-x-0 bottom-0 h-[38%] bg-[#8a5a34]" />
-        <div className="absolute inset-x-0 bottom-[37%] h-[3%] bg-[#6d4526]" />
-        <div className="absolute inset-x-0 bottom-0 h-[38%] bg-[repeating-linear-gradient(90deg,rgba(0,0,0,0.12)_0px,rgba(0,0,0,0.12)_2px,transparent_2px,transparent_58px)]" />
-
-        {/* Pencere: gündüz dışarısı (caddenin yeşili) + cam bölmeleri. */}
-        <div className="absolute left-[8%] top-[10%] h-[34%] w-[30%] overflow-hidden rounded-t-[40%] border-4 border-[#b98a5c] bg-gradient-to-b from-[#89c7ee] via-[#bfe4f5] to-[#dff0c9] shadow-inner">
-          <div className="absolute bottom-0 h-1/3 w-full bg-[#7cc04f]" />
-          <div className="absolute left-[18%] bottom-[18%] h-[30%] w-[22%] rounded-full bg-[#5faa38]" />
-          <div className="absolute right-[14%] bottom-[16%] h-[38%] w-[26%] rounded-full bg-[#69b640]" />
-          <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-[#b98a5c]" />
-          <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 bg-[#b98a5c]" />
-        </div>
-
-        {/* Duvar süsü: çerçeveli ev resmi. */}
-        <div className="absolute right-[12%] top-[12%] flex size-16 items-center justify-center rounded-xl border-4 border-[#b98a5c] bg-[#fdf3e0] text-2xl shadow-md">
-          🏡
-        </div>
-
-        {/* Komodin + saksı (sağ alt). */}
-        <div className="absolute right-[6%] bottom-[30%] h-[16%] w-[22%] rounded-t-md bg-[#a9713f] shadow-lg">
-          <div className="absolute -top-1 inset-x-0 h-2 rounded bg-[#c98d55]" />
-        </div>
-        <div className="absolute right-[10%] bottom-[44%] text-3xl drop-shadow">🪴</div>
-
-        {/* Yatak (sol alt). */}
-        <div className="absolute left-[-4%] bottom-[22%] h-[22%] w-[42%] rounded-r-2xl bg-[#d9c3a1] shadow-lg">
-          <div className="absolute left-0 top-[14%] h-[72%] w-[26%] rounded-r-xl bg-[#f4efe4]" />
-          <div className="absolute left-[30%] top-[8%] h-[26%] w-[40%] rounded-lg bg-[#c0533f]" />
-        </div>
-
-        {/* Kilim: karakterin üstünde durduğu halı. */}
-        <div className="absolute left-1/2 bottom-[6%] h-[16%] w-[62%] -translate-x-1/2 rounded-[50%] border-4 border-[#a8433a] bg-[#c85a4a]/80 shadow-inner">
-          <div className="absolute inset-[18%] rounded-[50%] border-2 border-[#f0d9a8]/70" />
-        </div>
-
-        {/* Karakter: sokaktakiyle AYNI model/kuşam. */}
-        <div className="absolute left-1/2 bottom-[8%] -translate-x-1/2">
-          <GlbProfileAvatar
-            equipped={equipped}
-            height={2}
-            className="pointer-events-none h-56 w-40 sm:h-72 sm:w-52"
-          />
-        </div>
-
-        {/* Tavan lambası + sıcak ışık halkası. */}
-        <div className="absolute left-1/2 top-0 h-[18%] w-1 -translate-x-1/2 bg-[#4a3527]" />
-        <div className="absolute left-1/2 top-[16%] size-10 -translate-x-1/2 rounded-full bg-[#ffe9a8] shadow-[0_0_60px_30px_rgba(255,226,150,0.35)]" />
+        <RoomStage
+          equipped={equipped}
+          fallback={<ProceduralRoom equipped={equipped} />}
+        />
       </div>
 
       {/* ── ALT PANEL: ad / defter / komşular ──────────────────── */}

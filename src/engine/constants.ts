@@ -374,6 +374,54 @@ export const WITCH_SHOP_WALKWAY = {
   fenceGapHalf: 0.4 + 0.2,
 } as const;
 
+/* ════════════════════════════════════════════════════════════
+   🏠 ODANIN İÇİ — oyuncu evinin odası (`public/models/room.glb`)
+
+   Kapıdaki "Evine gir" düğmesiyle açılan oda, GERÇEK bir iç mekân modelidir.
+   Model ölçülür ve odaya oturtulur (`engine/roomModelPrep.ts`): sabit ölçek
+   yazılmaz, çünkü modeller farklı kaynaklardan geliyor ve hiçbiri dünya
+   biriminde değil — kutudan ölçek ve konum TÜRETİLİR.
+
+   MODEL YOKSA (dosya inmemiş/bozuk): oda, kodla çizilen YEDEK odaya düşer
+   (bkz. `components/world/HouseRoom.tsx`) — oyuncu yine odasını görür, cadde
+   ve kapı akışı bozulmaz. Model hazır olduğunda yedek oda yumuşakça kaybolur.
+   ════════════════════════════════════════════════════════════ */
+
+export const ROOM_MODEL_URL = "/models/room.glb";
+
+/** Odanın modele göre kurulumu (hepsi ölçülen kutudan türetilir). */
+export const ROOM_FIT = {
+  /** Odanın EN GENİŞ yatay kenarı bu birime ölçeklenir (≈ 8 m geniş salon). */
+  span: 8,
+  /** Odada duran karakterin boyu — sokaktaki avatarla aynı okunacak ölçek. */
+  characterHeight: 1.75,
+  /** Karakter odanın merkezinden NE KADAR öne (kameraya) dursun. */
+  standZ: 0.25,
+} as const;
+
+/**
+ * Odanın kamerası — odanın ÖN (güney, +Z) kenarından içeri bakar.
+ *
+ * Kamera odaya DİKİZ yerleştirilir (sabit bir "diorama" açısı): oyuncu odanın
+ * içinde duran karakteri ve arkasındaki mekânı görür. Yükseklik/hedef, odanın
+ * ölçülen yüksekliğine göre kısılır (`roomModelPrep.planRoomCamera`) — alçak
+ * bir modelde kamera tavanın dışında kalmasın.
+ */
+export const ROOM_CAMERA = {
+  /** Dikey görüş açısı. */
+  fov: 48,
+  /** Göz yüksekliği (birim) — karakterin göz hizası. */
+  eyeY: 1.6,
+  /** Bakış hedefinin yüksekliği. */
+  targetY: 1.3,
+  /** Kameranın odanın ön kenarından içeri girme miktarı. */
+  inset: 0.8,
+  /** Bakış hedefinin oda merkezinden kuzeye kayması (birim). */
+  targetZ: 1.1,
+  /** Kameranın karaktere en yakın kalabileceği mesafe (dar odalarda). */
+  minDistance: 1.4,
+} as const;
+
 // ─── AĞAÇ SIRALARI (caddenin yeşillik şeritleri) ───
 // Ağaçlar artık tek tek elle değil, EŞİT ARALIKLI sıralar hâlinde dizilir:
 // kuzeyde dükkanların önündeki çim şeridi, güneyde caddenin karşı çim şeridi.
