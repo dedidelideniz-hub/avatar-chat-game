@@ -1,48 +1,50 @@
 /**
- * 🌐 WEBGL DESTEĞİ — yeni bir WebGL bağlamı açılabiliyor mu, hangi ayarla?
+ * 🌐 WEBGL BAĞLAM YÖNETİMİ — kaç bağlam açık, hangisi bırakılabilir?
  *
- * NEDEN VAR: caddede ana sahne (`GameEngine3D`) zaten bir WebGL bağlamı tutar.
- * Odaya girerken açılan EK bağlamlar, cihazın bağlam/GPU sınırına takıldığında
- * `THREE.WebGLRenderer: Error creating WebGL context.` ile oyunu ÇÖKERTİYORDU
- * (mobilde görülen hata). Üç şey yapılır:
+ * NEDEN VAR: oyunun her 3D parçası KENDİ WebGL bağlamını açar (cadde, oda,
+ * profil kartı, giriş sahnesi, mağaza önizlemesi, arena). Tarayıcılar — hele
+ * mobildekiler — çok az sayıda bağlama izin verir ve `THREE.WebGLRenderer`
+ * yeni bir bağlam açamayınca `Error creating WebGL context.` ile HATA VERİR.
+ * Bu hata `@react-three/fiber`ın ASENKRON `configure()` çağrısının içinde
+ * çıktığı için React hata sınırına UĞRAMAZ ve oyunun tamamını düşürür.
  *
- *   1. Bağlam gerçekten açılabiliyor mu — oda sahnesi kurulmadan ÖNCE denenir.
- *      Açılamıyorsa 3D sahne HİÇ kurulmaz; oda, kodla çizilen yedek odayla
- *      gösterilir (çökmek yerine düşer).
- *   2. `powerPreference` SEÇİLİR: cadde bağlamı `high-performance` ister; bazı
- *      mobil GPU'larda ikinci bir `high-performance` bağlam reddedilir. Oda
- *      önce `default` (sakin iç mekân için yeterli ve en uyumlu), olmazsa
- *      `high-performance` ile denenir — seçilen ayar gerçek sahneye AYNEN
- *      geçirilir (deneme ile sahne aynı şeyi ister).
+ * Üç kaynaktan biri tükeniyor: (a) sayfa başına bağlam sayısı sınırı,
+ * (b) GPU belleği, (c) sökülen canvas'ların bağlamlarını BIRAKMAMASI —
+ * `renderer.dispose()` bağlamı serbest bırakmaz, yalnızca
+ * `forceContextLoss()` bırakır. Bu yüzden:
  *
- *      Deneme, caddenin bağlamı AYAKTAYKEN yapılır: yani "cadde varken
- *      ikinci bağlam açılabiliyor mu?" sorusu doğrudan ölçülür.
- *   3. Deneme bağlamı hemen BIRAKILIR (`WEBGL_lose_context`) — boşuna bağlam
- *      tutup sınırı zorlamayalım; gerçek sahne birazdan açılacak.
+ *   1. `registerCanvasContext` / `releaseCanvasContext`: AÇIK bağlamlar burada
+ *      tutulur; her canvas sökülürken bağlamını BIRAKIR (`WebglCanvas.tsx`).
+ *   2. `releaseExpendableContext`: yer gerekirse EN UCUZ (korunmayan) bağlam
+ *      bırakılır ve yeniden denenir — önizleme/yedek canvas'lar feda edilir,
+ *      caddede yürüyen oyuncu asla düşürülmez.
+ *   3. `watchCanvasFailures`: asenkron bağlam hatalarını yakalar
+ *      (`unhandledrejection`), konsola yazar ve sahibine "yeniden dene" der.
+ *      Böylece oyun ÇÖKMEZ.
  *
- * Ayrıca kural: odanın 3D sahnesi açıkken yedek oda AVATARINI çizmez
- * (`RoomStage` → `fallback({ avatar: false })`). Yani oda, caddeye tek bağlam
- * ekler: cadde + oda = 2.
+ * Öncelik kuralı: cadde sahnesi `PROTECTED_PRIORITY`dir ve ASLA bırakılmaz.
  */
+
+import type * as THREE from "three";
 
 /** Gerçek sahnede kullanılacak bağlam ayarı (denemeyle seçilir). */
 export type WebglPowerPreference = "high-performance" | "default";
 
-let cached: WebglPowerPreference | null | undefined;
+/** Bu öncelik ve üstü bağlamlar (`releaseExpendableContext`) ASLA bırakılmaz. */
+export const PROTECTED_PRIORITY = 100;
 
-/** Bu ayarla bağlam açılabiliyor mu? (deneme bağlamı hemen bırakılır) */
-function probe(powerPreference: WebglPowerPreference): boolean {
+/* ─────────────────────────── 1) DENEME (probe) ───────────────────────────
+ * Bu ayarla bir bağlam açılabiliyor mu? Deneme bağlamı HEMEN bırakılır
+ * (`WEBGL_lose_context`) — boşuna bağlam tutup sınırı zorlamayalım.
+ */
+export function probe(powerPreference: WebglPowerPreference): boolean {
+  if (typeof document === "undefined" || !document.createElement) return false;
   try {
     const canvas = document.createElement("canvas");
-    const context = (canvas.getContext("webgl2", {
-      powerPreference,
-      failIfMajorPerformanceCaveat: false,
-    }) ??
-      canvas.getContext("webgl", {
-        powerPreference,
-        failIfMajorPerformanceCaveat: false,
-      })) as WebGLRenderingContext | null;
-    const lose = context?.getExtension("WEBGL_lose_context") as
+    const options = { powerPreference, failIfMajorPerformanceCaveat: false };
+    const context = (canvas.getContext("webgl2", options) ??
+      canvas.getContext("webgl", options)) as WebGLRenderingContext | null;
+    const lose = context?.getExtension?.("WEBGL_lose_context") as
       | { loseContext?: () => void }
       | null
       | undefined;
@@ -53,75 +55,188 @@ function probe(powerPreference: WebglPowerPreference): boolean {
   }
 }
 
+/** Kısa yol: varsayılan ayarla bağlam açılabiliyor mu? */
+export function canCreateWebglContext(): boolean {
+  return probe("default");
+}
+
+/* ──────────────────── 2) AÇIK BAĞLAMLARIN KAYIT DEFTERİ ─────────────────── */
+
+interface ManagedContext {
+  gl: THREE.WebGLRenderer;
+  element: HTMLCanvasElement;
+  /** Küçük = feda edilmesi daha kolay. Cadde `PROTECTED_PRIORITY`dir. */
+  priority: number;
+}
+
+const managed: ManagedContext[] = [];
+
+/** Bu renderer'ı "açık bağlamlar" defterine yaz. */
+export function registerCanvasContext(
+  gl: THREE.WebGLRenderer,
+  priority = 10,
+): void {
+  if (!gl) return;
+  if (managed.some((m) => m.gl === gl)) return;
+  managed.push({ gl, element: gl.domElement, priority });
+}
+
+/** Defterden düş (bağlamı bırakmadan). */
+export function unregisterCanvasContext(gl: THREE.WebGLRenderer): void {
+  const index = managed.findIndex((m) => m.gl === gl);
+  if (index >= 0) managed.splice(index, 1);
+}
+
 /**
- * Odaya bağlam açılabiliyor mu, hangi `powerPreference` ile?
- * `null` → hiç açılamıyor (3D oda kurulmamalı). Sonuç oturum boyunca hatırlanır.
+ * Bağlamı HEMEN bırak: GPU belleği ve "bağlam yuvası" serbest kalır.
+ * Sıra önemlidir — `dispose()` tek başına bağlamı serbest BIRAKMAZ.
+ */
+export function releaseCanvasContext(gl: THREE.WebGLRenderer): void {
+  unregisterCanvasContext(gl);
+  try {
+    gl.forceContextLoss?.();
+    gl.dispose?.();
+    const element = gl.domElement;
+    if (element) {
+      element.width = 0;
+      element.height = 0;
+    }
+  } catch {
+    /* bağlam zaten ölmüşse sorun değil */
+  }
+}
+
+/**
+ * Sıradaki EN UCUZ (en düşük öncelikli, korunmayan) bağlamı bırak.
+ * Yer açıldıysa `true` döner.
+ */
+export function releaseExpendableContext(): boolean {
+  let victim: ManagedContext | null = null;
+  for (const entry of managed) {
+    if (entry.priority >= PROTECTED_PRIORITY) continue;
+    if (!victim || entry.priority < victim.priority) victim = entry;
+  }
+  if (!victim) return false;
+  // Feda edilen sahne boşta kalır: bunu GÖRÜNÜR kıl ki "neden karardı?"
+  // sorusu sessizce geçiştirilmesin.
+  console.warn(
+    "[webgl] Bağlam yuvası dolu — en ucuz sahne feda ediliyor (priority",
+    victim.priority,
+    ")",
+  );
+  releaseCanvasContext(victim.gl);
+  return true;
+}
+
+/* ───────── 3) SÖKÜLÜRKEN BIRAKMA (StrictMode'a dayanıklı) ─────────
+ * NEDEN GECİKMELİ: geliştirme modunda React (StrictMode) aynı canvas'ı hemen
+ * yeniden kurar. Bağlamı senkron bırakırsak yeni renderer ÖLÜ bağlam alır
+ * (bir canvas'a ikinci kez `getContext` çağrısı aynı — artık kayıp — bağlamı
+ * döndürür). Bu yüzden bırakma kısa bir süre geciktirilir ve canvas yeniden
+ * kurulursa iptal edilir.
+ */
+const pendingRelease = new WeakMap<HTMLCanvasElement, number>();
+
+export function scheduleCanvasRelease(
+  gl: THREE.WebGLRenderer,
+  delayMs = 400,
+): void {
+  const element = gl.domElement;
+  if (!element || typeof window === "undefined") {
+    releaseCanvasContext(gl);
+    return;
+  }
+  const pending = pendingRelease.get(element);
+  if (pending !== undefined) window.clearTimeout(pending);
+  const id = window.setTimeout(() => {
+    pendingRelease.delete(element);
+    releaseCanvasContext(gl);
+  }, delayMs);
+  pendingRelease.set(element, id);
+  // Sahnede artık yok: acil yer gerekirse bu bağlam sayılmaz.
+  unregisterCanvasContext(gl);
+}
+
+/** Aynı canvas yeniden kuruldiyse bekleyen bırakmayı iptal et. */
+export function cancelScheduledRelease(element: HTMLCanvasElement): void {
+  const pending = pendingRelease.get(element);
+  if (pending === undefined) return;
+  window.clearTimeout(pending);
+  pendingRelease.delete(element);
+}
+
+/** Kaç bağlam defterde duruyor? (teşhis/kontrol için) */
+export function managedContextCount(): number {
+  return managed.length;
+}
+
+/* ─────────────────────── 4) AYAR SEÇİMİ (powerPreference) ───────────────── */
+
+let cached: WebglPowerPreference | null = null;
+
+/**
+ * Yeni bir bağlam hangi `powerPreference` ile açılmalı? `null` → açılamıyor.
+ *
+ * Önce `default` denenir (sakin iç mekânlar için yeterli ve en uyumlu; cadde
+ * bağlamı `high-performance` tuttuğu için bazı mobil GPU'larda ikinci bir
+ * `high-performance` bağlam reddedilir), olmazsa `high-performance` denenir.
+ * İkisi de olmazsa feda edilebilir bir bağlam bırakılıp YENİDEN denenir.
  */
 export function webglPowerPreference(): WebglPowerPreference | null {
-  if (cached !== undefined) return cached;
-  if (typeof document === "undefined" || !document.createElement) {
-    cached = null;
-    return cached;
+  if (cached) return cached;
+  if (typeof document === "undefined" || !document.createElement) return null;
+  if (probe("default")) return (cached = "default");
+  if (probe("high-performance")) return (cached = "high-performance");
+  if (releaseExpendableContext()) {
+    if (probe("default")) return (cached = "default");
+    if (probe("high-performance")) return (cached = "high-performance");
   }
-  cached = probe("default")
-    ? "default"
-    : probe("high-performance")
-      ? "high-performance"
-      : null;
-  return cached;
+  return null;
 }
 
-/** Kısa yol: 3D oda sahnesi kurulabilir mi? */
-export function canCreateWebglContext(): boolean {
-  return webglPowerPreference() !== null;
-}
-
-/* ─────────────────── SON EMNİYET SUPABI (bağlam hatası) ───────────────────
- * NEDEN GEREKLİ: `@react-three/fiber` sahneyi kurarken renderer'ı ASENKRON bir
- * fonksiyonda oluşturur (`configure()`); orada çıkan bir hata React hata
- * sınırına UĞRAMAZ, "unhandled rejection" olarak sayfaya düşer ve oyunun
- * tamamını düşürür (mobilde görülen `Error creating WebGL context`).
- *
- * Bu supap, oda sahnesi AÇIKKEN gelen WebGL bağlam hatalarını yakalar,
- * konsola yazar ve oda katmanına "sahneyi bırak, yedek odaya dön" der.
- * Oda sahnesi açık değilken hiçbir şeye karışmaz (başka hatalar gizlenmez).
+/* ─────────────────── 5) ASENKRON BAĞLAM HATALARI (supap) ───────────────────
+ * `@react-three/fiber` sahneleri ASENKRON kurar (`configure()`): orada çıkan
+ * bir hata React hata sınırına UĞRAMAZ, "unhandled rejection" olarak sayfaya
+ * düşer ve oyunun tamamını düşürür (mobilde görülen
+ * `Error creating WebGL context`). Bu supap o redi yakalar, konsola yazar ve
+ * dinleyenlere (bkz. `WebglCanvas.useWebglRetry`) haberi verir.
  */
 
 type FailureListener = () => void;
 
 const failureListeners = new Set<FailureListener>();
-let liveCanvases = 0;
-let rejectionGuardInstalled = false;
+let watchedCanvases = 0;
+let failureGuardInstalled = false;
 
-function installRejectionGuard(): void {
-  if (rejectionGuardInstalled) return;
+function installFailureGuard(): void {
+  if (failureGuardInstalled) return;
   if (typeof window === "undefined" || !window.addEventListener) return;
-  rejectionGuardInstalled = true;
+  failureGuardInstalled = true;
   window.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => {
-    if (liveCanvases === 0) return; // oda sahnesi kapalı → bize ait değil
+    if (watchedCanvases === 0) return; // hiç 3D sahne yok → bize ait değil
     const reason = event.reason as { message?: string } | string | undefined;
     const message =
       typeof reason === "string" ? reason : (reason?.message ?? "");
     if (!/webgl context/i.test(message)) return;
     event.preventDefault?.();
     console.warn(
-      "[oda sahnesi] WebGL bağlamı kurulamadı — yedek odaya dönülüyor:",
+      "[webgl] Bağlam kurulamadı — kurtarma devrede (sahne yeniden denenecek):",
       message,
     );
-    for (const listener of failureListeners) listener();
+    for (const listener of [...failureListeners]) listener();
   });
 }
 
 /**
- * Oda sahnesi kurulumunu izlemeye başla. Dönen fonksiyon izlemeyi bırakır.
+ * Bağlam kurulumunu izlemeye başla. Dönen fonksiyon izlemeyi bırakır.
  * Abonelik boyunca gelen "WebGL context" redleri `onFail`e dönüşür.
  */
-export function watchRoomCanvasFailures(onFail: FailureListener): () => void {
-  installRejectionGuard();
+export function watchCanvasFailures(onFail: FailureListener): () => void {
+  installFailureGuard();
   failureListeners.add(onFail);
-  liveCanvases += 1;
+  watchedCanvases += 1;
   return () => {
     failureListeners.delete(onFail);
-    liveCanvases = Math.max(0, liveCanvases - 1);
+    watchedCanvases = Math.max(0, watchedCanvases - 1);
   };
 }

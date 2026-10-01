@@ -2088,7 +2088,7 @@ const scenarios: Scenario[] = [
           "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",
           house.includes("<RoomStage") &&
             house.includes("showAvatar={avatar}") &&
-            /if \(!power \|\| failed\)/.test(stage) &&
+            /if \(!power \|\| failed \|\| exhausted\)/.test(stage) &&
             stage.includes("showFallback"),
         ),
         check(
@@ -2100,7 +2100,7 @@ const scenarios: Scenario[] = [
         check(
           "bağlam açılamıyorsa 3D sahne HİÇ kurulmuyor (çökmek yerine yedeğe düşer)",
           stage.includes("webglPowerPreference") &&
-            stage.includes("if (!power || failed)") &&
+            stage.includes("if (!power || failed") &&
             read("../src/engine/webglSupport.ts").includes(
               "export function webglPowerPreference",
             ),
@@ -2120,17 +2120,69 @@ const scenarios: Scenario[] = [
         })(),
         check(
           "sahne kurulum hatası da yakalanıyor (CanvasGuard + RoomBoundary)",
-          /class CanvasGuard/.test(stage) &&
+          /export class CanvasGuard/.test(read("../src/engine/WebglCanvas.tsx")) &&
             /class RoomBoundary/.test(stage) &&
             /<CanvasGuard onFail=/.test(stage),
         ),
         check(
-          "ASENKRON bağlam hatası oyunu düşürmüyor (supap → yedek odaya dönüş)",
+          "ASENKRON bağlam hatası oyunu düşürmüyor (supap → yeniden denenir)",
           read("../src/engine/webglSupport.ts").includes("unhandledrejection") &&
             read("../src/engine/webglSupport.ts").includes(
-              "export function watchRoomCanvasFailures",
+              "export function watchCanvasFailures",
             ) &&
-            stage.includes("<CanvasFailureWatch onFail="),
+            stage.includes("useWebglRetry") &&
+            read("../src/engine/WebglCanvas.tsx").includes(
+              "export function useWebglRetry",
+            ),
+        ),
+        // ── 7) BAĞLAM BÜTÇESİ: sökülen canvas bağlamını BIRAKIR, yer gerekirse
+        //       feda edilebilir bağlam bırakılır, cadde bağlamı KORUNUR.
+        check(
+          "sökülen canvas WebGL bağlamını BIRAKIYOR (forceContextLoss — dispose yetmez)",
+          read("../src/engine/webglSupport.ts").includes("forceContextLoss") &&
+            read("../src/engine/WebglCanvas.tsx").includes(
+              "scheduleCanvasRelease(gl)",
+            ) &&
+            read("../src/engine/WebglCanvas.tsx").includes(
+              "registerCanvasContext(gl, priority)",
+            ),
+        ),
+        (() => {
+          const canvases = [
+            "../src/engine/GameEngine3D.tsx",
+            "../src/engine/RoomStage.tsx",
+            "../src/engine/GlbAvatar3D.tsx",
+            "../src/components/entry/EntryCharacterStage.tsx",
+            "../src/components/world/ShopSheets.tsx",
+            "../src/components/game3d/GameScene3D.tsx",
+            "../src/components/world/Arena3D.tsx",
+          ];
+          const missing = canvases.filter(
+            (path) => !read(path).includes("<WebglContextKeeper"),
+          );
+          return check(
+            "her 3D canvas bağlam defterine kaydoluyor (bağlamlar birikmez)",
+            missing.length === 0,
+            missing.length
+              ? `eksik: ${missing.join(", ")}`
+              : `${canvases.length} sahne`,
+          );
+        })(),
+        check(
+          "cadde bağlamı ASLA feda edilmez (protected priority)",
+          read("../src/engine/GameEngine3D.tsx").includes(
+            "priority={PROTECTED_PRIORITY}",
+          ) &&
+            read("../src/engine/webglSupport.ts").includes(
+              "export function releaseExpendableContext",
+            ),
+        ),
+        check(
+          "oda açıkken cadde sahnesi DURDURULUR (GPU/yuva boşa tüketilmez)",
+          read("../src/engine/GameEngine3D.tsx").includes(
+            'frameloop={paused ? "never" : "always"}',
+          ) &&
+            world.includes("paused={room !== null}"),
         ),
         check(
           "odaya girerken arkadaki katmanlar kapatılıyor (bağlam sınırı)",

@@ -13,6 +13,7 @@ import type { AbilityDef } from "@/lib/shop";
 
 import { useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { WebglContextKeeper } from "@/engine/WebglCanvas";
 import {
   FALLBACK_MODEL_URL,
   GlbModelBoundary,
@@ -2308,6 +2309,8 @@ export function Arena3D({
       camera={{ position: [CX, 7, CZ + 7], fov: 60, near: 0.5, far: 200 }}
       className="absolute inset-0"
     >
+      {/* Arena sahnesi de feda edilebilir: sökülünce bağlamını BIRAKIR. */}
+      <WebglContextKeeper priority={10} />
       <FollowCamera playerRef={playerRef} />
       {/* Atmosphere (background + fog) is managed by useArenaCamera in
           ArenaCamera.tsx - aspect-aware: portrait keeps the original sky,

@@ -1,5 +1,6 @@
 import { GlbCharacterPortrait } from "@/engine/GlbAvatar3D";
 import { hasCharacterSkin } from "@/engine/EquipmentRegistry";
+import { WebglContextKeeper } from "@/engine/WebglCanvas";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -150,8 +151,10 @@ export function EntryCharacterStage({
           gl.domElement.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
           });
-        }}
-      >
+        }}        >
+        {/* Bağlam defteri: bu sahne sökülünce WebGL bağlamı BIRAKILIR
+            (birikip caddenin/odanın bağlamını engellemesin). */}
+        <WebglContextKeeper />
         <ambientLight intensity={0.55} />
         <hemisphereLight args={["#8fb6ff", "#120c06", 0.5]} />
         <directionalLight position={[2.6, 4.4, 3.4]} intensity={1.35} />

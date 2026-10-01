@@ -3287,6 +3287,11 @@ export default function World() {
             presenceSessionId={sessionId}
             onSceneReady={handleSceneReady}
             readyModelUrls={gateModelUrls}
+            // 🏠 Oda açıkken cadde GÖRÜNMEZ: sahne durdurulur. Arka planda
+            // çizmeye devam etmek GPU'yu ve bağlam yuvalarını boşa tüketiyor
+            // ve odanın kendi WebGL bağlamını açmasını engelliyordu.
+            // Duraklatma çizimi durdurur; sahne ayakta kalır (exit → devam).
+            paused={room !== null}
             seat={
               seatBench !== null
                 ? {

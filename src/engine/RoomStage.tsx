@@ -14,6 +14,9 @@
  *     AÇIKKEN yedek odanın avatar canvas'ı hiç çizilmez (`avatar: false`),
  *   · bağlam açılamıyorsa (`webglSupport.webglPowerPreference`) 3D sahne HİÇ
  *     kurulmaz ve bağlam, denemeyle SEÇİLEN `powerPreference` ile açılır,
+ *   · sahne bağlamı kurulamazsa bağlam kendini BIRAKIR (`WebglContextKeeper`)
+ *     ve sahne yeniden denenir (`useWebglRetry`) — denemeler biterse yedek
+ *     oda kalır; oyun çökmez,
  *   · sahne kurulumu/indirme hata verirse sahne sökülür ve yedek oda kalır.
  *
  * NEDEN YEDEK VAR: model ağır olabilir ya da dosya eksik/bozuk olabilir.
@@ -37,6 +40,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { CanvasGuard, WebglContextKeeper, useWebglRetry } from "./WebglCanvas";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
@@ -49,7 +53,7 @@ import {
   type RoomPlacement,
 } from "./roomModelPrep";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
-import { watchRoomCanvasFailures, webglPowerPreference } from "./webglSupport";
+import { webglPowerPreference } from "./webglSupport";
 
 /** Oda modelini indirmeye başla (kapı açılırken çağrılır — bkz. `World`). */
 export function preloadRoomModel(): void {
@@ -216,42 +220,6 @@ class RoomBoundary extends Component<
   }
 }
 
-/**
- * Sahnenin KENDİSİ kurulamazsa (WebGL bağlamı/oluşturucu hatası) yakalar:
- * sınır `<Canvas>`ın ÜSTÜNDE durur, çünkü hata Canvas'ın kendi kurulumunda
- * (layout effect) çıkar ve içerideki bir sınır onu göremez.
- */
-class CanvasGuard extends Component<
-  { children: ReactNode; onFail: () => void },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    console.warn("[oda sahnesi] 3D sahne kurulamadı:", error);
-    this.props.onFail();
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
-}
-
-/**
- * Sahne kurulumu ASENKRON olduğu için renderer hatası React hata sınırına
- * düşmeyebilir (`webglSupport.ts` → son emniyet supabı). Bu bileşen, oda
- * sahnesi AÇIKKEN gelen WebGL bağlam hatasını yakalar ve `onFail`e bağlar —
- * oyun çökmek yerine yedek odaya döner.
- */
-function CanvasFailureWatch({ onFail }: { onFail: () => void }) {
-  useEffect(() => watchRoomCanvasFailures(onFail), [onFail]);
-  return null;
-}
-
 export interface RoomStageProps {
   /** Karakterin kuşandığı eşyalar (sokaktakiyle aynı görünüm). */
   equipped: string[];
@@ -278,9 +246,15 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [showFallback, setShowFallback] = useState(true);
+  // Bağlam kurulamazsa feda edilebilir bir bağlam bırakıp YENİ canvas ile
+  // yeniden dener; denemeler biterse (`exhausted`) yedek oda kalıcı olur.
+  const { attempt, exhausted, handleCreated } = useWebglRetry(2);
 
   const handleReady = useCallback(() => setReady(true), []);
   const handleFail = useCallback(() => setFailed(true), []);
+  const handleCanvasCreated = useCallback(() => {
+    handleCreated();
+  }, [handleCreated]);
 
   // Yedek oda, 3D oda açıldıktan SONRA sökülür: geçiş yumuşak olur ve
   // gereksiz bir WebGL bağlamı açık kalmaz.
@@ -292,7 +266,7 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
 
   // 3D sahne yok: yedek oda kalıcı ve avatarını kendi çizebilir (başka
   // bağlam yok).
-  if (!power || failed) {
+  if (!power || failed || exhausted) {
     return <div className="absolute inset-0">{fallback({ avatar: true })}</div>;
   }
 
@@ -313,8 +287,9 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
           🚪 Oda yerleştiriliyor…
         </div>
       )}
-      <CanvasGuard onFail={handleFail}>
+      <CanvasGuard onFail={handleFail} resetKey={attempt}>
         <Canvas
+          key={attempt}
           style={{
             position: "absolute",
             inset: 0,
@@ -342,13 +317,18 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
             });
           }}
         >
+          {/* Bağlamı kayıt defterine yazar, sökülünce BIRAKIR ve sahnenin
+              gerçekten kurulduğunu `useWebglRetry`ye bildirir. */}
+          <WebglContextKeeper
+            priority={50}
+            onCreated={handleCanvasCreated}
+          />
           <RoomBoundary onFail={handleFail}>
             <Suspense fallback={null}>
               <RoomInterior equipped={equipped} onReady={handleReady} />
             </Suspense>
           </RoomBoundary>
         </Canvas>
-        <CanvasFailureWatch onFail={handleFail} />
       </CanvasGuard>
     </div>
   );

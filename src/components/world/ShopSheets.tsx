@@ -3,6 +3,7 @@ import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, useAnimations } from "@react-three/drei";
+import { WebglContextKeeper } from "@/engine/WebglCanvas";
 import { motion, AnimatePresence } from "framer-motion";
 import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -313,6 +314,9 @@ export function SkinPreviewModal({
               gl={{ alpha: true }}
               style={{ background: "transparent" }}
             >
+              {/* Önizleme canvas'ı feda edilebilir: kapanınca bağlamını
+                  BIRAKIR (bağlam yuvası birikmesin). */}
+              <WebglContextKeeper priority={10} />
               <SkinPreviewScene url={product.skinUrl} />
             </Canvas>
           )}

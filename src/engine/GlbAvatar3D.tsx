@@ -32,6 +32,7 @@ import {
 import { useSamuraiBomb } from "./SamuraiBomb";
 import { VendorBadge, VendorSparkle } from "./VendorSparkle";
 import { ChatBubble } from "./ChatBubble3D";
+import { WebglContextKeeper } from "./WebglCanvas";
 import { VENDOR_COLOR, isVipCharacterColor } from "@/lib/avatar";
 
 // Re-export for backward compatibility
@@ -1507,6 +1508,9 @@ export function GlbProfileAvatar({
         });
       }}
     >
+      {/* Küçük önizleme sahneleri feda edilebilir: yer gerekirse bağlamları
+          İLK bunlar bırakılır ve kart kapanınca bağlam serbest kalır. */}
+      <WebglContextKeeper priority={10} />
       <ambientLight intensity={1.1} />
       <directionalLight position={[2, 3, 4]} intensity={1.4} />
       <Suspense fallback={null}>

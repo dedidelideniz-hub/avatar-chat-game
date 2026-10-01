@@ -11,6 +11,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useRef, useEffect, useMemo, memo } from "react";
+import { WebglContextKeeper } from "@/engine/WebglCanvas";
 
 // ════════════════════════════════════════════════════════════════
 // WORLD CONSTANTS — match SVG viewBox (1600×900)
@@ -807,6 +808,8 @@ export function GameScene3D({ giftClaimed, getCameraState }: GameScene3DProps) {
         far: 2000,
       }}
     >
+      {/* Bağlam defteri: sahne sökülünce bağlam BIRAKILIR. */}
+      <WebglContextKeeper priority={10} />
       <SceneContent giftClaimed={giftClaimed} getCameraState={getCameraState} />
     </Canvas>
   );

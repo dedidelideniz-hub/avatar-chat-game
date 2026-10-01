@@ -20,6 +20,12 @@ import { cameraFraming, cameraOpenAmount } from "./cameraFraming";
 import { BUILDING_USER_DATA } from "./buildingOcclusion";
 import { getBenchNear, requestBenchSit } from "./benchSeat";
 import { STREET_MODELS } from "./streetPreload";
+import {
+  CanvasGuard,
+  WebglContextKeeper,
+  useWebglRetry,
+} from "./WebglCanvas";
+import { PROTECTED_PRIORITY } from "./webglSupport";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -1348,6 +1354,16 @@ export interface GameEngine3DProps {
    * botların kendi aralarında konuşması baş üstünde görünür.
    */
   botSpeech?: Record<string, string | null | undefined>;
+  /**
+   * Cadde sahnesi DURDURULSUN mu?
+   *
+   * Tam ekran bir katman (oda, savaş) açıkken cadde görünmez; arka planda
+   * çizmeye devam etmesi GPU'yu ve bağlam yuvalarını boşa tüketir — bu da
+   * tam ekran katmanın KENDİ WebGL bağlamını açamamasına yol açıyordu.
+   * Duraklatma `frameloop="never"`dır: sahne bellekte ve ayakta kalır, çizmez
+   * (kapandığında kaldığı yerden devam eder — yeniden kurulmaz).
+   */
+  paused?: boolean;
 }
 
 export function GameEngine3D({
@@ -1369,7 +1385,15 @@ export function GameEngine3D({
   speechName,
   speechColorId,
   botSpeech,
+  paused = false,
 }: GameEngine3DProps) {
+  // 🧯 Bağlam emniyeti: cadde sahnesinin bağlamı ASLA feda edilmez
+  // (`PROTECTED_PRIORITY`); bağlam kurulamazsa yeni bir canvas ile yeniden
+  // denenir ve denemeler biterse çökme yerine sade bir bilgi katmanı kalır.
+  const { attempt, exhausted, handleCreated } = useWebglRetry(2);
+  // Senkron kurulum hatası (React hata sınırı): sahne sökülür, sayfa yaşar.
+  const [stageFailed, setStageFailed] = useState(false);
+  const handleStageFail = useCallback(() => setStageFailed(true), []);
   // Yükleme kapısı için: cadde varlıkları çözüldü mü? (`onSceneReady`
   // verilmediyse hiç kullanılmaz — durum makinesi boşta durur.)
   const [assetsReady, setAssetsReady] = useState(false);
@@ -1392,30 +1416,52 @@ export function GameEngine3D({
     return () => clearInterval(iv);
   }, [botsRef, botsLen]);
 
+  // Bağlam yuvası gerçekten tükendi: boş/donmuş bir sahne yerine dürüst bir
+  // bilgi katmanı göster (oyunun geri kalanı — HUD, giriş akışı — çalışır).
+  if (exhausted || stageFailed) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#78c8e8] via-[#bfe4f5] to-[#dff0c9]">
+        <p className="mx-4 max-w-xs rounded-2xl bg-black/55 px-4 py-3 text-center text-xs font-bold text-white">
+          📵 3D cadde başlatılamadı — cihaz aynı anda çok fazla 3D sahne
+          açamıyor. Sayfayı yenilemek sorunu çözer.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <Canvas
-      dpr={[1, isMobile ? 1.5 : 2]}
-      shadows={!isMobile ? "soft" : false}
-      camera={{
-        position: [sX(SPAWN_SVG.x), initCamY, sZ(SPAWN_SVG.y) + initCamZ],
-        fov: 70,
-        near: 0.1,
-        far: 200,
-      }}
-      className="absolute inset-0"
-      style={{ pointerEvents: "none" }}
-      onCreated={({ gl }) => {
-        // Mobile browsers evict the OLDEST WebGL context when a new one is
-        // created (e.g. the profile-card canvas). Without preventDefault the
-        // main canvas never restores and shows a large corrupted/blank
-        // region covering part of the map. With it, THREE re-initializes
-        // automatically on "webglcontextrestored".
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-        });
-      }}
-    >
-      {/* ── CADDE HAZIRLIK KAPISI ────────────────────────────────────
+    <CanvasGuard resetKey={attempt} onFail={handleStageFail}>
+      <Canvas
+        key={attempt}
+        dpr={[1, isMobile ? 1.5 : 2]}
+        shadows={!isMobile ? "soft" : false}
+        frameloop={paused ? "never" : "always"}
+        camera={{
+          position: [sX(SPAWN_SVG.x), initCamY, sZ(SPAWN_SVG.y) + initCamZ],
+          fov: 70,
+          near: 0.1,
+          far: 200,
+        }}
+        className="absolute inset-0"
+        style={{ pointerEvents: "none" }}
+        onCreated={({ gl }) => {
+          // Mobile browsers evict the OLDEST WebGL context when a new one is
+          // created (e.g. the profile-card canvas). Without preventDefault the
+          // main canvas never restores and shows a large corrupted/blank
+          // region covering part of the map. With it, THREE re-initializes
+          // automatically on "webglcontextrestored".
+          gl.domElement.addEventListener("webglcontextlost", (e) => {
+            e.preventDefault();
+          });
+        }}
+      >
+        {/* Bağlamı kayıt defterine yazar (korunmuş öncelik), sökülünce
+            BIRAKIR ve sahnenin kurulduğunu emniyet kancasına bildirir. */}
+        <WebglContextKeeper
+          priority={PROTECTED_PRIORITY}
+          onCreated={handleCreated}
+        />
+        {/* ── CADDE HAZIRLIK KAPISI ────────────────────────────────────
           Yükleme ekranı (`World`) bu sinyali bekler: önce caddenin temel
           modelleri (çim zemin, ağaçlar, çim öbekleri, karakter) ve varsa
           oyuncuya özel skini çözülür, SONRA ilk kareler çizilir. Böylece
@@ -1565,11 +1611,12 @@ export function GameEngine3D({
         />
       ))}
 
-      {/* === PHASE 1 GLB AVATAR TEST (dev-only, ?glbtest=1) === */}
-      {glbTest && <GlbAvatarTest />}
+        {/* === PHASE 1 GLB AVATAR TEST (dev-only, ?glbtest=1) === */}
+        {glbTest && <GlbAvatarTest />}
 
-      {/* === DEBUG OVERLAY (temporary — shows coordinate pipeline state) === */}
-    </Canvas>
+        {/* === DEBUG OVERLAY (temporary — shows coordinate pipeline state) === */}
+      </Canvas>
+    </CanvasGuard>
   );
 }
 
