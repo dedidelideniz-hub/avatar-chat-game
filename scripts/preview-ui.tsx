@@ -291,8 +291,22 @@ export const defaultProfile = (over: Partial<MockProfile> = {}): MockProfile => 
 });
 
 let profileStub: MockProfile = defaultProfile();
-/** 🏠 `api.houses.list` taklidi — senaryolar bunu doldurup boşaltabilir. */
-let houseStub: unknown[] = [];
+/** 🏠 `api.houses.enter/rename` taklidi — oyuncunun KENDİ odası. */
+let houseStub = {
+  ownerName: "Dkdkdkk",
+  name: "Dkdkdkk Odası",
+  visits: 4,
+  visitors: ["Ali", "Zeynep"],
+  isMine: true,
+};
+/** 🏠 `api.houses.visit` taklidi — KOMŞUNUN odası (misafir görünümü). */
+let guestStub = {
+  ownerName: "Ali",
+  name: "Ali Odası",
+  visits: 2,
+  visitors: ["Dkdkdkk"],
+  isMine: false,
+};
 
 async function mockAppLayer() {
   const { mock } = await import("bun:test");
@@ -320,12 +334,24 @@ async function mockAppLayer() {
   mock.module("convex/react", () => ({
     useQuery: (ref: unknown) => {
       const name = refName(ref);
-      if (name.startsWith("houses:")) return houseStub;
       if (name === "profiles:getMyProfile") return profileStub;
       if (name === "chat:list" || name === "battles:listInvites") return [];
       return null;
     },
-    useMutation: () => async () => null,
+    // 🏠 Ev mutation'ları gerçek oda verisi döndürür: böylece "Evim" düğmesi
+    // önizlemede GERÇEKTEN odayı açıyor (uçtan uca DOM kontrolü).
+    useMutation: (ref: unknown) => {
+      const name = refName(ref);
+      if (name === "houses:enter") return async () => houseStub;
+      if (name === "houses:rename") {
+        return async (args: { name?: string } = {}) => ({
+          ...houseStub,
+          name: args.name ?? houseStub.name,
+        });
+      }
+      if (name === "houses:visit") return async () => guestStub;
+      return async () => null;
+    },
     useAction: () => async () => null,
     useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
     ConvexProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -1072,54 +1098,52 @@ const scenarios: Scenario[] = [
       if (!button) return checks;
 
       await p.click(button);
-      const after = p.snapshot();
+
+      // ── 2) ODAYA GİRİŞ: "Evim" düğmesi önce KAPI YÜKLEME EKRANINI, sonra
+      //       oyuncunun KENDİ odasını açmalı (karakter odada durur).
+      await React.act(async () => {
+        await new Promise((r) => setTimeout(r, 400));
+      });
+      const gateSnap = p.snapshot();
       checks.push(
         check(
-          "ev paneli açıldı (boş arsa → ev kur)",
-          after.text.includes("Boş Arsa") && after.text.includes("Evini kur"),
-          after.text.slice(0, 90),
-        ),
-        check(
-          "panel kapatma düğmesi var",
-          after.inventory.some((l) => l.includes("Kapat")),
+          "kapı yükleme ekranı çıktı (odaya bağlanılıyor)",
+          gateSnap.text.includes("Kapı açılıyor") ||
+            gateSnap.text.includes("Evine giriliyor"),
+          gateSnap.text.slice(0, 80),
         ),
       );
-
-      // ── 2) EVİ OLAN OYUNCU: panel kendi evini (ziyaret sayısı + ziyaretçi
-      //       defteri ile) göstermeli. Evler sunucudan reaktif geldiği için
-      //       liste güncellendiğinde panel de kendiliğinden yenilenir.
-      houseStub = [
-        {
-          plotIndex: 2,
-          ownerName: "Dkdkdkk",
-          name: "Dkdkdkk Ev",
-          visits: 4,
-          visitors: ["Ali", "Zeynep"],
-          isMine: true,
-        },
-      ];
-      await p.render(<World />);
       for (let i = 0; i < 3; i++) {
         await React.act(async () => {
-          await new Promise((r) => setTimeout(r, 1200));
+          await new Promise((r) => setTimeout(r, 700));
         });
       }
-      const owned = Array.from(p.root.querySelectorAll("button")).find(
-        (b) => (b.getAttribute("aria-label") ?? "").includes("Evim"),
-      );
-      if (owned) await p.click(owned);
-      const mineSnap = p.snapshot();
-      houseStub = [];
+      const roomSnap = p.snapshot();
       return [
         ...checks,
         check(
-          "kendi evim: ad + ziyaret sayısı + ziyaretçi defteri",
-          mineSnap.text.includes("Dkdkdkk Ev") &&
-            mineSnap.text.includes("4 ziyaret") &&
-            mineSnap.text.includes("Ali") &&
-            mineSnap.text.includes("Zeynep") &&
-            mineSnap.text.includes("Senin evin"),
-          mineSnap.text.slice(0, 110),
+          "oda açıldı: oda adı + giriş sayısı + sahiplik",
+          roomSnap.text.includes("Dkdkdkk Odası") &&
+            roomSnap.text.includes("4 giriş") &&
+            roomSnap.text.includes("senin evin"),
+          roomSnap.text.slice(0, 120),
+        ),
+        check(
+          "ziyaretçi defteri odada görünüyor",
+          roomSnap.text.includes("Ali") && roomSnap.text.includes("Zeynep"),
+        ),
+        check(
+          "oda adı düzenlenebiliyor (sahibi)",
+          roomSnap.text.includes("Oda adını değiştir"),
+        ),
+        check(
+          "kapıdan çıkma düğmesi var",
+          roomSnap.inventory.some((l) => l.includes("Çık")),
+        ),
+        check(
+          "karakter odada duruyor (3D model yerleşti)",
+          p.root.querySelectorAll("canvas").length > 0,
+          `${p.root.querySelectorAll("canvas").length} canvas`,
         ),
       ];
     },
@@ -1369,7 +1393,7 @@ const scenarios: Scenario[] = [
   {
     id: "cadi-dukkani",
     title:
-      "CADI DÜKKÂNI · satır boş, tek model dikili; kapı yolu avluya kadar yürünebilir, evin içi KATI + oyuncu evleri",
+      "CADI DÜKKÂNI · satır boş, tek model dikili; kapı yolu avluya kadar yürünebilir, evin içi KATI, kapıda \"Evine gir\"",
     handles:
       "src/engine/constants.ts + src/lib/shop.ts + src/engine/buildingModelPrep.ts + src/engine/GlbBuilding.tsx + src/engine/houseDoor.ts + src/convex/houses.ts + src/pages/World.tsx",
     run: async () => {
@@ -1411,9 +1435,7 @@ const scenarios: Scenario[] = [
         check(
           "boş gözler HİÇBİR ŞEY çizmiyor (yerleri boş kalıyor)",
           engine.includes("<GlbBuilding") &&
-            /def\.modelUrl && !claimedPlots\.has\(i\) \? \([\s\S]*?\) : null,/.test(
-              engine,
-            ),
+            /def\.modelUrl \? \([\s\S]*?\) : null,/.test(engine),
         ),
       );
       checks.push(
@@ -1719,104 +1741,65 @@ const scenarios: Scenario[] = [
           "hiçbir bina saydamlaşmıyor (ev yürünerek girilen hacim değil)",
           !/fade=\{/.test(engine),
         ),
-        check(
-          "aynı model birden çok arsaya dikilebiliyor (sahne klonlanır)",
-          glb.includes("root.clone(true)"),
-        ),
       );
 
-      // ── 8) 🏠 OYUNCU EVLERİ — "evine gir" düğmesi ve ONLINE ev kaydı.
-      //       Etiket SAF bir fonksiyondan gelir; aşağıdaki kontroller o
-      //       fonksiyonun dört hâlini ve menzil deposunu doğrular.
+      // ── 8) 🏠 EV / ODA: kapı düğmesi, menzil deposu ve ONLINE oda kaydı.
+      //       Oda KURULMAZ (arsa yok): ilk girişte sunucuda otomatik açılır.
       const {
-        houseDoorAction,
-        myHouse,
+        HOUSE_ENTER_LABEL,
         setHouseNear,
         getHouseNear,
         requestHouseEnter,
         consumeHouseEnterRequest,
       } = await import("../src/engine/houseDoor");
-      const myView = {
-        plotIndex: K.WITCH_SHOP_INDEX,
-        ownerName: "Dkdkdkk",
-        name: "Dkdkdkk Ev",
-        visits: 3,
-        visitors: ["Ali"],
-        isMine: true,
-      };
-      const theirView = { ...myView, plotIndex: 5, ownerName: "Ali", isMine: false };
       checks.push(
         check(
-          "kendi evimin kapısında \"Evine gir\"",
-          houseDoorAction(K.WITCH_SHOP_INDEX, [myView])?.kind === "mine",
-        ),
-        check(
-          "başkasının evinde \"Ziyaret et\" (online: herkesin evi)",
-          houseDoorAction(5, [theirView])?.kind === "other",
-        ),
-        check(
-          "boş arsada (henüz evim yokken) \"Evini kur\"",
-          houseDoorAction(5, [])?.kind === "free",
-        ),
-        check(
-          "evi olan oyuncuya boş arsada düğme ÇIKMAZ",
-          houseDoorAction(7, [myView]) === null,
-        ),
-        check(
-          "yerel oyuncunun evi bulunuyor",
-          myHouse([theirView, myView])?.plotIndex === K.WITCH_SHOP_INDEX,
+          "kapı düğmesi \"Evine gir\" diyor",
+          HOUSE_ENTER_LABEL.label === "Evine gir" &&
+            HOUSE_ENTER_LABEL.emoji === "🏠",
         ),
       );
 
-      setHouseNear(5);
+      setHouseNear(true);
       const nearNow = getHouseNear();
       requestHouseEnter();
       const consumed = consumeHouseEnterRequest();
       const empty = consumeHouseEnterRequest();
-      setHouseNear(null);
+      setHouseNear(false);
       checks.push(
         check(
-          "menzil deposu + TEK seferlik giriş isteği (çift panel açılmaz)",
-          nearNow === 5 && consumed && !empty && getHouseNear() === null,
+          "menzil deposu + TEK seferlik giriş isteği (çift oda açılmaz)",
+          nearNow === true &&
+            consumed &&
+            !empty &&
+            getHouseNear() === false,
         ),
       );
 
-      // Menzil KALDIRIMI kapsar: oyuncu ancak yürünebilir yerden düğmeyi
-      // görebilir (aradan geçen çim şeridi yürünemez). Menzil cephe hattına
-      // kadar uzandığı için cadı dükkânının avlusundan da düğme görünür.
+      // Menzil, KAPININ ÖNÜNÜ (cadı dükkânının kapı yolu + önündeki kaldırım)
+      // kapsar: oyuncu ancak yürünebilir yerden düğmeyi görebilir.
       const onSidewalk = {
-        x: svgX(K.BUILDINGS[5].x),
-        y: svgY(
-          (K.ZONE.northSidewalkTop + K.ZONE.northSidewalkBot) / 2,
-        ),
-      };
-      // Avlu noktası: cadı dükkânının kapısının önü (menzilin içinde olmalı).
-      const onCourtTrigger = {
         x: svgX(W.x),
-        y: svgY(W.frontZ + 0.3),
+        y: svgY((K.ZONE.northSidewalkTop + K.ZONE.northSidewalkBot) / 2),
       };
-      const triggerCovers = (plotX: number, p: { x: number; y: number }) =>
-        p.x >= svgX(plotX - K.HOUSE_TRIGGER.halfX) &&
-        p.x <= svgX(plotX + K.HOUSE_TRIGGER.halfX) &&
+      const onCourtTrigger = { x: svgX(W.x), y: svgY(W.frontZ + 0.3) };
+      const bounds = K.houseTriggerBounds(W.x);
+      const triggerCovers = (p: { x: number; y: number }) =>
+        p.x >= svgX(bounds.west) &&
+        p.x <= svgX(bounds.east) &&
         p.y >= svgY(K.HOUSE_TRIGGER.southZ) &&
         p.y <= svgY(K.HOUSE_TRIGGER.northZ);
       checks.push(
         check(
-          "ev menzili YÜRÜNEBİLİR kaldırımı kapsıyor (düğme kaldırımdan çıkar)",
-          inWalkable(onSidewalk.x, onSidewalk.y) &&
-            triggerCovers(K.BUILDINGS[5].x, onSidewalk),
+          "kapı menzili YÜRÜNEBİLİR kaldırımı kapsıyor",
+          inWalkable(onSidewalk.x, onSidewalk.y) && triggerCovers(onSidewalk),
         ),
         check(
           "menzil CEPHE HATTINA kadar uzanıyor (avlu/kapı önü dahil)",
           K.HOUSE_TRIGGER.southZ === K.ZONE.northSidewalkBot &&
             K.HOUSE_TRIGGER.northZ >= W.frontZ &&
-            triggerCovers(W.x, onCourtTrigger),
+            triggerCovers(onCourtTrigger),
           `Z ${K.HOUSE_TRIGGER.southZ}…${K.HOUSE_TRIGGER.northZ} (cephe ${W.frontZ})`,
-        ),
-        check(
-          "ev arsaları cadde sırasıyla sınırlı (12 göz)",
-          K.HOUSE_PLOTS.length === 12 && K.HOUSE_PLOTS.every((i) => i < 12),
-          `${K.HOUSE_PLOTS.length} arsa`,
         ),
       );
 
@@ -1830,39 +1813,55 @@ const scenarios: Scenario[] = [
         ),
       );
 
-      // 3D + px katmanı bağlantısı: evler sahnede, levha sahibinin adıyla,
-      // veri sunucudan (online) ve HUD'da "Evim" düğmesi var.
+      // 3D + px katmanı bağlantısı: düğme sahnede, oda sunucudan (online) ve
+      // HUD'da "Evim" kısayolu var. Oda sahnesi ayrı bileşende.
       const housesSrc = read("../src/convex/houses.ts");
+      const room = read("../src/components/world/HouseRoom.tsx");
       checks.push(
         check(
-          "oyuncu evleri 3D sahnede sahibinin levhasıyla çiziliyor",
-          engine.includes("houseBuildings") &&
-            engine.includes("house.ownerName") &&
-            engine.includes("<GlbBuilding"),
+          "kapı düğmesi 3D sahnede çiziliyor (HouseEnterButton)",
+          engine.includes("<HouseEnterButton />") &&
+            engine.includes("HOUSE_ENTER_LABEL") &&
+            engine.includes("requestHouseEnter"),
         ),
         check(
-          "evler SUNUCUDAN okunuyor (online, reaktif)",
-          world.includes("api.houses.list") &&
-            housesSrc.includes("export const list") &&
-            housesSrc.includes("by_plotIndex"),
+          "oda sunucuda OTOMATİK açılıyor (arsa/kurulum yok)",
+          world.includes("api.houses.enter") &&
+            housesSrc.includes("export const enter") &&
+            !housesSrc.includes("plotIndex") &&
+            !world.includes("api.houses.place"),
         ),
         check(
-          "ev kurma + ziyaret mutation'ları var (istemciye güvenilmez)",
-          world.includes("api.houses.place") &&
-            world.includes("api.houses.visit") &&
-            housesSrc.includes("export const place") &&
+          "ziyaret + oda adı sunucuda (online)",
+          world.includes("api.houses.visit") &&
+            world.includes("api.houses.rename") &&
             housesSrc.includes("export const visit") &&
-            housesSrc.includes("Bu arsa başkasının evi"),
+            housesSrc.includes("export const rename") &&
+            housesSrc.includes("by_ownerName"),
         ),
         check(
-          "menzil px katmanında arsa menzillerinden türetiliyor",
-          world.includes("HOUSE_TRIGGERS_PX") &&
+          "menzil px katmanında kapı menzilinden türetiliyor",
+          world.includes("HOUSE_DOOR_PX") &&
             world.includes("consumeHouseEnterRequest") &&
             world.includes("setHouseNear"),
         ),
         check(
-          "HUD'da \"Evim\" düğmesi + ev paneli var",
-          world.includes('label="Evim"') && world.includes("HouseSheet"),
+          "odaya girişte YÜKLEME ekranı var (kapı açılıyor)",
+          world.includes("HOUSE_STEPS") &&
+            world.includes("EntryLoader") &&
+            world.includes("HOUSE_GATE_MIN_MS") &&
+            room.includes("export const HOUSE_STEPS"),
+        ),
+        check(
+          "oda içinde karakter GERÇEK 3D modelle duruyor",
+          room.includes("GlbProfileAvatar") &&
+            world.includes("<HouseRoom") &&
+            world.includes("equipped={equipped}"),
+        ),
+        check(
+          "HUD'da \"Evim\" kısayolu var",
+          world.includes('label="Evim"') &&
+            world.includes("enterMyRoom"),
         ),
       );
 

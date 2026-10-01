@@ -37,9 +37,13 @@ Model 18 mesh + 43 PNG doku taşır (uzantı gerektirmez; `EXT_meshopt` yok).
 Dosya ~26.7MiB olduğu için ÖN YÜKLEME listesine (`streetPreload.STREET_BUILDING_MODELS`)
 eklenmiştir: indirme **giriş ekranında** başlar ve oyuncu caddeye girdiğinde
 bina yerinde olur. Eskiden cadde kurulduktan SONRA inmeye başlıyordu ve oyuncu
-bir süre BOŞ ARSAYA bakıyordu ("ev gelmemiş") — bu yüzden `World` yükleme
+bir süre boşluğa bakıyordu ("ev gelmemiş") — bu yüzden `World` yükleme
 kapısı bu modelleri de bekler (`readyModelUrls`), 12 sn'lik emniyet supabı
 yine devredir.
+
+Bu model caddedeki OYUNCU EVİDİR: kapısına gelince "Evine gir" düğmesi çıkar,
+oyuncunun KENDİ odası açılır (oda içi DOM sahne + gerçek 3D karakter — bkz.
+`src/components/world/HouseRoom.tsx`). Evin içi yürünemez; bina katıdır.
 
 NOT: Dosya boyutunun ~21MiB'ı 43 PNG dokudur. Görünüşü bozmadan küçültmek
 (dokuları 1K'ya indirmek) yüklemeyi belirgin hızlandırır; yapılırsa bu satır

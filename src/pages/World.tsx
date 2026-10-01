@@ -20,9 +20,9 @@ import {
   benchFacing,
   benchSeatSpot,
   benchStandSpot,
-  HOUSE_PLOTS,
   HOUSE_TRIGGER,
   houseTriggerBounds,
+  WITCH_SHOP_DEF,
   PLAYER_3D_HEIGHT,
   SEAT_TRANSITION_SECONDS,
   SPAWN_SVG,
@@ -35,11 +35,14 @@ import {
 } from "@/engine/benchSeat";
 import {
   consumeHouseEnterRequest,
-  houseAt,
-  myHouse,
   setHouseNear,
   type HouseView,
 } from "@/engine/houseDoor";
+import {
+  HouseRoom,
+  HOUSE_STEPS,
+  HOUSE_TIPS,
+} from "@/components/world/HouseRoom";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -889,118 +892,6 @@ function StallsSheet({
   );
 }
 
-/**
- * 🏠 EV PANELİ — üç hâli vardır ve üçü de AYNI panelden çıkar:
- *
- *   · `here.isMine`  → kendi evin: istatistik + ad değiştirme,
- *   · başkasının    → ziyaret: istatistik + "Kapıyı çal",
- *   · ev yok (`null`) → boş arsa: ad girip "Evini kur" (kapı düğmesinden
- *     gelindiğinde O arsaya, "Evim" düğmesinden gelindiğinde ilk boş arsaya
- *     kurulur — seçimi sunucu yapar, bkz. `convex/houses.ts` → `place`).
- *
- * Ziyaretçi listesi ve sayı sunucudan REAKTİF gelir: "Kapıyı çal" dendiğinde
- * oyuncu kendi adını listede anında görür.
- */
-function HouseSheet({
-  plotIndex,
-  houses,
-  username,
-  onClose,
-  onSave,
-  onKnock,
-}: {
-  plotIndex: number | null;
-  houses: readonly HouseView[];
-  username: string;
-  onClose: () => void;
-  onSave: (plotIndex: number | null, name: string) => void;
-  onKnock: (plotIndex: number) => void;
-}) {
-  const mine = myHouse(houses);
-  const here = plotIndex === null ? mine : houseAt(plotIndex, houses);
-  const areaNo = (here?.plotIndex ?? plotIndex ?? 0) + 1;
-  const [name, setName] = useState(here?.name ?? `${username} Ev`);
-
-  return (
-    <GameSheet
-      title={here ? `🏠 ${here.name}` : "🏠 Boş Arsa"}
-      subtitle={
-        here
-          ? `${here.ownerName} · ${areaNo}. arsa`
-          : plotIndex !== null
-            ? `${areaNo}. arsa boş — evini buraya kurabilirsin.`
-            : "Caddede henüz evin yok — ilk boş arsaya kurabilirsin."
-      }
-      onClose={onClose}
-    >
-      {here ? (
-        <div className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
-              🚪 {here.visits} ziyaret
-            </span>
-            {here.isMine && (
-              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
-                Senin evin
-              </span>
-            )}
-          </div>
-          <div className="rounded-2xl border border-border/70 bg-background p-3">
-            <p className="text-[11px] font-bold tracking-wide text-muted-foreground">
-              SON ZİYARETÇİLER
-            </p>
-            {here.visitors.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {here.visitors.map((who) => (
-                  <span
-                    key={who}
-                    className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary"
-                  >
-                    {who}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Henüz kimse uğramadı. Caddede adını duyur! 🗣️
-              </p>
-            )}
-          </div>
-          {!here.isMine && (
-            <Button
-              className="w-full rounded-full"
-              onClick={() => onKnock(here.plotIndex)}
-            >
-              🔔 Kapıyı çal
-            </Button>
-          )}
-        </div>
-      ) : null}
-
-      {!here || here.isMine ? (
-        <div className="mt-4 space-y-3">
-          <label className="block text-[11px] font-bold tracking-wide text-muted-foreground">
-            EVİN ADI
-          </label>
-          <input
-            value={name}
-            maxLength={24}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={`${username} Ev`}
-            className="w-full rounded-2xl border border-border bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary"
-          />
-          <Button
-            className="w-full rounded-full"
-            onClick={() => onSave(plotIndex, name)}
-          >
-            {here ? "Adı kaydet" : "🏠 Evini kur"}
-          </Button>
-        </div>
-      ) : null}
-    </GameSheet>
-  );
-}
-
 function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
   const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
@@ -1030,26 +921,28 @@ const BENCH_SEATS: { x: number; y: number; facing: 1 | -1 }[] = BENCHES.map(
 const BENCH_RADIUS_PX = BENCH_INTERACT_RADIUS * S;
 
 /**
- * 🏠 EV MENZİLLERİ (px) — `constants.HOUSE_TRIGGER`ten türetilir, elle
- * yazılmaz. Menzil, arsanın ÖNÜNDEKİ KALDIRIM şerididir: oyuncu bu şeride
- * girince o evin kapısında "Evine gir" düğmesi belirir (bkz. `houseDoor`).
- * Sınırlar 3D katmanla aynı kaynaktan geldiği için düğme ile menzil ayrışmaz.
+ * 🏠 Kapı yükleme ekranı EN AZ bu kadar görünür (ms). Sunucu çok hızlı
+ * yanıtlarsa ekran bir kare görünüp kaybolmasın; oyuncu kapının açıldığını ve
+ * odanın hazırlandığını görsün.
  */
-const HOUSE_TRIGGERS_PX = HOUSE_PLOTS.flatMap((plot) => {
-  const def = BUILDINGS[plot];
-  if (!def) return [];
-  const { west, east } = houseTriggerBounds(def.x);
-  return [
-    {
-      plot,
-      west: svgX(west),
-      east: svgX(east),
-      // `svgY` ters çevirir: büyük Z (güney) → küçük y. Şerit [south, north].
-      south: svgY(HOUSE_TRIGGER.southZ),
-      north: svgY(HOUSE_TRIGGER.northZ),
-    },
-  ];
-});
+const HOUSE_GATE_MIN_MS = 950;
+
+/**
+ * 🏠 EV KAPISI MENZİLİ (px) — `constants.HOUSE_TRIGGER`ten türetilir, elle
+ * yazılmaz. Oyuncu bu dikdörtgene girince evin kapısında "Evine gir" düğmesi
+ * belirir (bkz. `houseDoor`). Sınırlar 3D katmanla aynı kaynaktan geldiği için
+ * düğme ile menzil ayrışamaz.
+ */
+const HOUSE_DOOR_PX = (() => {
+  const { west, east } = houseTriggerBounds(WITCH_SHOP_DEF.x);
+  return {
+    west: svgX(west),
+    east: svgX(east),
+    // `svgY` ters çevirir: büyük Z (güney) → küçük y. Şerit [south, north].
+    south: svgY(HOUSE_TRIGGER.southZ),
+    north: svgY(HOUSE_TRIGGER.northZ),
+  };
+})();
 /**
  * Bankın ÖNÜNDE durulacak px noktası — karakter oraya YÜRÜR, sonra oturur
  * (ışınlanma yok). En yakın yürünebilir mesafe seçilir: kaldırımın dışına
@@ -1150,18 +1043,10 @@ export default function World() {
   const battleVictory = useMutation(api.profiles.battleVictory);
   // 🏠 Oyuncu evleri (bkz. `convex/houses.ts`): ONLINE ve reaktif — başka bir
   // oyuncu ev kurduğunda/değiştirdiğinde cadde kendiliğinden güncellenir.
-  const housesQuery = useQuery(api.houses.list);
-  const placeHouse = useMutation(api.houses.place);
+  // 🏠 Ev (oda) sunucusu: oda İLK GİRİŞTE OTOMATİK açılır — arsa/kurulum yok.
+  const enterHouse = useMutation(api.houses.enter);
+  const renameHouse = useMutation(api.houses.rename);
   const visitHouse = useMutation(api.houses.visit);
-  /**
-   * 🏠 Caddede dikili evler. Sorgu yüklenene kadar boş liste alınır;
-   * `Array.isArray` kontrolü tip daraltmasının yanı sıra önizleme
-   * koşullarında (sorgu yer tutucusu) da güvenli kalmasını sağlar.
-   */
-  const houses: readonly HouseView[] = useMemo(
-    () => (Array.isArray(housesQuery) ? housesQuery : []),
-    [housesQuery],
-  );
   const sendChat = useMutation(api.chat.send);
   const createBattle = useMutation(api.battles.createBattle);
   const acceptBattle = useMutation(api.battles.acceptBattle);
@@ -1218,11 +1103,13 @@ export default function World() {
   const chatOpenRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [stallsOpen, setStallsOpen] = useState(false);
-  // 🏠 Ev paneli: `plotIndex` dolu → o arsanın evi, `null` → kendi evim
-  // ("Evim" düğmesi). Panel açıkken sahne tıklamaları yutulur.
-  const [houseSheet, setHouseSheet] = useState<{
-    plotIndex: number | null;
-  } | null>(null);
+  // 🏠 ODA: kapıdaki "Evine gir" (ya da HUD'daki "Evim") → kısa yükleme
+  // ekranı → oyuncunun kendi odası. `roomGate` yükleme ekranı, `room` açık oda.
+  const [room, setRoom] = useState<{ view: HouseView } | null>(null);
+  const [roomGate, setRoomGate] = useState(false);
+  const [roomPct, setRoomPct] = useState(6);
+  const [roomStep, setRoomStep] = useState(0);
+  const [roomTipIndex, setRoomTipIndex] = useState(0);
   const [vipOpen, setVipOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [targetMarker, setTargetMarker] = useState<{
@@ -1239,8 +1126,12 @@ export default function World() {
   const [seatBench, setSeatBench] = useState<number | null>(null);
   const nearBenchRef = useRef<number | null>(null);
   const seatBenchRef = useRef<number | null>(null);
-  // 🏠 Hangi arsanın kapı menzilindeyiz (3D "Evine gir" düğmesi bunu okur).
-  const houseNearRef = useRef<number | null>(null);
+  // 🏠 Kapı menzilinde miyiz (3D "Evine gir" düğmesi bunu okur) ve oda
+  // penceresi/yüklemesi açık mı (oyun döngüsü karakteri dondurur).
+  const houseNearRef = useRef(false);
+  const roomOpenRef = useRef(false);
+  /** Giriş sürüyor mu — çift tıklama iki kez oda açmasın. */
+  const roomBusyRef = useRef(false);
   // Kalktıktan sonra kısa bir süre tekrar oturmayı engeller (aynı banka
   // dokununca "kalk → hemen otur" titremesi olmasın).
   const sitCooldownRef = useRef(0);
@@ -1645,46 +1536,122 @@ export default function World() {
   }, []);
 
   /**
-   * 🏠 EV PANELİ — kapı düğmesinden (`plotIndex`) ya da üst/alt bardaki
-   * "Evim" düğmesinden (`plotIndex: null` → kendi evim, yoksa kurulum).
+   * 🏠 Komşular: caddede çevrimiçi diğer oyuncuların adları. Odada "komşuya
+   * geç" listesini besler (`HouseRoom` → `neighbors`). Ad tekrarları (aynı
+   * oyuncunun iki sekmesi) tekilleştirilir.
    */
-  const openHouse = useCallback((plotIndex: number | null) => {
+  const neighborNames = useMemo(() => {
+    const names = liveOthers
+      .map((entry) => entry.data?.name)
+      .filter(
+        (name): name is string => typeof name === "string" && name.length > 0,
+      );
+    return Array.from(new Set(names));
+  }, [liveOthers]);
+
+  /**
+   * 🏠 KAPI: "Evine gir" → kısa yükleme ekranı → oyuncunun KENDİ odası.
+   *
+   * Oda sunucuda otomatik açılır (`houses.enter`): ilk girişte kayıt oluşur.
+   * Yükleme ekranı, istek bitene kadar EN AZ `HOUSE_GATE_MIN_MS` görünür —
+   * böylece ağ hızlıysa ekran bir kare görünüp kaybolmaz.
+   */
+  const enterMyRoom = useCallback(async () => {
+    if (roomBusyRef.current || roomOpenRef.current) return;
+    roomBusyRef.current = true;
     playSound("click");
-    setHouseSheet({ plotIndex });
-  }, []);
-
-  /** Ev kur / arsa taşı / adını kaydet — doğrulama sunucuda yapılır. */
-  const saveHouse = useCallback(
-    async (plotIndex: number | null, name: string) => {
-      try {
-        await placeHouse(plotIndex === null ? { name } : { plotIndex, name });
-        playSound("coin");
-        toast.success("🏠 Evin hazır! Adın kapıda yazıyor.");
-        setHouseSheet(null);
-      } catch (error) {
-        console.error("Ev kurma hatası:", error);
-        toast.error(error instanceof Error ? error.message : "Ev kurulamadı.");
+    setRoomPct(6);
+    setRoomStep(0);
+    setRoomTipIndex(0);
+    setRoomGate(true);
+    // Odaya girerken yürüme/yol kalmasın (karakter kapının önünde dursun).
+    targetRef.current = null;
+    waypointsRef.current = [];
+    waypointIdxRef.current = 0;
+    setTargetMarker(null);
+    const started = performance.now();
+    try {
+      const view = await enterHouse({});
+      const wait = HOUSE_GATE_MIN_MS - (performance.now() - started);
+      if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
+      if (view) {
+        setRoom({ view });
+        roomOpenRef.current = true;
       }
-    },
-    [placeHouse],
-  );
+    } catch (error) {
+      console.error("Eve giriş hatası:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Eve girilemedi. Tekrar dene.",
+      );
+    } finally {
+      roomBusyRef.current = false;
+      setRoomGate(false);
+    }
+  }, [enterHouse]);
 
-  /** Başka bir oyuncunun evini ziyaret et → ev defterine yazılır (online). */
-  const knockHouse = useCallback(
-    async (plotIndex: number) => {
+  /** Komşunun odasına geç — adın onun ziyaretçi defterine yazılır (online). */
+  const enterNeighborRoom = useCallback(
+    async (ownerName: string) => {
+      if (roomBusyRef.current) return;
+      roomBusyRef.current = true;
+      setRoomGate(true);
+      setRoomPct(6);
+      setRoomStep(0);
+      const started = performance.now();
       try {
-        await visitHouse({ plotIndex });
-        playSound("click");
-        toast.info("🔔 Ziyaretin ev defterine yazıldı!");
+        const view = await visitHouse({ ownerName });
+        const wait = HOUSE_GATE_MIN_MS - (performance.now() - started);
+        if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
+        if (view) {
+          setRoom({ view });
+          roomOpenRef.current = true;
+          toast.info(`🚪 ${ownerName} odasına girdin`);
+        }
       } catch (error) {
         console.error("Ziyaret hatası:", error);
         toast.error(
           error instanceof Error ? error.message : "Ziyaret edilemedi.",
         );
+      } finally {
+        roomBusyRef.current = false;
+        setRoomGate(false);
       }
     },
     [visitHouse],
   );
+
+  /** Odanın adını kaydet (yalnızca sahibi). */
+  const renameMyRoom = useCallback(
+    async (name: string) => {
+      try {
+        const view = await renameHouse({ name });
+        if (view) setRoom({ view });
+        toast.success("🏠 Oda adı güncellendi.");
+      } catch (error) {
+        console.error("Oda adı hatası:", error);
+        toast.error(error instanceof Error ? error.message : "Kaydedilemedi.");
+      }
+    },
+    [renameHouse],
+  );
+
+  /** Kapıdan çık — caddeye dön. */
+  const exitRoom = useCallback(() => {
+    playSound("click");
+    roomOpenRef.current = false;
+    setRoom(null);
+  }, []);
+
+  // 🏠 Yükleme ekranı ilerlemesi: adımlar sırayla yanar (çubuk %96'da bekler).
+  useEffect(() => {
+    if (!roomGate) return;
+    const tick = window.setInterval(() => {
+      setRoomPct((p) => Math.min(96, p + 11));
+      setRoomStep((s) => Math.min(HOUSE_STEPS.length - 1, s + 1));
+      setRoomTipIndex((i) => (i + 1) % HOUSE_TIPS.length);
+    }, 190);
+    return () => window.clearInterval(tick);
+  }, [roomGate]);
 
   /** Oturma durumunu 3D katmanın deposuna yazar (avatar + "Otur" düğmesi). */
   const publishBenchSeat = useCallback(() => {
@@ -1926,6 +1893,9 @@ export default function World() {
         }
         if (
           !inBattle &&
+          // 🏠 Oda açıkken (ya da kapı yüklenirken) sokaktaki karakter
+          // DONAR: kapıdan içeri girdiğinde caddede yürümeye devam etmesin.
+          !roomOpenRef.current &&
           seatBenchRef.current === null &&
           seatMoveRef.current === null
         ) {
@@ -2234,26 +2204,24 @@ export default function World() {
           }
         }
 
-        // 🏠 En yakın EV KAPISI — menzil, arsanın önündeki kaldırım şerididir
-        // (`HOUSE_TRIGGERS_PX`). Değer değişmedikçe depoya yazılmaz, böylece
-        // kare başına React güncellemesi olmaz; düğme etiketi `houseDoor`
-        // içindeki SAF fonksiyondan gelir (evim / ziyaret / boş arsa).
+        // 🏠 EV KAPISI MENZİLİ — evin kapısının önündeki alan
+        // (`HOUSE_DOOR_PX`). Değer değişmedikçe depoya yazılmaz, böylece kare
+        // başına React güncellemesi olmaz; düğmeyi 3D katman çizer.
         if (seatBenchRef.current === null) {
-          let bestHouse: number | null = null;
-          for (const zone of HOUSE_TRIGGERS_PX) {
-            if (pos.x < zone.west || pos.x > zone.east) continue;
-            if (pos.y < zone.south || pos.y > zone.north) continue;
-            bestHouse = zone.plot;
-            break;
-          }
-          if (houseNearRef.current !== bestHouse) {
-            houseNearRef.current = bestHouse;
-            setHouseNear(bestHouse);
+          const zone = HOUSE_DOOR_PX;
+          const isNear =
+            pos.x >= zone.west &&
+            pos.x <= zone.east &&
+            pos.y >= zone.south &&
+            pos.y <= zone.north;
+          if (houseNearRef.current !== isNear) {
+            houseNearRef.current = isNear;
+            setHouseNear(isNear);
           }
         }
         // 🏠 3D "Evine gir" düğmesinden gelen istek (bkz. `houseDoor`).
-        if (consumeHouseEnterRequest() && houseNearRef.current !== null) {
-          openHouse(houseNearRef.current);
+        if (consumeHouseEnterRequest() && houseNearRef.current) {
+          void enterMyRoom();
         }
 
         // 🪑 En yakın bank — oturma butonu yalnızca menzile girince görünür.
@@ -3078,7 +3046,8 @@ export default function World() {
         profileOpen ||
         stallsOpen ||
         vipOpen ||
-        houseSheet ||
+        room !== null ||
+        roomGate ||
         battleRef.current ||
         pvpBattleRef.current
       )
@@ -3206,7 +3175,8 @@ export default function World() {
       profileOpen,
       stallsOpen,
       vipOpen,
-      houseSheet,
+      room,
+      roomGate,
       pickTarget,
       handleClaim,
     ],
@@ -3309,8 +3279,6 @@ export default function World() {
             speechName={username}
             speechColorId={bubbleColorId}
             botSpeech={botBubbles}
-            // 🏠 Caddedeki oyuncu evleri (online, reaktif sorgu).
-            houses={houses}
           />
 
           {/* character profile card — tapping a character opens it here */}
@@ -3621,6 +3589,56 @@ export default function World() {
                 onExit={endPvpBattle}
               />
             )}
+
+          {/* 🏠 ODA — "Evine gir" sonrası açılan iç mekân. Sahibi adını
+              değiştirebilir, komşuların odasına geçilebilir; sokaktaki
+              karakter aynı modelle odada durur. */}
+          <AnimatePresence>
+            {room && (
+              <HouseRoom
+                key="room"
+                view={room.view}
+                equipped={equipped}
+                neighbors={neighborNames}
+                onRename={(name) => void renameMyRoom(name)}
+                onVisit={(who) => void enterNeighborRoom(who)}
+                onExit={exitRoom}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* 🏠 KAPI YÜKLEME EKRANI — girişte kısa bir "odaya bağlanılıyor"
+              ekranı (oyun girişindeki EntryLoader'ın aynısı). */}
+          <AnimatePresence>
+            {roomGate && (
+              <motion.div
+                key="room-gate"
+                className="fixed inset-0 z-[70]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              >
+                <EntryLoader
+                  pct={roomPct}
+                  stepIndex={roomStep}
+                  tip={HOUSE_TIPS[roomTipIndex]}
+                  subtitle="Evine giriliyor"
+                  crestLabel="Oda açılıyor"
+                  pendingLabel="Kapı açılıyor"
+                  steps={HOUSE_STEPS}
+                  player={{
+                    name: username,
+                    rankName: rank.name,
+                    rankIcon: rank.icon,
+                    rankGradient: rank.gradient,
+                    vip: isVip,
+                    level,
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
 
         {/* bottom control bar — Vaelos style: all buttons centered in one
@@ -3666,13 +3684,13 @@ export default function World() {
                   setStallsOpen(true);
                 }}
               />
-              {/* 🏠 Evim — kendi evin (yoksa ilk boş arsaya kur). Evler
-                  SUNUCUDA tutulur, yani herkes kendi evini caddede görür. */}
+              {/* 🏠 Evim — kapıya yürümeden eve gir (aynı yükleme + oda).
+                  Oda SUNUCUDA tutulur ve ilk girişte otomatik açılır. */}
               <BarBtn
                 tone="sky"
                 icon={Home}
                 label="Evim"
-                onClick={() => openHouse(null)}
+                onClick={() => void enterMyRoom()}
               />
               <span className="h-8 w-px shrink-0 bg-[#3d2f2a]/15" aria-hidden />
               <BarBtn
@@ -3795,17 +3813,7 @@ export default function World() {
             onGo={goTo}
           />
         )}
-        {houseSheet && (
-          <HouseSheet
-            key="house"
-            plotIndex={houseSheet.plotIndex}
-            houses={houses}
-            username={username}
-            onClose={() => setHouseSheet(null)}
-            onSave={saveHouse}
-            onKnock={knockHouse}
-          />
-        )}
+
         {vipOpen && (
           <VipSheet
             key="vip"

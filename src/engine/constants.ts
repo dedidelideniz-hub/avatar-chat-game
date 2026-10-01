@@ -267,61 +267,41 @@ export const BUILDINGS: BuildingDef[] = [
 ];
 
 /* ════════════════════════════════════════════════════════════
-   CADI DÜKKÂNI — giriş yolu ve yürünebilir iç mekân
+   CADI DÜKKÂNI (oyuncu evi) — giriş yolu ve kapı menzili
    ════════════════════════════════════════════════════════════ */
 
 /** Cadı dükkânının göz tanımı — hem render hem yürünebilirlik buradan okur. */
 export const WITCH_SHOP_DEF: BuildingDef = BUILDINGS[WITCH_SHOP_INDEX];
 
 /* ════════════════════════════════════════════════════════════
-   🏠 OYUNCU EVLERİ — "herkesin kendi evi"
+   🏠 OYUNCU EVİ — caddede TEK ev, İÇİ her oyuncuya özel oda
 
-   Ev artık YÜRÜNEREK GİRİLEN bir hacim değil: bina KATI bir kutudur ve
-   içine/üstüne çıkılamaz (bkz. `lib/shop.ts` → yürünebilir bölgeler). Oyuncu
-   evin ÖNÜNE gelir, üç boyutlu "Evine gir" düğmesi belirir ve eve o düğmeyle
-   girilir. Evler oyuncuya aittir ve `convex/houses.ts`te saklanır: her oyuncu
-   bir arsaya kendi evini kurar, herkes (online) herkesin evini cadde üzerinde
-   görür ve ziyaret edebilir.
+   Ev YÜRÜNEREK GİRİLEN bir hacim DEĞİL: bina KATI bir kutudur, içine/üstüne
+   çıkılamaz (bkz. `lib/shop.ts` → yürünebilir bölgeler). Oyuncu kapının önüne
+   gelir, üç boyutlu "Evine gir" düğmesi belirir; düğmeye basınca kısa bir
+   yükleme ekranı çıkar ve oyuncunun KENDİ odası açılır (`components/world/
+   HouseRoom.tsx`).
+
+   Ev KURULMAZ, ARSA SEÇİLMEZ: kapı caddede tek tanedir (cadı dükkânı modeli,
+   `WITCH_SHOP_INDEX`) ve oda, oyuncu ilk kez girdiğinde sunucuda OTOMATİK
+   açılır (`convex/houses.ts`).
    ════════════════════════════════════════════════════════════ */
 
 /**
- * Oyuncu evlerinin modeli.
+ * EV MENZİLİ — evin kapısının önündeki alan.
  *
- * Şimdilik satırdaki tek bina modeli bu; yeni GLB'ler eklendikçe arsa başına
- * model seçilebilir (o zaman bu alan `houses` kaydına taşınır).
- */
-export const HOUSE_MODEL_URL = WITCH_SHOP_MODEL_URL;
-
-/**
- * Ev kurulabilecek arsalar = CADDE SIRASINDAKİ gözler (0…11).
- *
- * Arka sıra (12…19) şimdilik boş kalır (yeni binalar için): oradaki cephelerin
- * önü çimdir ve yürünemez, yani kapıya yaklaşılamaz — oysa cadde sırasının
- * önünde yürünebilir kaldırım vardır (bkz. `HOUSE_TRIGGER`).
- */
-export const HOUSE_PLOTS: readonly number[] = SHOP_CENTERS.map((_, i) => i);
-
-/**
- * EV MENZİLİ — arsanın önündeki KALDIRIM şeridi.
- *
- * Oyuncu bu dikdörtgenin içindeyken o arsanın kapısı "menzilde" sayılır ve
- * "Evine gir" düğmesi belirir. Alanın kapı hattına değil KALDIRIMA oturmasının
- * sebebi: çim şeridi yürünemez olduğu için cephe hattına (`frontZ`) yalnızca
- * cadı dükkânının yolu (X −13) ulaşır; diğer arsaların kapısına ancak önündeki
- * kaldırımdan yaklaşılır. Oyuncu zaten yalnızca yürünebilir yerlerde
- * bulunabildiği için alanın çim/çim-üstü kısmı kendiliğinden önemsizdir.
+ * Oyuncu bu dikdörtgenin içindeyken kapı "menzilde" sayılır ve "Evine gir"
+ * düğmesi belirir. Alan, kapı yolunun bittiği kaldırımdan başlayıp binanın
+ * CEPHE HATTIINDA (`frontZ`) biter: yoldan gelen oyuncu kapıya dayandığında da,
+ * kaldırımdan geçen oyuncu kapının önüne geldiğinde de düğme görünür. Aradaki
+ * çim şeridi yürünemediği için alanın o kısmı zaten ölüdür.
  */
 export const HOUSE_TRIGGER = {
-  /** Arsa merkezine göre yarım genişlik — göz aralığı 2.4, yani aralar boş kalır. */
+  /** Kapı merkezine göre yarım genişlik (kapı + avlu genişliği). */
   halfX: 1.1,
   /** Güney sınır: kaldırımın cadde kenarı (caddeden geçerken düğme belirmez). */
   southZ: ZONE.northSidewalkBot,
-  /**
-   * Kuzey sınır: binanın CEPHE HATTI (`BUILDINGS[i].frontZ` = `northGrassTop+0.3`;
-   * cadde sırasının tamamı aynı hizada). Avlunun son santimi de kapsanır ki
-   * cadı dükkânının yolundan gelen oyuncu kapıya dayandığında düğme
-   * kaybolmasın. Aradaki çim yürünemediği için alanın o kısmı zaten ölüdür.
-   */
+  /** Kuzey sınır: binanın cephe hattı (`frontZ`) — avlunun son santimi dahil. */
   northZ: ZONE.northGrassTop + 0.3,
 } as const;
 
@@ -346,8 +326,8 @@ export const BUILDING_MODEL_URLS: readonly string[] = BUILDINGS.map(
  * CADI DÜKKÂNI GİRİŞ YOLU — ölçüler tek yerde.
  *
  * Yol, KUZEY KALDIRIMINDAN başlar (ana caddeye kadar inmez): kaldırımdan çime
- * geçer, çimi aşar, kapının önünde genişleyip dükkânın İÇİNE girer
- * (bkz. `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). İki parçadır:
+ * geçer, çimi aşar ve kapının önünde genişleyen avluda BİTER — binanın içi
+ * yürünemez (bkz. `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). İki parçadır:
  *
  *   1) YOL ŞERİDİ (`x ± pathHalfW`, `pathSouthZ` … `pathNorthZ`):
  *      dar (0.8 birim) taş yol. Kaldırımı, caddenin hemen kuzeyindeki lamba
