@@ -412,11 +412,9 @@ export default function Entry() {
               <p className="text-sm font-black tracking-wide">Karakter Rengi</p>
             </div>
             <p className="mt-1 text-[11px] font-semibold leading-5 text-white/45">
-              Girişte yalnızca rengini seç — saç, yüz ve kıyafet detaylarını
-              istediğin zaman Stüdyodan ayarlayabilirsin. Renk yalnızca ANA
-              KARAKTERİ boyar: botlar ve rakipler kendi renkleriyle savaşır.
-              Kraliyet Savaşçısı, Samuray ve Şövalye görünümleri ise orijinal
-              renkleriyle oynanır — onlarda renk seçilmez.
+              {colorLocked
+                ? "Renk hakkını kullandın: karakter rengi tek seferlik seçilir ve ikinci kez değiştirilemez. Değiştirmek için 👑 VIP üyelik gerekiyor — saç, yüz ve kıyafet detaylarını yine de Stüdyodan ayarlayabilirsin."
+                : "Girişte yalnızca rengini seç — saç, yüz ve kıyafet detaylarını istediğin zaman Stüdyodan ayarlayabilirsin. Renk yalnızca ANA KARAKTERİ boyar: botlar ve rakipler kendi renkleriyle savaşır. Kraliyet Savaşçısı, Samuray ve Şövalye görünümleri ise orijinal renkleriyle oynanır — onlarda renk seçilmez."}
             </p>
 
             {/* Rengi TEK kaynaktan seç: aynı bileşen Avatar Stüdyosu'nda da
