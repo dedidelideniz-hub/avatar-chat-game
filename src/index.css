@@ -2194,10 +2194,11 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
      · vaelos-bubble-sheen → VIP baloncuğun üzerinden geçen ışık süpürmesi.
    Ayrıca baloncuk YAZI BOYUTU burada tanımlıdır (satır içinde `clamp`
    kullanmak yerine sınıf): küçük telefon ekranında okunur kalır (~13px),
-   masaüstünde Sanalika ölçeğine çıkar (~16px).
+   masaüstünde ~15px'e çıkar. Balon gereğinden büyük görünmesin diye
+   denge küçültüldü (ölçek + iç boşluk + genişlik birlikte).
    Hepsi aşağıdaki `prefers-reduced-motion` bloğunda kapanır. */
 .vaelos-bubble-text {
-  font-size: clamp(13px, 3.7vw, 16px);
+  font-size: clamp(13px, 3.5vw, 15px);
 }
 
 @keyframes vaelos-bubble-pulse {

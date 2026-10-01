@@ -79,28 +79,31 @@ export const CHAT_BUBBLE_ENTER_MS = 150;
 /** Baş üstü çapası — karakterin tepesinin ~0.28 birim üstü (yükseklik değişmez). */
 export const CHAT_BUBBLE_HEIGHT = 2.2;
 
-/** Mesafeye göre ölçek sınırları (ekranı kaplamaz / okunamaz küçülmez). */
-export const CHAT_BUBBLE_MIN_SCALE = 0.65;
-export const CHAT_BUBBLE_MAX_SCALE = 1.15;
+/** Mesafeye göre ölçek sınırları (ekranı kaplamaz / okunamaz küçülmez).
+ * Üst sınır 1.0: yakın/uzak fark etmeksizin balon asla CSS boyutundan büyük
+ * görünmez (caddeyi kaplamaz). */
+export const CHAT_BUBBLE_MIN_SCALE = 0.6;
+export const CHAT_BUBBLE_MAX_SCALE = 1.0;
 
-/** Kameradan uzaklaşınca küçülme katsayısı (yakın oyuncuda ölçek ≈ 1). */
-const DISTANCE_FACTOR = 12;
+/** Kameradan uzaklaşınca küçülme katsayısı.
+ * Yakın oyuncuda ölçek ≈ 0.76 — karakteri gölgede bırakmayacak denge. */
+const DISTANCE_FACTOR = 9.6;
 
 /* ── Sanalika paleti ── */
 const CREAM = "#F7F9E9";          // gövde zemini (tam opak)
 const BORDER_GREEN = "#72C94A";   // düz yeşil çerçeve
 const BORDER_WIDTH = 3;           // px
-const BORDER_RADIUS = 16;         // px
-const TAIL_SIZE = 14;             // döndürülmüş kare kenarı (px)
+const BORDER_RADIUS = 14;         // px
+const TAIL_SIZE = 12;             // döndürülmüş kare kenarı (px)
 const USERNAME_RED = "#E53935";   // "İsim:" kırmızı + kalın
 const MESSAGE_DARK = "#202020";   // mesaj koyu gri-siyah
 const BUBBLE_SHADOW = "drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15))";
 /** Kısa/uzun mesaja göre otomatik boyutlanmanın üst sınırı (mobil/masaüstü).
- *   · dikey/telefon : ~216-240px (60vw)
- *   · yatay/masaüstü : ~260-290px
+ *   · dikey/telefon : ~200-220px (56vw)
+ *   · yatay/masaüstü : ~240-260px
  * Metin bu genişliği aşınca otomatik 2-3 satıra kayar; balon yüksekliği
  * satır sayısına göre artar. */
-const MAX_WIDTH = "clamp(210px, 60vw, 290px)";
+const MAX_WIDTH = "clamp(190px, 56vw, 260px)";
 
 /** Baloncuk yazı tipi — eski oyun hissi, küçük ekranda okunur. */
 const BUBBLE_FONT = "'Trebuchet MS', Tahoma, Arial, sans-serif";
@@ -229,8 +232,8 @@ export function ChatBubbleBody({
               background: `linear-gradient(180deg, ${fillTop} 0%, ${fill} 100%)`,
               color: messageColor,
               borderRadius: BORDER_RADIUS,
-              // İç boşluk: yazı kenarlara yapışmaz (10-12 / 14-16).
-              padding: "11px 15px",
+              // İç boşluk: yazı kenarlara yapışmaz (dengeli, sıkı değil).
+              padding: "9px 12px",
               border: `${BORDER_WIDTH}px solid ${border}`,
               fontFamily: BUBBLE_FONT,
               fontWeight: 500, // mesaj normal/medium

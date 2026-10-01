@@ -620,13 +620,13 @@ const scenarios: Scenario[] = [
           style.includes("linear-gradient(180deg") && isCream(style),
           style.slice(0, 80),
         ),
-        check("yuvarlatılmış köşe 16px", style.includes("border-radius: 16px")),
+        check("yuvarlatılmış köşe 14px", style.includes("border-radius: 14px")),
         check(
           "düz yeşil kenarlık 3px (#72C94A)",
           /border: 3px solid/.test(style) && isGreen(style),
           (style.match(/border: [^;]+/) ?? [""])[0],
         ),
-        check("iç boşluk 11px 15px", style.includes("padding: 11px 15px")),
+        check("iç boşluk 9px 12px", style.includes("padding: 9px 12px")),
         check("metin sola hizalı", style.includes("text-align: left")),
         check("satır kaydırma açık (overflow-wrap)", style.includes("overflow-wrap: anywhere")),
         check(
@@ -686,8 +686,8 @@ const scenarios: Scenario[] = [
             wrapper.includes("width: max-content"),
         ),
         check(
-          "kısa/uzun mesaja göre boyut sınırı (clamp 210-290px)",
-          /max-width: clamp\(210px, 60vw, 290px\)/.test(wrapper),
+          "kısa/uzun mesaja göre boyut sınırı (clamp 190-260px)",
+          /max-width: clamp\(190px, 56vw, 260px\)/.test(wrapper),
           (wrapper.match(/max-width: [^;]+/) ?? [""])[0],
         ),
         check(
@@ -711,8 +711,8 @@ const scenarios: Scenario[] = [
         check("yumuşak kaybolma süresi tanımlı", CHAT_BUBBLE_FADE_MS > 0, `${CHAT_BUBBLE_FADE_MS} ms`),
         check("baş üstü çapası 2.2", CHAT_BUBBLE_HEIGHT === 2.2),
         check(
-          "ölçek min/max sınırlı (0.65 / 1.15)",
-          CHAT_BUBBLE_MIN_SCALE === 0.65 && CHAT_BUBBLE_MAX_SCALE === 1.15,
+          "ölçek min/max sınırlı (0.6 / 1.0)",
+          CHAT_BUBBLE_MIN_SCALE === 0.6 && CHAT_BUBBLE_MAX_SCALE === 1.0,
           `${CHAT_BUBBLE_MIN_SCALE} / ${CHAT_BUBBLE_MAX_SCALE}`,
         ),
       ];
@@ -853,8 +853,8 @@ const scenarios: Scenario[] = [
           ),
         ),
         check(
-          "balon yazısı clamp ile ölçeklenir (13-16px)",
-          /\.vaelos-bubble-text\s*\{[^}]*font-size:\s*clamp\(13px, 3\.7vw, 16px\)/.test(
+          "balon yazısı clamp ile ölçeklenir (13-15px)",
+          /\.vaelos-bubble-text\s*\{[^}]*font-size:\s*clamp\(13px, 3\.5vw, 15px\)/.test(
             css,
           ),
         ),
@@ -865,8 +865,8 @@ const scenarios: Scenario[] = [
         ),
         check(
           "ölçek min/max sınırlı ve her karede kameraya göre hesaplanır",
-          /CHAT_BUBBLE_MIN_SCALE = 0\.65/.test(bubble) &&
-            /CHAT_BUBBLE_MAX_SCALE = 1\.15/.test(bubble) &&
+          /CHAT_BUBBLE_MIN_SCALE = 0\.6/.test(bubble) &&
+            /CHAT_BUBBLE_MAX_SCALE = 1\.0/.test(bubble) &&
             /useFrame\(/.test(bubble) &&
             /--bubble-scale/.test(bubble),
         ),
