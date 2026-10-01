@@ -2184,6 +2184,39 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
   }
 }
 
+/* ── 💬 SOHBET BALONCUĞU (Sanalika/Habbo stili) ──────────────────────────
+   Baloncuk DOM'u drei `<Html>` içinde sahneye çizilir (bkz.
+   src/engine/ChatBubble3D.tsx) ve stilleri satır içidir. Burada yalnızca
+   satır içinde tanımlanamayan @keyframes'ler durur:
+     · vaelos-bubble-pulse → VIP balon renklerinin nabız gibi salınan
+       renkli IŞIMASI (renk, baloncuğun kendi renginden `--vip-glow` ve
+       `--vip-glow-soft` değişkenleriyle gelir),
+     · vaelos-bubble-sheen → VIP baloncuğun üzerinden geçen ışık süpürmesi.
+   Hepsi aşağıdaki `prefers-reduced-motion` bloğunda kapanır. */
+@keyframes vaelos-bubble-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 12px var(--vip-glow-soft),
+      0 4px 10px rgba(6, 10, 20, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 0 28px var(--vip-glow),
+      0 6px 14px rgba(6, 10, 20, 0.32);
+  }
+}
+
+@keyframes vaelos-bubble-sheen {
+  0% {
+    transform: translateX(-150%) skewX(-18deg);
+  }
+  55%,
+  100% {
+    transform: translateX(150%) skewX(-18deg);
+  }
+}
+
 /* Disable animations for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,

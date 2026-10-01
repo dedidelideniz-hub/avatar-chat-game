@@ -585,23 +585,58 @@ const scenarios: Scenario[] = [
       const style = bubble?.getAttribute("style") ?? "";
       const wrapper = wrapperStyle(p);
       const text = (p.root.textContent ?? "").replace(/\s+/g, " ").trim();
-      const tails = Array.from(p.root.querySelectorAll("span")).filter((s) =>
-        (s.getAttribute("style") ?? "").includes("border-top"),
-      );
+      // Kuyruk artık 45° döndürülmüş bir KARE (eski "üst üste iki üçgen"
+      // testere gibi ve ayrık duruyordu).
+      const tailStyle =
+        Array.from(p.root.querySelectorAll("span"))
+          .map((s) => s.getAttribute("style") ?? "")
+          .find((s) => s.includes("rotate(45deg)")) ?? "";
+      // Gövde + kuyruk TEK parça gibi gölgelensin diye sarmalayıcıda
+      // `filter: drop-shadow` (ayrı box-shadow'lar ek yeri belli ediyordu).
+      const shellStyle =
+        Array.from(p.root.querySelectorAll("div"))
+          .map((d) => d.getAttribute("style") ?? "")
+          .find((s) => s.includes("filter: drop-shadow")) ?? "";
+      const bodyBorder = (style.match(/border: [^;]*solid ([^;]+);/) ?? [])[1];
+      const tailBorder = (tailStyle.match(/border-right-color: ([^;]+);/) ?? [])[1];
       const checks: Check[] = [
         check("mesaj metni çizildi", bubble !== undefined),
         check(
-          "beyaz gövde (background: white)",
-          /background: (rgb\(255, 255, 255\)|#ffffff)/.test(style),
-          style.slice(0, 60),
+          "beyaz gövde (altta beyaza yakın gradyan)",
+          /background: linear-gradient\(180deg, #ffffff 0%, #f4f5f8 100%\)/.test(
+            style,
+          ),
+          style.slice(0, 70),
         ),
-        check("yumuşak köşe 12px", style.includes("border-radius: 12px")),
-        check("dolgu 8px 12px", style.includes("padding: 8px 12px")),
+        check("yumuşak köşe 16px", style.includes("border-radius: 16px")),
+        check("dolgu 9px 13px", style.includes("padding: 9px 13px")),
         check("koyu, okunur yazı rengi", /color: (rgb\(43, 35, 32\)|#2b2320)/.test(style)),
-        check("ince kenarlık (border)", /border: 1px solid rgba\(/.test(style)),
-        check("tatlı gölge (box-shadow)", style.includes("box-shadow")),
-        check("CSS kuyruk (aşağı bakan üçgen) var", tails.length === 2, `üçgen ${tails.length}`),
-        check("kuyruk kafayı işaret eder (üst kenardan aşağı)", tails.every((t) => (t.getAttribute("style") ?? "").includes("top: 100%"))),
+        check("ince kenarlık (1px)", /border: 1px solid rgba\(/.test(style)),
+        check("hafif gövde gölgesi", style.includes("box-shadow")),
+        check(
+          "gövde + kuyruk tek gölge (drop-shadow)",
+          /filter: drop-shadow\(/.test(shellStyle),
+          shellStyle.slice(0, 60),
+        ),
+        check(
+          "kuyruk döndürülmüş kare (45°) ve gövdenin ÜSTÜNDE",
+          tailStyle.includes("rotate(45deg)") && tailStyle.includes("z-index: 1"),
+          tailStyle.slice(0, 90),
+        ),
+        check(
+          "kuyruk ucu yuvarlatılmış",
+          tailStyle.includes("border-bottom-right-radius: 4px"),
+        ),
+        check(
+          "kuyruk gövdenin ALT rengini taşır (ek yeri yok)",
+          tailStyle.includes("background: #f4f5f8"),
+          tailStyle.slice(0, 80),
+        ),
+        check(
+          "kuyruk kenarlığı gövdeninkiyle AYNI renk (kesintisiz çizgi)",
+          Boolean(bodyBorder) && bodyBorder === tailBorder,
+          `gövde=${bodyBorder} kuyruk=${tailBorder}`,
+        ),
         check(
           "tıklamayı yakalamaz (pointer-events none)",
           /pointer-events: none/.test(wrapper),
@@ -650,6 +685,12 @@ const scenarios: Scenario[] = [
           fading,
         ),
         check("geçiş animasyonu (transition) var", fading.includes("transition")),
+        // "Mesajlar YUKARI doğru kaybolsun": gizli hâl negatif Y taşır.
+        check(
+          "kaybolma YUKARI doğru (negatif translateY)",
+          /translateY\(-\d+px\)/.test(fading),
+          (fading.match(/translateY\([^)]*\)[^;]*/) ?? [""])[0],
+        ),
       );
 
       // 👑 VIP balon rengi: Sanalika'nın renkli + kalın beyaz çerçeveli +
@@ -664,27 +705,39 @@ const scenarios: Scenario[] = [
       );
       const vipStyle = findBody()?.getAttribute("style") ?? "";
       const vipText = (p.root.textContent ?? "").replace(/\s+/g, " ").trim();
+      const vipTail =
+        Array.from(p.root.querySelectorAll("span"))
+          .map((s) => s.getAttribute("style") ?? "")
+          .find((s) => s.includes("rotate(45deg)")) ?? "";
       checks.push(
         check("VIP renk zemine uygulanıyor", vipStyle.includes("#14b8a6"), vipStyle.slice(0, 60)),
         check("VIP renkte yazı beyaz", vipStyle.includes("color: #ffffff")),
         check("VIP renkte kalın beyaz çerçeve (2px)", /border: 2px solid rgba\(255, 255, 255/.test(vipStyle)),
-        check("VIP renkte renkli IŞIMA (glow)", /box-shadow: 0 0 18px rgba\(20, 184, 166/.test(vipStyle)),
         check("VIP baloncuğunda taç işareti var", vipText.includes("👑")),
+        // 👑 VIP ANİMASYONU: nabız gibi salınan renkli ışıma + ışık süpürmesi.
         check(
-          "VIP renkte kuyruk da beyaz çerçeveli",
-          (() => {
-            const t = Array.from(p.root.querySelectorAll("span")).map(
-              (s) => s.getAttribute("style") ?? "",
-            );
-            // happy-dom kısa yazımı uzun yazıma açıyor: `border-top-color`.
-            return (
-              t.some((s) => /border-top-color: rgba\(255, ?255, ?255/.test(s)) &&
-              t.some((s) => s.includes("border-top-color: #14b8a6"))
-            );
-          })(),
-          Array.from(p.root.querySelectorAll("span"))
-            .map((s) => (s.getAttribute("style") ?? "").replace(/.*border-top: /, ""))
-            .join(" || "),
+          "VIP renkte NABIZ animasyonu (ışıma)",
+          vipStyle.includes("animation: vaelos-bubble-pulse"),
+        ),
+        check(
+          "ışıma rengi baloncuğun kendi renginden (CSS değişkenleri)",
+          vipStyle.includes("--vip-glow: rgba(20, 184, 166") &&
+            vipStyle.includes("--vip-glow-soft: rgba(20, 184, 166"),
+          (vipStyle.match(/--vip-glow[^;]*/) ?? [""])[0],
+        ),
+        check(
+          "VIP renkte ışık süpürmesi (sheen) var",
+          Array.from(p.root.querySelectorAll("span")).some((s) =>
+            (s.getAttribute("style") ?? "").includes(
+              "animation: vaelos-bubble-sheen",
+            ),
+          ),
+        ),
+        check(
+          "VIP kuyruğu da beyaz çerçeveli ve balon renginde",
+          /border-right-color: rgba\(255, ?255, ?255/.test(vipTail) &&
+            vipTail.includes("background: #14b8a6"),
+          vipTail.slice(0, 90),
         ),
       );
       // Kırmızı (koyu zemin / beyaz yazı) ve sarı (açık zemin / koyu yazı)
@@ -694,7 +747,18 @@ const scenarios: Scenario[] = [
       );
       const redStyle = findBody()?.getAttribute("style") ?? "";
       checks.push(
-        check("kırmızı VIP balon zemini", redStyle.includes("background: #ef4444")),
+        check(
+          "kırmızı VIP balon zemini (gradyanın alt rengi)",
+          /background: linear-gradient\(180deg, rgb\([^)]*\) 0%, #ef4444 100%\)/.test(
+            redStyle,
+          ),
+          redStyle.slice(0, 70),
+        ),
+        check(
+          "VIP olmayan (beyaz) balonda animasyon YOK",
+          !style.includes("vaelos-bubble-pulse") &&
+            !style.includes("--vip-glow"),
+        ),
         check("kırmızı balonda beyaz yazı + koyu gölge", redStyle.includes("color: #ffffff") && redStyle.includes("rgba(0, 0, 0, 0.35)")),
       );
       await p.render(
@@ -718,7 +782,19 @@ const scenarios: Scenario[] = [
       const engine = read("../src/engine/GameEngine3D.tsx");
       const avatar = read("../src/engine/GlbAvatar3D.tsx");
       const bubble = read("../src/engine/ChatBubble3D.tsx");
+      const css = read("../src/index.css");
       return [
+        check(
+          "VIP animasyon keyframes'leri global CSS'te",
+          /@keyframes vaelos-bubble-pulse/.test(css) &&
+            /@keyframes vaelos-bubble-sheen/.test(css),
+        ),
+        check(
+          "animasyonlar azaltılmış hareket tercihinde kapanır",
+          /prefers-reduced-motion: reduce[\s\S]{0,400}animation-duration: 0\.01ms !important/.test(
+            css,
+          ),
+        ),
         check(
           "drei <Html center distanceFactor> kullanılıyor",
           /<Html[^>]*center/.test(bubble) && /distanceFactor=\{distanceFactor\}/.test(bubble),
