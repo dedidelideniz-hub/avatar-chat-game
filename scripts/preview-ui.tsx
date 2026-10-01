@@ -565,8 +565,14 @@ const scenarios: Scenario[] = [
     title: "SOHBET BALONCUĞU · Sanalika stili görünüm (beyaz / kaybolma / VIP)",
     handles: "src/engine/ChatBubble3D.tsx → ChatBubbleBody",
     run: async (p) => {
-      const { ChatBubbleBody, CHAT_BUBBLE_MS, CHAT_BUBBLE_FADE_MS, CHAT_BUBBLE_HEIGHT } =
-        await import("../src/engine/ChatBubble3D");
+      const {
+        ChatBubbleBody,
+        CHAT_BUBBLE_MS,
+        CHAT_BUBBLE_FADE_MS,
+        CHAT_BUBBLE_HEIGHT,
+        CHAT_BUBBLE_MIN_SCALE,
+        CHAT_BUBBLE_MAX_SCALE,
+      } = await import("../src/engine/ChatBubble3D");
       await p.render(
         <ChatBubbleBody
           text="Merhaba Vaelos!"
@@ -597,26 +603,53 @@ const scenarios: Scenario[] = [
         Array.from(p.root.querySelectorAll("div"))
           .map((d) => d.getAttribute("style") ?? "")
           .find((s) => s.includes("filter: drop-shadow")) ?? "";
-      const bodyBorder = (style.match(/border: [^;]*solid ([^;]+);/) ?? [])[1];
-      const tailBorder = (tailStyle.match(/border-right-color: ([^;]+);/) ?? [])[1];
+      const nameStyle =
+        p.root.querySelector("strong")?.getAttribute("style") ?? "";
+      const divStyles = () =>
+        Array.from(p.root.querySelectorAll("div")).map(
+          (d) => d.getAttribute("style") ?? "",
+        );
+      // happy-dom hex'i bazen rgb(...)'ye çevirir → iki gösterimi de kabul et.
+      const isCream = (s: string) => /#F7F9E9|247, ?249, ?233/i.test(s);
+      const isGreen = (s: string) => /#72C94A|114, ?201, ?74/i.test(s);
+      const isRedName = (s: string) => /#E53935|229, ?57, ?53/i.test(s);
       const checks: Check[] = [
         check("mesaj metni çizildi", bubble !== undefined),
         check(
-          "beyaz gövde (altta beyaza yakın gradyan)",
-          /background: linear-gradient\(180deg, #ffffff 0%, #f4f5f8 100%\)/.test(
-            style,
-          ),
-          style.slice(0, 70),
+          "krem, tam opak gövde (#F7F9E9)",
+          style.includes("linear-gradient(180deg") && isCream(style),
+          style.slice(0, 80),
         ),
-        check("yumuşak köşe 16px", style.includes("border-radius: 16px")),
-        check("dolgu 9px 13px", style.includes("padding: 9px 13px")),
-        check("koyu, okunur yazı rengi", /color: (rgb\(43, 35, 32\)|#2b2320)/.test(style)),
-        check("ince kenarlık (1px)", /border: 1px solid rgba\(/.test(style)),
-        check("hafif gövde gölgesi", style.includes("box-shadow")),
+        check("yuvarlatılmış köşe 16px", style.includes("border-radius: 16px")),
         check(
-          "gövde + kuyruk tek gölge (drop-shadow)",
-          /filter: drop-shadow\(/.test(shellStyle),
-          shellStyle.slice(0, 60),
+          "düz yeşil kenarlık 3px (#72C94A)",
+          /border: 3px solid/.test(style) && isGreen(style),
+          (style.match(/border: [^;]+/) ?? [""])[0],
+        ),
+        check("iç boşluk 11px 15px", style.includes("padding: 11px 15px")),
+        check("metin sola hizalı", style.includes("text-align: left")),
+        check("satır kaydırma açık (overflow-wrap)", style.includes("overflow-wrap: anywhere")),
+        check(
+          "mesaj rengi koyu (#202020)",
+          /color: (rgb\(32, 32, 32\)|#202020)/.test(style),
+        ),
+        check(
+          "eski oyun yazı tipi (Trebuchet/Tahoma/Arial)",
+          style.includes("Trebuchet MS") &&
+            style.includes("Tahoma") &&
+            style.includes("Arial"),
+        ),
+        check(
+          "mobil-masaüstü arası ölçeklenen yazı (clamp sınıfı)",
+          (bubble?.getAttribute("class") ?? "").includes("vaelos-bubble-text"),
+          bubble?.getAttribute("class") ?? "",
+        ),
+        // Gövde + kuyruk TEK parça gibi gölgelensin diye sarmalayıcıda tek
+        // `drop-shadow` (Sanalika'nın çok hafif gölgesi).
+        check(
+          "çok hafif gölge (0 2px 4px rgba(0,0,0,0.15))",
+          /drop-shadow\(0 2px 4px rgba\(0, 0, 0, 0\.15\)\)/.test(shellStyle),
+          shellStyle.slice(0, 70),
         ),
         check(
           "kuyruk döndürülmüş kare (45°) ve gövdenin ÜSTÜNDE",
@@ -624,67 +657,77 @@ const scenarios: Scenario[] = [
           tailStyle.slice(0, 90),
         ),
         check(
-          "kuyruk ucu yuvarlatılmış",
-          tailStyle.includes("border-bottom-right-radius: 4px"),
-        ),
-        check(
-          "kuyruk gövdenin ALT rengini taşır (ek yeri yok)",
-          tailStyle.includes("background: #f4f5f8"),
+          "kuyruk gövdeyle aynı krem renkte",
+          isCream(tailStyle),
           tailStyle.slice(0, 80),
         ),
         check(
-          "kuyruk kenarlığı gövdeninkiyle AYNI renk (kesintisiz çizgi)",
-          Boolean(bodyBorder) && bodyBorder === tailBorder,
-          `gövde=${bodyBorder} kuyruk=${tailBorder}`,
+          "kuyruk kenarlığı gövdeyle AYNI yeşil (kesintisiz çizgi)",
+          /border-right-width: 3px/.test(tailStyle) &&
+            /border-right-color: (#72C94A|rgb\(114, 201, 74\))/i.test(tailStyle) &&
+            isGreen(style),
+          tailStyle.slice(0, 120),
         ),
         check(
           "tıklamayı yakalamaz (pointer-events none)",
           /pointer-events: none/.test(wrapper),
         ),
         // ⛔ REGRESYON: esneyen (flex) sarmalayıcı + genişliksiz kapsayıcı
-        // metni HER HARFİ AYRI SATIRA düşürüyordu (ekran görüntüsündeki
-        // "J / d / j / d / d / j"). Baloncuk kendi genişliğini almalı.
+        // metni HER HARFİ AYRI SATIRA düşürüyordu. Baloncuk kendi genişliğini
+        // almalı.
         check(
           "metin harf harf SARMAZ (flex değil)",
           !/display: flex/.test(wrapper),
           wrapper.slice(0, 70),
         ),
         check(
-          "baloncuk içeriğe göre boyutlanır (inline-block + max-content)",
+          "içeriğe göre OTOMATİK genişlik (inline-block + max-content)",
           wrapper.includes("display: inline-block") &&
             wrapper.includes("width: max-content"),
         ),
-        check("satır sınırı var (max-width)", /max-width: \d+px/.test(wrapper), wrapper.slice(0, 90)),
-        check("uzun mesaj için satır kaydırma açık", style.includes("overflow-wrap: anywhere")),
         check(
-          "yazı Sanalika ölçeğinde (≥17px)",
-          /font-size: (1[7-9]|2\d)px/.test(style),
-          (style.match(/font-size: [^;]+/) ?? [""])[0],
+          "kısa/uzun mesaja göre boyut sınırı (clamp 210-290px)",
+          /max-width: clamp\(210px, 60vw, 290px\)/.test(wrapper),
+          (wrapper.match(/max-width: [^;]+/) ?? [""])[0],
         ),
-        // Sanalika düzeni: gönderen adı baloncuğun İÇİNDE.
+        check(
+          "mesafeye göre kıstırılmış ölçek (--bubble-scale)",
+          wrapper.includes("scale(var(--bubble-scale, 1))"),
+          (wrapper.match(/transform: [^;]+/) ?? [""])[0],
+        ),
+        // Sanalika düzeni: gönderen adı baloncuğun İÇİNDE, KIRMIZI ve kalın.
         check(
           "gönderen adı baloncukta yazıyor (İsim: mesaj)",
           text === "Dkdkdkk: Merhaba Vaelos!",
           text,
         ),
         check("ad kalın (strong) yazılıyor", p.root.querySelector("strong") !== null),
+        check(
+          "kullanıcı adı KIRMIZI + kalın (#E53935)",
+          isRedName(nameStyle) && /font-weight: 700/.test(nameStyle),
+          nameStyle.slice(0, 60),
+        ),
         check("5 saniye ekranda kalır", CHAT_BUBBLE_MS === 5000, `${CHAT_BUBBLE_MS} ms`),
         check("yumuşak kaybolma süresi tanımlı", CHAT_BUBBLE_FADE_MS > 0, `${CHAT_BUBBLE_FADE_MS} ms`),
         check("baş üstü çapası 2.2", CHAT_BUBBLE_HEIGHT === 2.2),
+        check(
+          "ölçek min/max sınırlı (0.65 / 1.15)",
+          CHAT_BUBBLE_MIN_SCALE === 0.65 && CHAT_BUBBLE_MAX_SCALE === 1.15,
+          `${CHAT_BUBBLE_MIN_SCALE} / ${CHAT_BUBBLE_MAX_SCALE}`,
+        ),
       ];
 
-      // Kaybolma hali: opacity 0 (fade out).
+      // Kaybolma hali: giriş/kaybolma sarmalayıcısı opacity 0 + yukarı süzülür.
       await p.render(
         <ChatBubbleBody text="Merhaba Vaelos!" colorId="beyaz" visible={false} />,
       );
-      const fading = wrapperStyle(p);
+      const fading =
+        divStyles().find((s) => s.includes("transition")) ?? "";
+      const enterMs = Number((fading.match(/opacity (\d+)ms/) ?? [])[1] ?? "0");
       checks.push(
-        check(
-          "kaybolurken opacity 0",
-          /opacity: 0(\.\d+)?;?/.test(fading),
-          fading,
-        ),
-        check("geçiş animasyonu (transition) var", fading.includes("transition")),
+        check("giriş/kaybolma geçişi (transition) var", fading.includes("transition")),
+        check("giriş animasyonu 120-180ms", enterMs >= 120 && enterMs <= 180, `${enterMs}ms`),
+        check("kaybolurken opacity 0", /opacity: 0/.test(fading), fading.slice(0, 70)),
         // "Mesajlar YUKARI doğru kaybolsun": gizli hâl negatif Y taşır.
         check(
           "kaybolma YUKARI doğru (negatif translateY)",
@@ -709,10 +752,15 @@ const scenarios: Scenario[] = [
         Array.from(p.root.querySelectorAll("span"))
           .map((s) => s.getAttribute("style") ?? "")
           .find((s) => s.includes("rotate(45deg)")) ?? "";
+      const isTeal = (s: string) => /#14b8a6|20, ?184, ?166/i.test(s);
+      const isWhite = (s: string) => /#ffffff|255, ?255, ?255/i.test(s);
       checks.push(
-        check("VIP renk zemine uygulanıyor", vipStyle.includes("#14b8a6"), vipStyle.slice(0, 60)),
-        check("VIP renkte yazı beyaz", vipStyle.includes("color: #ffffff")),
-        check("VIP renkte kalın beyaz çerçeve (2px)", /border: 2px solid rgba\(255, 255, 255/.test(vipStyle)),
+        check("VIP renk zemine uygulanıyor", isTeal(vipStyle), vipStyle.slice(0, 60)),
+        check("VIP renkte yazı beyaz", /color: (rgb\(255, 255, 255\)|#ffffff)/.test(vipStyle)),
+        check(
+          "VIP renkte kalın beyaz çerçeve (3px)",
+          /border: 3px solid/.test(vipStyle) && isWhite(vipStyle),
+        ),
         check("VIP baloncuğunda taç işareti var", vipText.includes("👑")),
         // 👑 VIP ANİMASYONU: nabız gibi salınan renkli ışıma + ışık süpürmesi.
         check(
@@ -721,8 +769,9 @@ const scenarios: Scenario[] = [
         ),
         check(
           "ışıma rengi baloncuğun kendi renginden (CSS değişkenleri)",
-          vipStyle.includes("--vip-glow: rgba(20, 184, 166") &&
-            vipStyle.includes("--vip-glow-soft: rgba(20, 184, 166"),
+          /--vip-glow:/.test(vipStyle) &&
+            /--vip-glow-soft:/.test(vipStyle) &&
+            isTeal(vipStyle),
           (vipStyle.match(/--vip-glow[^;]*/) ?? [""])[0],
         ),
         check(
@@ -735,9 +784,10 @@ const scenarios: Scenario[] = [
         ),
         check(
           "VIP kuyruğu da beyaz çerçeveli ve balon renginde",
-          /border-right-color: rgba\(255, ?255, ?255/.test(vipTail) &&
-            vipTail.includes("background: #14b8a6"),
-          vipTail.slice(0, 90),
+          /border-right-width: 3px/.test(vipTail) &&
+            /border-right-color: (#ffffff|rgb\(255, 255, 255\))/i.test(vipTail) &&
+            isTeal(vipTail),
+          vipTail.slice(0, 120),
         ),
       );
       // Kırmızı (koyu zemin / beyaz yazı) ve sarı (açık zemin / koyu yazı)
@@ -759,14 +809,21 @@ const scenarios: Scenario[] = [
           !style.includes("vaelos-bubble-pulse") &&
             !style.includes("--vip-glow"),
         ),
-        check("kırmızı balonda beyaz yazı + koyu gölge", redStyle.includes("color: #ffffff") && redStyle.includes("rgba(0, 0, 0, 0.35)")),
+        check(
+          "kırmızı balonda beyaz yazı + koyu gölge",
+          /color: (rgb\(255, 255, 255\)|#ffffff)/.test(redStyle) &&
+            redStyle.includes("rgba(0, 0, 0, 0.35)"),
+        ),
       );
       await p.render(
         <ChatBubbleBody text="Sarı balon" colorId="sari" visible />,
       );
       const yellowStyle = findBody()?.getAttribute("style") ?? "";
       checks.push(
-        check("sarı VIP balonda koyu yazı", yellowStyle.includes("color: #2b2320")),
+        check(
+          "sarı VIP balonda koyu yazı",
+          /color: (rgb\(32, 32, 32\)|#202020)/.test(yellowStyle),
+        ),
       );
       return checks;
     },
@@ -796,8 +853,22 @@ const scenarios: Scenario[] = [
           ),
         ),
         check(
-          "drei <Html center distanceFactor> kullanılıyor",
-          /<Html[^>]*center/.test(bubble) && /distanceFactor=\{distanceFactor\}/.test(bubble),
+          "balon yazısı clamp ile ölçeklenir (13-16px)",
+          /\.vaelos-bubble-text\s*\{[^}]*font-size:\s*clamp\(13px, 3\.7vw, 16px\)/.test(
+            css,
+          ),
+        ),
+        check(
+          "drei <Html center> kullanılıyor (ölçek elle kıstırılıyor)",
+          /<Html[\s\S]*?center/.test(bubble) &&
+            !/distanceFactor=\{/.test(bubble),
+        ),
+        check(
+          "ölçek min/max sınırlı ve her karede kameraya göre hesaplanır",
+          /CHAT_BUBBLE_MIN_SCALE = 0\.65/.test(bubble) &&
+            /CHAT_BUBBLE_MAX_SCALE = 1\.15/.test(bubble) &&
+            /useFrame\(/.test(bubble) &&
+            /--bubble-scale/.test(bubble),
         ),
         check(
           "baloncuk oyun girdisini yakalamaz (pointerEvents none)",

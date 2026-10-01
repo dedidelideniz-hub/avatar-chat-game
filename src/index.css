@@ -2192,7 +2192,14 @@ div:has(> main .moba-chrome) main .battle-hidden-badge {
        renkli IŞIMASI (renk, baloncuğun kendi renginden `--vip-glow` ve
        `--vip-glow-soft` değişkenleriyle gelir),
      · vaelos-bubble-sheen → VIP baloncuğun üzerinden geçen ışık süpürmesi.
+   Ayrıca baloncuk YAZI BOYUTU burada tanımlıdır (satır içinde `clamp`
+   kullanmak yerine sınıf): küçük telefon ekranında okunur kalır (~13px),
+   masaüstünde Sanalika ölçeğine çıkar (~16px).
    Hepsi aşağıdaki `prefers-reduced-motion` bloğunda kapanır. */
+.vaelos-bubble-text {
+  font-size: clamp(13px, 3.7vw, 16px);
+}
+
 @keyframes vaelos-bubble-pulse {
   0%,
   100% {
