@@ -510,8 +510,12 @@ function span(westX: number, southZ: number, eastX: number, northZ: number): Rec
 /**
  * CADI DÜKKÂNI GİRİŞ YOLU (bkz. `constants.WITCH_SHOP_WALKWAY`).
  *
- * Yol AŞAĞIDAKİ CADDEYE BAĞLANIR: asfaltın içinden başlar, güney ve kuzey
- * kaldırımı geçer, çimi aşar, kapının önünde genişleyip binanın İÇİNE girer.
+ * Yol KUZEY KALDIRIMINDA başlar, çimi aşar, kapının önünde genişleyen avluya
+ * açılır ve BİNANIN CEPHE HATTIINDA BİTER. Binanın İÇİ yürünemez: evler
+ * yürünerek girilen hacimler değil, kapısında beliren "Evine gir" düğmesiyle
+ * girilen katı yapılardır (bkz. `constants.HOUSE_*`). Oyuncu avludan öteye
+ * geçemez — böylece evin içine/üstüne çıkma (ekran görüntüsündeki saydam ev)
+ * durumu oluşamaz.
  *
  * NEDEN DAR (0.8 birim): kuzey kaldırımı sokak mobilyasıyla (lamba/bank/
  * otobüs durağı/tabela) dolu ve hepsi KATI cisimdir; engeller A* ızgarasına
@@ -528,12 +532,12 @@ export const WITCH_SHOP_WALK_ZONES: Rect[] = [
     WITCH_SHOP_WALKWAY.x + WITCH_SHOP_WALKWAY.pathHalfW,
     WITCH_SHOP_WALKWAY.pathNorthZ,
   ),
-  // 2) Kapının önündeki avlu + binanın İÇİNE giren koridor.
+  // 2) Kapının önündeki avlu — binanın CEPHE HATTIINDA biter (içerisi yürünemez).
   span(
     WITCH_SHOP_WALKWAY.x - WITCH_SHOP_WALKWAY.foreHalfW,
     WITCH_SHOP_WALKWAY.pathNorthZ,
     WITCH_SHOP_WALKWAY.x + WITCH_SHOP_WALKWAY.foreHalfW,
-    WITCH_SHOP_WALKWAY.insideZ,
+    WITCH_SHOP_WALKWAY.frontZ,
   ),
 ];
 

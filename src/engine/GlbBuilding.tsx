@@ -6,10 +6,17 @@
  *   · modeli ölçer ve göze oturtur (`buildingModelPrep.ts`) — taban zemine,
  *     cephe satırın cephe hattına, genişlik gözün genişliğine,
  *   · gölge bayraklarını açar (model mesh'leri GLTF'ten kapalı gelir),
- *   · `fade` verilirse, oyuncu içeri girip görüşü kesildiğinde YALNIZCA bu
- *     binayı yumuşakça saydamlaştırır (test edilmiş çekirdek:
+ *   · `fade` verilirse, oyuncu binanın İÇİNDEYKEN görüşü kesildiğinde YALNIZCA
+ *     bu binayı yumuşakça saydamlaştırır (test edilmiş çekirdek:
  *     `buildingOcclusion.ts`). Caddenin geri kalanındaki "kamera açısı
- *     otomatik açılır" davranışına dokunmaz.
+ *     otomatik açılır" davranışına dokunmaz. Evler yürünerek girilen hacimler
+ *     OLMADIĞI için bugün hiçbir bina bu bayrağı açmaz (bkz.
+ *     `constants.HOUSE_*`) — saydam kalan bir ev, oyuncunun içeride durduğu
+ *     izlenimini veriyordu.
+ *
+ *   · `sign` verilirse, binanın tepesinde bir DOM levhası asar (oyuncu
+ *     evlerinin sahibi adı burada yazar). Aynı model birden çok arsaya
+ *     dikilebildiği için model sahnesi örnek başına KLONLANIR.
  *
  * Model indirilemezse yalnızca bu göz düşer (bitki örtüsü katmanıyla aynı
  * desen); caddenin geri kalanı çalışmaya devam eder.
@@ -23,7 +30,7 @@ import {
   type ReactNode,
 } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { Html, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import {
   S,
@@ -52,14 +59,31 @@ function GlbBuildingModel({
   def,
   playerPosRef,
   fade,
+  sign,
 }: {
   def: BuildingDef;
   playerPosRef?: React.RefObject<{ x: number; y: number }>;
   fade: boolean;
+  /** Kapının üstünde asılı levha (ör. "🏠 oyuncu adı"). */
+  sign?: ReactNode;
 }) {
   const url = def.modelUrl as string;
   const { scene } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
+
+  /**
+   * SAHNE KLONLANIR — TEK bir `useGLTF` önbelleği aynı modeli isteyen her
+   * göze AYNI `Object3D`yi döner. Aynı nesne sahne grafiğinde iki yere
+   * takılamayacağı için (ikinci konum birincisinin üstüne yazar) her örnek
+   * kendi klonunu kullanır. Klon geometriyi/malzemeyi PAYLAŞIR, yani ek
+   * GPU belleği harcamaz: yalnızca düğüm ağacı kopyalanır. Oyuncu evleri
+   * (aynı model, farklı arsalar) bu yüzden dikilebilir.
+   */
+  const model = useMemo(() => {
+    const root = scene as THREE.Object3D;
+    // Önizleme yer tutucusu (`{}`) gerçek bir Object3D değil → çizim yok.
+    return root?.isObject3D ? root.clone(true) : null;
+  }, [scene]);
 
   const placement = useMemo(() => {
     const box = measureBuildingModel(scene as THREE.Object3D);
@@ -70,15 +94,14 @@ function GlbBuildingModel({
   // mesh'leri GLTF'ten kapalı gelir. Gölge geçişi ışığın `castShadow`
   // bayrağıyla zaten kısıtlı (mobilde tamamen kapalı, bkz. GameEngine3D).
   useEffect(() => {
-    const root = scene as THREE.Object3D;
-    if (!root?.isObject3D) return; // önizleme yer tutucusu
-    root.traverse((obj) => {
+    if (!model) return; // önizleme yer tutucusu
+    model.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
     });
-  }, [scene]);
+  }, [model]);
 
   // Saydamlaştırma: malzemeler bu binaya özel klonlanır — sahnedeki diğer
   // binalar/proplar bu geçişten ETKİLENMEZ.
@@ -117,7 +140,7 @@ function GlbBuildingModel({
     updateCameraOcclusion([occluder], camera.position, { x: px, z: pz }, dt, true);
   });
 
-  if (!placement) return null;
+  if (!placement || !model) return null;
 
   return (
     <group ref={groupRef} position={[def.x, 0, def.frontZ]} userData={BUILDING_USER_DATA}>
@@ -127,8 +150,19 @@ function GlbBuildingModel({
         position={[placement.offset.x, placement.offset.y, placement.offset.z]}
         scale={placement.scale}
       >
-        <primitive object={scene} />
+        <primitive object={model} />
       </group>
+      {/* Kapı levhası — binanın tepesinde, cephenin az önünde asılı durur. */}
+      {sign ? (
+        <Html
+          center
+          distanceFactor={11}
+          position={[0, placement.size.y + 0.42, 0.15]}
+          zIndexRange={[20, 10]}
+        >
+          {sign}
+        </Html>
+      ) : null}
     </group>
   );
 }
@@ -157,18 +191,32 @@ export function GlbBuilding({
   def,
   playerPosRef,
   fade = false,
+  sign,
 }: {
   def: BuildingDef;
   /** `fade` açıkken binanın görüşü kesip kesmediğini ölçmek için gerekir. */
   playerPosRef?: React.RefObject<{ x: number; y: number }>;
-  /** Oyuncu binanın içine girebiliyorsa `true` (görüş kesilince saydamlaşır). */
+  /**
+   * Oyuncu binanın İÇİNE girebiliyorsa `true` (görüş kesilince saydamlaşır).
+   *
+   * Evler artık yürünerek girilen hacimler değil (bkz. `constants.HOUSE_*`),
+   * o yüzden hiçbir bina bu bayrağı açmaz: saydamlaşan bir ev, oyuncunun
+   * içeride durduğu izlenimini veriyordu (ekran görüntüsü).
+   */
   fade?: boolean;
+  /** Kapının üstünde asılı levha (ör. oyuncu evinin sahibi). */
+  sign?: ReactNode;
 }) {
   if (!def.modelUrl) return null;
   return (
     <GlbBuildingBoundary url={def.modelUrl}>
       <Suspense fallback={null}>
-        <GlbBuildingModel def={def} playerPosRef={playerPosRef} fade={fade} />
+        <GlbBuildingModel
+          def={def}
+          playerPosRef={playerPosRef}
+          fade={fade}
+          sign={sign}
+        />
       </Suspense>
     </GlbBuildingBoundary>
   );

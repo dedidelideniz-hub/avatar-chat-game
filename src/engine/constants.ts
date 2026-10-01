@@ -273,6 +273,63 @@ export const BUILDINGS: BuildingDef[] = [
 /** Cadı dükkânının göz tanımı — hem render hem yürünebilirlik buradan okur. */
 export const WITCH_SHOP_DEF: BuildingDef = BUILDINGS[WITCH_SHOP_INDEX];
 
+/* ════════════════════════════════════════════════════════════
+   🏠 OYUNCU EVLERİ — "herkesin kendi evi"
+
+   Ev artık YÜRÜNEREK GİRİLEN bir hacim değil: bina KATI bir kutudur ve
+   içine/üstüne çıkılamaz (bkz. `lib/shop.ts` → yürünebilir bölgeler). Oyuncu
+   evin ÖNÜNE gelir, üç boyutlu "Evine gir" düğmesi belirir ve eve o düğmeyle
+   girilir. Evler oyuncuya aittir ve `convex/houses.ts`te saklanır: her oyuncu
+   bir arsaya kendi evini kurar, herkes (online) herkesin evini cadde üzerinde
+   görür ve ziyaret edebilir.
+   ════════════════════════════════════════════════════════════ */
+
+/**
+ * Oyuncu evlerinin modeli.
+ *
+ * Şimdilik satırdaki tek bina modeli bu; yeni GLB'ler eklendikçe arsa başına
+ * model seçilebilir (o zaman bu alan `houses` kaydına taşınır).
+ */
+export const HOUSE_MODEL_URL = WITCH_SHOP_MODEL_URL;
+
+/**
+ * Ev kurulabilecek arsalar = CADDE SIRASINDAKİ gözler (0…11).
+ *
+ * Arka sıra (12…19) şimdilik boş kalır (yeni binalar için): oradaki cephelerin
+ * önü çimdir ve yürünemez, yani kapıya yaklaşılamaz — oysa cadde sırasının
+ * önünde yürünebilir kaldırım vardır (bkz. `HOUSE_TRIGGER`).
+ */
+export const HOUSE_PLOTS: readonly number[] = SHOP_CENTERS.map((_, i) => i);
+
+/**
+ * EV MENZİLİ — arsanın önündeki KALDIRIM şeridi.
+ *
+ * Oyuncu bu dikdörtgenin içindeyken o arsanın kapısı "menzilde" sayılır ve
+ * "Evine gir" düğmesi belirir. Alanın kapı hattına değil KALDIRIMA oturmasının
+ * sebebi: çim şeridi yürünemez olduğu için cephe hattına (`frontZ`) yalnızca
+ * cadı dükkânının yolu (X −13) ulaşır; diğer arsaların kapısına ancak önündeki
+ * kaldırımdan yaklaşılır. Oyuncu zaten yalnızca yürünebilir yerlerde
+ * bulunabildiği için alanın çim/çim-üstü kısmı kendiliğinden önemsizdir.
+ */
+export const HOUSE_TRIGGER = {
+  /** Arsa merkezine göre yarım genişlik — göz aralığı 2.4, yani aralar boş kalır. */
+  halfX: 1.1,
+  /** Güney sınır: kaldırımın cadde kenarı (caddeden geçerken düğme belirmez). */
+  southZ: ZONE.northSidewalkBot,
+  /**
+   * Kuzey sınır: binanın CEPHE HATTI (`BUILDINGS[i].frontZ` = `northGrassTop+0.3`;
+   * cadde sırasının tamamı aynı hizada). Avlunun son santimi de kapsanır ki
+   * cadı dükkânının yolundan gelen oyuncu kapıya dayandığında düğme
+   * kaybolmasın. Aradaki çim yürünemediği için alanın o kısmı zaten ölüdür.
+   */
+  northZ: ZONE.northGrassTop + 0.3,
+} as const;
+
+/** Arsa X sınırları (dünya birimi) — menzil testi buradan okur. */
+export function houseTriggerBounds(x: number): { west: number; east: number } {
+  return { west: x - HOUSE_TRIGGER.halfX, east: x + HOUSE_TRIGGER.halfX };
+}
+
 /**
  * Satırda DİKİLİ binaların model URL'leri (`BUILDINGS`ten türetilir).
  *
@@ -297,16 +354,16 @@ export const BUILDING_MODEL_URLS: readonly string[] = BUILDINGS.map(
  *      (−14) ile yön tabelası (−12) ARASINDAKİ boşluktan geçer — kaldırım
  *      şeridinin tamamı sokak mobilyasıyla dolu olduğu için yolun geçebileceği
  *      tek temiz aralık burasıdır.
- *   2) ÖN AVLU + GİRİŞ (`x ± foreHalfW`, `pathNorthZ` … `insideZ`):
- *      kapının önünde genişleyen avlu ve binanın içine giren koridor.
+ *   2) ÖN AVLU (`x ± foreHalfW`, `pathNorthZ` … `frontZ`):
+ *      kapının önünde genişleyen avlu. Avlu BİNANIN CEPHE HATTINDA BİTER —
+ *      binanın içi artık YÜRÜNEMEZ (bkz. `HOUSE_*`); oyuncu kapının önüne
+ *      kadar gelir ve "Evine gir" düğmesiyle evine girer.
  *
  * Ölçüler karaktere göre: `PLAYER_RADIUS` 0.4 birim. Avlu/giriş 1.4 birim
  * geniş → gövde duvarlara değmeden geçer. Yol şeridi 0.8 birim: lamba ile
  * tabelanın bıraktığı 1.65 birimlik aralıkta `pushOutOfObstacles` yarıçapı
  * (0.4) kadarı düşülünce karaktere kalan tam koridor budur — yani karakter
- * iki propa da değmeden geçer. İçeride yürünebilir derinlik (`insideZ`)
- * binanın derinliğinden (~2.0) kısa tutulur ki karakter modelin arka duvarına
- * girmesin.
+ * iki propa da değmeden geçer.
  */
 export const WITCH_SHOP_WALKWAY = {
   /** Binanın (ve kapının) X merkezi. */
@@ -329,15 +386,6 @@ export const WITCH_SHOP_WALKWAY = {
   pathNorthZ: WITCH_SHOP_DEF.frontZ + 0.9,
   /** Binanın cephe hattı — avlunun kapıyla buluştuğu Z. */
   frontZ: WITCH_SHOP_DEF.frontZ,
-  /**
-   * İçeride yürünebilir alanın kuzey ucu.
-   *
-   * ÖLÇÜLDÜ (bkz. `witchShopPrep.ts`): modelin iç hacmi ön vitrin
-   * (world Z ≈ −11.13) ile arka duvarın (≈ −11.77) arasındadır — yani
-   * yaklaşık 0.6 birim. Yürünebilir derinlik bu hacmin İÇİNDE kalır;
-   * daha derine inilirse karakter modelin arka duvarının içine girerdi.
-   */
-  insideZ: WITCH_SHOP_DEF.frontZ - 0.85,
   /**
    * Kuzey sınır çitinde yolun açtığı boşluk yarı genişliği (`fenceSegments`).
    * Yol, kaldırımı çimden ayıran hattı (Z = `ZONE.northGrassBot`) kestiği için

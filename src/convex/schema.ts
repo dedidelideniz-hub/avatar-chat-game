@@ -105,6 +105,24 @@ const schema = defineSchema(
       .index("by_room_time", ["room", "createdAt"])
       .index("by_sender", ["senderId", "createdAt"]),
 
+    // 🏠 Oyuncu evleri: her oyuncunun caddede KENDİ evi vardır (bir arsa =
+    // bir `BUILDINGS` gözü). Kayıt sunucuda tutulur, yani evler ONLINEdır:
+    // `houses.list` reaktif bir sorgudur, başka bir oyuncu ev kurduğunda
+    // herkesin caddesinde kendiliğinden belirir. Ziyaretçiler burada birikir
+    // (son `MAX_VISITORS` kişi) — böylece "kim evime geldi" görünür.
+    houses: defineTable({
+      userId: v.id("users"), // ev sahibi
+      ownerName: v.string(), // kapı levhasındaki ad
+      plotIndex: v.number(), // arsa = BUILDINGS gözü (0…11)
+      name: v.string(), // evin adı (sahibi değiştirebilir)
+      visits: v.number(), // toplam ziyaret
+      visitors: v.array(v.string()), // son ziyaretçi adları (en yeni başta)
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_userId", ["userId"])
+      .index("by_plotIndex", ["plotIndex"]),
+
     profiles: defineTable({
       userId: v.id("users"),
       username: v.string(), // display name in the world

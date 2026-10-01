@@ -36,7 +36,8 @@ import {
   SPAWN_SVG,
   ZONE,
   BUILDINGS,
-  WITCH_SHOP_INDEX,
+  HOUSE_MODEL_URL,
+  HOUSE_TRIGGER,
   LAMPS,
   BENCHES,
   BENCH_WIDTH,
@@ -73,6 +74,15 @@ import { StreetGrassClumps, StreetTrees } from "./VegetationModels";
 // Bina satırı artık prosedürel geometriyle DEĞİL, tek tek eklenen GLB
 // modelleriyle kurulur (bkz. `constants.BUILDINGS` → `modelUrl`).
 import { GlbBuilding } from "./GlbBuilding";
+import {
+  getHouseNear,
+  houseDoorAction,
+  requestHouseEnter,
+  type HouseView,
+} from "./houseDoor";
+
+/** Evi olmayan cadde: sabit boş liste (her render'da yeni dizi üretmesin). */
+const NO_HOUSES: readonly HouseView[] = [];
 // Cadı dükkânının görünen kapı yolu (yürünebilir şeritle aynı sınırlar).
 import { WitchShopWalkway } from "./WitchShop";
 
@@ -668,6 +678,64 @@ function BenchSitButton() {
         className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-gradient-to-r from-emerald-500 to-teal-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-lg transition-transform active:scale-95"
       >
         🪑 Otur
+      </button>
+    </Html>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/*  🏠 Ev kapısı düğmesi — menzildeki arsanın üstünde          */
+/* ═══════════════════════════════════════════════════════════ */
+
+/**
+ * Oyuncu bir arsanın menziline girdiğinde o evin kapısında beliren düğme.
+ *
+ * Tıklama yalnızca `houseDoor` deposuna istek bırakır; oyun döngüsü (World.tsx)
+ * isteği bir sonraki karede tüketip ev panelini açar — böylece 3D katman ile
+ * oyun mantığı React prop'u paylaşmaz (bank "Otur" düğmesiyle aynı desen).
+ *
+ * Etiket SAF bir fonksiyondan gelir (`houseDoorAction`): evimde "Evine gir",
+ * başkasının evinde "Ziyaret et", boş arsada (henüz evim yokken) "Evini kur".
+ */
+function HouseEnterButton({ houses }: { houses: readonly HouseView[] }) {
+  const [plot, setPlot] = useState<number | null>(null);
+  const shownRef = useRef<number | null>(null);
+
+  useFrame(() => {
+    const near = getHouseNear();
+    if (near === shownRef.current) return;
+    shownRef.current = near;
+    setPlot(near);
+  });
+
+  if (plot === null) return null;
+  const def = BUILDINGS[plot];
+  if (!def) return null;
+  const action = houseDoorAction(plot, houses);
+  if (!action) return null;
+
+  const tone =
+    action.kind === "mine"
+      ? "from-emerald-500 to-teal-600"
+      : action.kind === "other"
+        ? "from-sky-500 to-indigo-600"
+        : "from-amber-500 to-orange-600";
+
+  return (
+    <Html
+      center
+      distanceFactor={9}
+      position={[def.x, 1.05, (HOUSE_TRIGGER.southZ + HOUSE_TRIGGER.northZ) / 2]}
+      zIndexRange={[30, 20]}
+    >
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => requestHouseEnter()}
+        style={{ pointerEvents: "auto" }}
+        className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-gradient-to-r ${tone} px-3.5 py-1.5 text-xs font-extrabold text-white shadow-lg transition-transform active:scale-95`}
+      >
+        {action.emoji} {action.label}
       </button>
     </Html>
   );
@@ -1290,6 +1358,12 @@ export interface GameEngine3DProps {
    * botların kendi aralarında konuşması baş üstünde görünür.
    */
   botSpeech?: Record<string, string | null | undefined>;
+  /**
+   * 🏠 Oyuncu evleri (`convex/houses.ts` → `list`). ONLINE: sorgu reaktif
+   * olduğu için başka bir oyuncu evini kurduğunda/değiştirdiğinde cadde
+   * kendiliğinden güncellenir. Boş dizi → hiç ev yok (gözler boş kalır).
+   */
+  houses?: readonly HouseView[];
 }
 
 export function GameEngine3D({
@@ -1311,6 +1385,7 @@ export function GameEngine3D({
   speechName,
   speechColorId,
   botSpeech,
+  houses = NO_HOUSES,
 }: GameEngine3DProps) {
   // Yükleme kapısı için: cadde varlıkları çözüldü mü? (`onSceneReady`
   // verilmediyse hiç kullanılmaz — durum makinesi boşta durur.)
@@ -1322,6 +1397,26 @@ export function GameEngine3D({
   if (remotePlayerSelectRef) remotePlayerSelectRef.current = remoteSelect;
   const initCamY = Math.sin(CAMERA_ELEVATION) * CAMERA_ZOOM;
   const initCamZ = Math.cos(CAMERA_ELEVATION) * CAMERA_ZOOM;
+
+  // 🏠 Oyuncu evleri: arsanın göz tanımı `BUILDINGS`ten alınır, modeli şimdilik
+  // tek (bkz. `constants.HOUSE_MODEL_URL`). Ölçek/hiza ölçülerek bulunduğu için
+  // (`GlbBuilding` + `buildingModelPrep`) burada sabit sayı yoktur.
+  const houseBuildings = useMemo(
+    () =>
+      houses.map((house) => ({
+        house,
+        def: {
+          ...(BUILDINGS[house.plotIndex] ?? BUILDINGS[0]),
+          modelUrl: HOUSE_MODEL_URL,
+        },
+      })),
+    [houses],
+  );
+  /** Sahiplenilen arsalar — statik modelin ikinci kez çizilmesini engeller. */
+  const claimedPlots = useMemo(
+    () => new Set(houseBuildings.map((h) => h.house.plotIndex)),
+    [houseBuildings],
+  );
 
   // Track bot count to force re-render when vendors are added after mount
   const [botsLen, setBotsLen] = useState(botsRef.current.length);
@@ -1433,18 +1528,28 @@ export function GameEngine3D({
       {/* === BUILDINGS === */}
       {/* Satır BOŞ GÖZLERDEN oluşur: yalnızca `modelUrl` atanmış göz dikilir,
           diğerlerinin yeri boştur (yeni GLB eklendikçe `constants.BUILDINGS`
-          içindeki ilgili göze `modelUrl` yazılır). Cadı dükkânı oyuncu içeri
-          girebildiği için `fade` alır: görüşü kesince yalnızca O saydamlaşır. */}
+          içindeki ilgili göze `modelUrl` yazılır). Bir gözü oyuncu sahiplendiyse
+          (aşağıdaki ev katmanı) oradaki statik model ÇİZİLMEZ — aynı yere iki
+          bina dikilmesin. `fade` HİÇBİR binada açılmaz: evler yürünerek
+          girilmediği için saydamlaşan bina yoktur (bkz. `constants.HOUSE_*`). */}
       {BUILDINGS.map((def, i) =>
-        def.modelUrl ? (
-          <GlbBuilding
-            key={i}
-            def={def}
-            playerPosRef={playerPosRef}
-            fade={i === WITCH_SHOP_INDEX}
-          />
+        def.modelUrl && !claimedPlots.has(i) ? (
+          <GlbBuilding key={i} def={def} playerPosRef={playerPosRef} />
         ) : null,
       )}
+
+      {/* 🏠 OYUNCU EVLERİ — sahibinin adı levhada: herkes herkesin evini görür. */}
+      {houseBuildings.map(({ house, def }) => (
+        <GlbBuilding
+          key={`house-${house.plotIndex}`}
+          def={def}
+          sign={
+            <div className="whitespace-nowrap rounded-full border-2 border-white/90 bg-[#3b2b22]/90 px-2.5 py-1 text-[11px] font-extrabold text-white shadow-lg">
+              🏠 {house.ownerName}
+            </div>
+          }
+        />
+      ))}
 
       {/* Cadı dükkânının GÖRÜNEN giriş yolu (yürünebilir şeritle aynı sınırlar). */}
       <WitchShopWalkway />
@@ -1461,6 +1566,9 @@ export function GameEngine3D({
 
       {/* 🪑 Menzildeki bankın üstünde beliren oturma düğmesi (bkz. `benchSeat`). */}
       <BenchSitButton />
+
+      {/* 🏠 Menzildeki evin kapısında beliren "Evine gir" düğmesi. */}
+      <HouseEnterButton houses={houses} />
 
       {/* === BENCHES === */}
       {BENCHES.map((def, i) => (

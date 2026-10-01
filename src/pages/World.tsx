@@ -16,9 +16,13 @@ import {
   BENCHES,
   BENCH_INTERACT_RADIUS,
   BENCH_STAND_FALLBACKS,
+  BUILDINGS,
   benchFacing,
   benchSeatSpot,
   benchStandSpot,
+  HOUSE_PLOTS,
+  HOUSE_TRIGGER,
+  houseTriggerBounds,
   PLAYER_3D_HEIGHT,
   SEAT_TRANSITION_SECONDS,
   SPAWN_SVG,
@@ -29,6 +33,13 @@ import {
   consumeBenchSitRequest,
   setBenchSeatState,
 } from "@/engine/benchSeat";
+import {
+  consumeHouseEnterRequest,
+  houseAt,
+  myHouse,
+  setHouseNear,
+  type HouseView,
+} from "@/engine/houseDoor";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -86,6 +97,7 @@ import {
   Backpack,
   Flower2,
   Footprints,
+  Home,
   MessageCircle,
   Puzzle,
   Send,
@@ -877,6 +889,118 @@ function StallsSheet({
   );
 }
 
+/**
+ * 🏠 EV PANELİ — üç hâli vardır ve üçü de AYNI panelden çıkar:
+ *
+ *   · `here.isMine`  → kendi evin: istatistik + ad değiştirme,
+ *   · başkasının    → ziyaret: istatistik + "Kapıyı çal",
+ *   · ev yok (`null`) → boş arsa: ad girip "Evini kur" (kapı düğmesinden
+ *     gelindiğinde O arsaya, "Evim" düğmesinden gelindiğinde ilk boş arsaya
+ *     kurulur — seçimi sunucu yapar, bkz. `convex/houses.ts` → `place`).
+ *
+ * Ziyaretçi listesi ve sayı sunucudan REAKTİF gelir: "Kapıyı çal" dendiğinde
+ * oyuncu kendi adını listede anında görür.
+ */
+function HouseSheet({
+  plotIndex,
+  houses,
+  username,
+  onClose,
+  onSave,
+  onKnock,
+}: {
+  plotIndex: number | null;
+  houses: readonly HouseView[];
+  username: string;
+  onClose: () => void;
+  onSave: (plotIndex: number | null, name: string) => void;
+  onKnock: (plotIndex: number) => void;
+}) {
+  const mine = myHouse(houses);
+  const here = plotIndex === null ? mine : houseAt(plotIndex, houses);
+  const areaNo = (here?.plotIndex ?? plotIndex ?? 0) + 1;
+  const [name, setName] = useState(here?.name ?? `${username} Ev`);
+
+  return (
+    <GameSheet
+      title={here ? `🏠 ${here.name}` : "🏠 Boş Arsa"}
+      subtitle={
+        here
+          ? `${here.ownerName} · ${areaNo}. arsa`
+          : plotIndex !== null
+            ? `${areaNo}. arsa boş — evini buraya kurabilirsin.`
+            : "Caddede henüz evin yok — ilk boş arsaya kurabilirsin."
+      }
+      onClose={onClose}
+    >
+      {here ? (
+        <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-extrabold text-amber-700">
+              🚪 {here.visits} ziyaret
+            </span>
+            {here.isMine && (
+              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                Senin evin
+              </span>
+            )}
+          </div>
+          <div className="rounded-2xl border border-border/70 bg-background p-3">
+            <p className="text-[11px] font-bold tracking-wide text-muted-foreground">
+              SON ZİYARETÇİLER
+            </p>
+            {here.visitors.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {here.visitors.map((who) => (
+                  <span
+                    key={who}
+                    className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary"
+                  >
+                    {who}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Henüz kimse uğramadı. Caddede adını duyur! 🗣️
+              </p>
+            )}
+          </div>
+          {!here.isMine && (
+            <Button
+              className="w-full rounded-full"
+              onClick={() => onKnock(here.plotIndex)}
+            >
+              🔔 Kapıyı çal
+            </Button>
+          )}
+        </div>
+      ) : null}
+
+      {!here || here.isMine ? (
+        <div className="mt-4 space-y-3">
+          <label className="block text-[11px] font-bold tracking-wide text-muted-foreground">
+            EVİN ADI
+          </label>
+          <input
+            value={name}
+            maxLength={24}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={`${username} Ev`}
+            className="w-full rounded-2xl border border-border bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary"
+          />
+          <Button
+            className="w-full rounded-full"
+            onClick={() => onSave(plotIndex, name)}
+          >
+            {here ? "Adı kaydet" : "🏠 Evini kur"}
+          </Button>
+        </div>
+      ) : null}
+    </GameSheet>
+  );
+}
+
 function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
   const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
@@ -904,6 +1028,28 @@ const BENCH_SEATS: { x: number; y: number; facing: 1 | -1 }[] = BENCHES.map(
 );
 /** Oturma etkileşiminin px cinsinden menzili. */
 const BENCH_RADIUS_PX = BENCH_INTERACT_RADIUS * S;
+
+/**
+ * 🏠 EV MENZİLLERİ (px) — `constants.HOUSE_TRIGGER`ten türetilir, elle
+ * yazılmaz. Menzil, arsanın ÖNÜNDEKİ KALDIRIM şerididir: oyuncu bu şeride
+ * girince o evin kapısında "Evine gir" düğmesi belirir (bkz. `houseDoor`).
+ * Sınırlar 3D katmanla aynı kaynaktan geldiği için düğme ile menzil ayrışmaz.
+ */
+const HOUSE_TRIGGERS_PX = HOUSE_PLOTS.flatMap((plot) => {
+  const def = BUILDINGS[plot];
+  if (!def) return [];
+  const { west, east } = houseTriggerBounds(def.x);
+  return [
+    {
+      plot,
+      west: svgX(west),
+      east: svgX(east),
+      // `svgY` ters çevirir: büyük Z (güney) → küçük y. Şerit [south, north].
+      south: svgY(HOUSE_TRIGGER.southZ),
+      north: svgY(HOUSE_TRIGGER.northZ),
+    },
+  ];
+});
 /**
  * Bankın ÖNÜNDE durulacak px noktası — karakter oraya YÜRÜR, sonra oturur
  * (ışınlanma yok). En yakın yürünebilir mesafe seçilir: kaldırımın dışına
@@ -1002,6 +1148,20 @@ export default function World() {
   const buyAbility = useMutation(api.profiles.buyAbility);
   const equipAbility = useMutation(api.profiles.equipAbility);
   const battleVictory = useMutation(api.profiles.battleVictory);
+  // 🏠 Oyuncu evleri (bkz. `convex/houses.ts`): ONLINE ve reaktif — başka bir
+  // oyuncu ev kurduğunda/değiştirdiğinde cadde kendiliğinden güncellenir.
+  const housesQuery = useQuery(api.houses.list);
+  const placeHouse = useMutation(api.houses.place);
+  const visitHouse = useMutation(api.houses.visit);
+  /**
+   * 🏠 Caddede dikili evler. Sorgu yüklenene kadar boş liste alınır;
+   * `Array.isArray` kontrolü tip daraltmasının yanı sıra önizleme
+   * koşullarında (sorgu yer tutucusu) da güvenli kalmasını sağlar.
+   */
+  const houses: readonly HouseView[] = useMemo(
+    () => (Array.isArray(housesQuery) ? housesQuery : []),
+    [housesQuery],
+  );
   const sendChat = useMutation(api.chat.send);
   const createBattle = useMutation(api.battles.createBattle);
   const acceptBattle = useMutation(api.battles.acceptBattle);
@@ -1058,6 +1218,11 @@ export default function World() {
   const chatOpenRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [stallsOpen, setStallsOpen] = useState(false);
+  // 🏠 Ev paneli: `plotIndex` dolu → o arsanın evi, `null` → kendi evim
+  // ("Evim" düğmesi). Panel açıkken sahne tıklamaları yutulur.
+  const [houseSheet, setHouseSheet] = useState<{
+    plotIndex: number | null;
+  } | null>(null);
   const [vipOpen, setVipOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [targetMarker, setTargetMarker] = useState<{
@@ -1074,6 +1239,8 @@ export default function World() {
   const [seatBench, setSeatBench] = useState<number | null>(null);
   const nearBenchRef = useRef<number | null>(null);
   const seatBenchRef = useRef<number | null>(null);
+  // 🏠 Hangi arsanın kapı menzilindeyiz (3D "Evine gir" düğmesi bunu okur).
+  const houseNearRef = useRef<number | null>(null);
   // Kalktıktan sonra kısa bir süre tekrar oturmayı engeller (aynı banka
   // dokununca "kalk → hemen otur" titremesi olmasın).
   const sitCooldownRef = useRef(0);
@@ -1476,6 +1643,48 @@ export default function World() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  /**
+   * 🏠 EV PANELİ — kapı düğmesinden (`plotIndex`) ya da üst/alt bardaki
+   * "Evim" düğmesinden (`plotIndex: null` → kendi evim, yoksa kurulum).
+   */
+  const openHouse = useCallback((plotIndex: number | null) => {
+    playSound("click");
+    setHouseSheet({ plotIndex });
+  }, []);
+
+  /** Ev kur / arsa taşı / adını kaydet — doğrulama sunucuda yapılır. */
+  const saveHouse = useCallback(
+    async (plotIndex: number | null, name: string) => {
+      try {
+        await placeHouse(plotIndex === null ? { name } : { plotIndex, name });
+        playSound("coin");
+        toast.success("🏠 Evin hazır! Adın kapıda yazıyor.");
+        setHouseSheet(null);
+      } catch (error) {
+        console.error("Ev kurma hatası:", error);
+        toast.error(error instanceof Error ? error.message : "Ev kurulamadı.");
+      }
+    },
+    [placeHouse],
+  );
+
+  /** Başka bir oyuncunun evini ziyaret et → ev defterine yazılır (online). */
+  const knockHouse = useCallback(
+    async (plotIndex: number) => {
+      try {
+        await visitHouse({ plotIndex });
+        playSound("click");
+        toast.info("🔔 Ziyaretin ev defterine yazıldı!");
+      } catch (error) {
+        console.error("Ziyaret hatası:", error);
+        toast.error(
+          error instanceof Error ? error.message : "Ziyaret edilemedi.",
+        );
+      }
+    },
+    [visitHouse],
+  );
 
   /** Oturma durumunu 3D katmanın deposuna yazar (avatar + "Otur" düğmesi). */
   const publishBenchSeat = useCallback(() => {
@@ -2023,6 +2232,28 @@ export default function World() {
               speech: speechRef.current,
             });
           }
+        }
+
+        // 🏠 En yakın EV KAPISI — menzil, arsanın önündeki kaldırım şerididir
+        // (`HOUSE_TRIGGERS_PX`). Değer değişmedikçe depoya yazılmaz, böylece
+        // kare başına React güncellemesi olmaz; düğme etiketi `houseDoor`
+        // içindeki SAF fonksiyondan gelir (evim / ziyaret / boş arsa).
+        if (seatBenchRef.current === null) {
+          let bestHouse: number | null = null;
+          for (const zone of HOUSE_TRIGGERS_PX) {
+            if (pos.x < zone.west || pos.x > zone.east) continue;
+            if (pos.y < zone.south || pos.y > zone.north) continue;
+            bestHouse = zone.plot;
+            break;
+          }
+          if (houseNearRef.current !== bestHouse) {
+            houseNearRef.current = bestHouse;
+            setHouseNear(bestHouse);
+          }
+        }
+        // 🏠 3D "Evine gir" düğmesinden gelen istek (bkz. `houseDoor`).
+        if (consumeHouseEnterRequest() && houseNearRef.current !== null) {
+          openHouse(houseNearRef.current);
         }
 
         // 🪑 En yakın bank — oturma butonu yalnızca menzile girince görünür.
@@ -2847,6 +3078,7 @@ export default function World() {
         profileOpen ||
         stallsOpen ||
         vipOpen ||
+        houseSheet ||
         battleRef.current ||
         pvpBattleRef.current
       )
@@ -2974,6 +3206,7 @@ export default function World() {
       profileOpen,
       stallsOpen,
       vipOpen,
+      houseSheet,
       pickTarget,
       handleClaim,
     ],
@@ -3076,6 +3309,8 @@ export default function World() {
             speechName={username}
             speechColorId={bubbleColorId}
             botSpeech={botBubbles}
+            // 🏠 Caddedeki oyuncu evleri (online, reaktif sorgu).
+            houses={houses}
           />
 
           {/* character profile card — tapping a character opens it here */}
@@ -3431,6 +3666,14 @@ export default function World() {
                   setStallsOpen(true);
                 }}
               />
+              {/* 🏠 Evim — kendi evin (yoksa ilk boş arsaya kur). Evler
+                  SUNUCUDA tutulur, yani herkes kendi evini caddede görür. */}
+              <BarBtn
+                tone="sky"
+                icon={Home}
+                label="Evim"
+                onClick={() => openHouse(null)}
+              />
               <span className="h-8 w-px shrink-0 bg-[#3d2f2a]/15" aria-hidden />
               <BarBtn
                 tone="purple"
@@ -3550,6 +3793,17 @@ export default function World() {
             key="stalls"
             onClose={() => setStallsOpen(false)}
             onGo={goTo}
+          />
+        )}
+        {houseSheet && (
+          <HouseSheet
+            key="house"
+            plotIndex={houseSheet.plotIndex}
+            houses={houses}
+            username={username}
+            onClose={() => setHouseSheet(null)}
+            onSave={saveHouse}
+            onKnock={knockHouse}
           />
         )}
         {vipOpen && (

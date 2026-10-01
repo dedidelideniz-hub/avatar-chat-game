@@ -49,11 +49,13 @@ function check(label: string, ok: boolean, detail = "") {
 const px = (x: number, z: number) => ({ x: svgX(x), y: svgY(z) });
 
 /**
- * CADI DÜKKÂNI İSTİSNASI — caddeye bağlanan kapı yolu ve binanın iç koridoru
- * bilinçli olarak yürünebilir (bkz. `constants.WITCH_SHOP_WALKWAY` +
- * `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). Çitlerin çarpışması yoktur;
+ * CADI DÜKKÂNI İSTİSNASI — caddeye/kaldırıma bağlanan kapı yolu ve kapının
+ * önündeki avlu bilinçli olarak yürünebilir (bkz. `constants.WITCH_SHOP_WALKWAY`
+ * + `lib/shop.ts` → `WITCH_SHOP_WALK_ZONES`). Çitlerin çarpışması yoktur;
  * bu betiğin "çime çıkış yok" kuralı yalnızca ÇİTİN ARKASI için geçerlidir ve
- * yol tam olarak o hattı geçerek dükkâna girdiği için istisna edilir.
+ * yol tam olarak o hattı geçerek dükkânın kapısına ulaştığı için istisna
+ * edilir. BİNANIN İÇİ yürünebilir DEĞİLDİR: avlu cephe hattında (`frontZ`)
+ * biter, oyuncu eve kapıdaki "Evine gir" düğmesiyle girer.
  */
 const W = WITCH_SHOP_WALKWAY;
 const inWitchWalk = (x: number, z: number) =>
@@ -62,7 +64,7 @@ const inWitchWalk = (x: number, z: number) =>
     x >= W.x - W.pathHalfW &&
     x <= W.x + W.pathHalfW) ||
   (z <= W.pathNorthZ &&
-    z >= W.insideZ &&
+    z >= W.frontZ &&
     x >= W.x - W.foreHalfW &&
     x <= W.x + W.foreHalfW);
 

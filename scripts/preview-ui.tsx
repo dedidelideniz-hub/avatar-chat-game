@@ -75,6 +75,9 @@ async function openBrowser(): Promise<Ctx> {
     unobserve() {}
     disconnect() {}
   };
+  // `react-use-measure` (drei `Html`/ölçüm kancaları) global `screen`e bakıyor;
+  // happy-dom penceresinde var ama Node globalinde yok → sayfa çizimi patlıyor.
+  if (!g.screen) g.screen = win.screen ?? { width: 430, height: 932 };
   g.IntersectionObserver = class {
     root = null;
     rootMargin = "";
@@ -288,13 +291,40 @@ export const defaultProfile = (over: Partial<MockProfile> = {}): MockProfile => 
 });
 
 let profileStub: MockProfile = defaultProfile();
+/** 🏠 `api.houses.list` taklidi — senaryolar bunu doldurup boşaltabilir. */
+let houseStub: unknown[] = [];
 
 async function mockAppLayer() {
   const { mock } = await import("bun:test");
   const React = await import("react");
 
+  /**
+   * Convex fonksiyon referansının adını okur (`"houses:list"` gibi).
+   * `makeFunctionReference`, adı SEMBOL anahtarlı bir alanda taşır — bu yüzden
+   * semboller taranır. Böylece sorgu taklidi, hangi sorgu çağrıldığını
+   * ayırt edebilir ve her sorguya profil döndürüp sayfayı bozmaz.
+   */
+  const refName = (ref: unknown): string => {
+    if (ref === null || typeof ref !== "object") return "";
+    // Convex, adı GLOBAL bir sembolde taşır (`Symbol.for("functionName")`).
+    const global = (ref as Record<symbol, unknown>)[
+      Symbol.for("functionName")
+    ];
+    if (typeof global === "string") return global;
+    for (const sym of Object.getOwnPropertySymbols(ref)) {
+      const value = (ref as Record<symbol, unknown>)[sym];
+      if (typeof value === "string") return value;
+    }
+    return "";
+  };
   mock.module("convex/react", () => ({
-    useQuery: () => profileStub,
+    useQuery: (ref: unknown) => {
+      const name = refName(ref);
+      if (name.startsWith("houses:")) return houseStub;
+      if (name === "profiles:getMyProfile") return profileStub;
+      if (name === "chat:list" || name === "battles:listInvites") return [];
+      return null;
+    },
     useMutation: () => async () => null,
     useAction: () => async () => null,
     useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
@@ -351,6 +381,37 @@ async function mockAppLayer() {
       useAnimations: () => ({ actions: {}, mixer: null, names: [], clips: [] }),
     };
   });
+  // Ekipman/bomba modelleri `three-stdlib`in GERÇEK GLTFLoader'ıyla ağdan
+  // indirmeye çalışır; happy-dom'da göreli URL `Request`e giremediği için
+  // "Invalid URL" ile patlar ve TÜM SAYFA düşer. Sahte yükleyici, boş bir
+  // grup döndürerek zinciri tamamlar (model içeriği önizlemede önemsiz).
+  const THREE = await import("three");
+  class FakeGLTFLoader {
+    load(
+      _url: string,
+      onLoad: (gltf: { scene: unknown }) => void,
+      _onProgress?: unknown,
+      _onError?: unknown,
+    ) {
+      setTimeout(() => onLoad({ scene: new THREE.Group() }), 0);
+    }
+    setMeshoptDecoder() {}
+    setDRACOLoader() {}
+  }
+  mock.module("three-stdlib", () => ({
+    GLTFLoader: FakeGLTFLoader,
+    DRACOLoader: class {
+      setDecoderPath() {}
+      setDecoderConfig() {}
+      preload() {}
+    },
+    MeshoptDecoder: () => ({ ready: Promise.resolve(), supported: false }),
+    SkeletonUtils: {
+      clone: <T,>(object: T): T =>
+        (object as unknown as { clone: (deep: boolean) => T }).clone(true),
+    },
+  }));
+
   mock.module("@/engine/streetPreload", () => ({
     preloadStreetModels: () => {},
     STREET_MODELS: {},
@@ -957,6 +1018,114 @@ const scenarios: Scenario[] = [
     },
   },
   {
+    id: "ev-paneli",
+    title: "🏠 EV PANELİ · \"Evim\" düğmesi açılıyor, boş arsada ev kurmayı öneriyor",
+    handles: "src/pages/World.tsx (HouseSheet) + src/engine/houseDoor.ts",
+    run: async (p) => {
+      profileStub = defaultProfile({ colorChosen: true, vip: false });
+      await mockAppLayer();
+      const React = await import("react");
+      const { default: World } = await import("../src/pages/World");
+      const checks: Check[] = [];
+      let rendered = false;
+      let err = "";
+      try {
+        await p.render(<World />);
+        for (let i = 0; i < 3; i++) {
+          await React.act(async () => {
+            await new Promise((r) => setTimeout(r, 1200));
+          });
+        }
+        rendered = true;
+      } catch (e) {
+        // React birden fazla hatayı AggregateError içinde toplar: TAMAMINI
+        // göster ki ilk satır asıl nedeni gizlemesin.
+        const list =
+          e instanceof AggregateError && e.errors.length > 0
+            ? e.errors
+            : [e];
+        err = list
+          .map((sub) =>
+            sub instanceof Error
+              ? (sub.stack ?? sub.message)
+              : String(sub),
+          )
+          .join("\n  ├─ ");
+      }
+      checks.push(check("caddede World çizildi", rendered, err));
+      if (!rendered) return checks;
+
+      const before = p.snapshot();
+      checks.push(
+        check(
+          "alt barda \"Evim\" düğmesi var",
+          before.inventory.some((l) => l.includes("Evim")),
+        ),
+      );
+      // BarBtn etiketi `aria-label`da taşınır (düğme içinde yalnızca ikon var).
+      const button = Array.from(p.root.querySelectorAll("button")).find(
+        (b) =>
+          (b.getAttribute("aria-label") ?? "").includes("Evim") ||
+          (b.textContent ?? "").includes("Evim"),
+      );
+      checks.push(check("Evim düğmesi bulundu", !!button));
+      if (!button) return checks;
+
+      await p.click(button);
+      const after = p.snapshot();
+      checks.push(
+        check(
+          "ev paneli açıldı (boş arsa → ev kur)",
+          after.text.includes("Boş Arsa") && after.text.includes("Evini kur"),
+          after.text.slice(0, 90),
+        ),
+        check(
+          "panel kapatma düğmesi var",
+          after.inventory.some((l) => l.includes("Kapat")),
+        ),
+      );
+
+      // ── 2) EVİ OLAN OYUNCU: panel kendi evini (ziyaret sayısı + ziyaretçi
+      //       defteri ile) göstermeli. Evler sunucudan reaktif geldiği için
+      //       liste güncellendiğinde panel de kendiliğinden yenilenir.
+      houseStub = [
+        {
+          plotIndex: 2,
+          ownerName: "Dkdkdkk",
+          name: "Dkdkdkk Ev",
+          visits: 4,
+          visitors: ["Ali", "Zeynep"],
+          isMine: true,
+        },
+      ];
+      await p.render(<World />);
+      for (let i = 0; i < 3; i++) {
+        await React.act(async () => {
+          await new Promise((r) => setTimeout(r, 1200));
+        });
+      }
+      const owned = Array.from(p.root.querySelectorAll("button")).find(
+        (b) => (b.getAttribute("aria-label") ?? "").includes("Evim"),
+      );
+      if (owned) await p.click(owned);
+      const mineSnap = p.snapshot();
+      houseStub = [];
+      return [
+        ...checks,
+        check(
+          "kendi evim: ad + ziyaret sayısı + ziyaretçi defteri",
+          mineSnap.text.includes("Dkdkdkk Ev") &&
+            mineSnap.text.includes("4 ziyaret") &&
+            mineSnap.text.includes("Ali") &&
+            mineSnap.text.includes("Zeynep") &&
+            mineSnap.text.includes("Senin evin"),
+          mineSnap.text.slice(0, 110),
+        ),
+      ];
+    },
+  },
+
+  {
     id: "carpisma",
     title: "ÇARPIŞMA · karakterler hiçbir prop'un içinden geçmez + 'donk' sesi",
     handles:
@@ -1200,9 +1369,9 @@ const scenarios: Scenario[] = [
   {
     id: "cadi-dukkani",
     title:
-      "CADI DÜKKÂNI · satır boş, tek model dikili; kapı yolu ve içerisi yürünebilir",
+      "CADI DÜKKÂNI · satır boş, tek model dikili; kapı yolu avluya kadar yürünebilir, evin içi KATI + oyuncu evleri",
     handles:
-      "src/engine/constants.ts + src/lib/shop.ts + src/engine/buildingModelPrep.ts + src/engine/GlbBuilding.tsx + src/engine/WitchShop.tsx",
+      "src/engine/constants.ts + src/lib/shop.ts + src/engine/buildingModelPrep.ts + src/engine/GlbBuilding.tsx + src/engine/houseDoor.ts + src/convex/houses.ts + src/pages/World.tsx",
     run: async () => {
       const { readFileSync } = await import("node:fs");
       const read = (path: string) =>
@@ -1242,7 +1411,9 @@ const scenarios: Scenario[] = [
         check(
           "boş gözler HİÇBİR ŞEY çizmiyor (yerleri boş kalıyor)",
           engine.includes("<GlbBuilding") &&
-            /def\.modelUrl \? \([\s\S]*?\) : null,/.test(engine),
+            /def\.modelUrl && !claimedPlots\.has\(i\) \? \([\s\S]*?\) : null,/.test(
+              engine,
+            ),
         ),
       );
       checks.push(
@@ -1318,8 +1489,8 @@ const scenarios: Scenario[] = [
       );
 
       // ── 3) Yürünebilirlik: yolun HER AŞAMASI yürünebilir olmalı — kuzey
-      //       kaldırımı (propların arasından), çim, avlu ve binanın içi.
-      //       Koridorun DIŞI (duvar tarafı) yürünemez.
+      //       kaldırımı (propların arasından), çim ve kapı önü avlusu.
+      //       AVLUNUN ÖTESİ (binanın gövdesi) yürünemez.
       const at = (z: number) => ({ x: svgX(W.x), y: svgY(z) });
       // Yolun güney ucu kaldırımda biter; hemen güneyi (kaldırımın cadde
       // kenarına doğru) de yürünebilir olmalı — yani yol kaldırımdan kopuk
@@ -1329,10 +1500,13 @@ const scenarios: Scenario[] = [
       const onGrass = at(W.pathNorthZ + 0.5);
       const onCourt = at((W.pathNorthZ + W.frontZ) / 2);
       const door = { x: svgX(W.x), y: svgY(W.frontZ) };
-      const inside = { x: svgX(W.x), y: svgY(W.insideZ + 0.25) };
+      // 🏠 Evin İÇİ artık YÜRÜNEMEZ: cephe hattının (`frontZ`) KUZEYİ binanın
+      // gövdesidir ve hiçbir yürünebilir bölgeye girmez — oyuncu eve yürüyerek
+      // girip saydam evin içinde durmaz (ekran görüntüsündeki durum).
+      const inside = { x: svgX(W.x), y: svgY(W.frontZ - 0.6) };
       const wallSide = {
         x: svgX(W.x + W.foreHalfW + 0.6),
-        y: svgY(W.insideZ + 0.25),
+        y: svgY(W.frontZ - 0.6),
       };
       checks.push(
         check(
@@ -1346,9 +1520,12 @@ const scenarios: Scenario[] = [
         check("yol çimde yürünebilir", inWalkable(onGrass.x, onGrass.y)),
         check("kapı önü avlu yürünebilir", inWalkable(onCourt.x, onCourt.y)),
         check("kapı (cephe hattı) yürünebilir", inWalkable(door.x, door.y)),
-        check("binanın İÇİ yürünebilir", inWalkable(inside.x, inside.y)),
         check(
-          "koridorun dışı (duvar tarafı) yürünemez — duvarlar geçirgen değil",
+          "binanın İÇİ YÜRÜNEMEZ — eve yürüyerek girilmez (düğmeyle girilir)",
+          !inWalkable(inside.x, inside.y),
+        ),
+        check(
+          "binanın yanı (duvar hattı) yürünemez — duvarlar geçirgen değil",
           !inWalkable(wallSide.x, wallSide.y),
         ),
       );
@@ -1379,7 +1556,6 @@ const scenarios: Scenario[] = [
       //       şeridinin X'inden çıkardı.)
       const spawn = { x: 1200, y: 460 };
       const toDoor = findPath(spawn.x, spawn.y, door.x, door.y);
-      const toInside = findPath(spawn.x, spawn.y, inside.x, inside.y);
       const corridorX = {
         west: svgX(W.x - W.foreHalfW),
         east: svgX(W.x + W.foreHalfW),
@@ -1388,7 +1564,7 @@ const scenarios: Scenario[] = [
       // ve ötesine geçen düğümlerin HEPSİNİN yol şeridinde olması.
       // DİKKAT: px katmanında kuzey = BÜYÜK y (`svgY` ters çevirir).
       const roadNorthEdge = svgY(K.ZONE.roadTop);
-      const crossing = toInside.filter((p) => p.y > roadNorthEdge + 8);
+      const crossing = toDoor.filter((p) => p.y > roadNorthEdge + 8);
       const strayed = crossing.filter(
         (p) => p.x < corridorX.west - 16 || p.x > corridorX.east + 16,
       );
@@ -1400,6 +1576,7 @@ const scenarios: Scenario[] = [
             `kaldırım/çim düğümü ${crossing.length} · dışarı sapan ${strayed.length}`,
         ),
       );
+      const arrival = toDoor[toDoor.length - 1];
       checks.push(
         check(
           "caddeden kapıya A* yolu var",
@@ -1407,16 +1584,21 @@ const scenarios: Scenario[] = [
           `${toDoor.length} düğüm`,
         ),
         check(
-          "caddeden binanın İÇİNE A* yolu var",
-          toInside.length > 1 &&
-            Math.abs(toInside[toInside.length - 1].y - inside.y) < 48,
-          `${toInside.length} düğüm, varış ${toInside[toInside.length - 1] ? `${toInside[toInside.length - 1].x.toFixed(0)},${toInside[toInside.length - 1].y.toFixed(0)}` : "yok"}`,
+          "yol KAPIDA BİTİYOR — binanın içine taşmıyor",
+          !!arrival &&
+            Math.abs(arrival.y - door.y) < 48 &&
+            // px katmanında kuzey = BÜYÜK y: cephenin 0.5 birim (25 px)
+            // kuzeyine geçen düğüm olmamalı.
+            arrival.y <= door.y + 25,
+          arrival
+            ? `varış ${arrival.x.toFixed(0)},${arrival.y.toFixed(0)} · kapı ${door.x.toFixed(0)},${door.y.toFixed(0)}`
+            : "yol yok",
         ),
       );
 
       // Yolun SON noktası da yürünebilir olmalı (ızgara hücresi bant kenarını
       // birkaç px aşabilir; `World` orada `nearestWalkable`e düşer).
-      const last = toInside[toInside.length - 1];
+      const last = arrival;
       const settled = inWalkable(last.x, last.y)
         ? last
         : nearestWalkable(last.x, last.y, { x: spawn.x, y: spawn.y });
@@ -1518,8 +1700,10 @@ const scenarios: Scenario[] = [
         ),
       );
 
-      // ── 7) Saydamlaştırma yalnızca bu binayı hedefliyor: çekirdek tek
-      //       binadan occluder kurabiliyor ve bina onu `fade` ile kullanıyor.
+      // ── 7) Saydamlaştırma yalnızca bir binayı hedefleyebilir: çekirdek tek
+      //       binadan occluder kurabiliyor. HİÇBİR bina `fade` İSTEMEZ artık:
+      //       evlere yürünerek girilmediği için görüşü kesen saydamlaşan bina
+      //       yoktur (eskiden oyuncu saydam evin içinde duruyordu).
       const glb = read("../src/engine/GlbBuilding.tsx");
       checks.push(
         check(
@@ -1530,6 +1714,155 @@ const scenarios: Scenario[] = [
             read("../src/engine/buildingOcclusion.ts").includes(
               "export function buildOccluder",
             ),
+        ),
+        check(
+          "hiçbir bina saydamlaşmıyor (ev yürünerek girilen hacim değil)",
+          !/fade=\{/.test(engine),
+        ),
+        check(
+          "aynı model birden çok arsaya dikilebiliyor (sahne klonlanır)",
+          glb.includes("root.clone(true)"),
+        ),
+      );
+
+      // ── 8) 🏠 OYUNCU EVLERİ — "evine gir" düğmesi ve ONLINE ev kaydı.
+      //       Etiket SAF bir fonksiyondan gelir; aşağıdaki kontroller o
+      //       fonksiyonun dört hâlini ve menzil deposunu doğrular.
+      const {
+        houseDoorAction,
+        myHouse,
+        setHouseNear,
+        getHouseNear,
+        requestHouseEnter,
+        consumeHouseEnterRequest,
+      } = await import("../src/engine/houseDoor");
+      const myView = {
+        plotIndex: K.WITCH_SHOP_INDEX,
+        ownerName: "Dkdkdkk",
+        name: "Dkdkdkk Ev",
+        visits: 3,
+        visitors: ["Ali"],
+        isMine: true,
+      };
+      const theirView = { ...myView, plotIndex: 5, ownerName: "Ali", isMine: false };
+      checks.push(
+        check(
+          "kendi evimin kapısında \"Evine gir\"",
+          houseDoorAction(K.WITCH_SHOP_INDEX, [myView])?.kind === "mine",
+        ),
+        check(
+          "başkasının evinde \"Ziyaret et\" (online: herkesin evi)",
+          houseDoorAction(5, [theirView])?.kind === "other",
+        ),
+        check(
+          "boş arsada (henüz evim yokken) \"Evini kur\"",
+          houseDoorAction(5, [])?.kind === "free",
+        ),
+        check(
+          "evi olan oyuncuya boş arsada düğme ÇIKMAZ",
+          houseDoorAction(7, [myView]) === null,
+        ),
+        check(
+          "yerel oyuncunun evi bulunuyor",
+          myHouse([theirView, myView])?.plotIndex === K.WITCH_SHOP_INDEX,
+        ),
+      );
+
+      setHouseNear(5);
+      const nearNow = getHouseNear();
+      requestHouseEnter();
+      const consumed = consumeHouseEnterRequest();
+      const empty = consumeHouseEnterRequest();
+      setHouseNear(null);
+      checks.push(
+        check(
+          "menzil deposu + TEK seferlik giriş isteği (çift panel açılmaz)",
+          nearNow === 5 && consumed && !empty && getHouseNear() === null,
+        ),
+      );
+
+      // Menzil KALDIRIMI kapsar: oyuncu ancak yürünebilir yerden düğmeyi
+      // görebilir (aradan geçen çim şeridi yürünemez). Menzil cephe hattına
+      // kadar uzandığı için cadı dükkânının avlusundan da düğme görünür.
+      const onSidewalk = {
+        x: svgX(K.BUILDINGS[5].x),
+        y: svgY(
+          (K.ZONE.northSidewalkTop + K.ZONE.northSidewalkBot) / 2,
+        ),
+      };
+      // Avlu noktası: cadı dükkânının kapısının önü (menzilin içinde olmalı).
+      const onCourtTrigger = {
+        x: svgX(W.x),
+        y: svgY(W.frontZ + 0.3),
+      };
+      const triggerCovers = (plotX: number, p: { x: number; y: number }) =>
+        p.x >= svgX(plotX - K.HOUSE_TRIGGER.halfX) &&
+        p.x <= svgX(plotX + K.HOUSE_TRIGGER.halfX) &&
+        p.y >= svgY(K.HOUSE_TRIGGER.southZ) &&
+        p.y <= svgY(K.HOUSE_TRIGGER.northZ);
+      checks.push(
+        check(
+          "ev menzili YÜRÜNEBİLİR kaldırımı kapsıyor (düğme kaldırımdan çıkar)",
+          inWalkable(onSidewalk.x, onSidewalk.y) &&
+            triggerCovers(K.BUILDINGS[5].x, onSidewalk),
+        ),
+        check(
+          "menzil CEPHE HATTINA kadar uzanıyor (avlu/kapı önü dahil)",
+          K.HOUSE_TRIGGER.southZ === K.ZONE.northSidewalkBot &&
+            K.HOUSE_TRIGGER.northZ >= W.frontZ &&
+            triggerCovers(W.x, onCourtTrigger),
+          `Z ${K.HOUSE_TRIGGER.southZ}…${K.HOUSE_TRIGGER.northZ} (cephe ${W.frontZ})`,
+        ),
+        check(
+          "ev arsaları cadde sırasıyla sınırlı (12 göz)",
+          K.HOUSE_PLOTS.length === 12 && K.HOUSE_PLOTS.every((i) => i < 12),
+          `${K.HOUSE_PLOTS.length} arsa`,
+        ),
+      );
+
+      // Avlu bölgesi cephe hattında bitiyor → iç koridor kaynaktan kaldırıldı.
+      const fore = WITCH_SHOP_WALK_ZONES[1];
+      checks.push(
+        check(
+          "avlu bölgesi cephe hattında bitiyor (iç koridor yok)",
+          Math.abs(fore.y + fore.h - svgY(W.frontZ)) < 1e-6 &&
+            !("insideZ" in W),
+        ),
+      );
+
+      // 3D + px katmanı bağlantısı: evler sahnede, levha sahibinin adıyla,
+      // veri sunucudan (online) ve HUD'da "Evim" düğmesi var.
+      const housesSrc = read("../src/convex/houses.ts");
+      checks.push(
+        check(
+          "oyuncu evleri 3D sahnede sahibinin levhasıyla çiziliyor",
+          engine.includes("houseBuildings") &&
+            engine.includes("house.ownerName") &&
+            engine.includes("<GlbBuilding"),
+        ),
+        check(
+          "evler SUNUCUDAN okunuyor (online, reaktif)",
+          world.includes("api.houses.list") &&
+            housesSrc.includes("export const list") &&
+            housesSrc.includes("by_plotIndex"),
+        ),
+        check(
+          "ev kurma + ziyaret mutation'ları var (istemciye güvenilmez)",
+          world.includes("api.houses.place") &&
+            world.includes("api.houses.visit") &&
+            housesSrc.includes("export const place") &&
+            housesSrc.includes("export const visit") &&
+            housesSrc.includes("Bu arsa başkasının evi"),
+        ),
+        check(
+          "menzil px katmanında arsa menzillerinden türetiliyor",
+          world.includes("HOUSE_TRIGGERS_PX") &&
+            world.includes("consumeHouseEnterRequest") &&
+            world.includes("setHouseNear"),
+        ),
+        check(
+          "HUD'da \"Evim\" düğmesi + ev paneli var",
+          world.includes('label="Evim"') && world.includes("HouseSheet"),
         ),
       );
 

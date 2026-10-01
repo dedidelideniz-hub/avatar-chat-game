@@ -8,6 +8,10 @@
  * Yol, `lib/shop.ts` içindeki YÜRÜNEBİLİR şeritle (`WITCH_SHOP_WALK_ZONES`)
  * AYNI sabitlerden üretilir, yani oyuncunun yürüdüğü yer ile gördüğü yol
  * ayrışmaz ("havada yürüme" görüntüsü oluşmaz). Sınırlar `constants.WITCH_SHOP_WALKWAY`.
+ *
+ * Yol KUZEY KALDIRIMINDA biter ve binanın CEPHE HATTIINDA sonlanır: evin içi
+ * yürünemez — oyuncu kapının önüne kadar gelir, kapıda beliren "Evine gir"
+ * düğmesiyle evine girer (bkz. `constants.HOUSE_*`).
  */
 import { WITCH_SHOP_WALKWAY } from "./constants";
 
@@ -46,9 +50,9 @@ function Plane({
 }
 
 /**
- * CADDEDEN dükkânın kapısına uzanan taş yol: asfaltın içinden başlayıp
- * kaldırımı ve çimi geçen dar şerit, kapının önünde genişleyen avlu ve kapı
- * eşiği. Şerit çimin 0.013 birim üstüne oturur (kaldırım 0.005, asfalt 0.008).
+ * KUZEY KALDIRIMINDAN dükkânın kapısına uzanan taş yol: kaldırımda başlayıp
+ * çimi geçen dar şerit, kapının önünde genişleyen avlu ve kapı eşiği. Şerit
+ * çimin 0.013 birim üstüne oturur (kaldırım 0.005, asfalt 0.008).
  *
  * Üç parçanın sınırları `WITCH_SHOP_WALK_ZONES` ile BİREBİR aynı kaynaktan
  * türer: oyuncunun yürüdüğü yer ile gördüğü yol ayrışmaz.
@@ -59,7 +63,7 @@ export function WitchShopWalkway() {
 
   return (
     <group>
-      {/* 1) YOL ŞERİDİ — caddeden (asfalt) avluya kadar dar taş yol. */}
+      {/* 1) YOL ŞERİDİ — kuzey kaldırımından avluya kadar dar taş yol. */}
       <Plane
         westX={x - pathHalfW}
         eastX={x + pathHalfW}

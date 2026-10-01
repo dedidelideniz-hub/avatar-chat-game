@@ -390,10 +390,10 @@ for (const b of BUILDINGS) {
   const x1 = b.x + b.w / 2;
   const z0 = b.frontZ - b.d; // kuzey (arka) yüz
   const z1 = b.frontZ; // güney (cephe) yüz
-  // Cadı dükkânının KENDİ ayak izi, kapı yolu + iç koridoru barındırır —
-  // yürünebilir alanın binaya girmesi bu bina için İSTENEN davranıştır
-  // (bkz. `constants.WITCH_SHOP_WALKWAY`). Diğer binalarda kural aynen geçerli.
-  if (b === WITCH_SHOP_DEF) continue;
+  // İSTİSNA YOK: evler yürünerek girilen hacimler değildir. Cadı dükkânının
+  // kapı yolu + avlusu cephe hattında (`frontZ`) BİTER, yani bina ayak izi
+  // hiçbir yürünebilir bölgeyle kesişmez (bkz. `constants.HOUSE_*`). Eskiden
+  // iç koridor binanın içine girdiği için bu satır bu binayı atlıyordu.
   for (const zone of WALKABLE_ZONES) {
     const zx0 = zone.x / S - WORLD_WIDTH / 2;
     const zx1 = (zone.x + zone.w) / S - WORLD_WIDTH / 2;
