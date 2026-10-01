@@ -1872,7 +1872,7 @@ const scenarios: Scenario[] = [
           "oda içeriği GLB modeliyle kuruluyor + yedek oda hazır (RoomStage)",
           room.includes("GlbProfileAvatar") &&
             room.includes("<RoomStage") &&
-            room.includes("fallback={<ProceduralRoom") &&
+            room.includes("showAvatar={avatar}") &&
             world.includes("<HouseRoom") &&
             world.includes("equipped={equipped}"),
         ),
@@ -2087,9 +2087,55 @@ const scenarios: Scenario[] = [
         check(
           "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",
           house.includes("<RoomStage") &&
-            house.includes("fallback={<ProceduralRoom") &&
-            stage.includes("if (failed)") &&
+            house.includes("showAvatar={avatar}") &&
+            /if \(!power \|\| failed\)/.test(stage) &&
             stage.includes("showFallback"),
+        ),
+        check(
+          "3D oda açıkken yedek odanın avatar canvas'ı çizilmiyor (TEK ekstra bağlam)",
+          stage.includes("fallback({ avatar: false })") &&
+            stage.includes("fallback({ avatar: true })") &&
+            /\{showAvatar &&/.test(house),
+        ),
+        check(
+          "bağlam açılamıyorsa 3D sahne HİÇ kurulmuyor (çökmek yerine yedeğe düşer)",
+          stage.includes("webglPowerPreference") &&
+            stage.includes("if (!power || failed)") &&
+            read("../src/engine/webglSupport.ts").includes(
+              "export function webglPowerPreference",
+            ),
+        ),
+        (() => {
+          const support = read("../src/engine/webglSupport.ts");
+          const lowFirst = support.indexOf('probe("default")');
+          const highFirst = support.indexOf('probe("high-performance")');
+          return check(
+            "oda bağlamı SEÇİLEN `powerPreference` ile açılıyor (deneme = sahne)",
+            stage.includes("powerPreference: power") &&
+              // İkinci bağlam için önce en uyumlu ayar denenir.
+              lowFirst >= 0 &&
+              highFirst > lowFirst,
+            `deneme sırası: default → high-performance`,
+          );
+        })(),
+        check(
+          "sahne kurulum hatası da yakalanıyor (CanvasGuard + RoomBoundary)",
+          /class CanvasGuard/.test(stage) &&
+            /class RoomBoundary/.test(stage) &&
+            /<CanvasGuard onFail=/.test(stage),
+        ),
+        check(
+          "ASENKRON bağlam hatası oyunu düşürmüyor (supap → yedek odaya dönüş)",
+          read("../src/engine/webglSupport.ts").includes("unhandledrejection") &&
+            read("../src/engine/webglSupport.ts").includes(
+              "export function watchRoomCanvasFailures",
+            ) &&
+            stage.includes("<CanvasFailureWatch onFail="),
+        ),
+        check(
+          "odaya girerken arkadaki katmanlar kapatılıyor (bağlam sınırı)",
+          /const closeOverlays/.test(world) &&
+            (world.match(/closeOverlays\(\)/g) ?? []).length >= 2,
         ),
         check(
           "model yüklenemezse sahne sökülür (boşa WebGL bağlamı açık kalmaz)",

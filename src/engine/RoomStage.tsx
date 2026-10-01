@@ -1,10 +1,20 @@
 /**
- * 🏠 ODA SAHNESİ — oyuncu evinin İÇİ artık gerçek bir GLB modelidir.
+ * 🏠 ODA SAHNESİ — oyuncu evinin İÇİ gerçek bir GLB modelidir.
  *
  * Kapıdaki "Evine gir" düğmesine basınca açılan odanın içi bu bileşenle
  * kurulur: `constants.ROOM_MODEL_URL` modeli indirilir, ÖLÇÜLÜR ve odaya
  * oturtulur (`roomModelPrep.ts`), ortada da sokaktaki karakterin TA KENDİSİ
  * durur (aynı GLB avatarlar — `GlbCharacterPortrait`).
+ *
+ * ⚠️ WEBGL BAĞLAM SAYISI — bu dosyanın en kritik kuralı:
+ * Caddede ana sahne zaten bir WebGL bağlamı tutuyor ve cihazlar (özellikle
+ * mobil) çok az sayıda bağlama izin veriyor. Üçüncü bir bağlam açılmaya
+ * çalışıldığında oyun `Error creating WebGL context` ile çöktü. Bu yüzden:
+ *   · oda açıkken caddeye EN FAZLA BİR bağlam eklenir — 3D oda canvas'ı
+ *     AÇIKKEN yedek odanın avatar canvas'ı hiç çizilmez (`avatar: false`),
+ *   · bağlam açılamıyorsa (`webglSupport.webglPowerPreference`) 3D sahne HİÇ
+ *     kurulmaz ve bağlam, denemeyle SEÇİLEN `powerPreference` ile açılır,
+ *   · sahne kurulumu/indirme hata verirse sahne sökülür ve yedek oda kalır.
  *
  * NEDEN YEDEK VAR: model ağır olabilir ya da dosya eksik/bozuk olabilir.
  * Böyle bir durumda oyuncuyu boş bir ekranla bırakmak yoktur: `fallback`
@@ -14,8 +24,7 @@
  * HATA SINIRI NEDEN SAHNENİN İÇİNDE: `useGLTF` yükleme hatasını render
  * sırasında fırlatır ve WebGL sahnesinin içindeki hatalar yalnızca sahnenin
  * içindeki bir sınırla yakalanır (cadde tarafında `GlbBuildingBoundary` ile
- * aynı desen). Hata yakalanınca sahne tamamen sökülür → mobilde boşuna bir
- * WebGL bağlamı açık kalmaz.
+ * aynı desen).
  */
 import {
   Component,
@@ -40,6 +49,7 @@ import {
   type RoomPlacement,
 } from "./roomModelPrep";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
+import { watchRoomCanvasFailures, webglPowerPreference } from "./webglSupport";
 
 /** Oda modelini indirmeye başla (kapı açılırken çağrılır — bkz. `World`). */
 export function preloadRoomModel(): void {
@@ -174,9 +184,7 @@ function RoomInterior({
       {/* Ortadaki karakter: sokaktakiyle AYNI model ve kuşam. Portre
           bileşeni karakteri kendi ekseninde ortalar; bu yüzden yarım boy
           yukarı alınarak AYAKLARI zemine (y 0) bastırılır. */}
-      <group
-        position={[stand.x, ROOM_FIT.characterHeight / 2, stand.z]}
-      >
+      <group position={[stand.x, ROOM_FIT.characterHeight / 2, stand.z]}>
         <GlbCharacterPortrait
           equipped={equipped}
           height={ROOM_FIT.characterHeight}
@@ -187,7 +195,7 @@ function RoomInterior({
   );
 }
 
-/** Oda modeli yüklenemezse sahne sessizce sökülür (yedek oda kalır). */
+/** Oda modeli yüklenemezse sahnenin İÇİ sökülür (yedek oda kalır). */
 class RoomBoundary extends Component<
   { children: ReactNode; onFail?: () => void },
   { failed: boolean }
@@ -208,18 +216,65 @@ class RoomBoundary extends Component<
   }
 }
 
+/**
+ * Sahnenin KENDİSİ kurulamazsa (WebGL bağlamı/oluşturucu hatası) yakalar:
+ * sınır `<Canvas>`ın ÜSTÜNDE durur, çünkü hata Canvas'ın kendi kurulumunda
+ * (layout effect) çıkar ve içerideki bir sınır onu göremez.
+ */
+class CanvasGuard extends Component<
+  { children: ReactNode; onFail: () => void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn("[oda sahnesi] 3D sahne kurulamadı:", error);
+    this.props.onFail();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/**
+ * Sahne kurulumu ASENKRON olduğu için renderer hatası React hata sınırına
+ * düşmeyebilir (`webglSupport.ts` → son emniyet supabı). Bu bileşen, oda
+ * sahnesi AÇIKKEN gelen WebGL bağlam hatasını yakalar ve `onFail`e bağlar —
+ * oyun çökmek yerine yedek odaya döner.
+ */
+function CanvasFailureWatch({ onFail }: { onFail: () => void }) {
+  useEffect(() => watchRoomCanvasFailures(onFail), [onFail]);
+  return null;
+}
+
 export interface RoomStageProps {
   /** Karakterin kuşandığı eşyalar (sokaktakiyle aynı görünüm). */
   equipped: string[];
-  /** Model hazır değilken/hazırlanamazken gösterilen yedek oda. */
-  fallback: ReactNode;
+  /**
+   * Model hazır değilken/hazırlanamazken gösterilen yedek oda.
+   *
+   * `avatar`: yedek odanın KENDİ WebGL canvas'ı (avatar) çizilsin mi?
+   * 3D oda canvas'ı AÇIKKEN `false` gelir — böylece oda, caddeye tek
+   * bağlam ekler (üç bağlam açılmaya çalışılınca oyun çöküyordu).
+   */
+  fallback: (opts: { avatar: boolean }) => ReactNode;
 }
 
 /**
  * Oda sahnesi: yedek oda altta durur, 3D oda hazır olduğunda üstüne açılır.
- * Model hiç yüklenemezse sahne sökülür ve oyuncu yedek odada kalır.
+ * 3D oda hiç kurulamazsa/yüklenemezse sahne sökülür ve yedek oda (avatarıyla
+ * birlikte) kalıcı olur.
  */
 export function RoomStage({ equipped, fallback }: RoomStageProps) {
+  // Bağlam açılabiliyor mu ve hangi `powerPreference` ile? Açılamıyorsa 3D
+  // sahneyi hiç denemeyiz; seçilen ayar gerçek sahneye aynen geçirilir
+  // (`webglSupport.ts` → deneme ile sahne AYNI şeyi ister).
+  const [power] = useState(webglPowerPreference);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [showFallback, setShowFallback] = useState(true);
@@ -228,15 +283,17 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
   const handleFail = useCallback(() => setFailed(true), []);
 
   // Yedek oda, 3D oda açıldıktan SONRA sökülür: geçiş yumuşak olur ve
-  // mobilde yedek odanın avatar canvas'ı gereksiz yere açık kalmaz.
+  // gereksiz bir WebGL bağlamı açık kalmaz.
   useEffect(() => {
     if (!ready) return;
     const timer = window.setTimeout(() => setShowFallback(false), 900);
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  if (failed) {
-    return <div className="absolute inset-0">{fallback}</div>;
+  // 3D sahne yok: yedek oda kalıcı ve avatarını kendi çizebilir (başka
+  // bağlam yok).
+  if (!power || failed) {
+    return <div className="absolute inset-0">{fallback({ avatar: true })}</div>;
   }
 
   return (
@@ -246,45 +303,53 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
           className="absolute inset-0 transition-opacity duration-700"
           style={{ opacity: ready ? 0 : 1 }}
         >
-          {fallback}
+          {/* 3D oda canvas'ı canlı → yedek oda AVATARSIZ çizilir. */}
+          {fallback({ avatar: false })}
         </div>
       )}
-      {/* Model inerken dürüst bilgi: oyuncu "odam neden değişti" demesin.
-          Model HİÇ yüklenemezse bu şerit görünmez (aşağıda sahne sökülür). */}
-      {!ready && !failed && (
+      {/* Model inerken dürüst bilgi: oyuncu "odam neden değişti" demesin. */}
+      {!ready && (
         <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1 text-[11px] font-bold text-white/85 backdrop-blur-sm">
           🚪 Oda yerleştiriliyor…
         </div>
       )}
-      <Canvas
-        style={{
-          position: "absolute",
-          inset: 0,
-          opacity: ready ? 1 : 0,
-          transition: "opacity 700ms ease",
-        }}
-        dpr={[1, 1.6]}
-        camera={{
-          fov: ROOM_CAMERA.fov,
-          position: [0, ROOM_CAMERA.eyeY, 2.4],
-          near: 0.05,
-          far: 300,
-        }}
-        gl={{ alpha: true, antialias: true }}
-        onCreated={({ gl }) => {
-          // Sokaktaki ana sahne gibi bu ikinci bağlam da kaybolursa sessizce
-          // geri gelsin (mobilde bağlam baskısı altında oda siyah kalmasın).
-          gl.domElement.addEventListener("webglcontextlost", (event) => {
-            event.preventDefault();
-          });
-        }}
-      >
-        <RoomBoundary onFail={handleFail}>
-          <Suspense fallback={null}>
-            <RoomInterior equipped={equipped} onReady={handleReady} />
-          </Suspense>
-        </RoomBoundary>
-      </Canvas>
+      <CanvasGuard onFail={handleFail}>
+        <Canvas
+          style={{
+            position: "absolute",
+            inset: 0,
+            opacity: ready ? 1 : 0,
+            transition: "opacity 700ms ease",
+          }}
+          dpr={[1, 1.6]}
+          camera={{
+            fov: ROOM_CAMERA.fov,
+            position: [0, ROOM_CAMERA.eyeY, 2.4],
+            near: 0.05,
+            far: 300,
+          }}
+          gl={{
+            alpha: true,
+            antialias: true,
+            powerPreference: power,
+            failIfMajorPerformanceCaveat: false,
+          }}
+          onCreated={({ gl }) => {
+            // Sokaktaki ana sahne gibi bu ikinci bağlam da kaybolursa sessizce
+            // geri gelsin (mobilde bağlam baskısı altında oda siyah kalmasın).
+            gl.domElement.addEventListener("webglcontextlost", (event) => {
+              event.preventDefault();
+            });
+          }}
+        >
+          <RoomBoundary onFail={handleFail}>
+            <Suspense fallback={null}>
+              <RoomInterior equipped={equipped} onReady={handleReady} />
+            </Suspense>
+          </RoomBoundary>
+        </Canvas>
+        <CanvasFailureWatch onFail={handleFail} />
+      </CanvasGuard>
     </div>
   );
 }

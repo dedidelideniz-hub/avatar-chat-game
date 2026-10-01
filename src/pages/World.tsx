@@ -1551,6 +1551,23 @@ export default function World() {
   }, [liveOthers]);
 
   /**
+   * Odaya girerken arkada kalan katmanları kapat.
+   *
+   * Açık bir profil/çanta/karakter kartı kendi WebGL canvas'ını (avatarını)
+   * tutuyor; oda sahnesiyle birlikte mobilde bağlam sınırı aşılıyor ve oyun
+   * `Error creating WebGL context` ile çöküyordu. Oda tam ekran olduğu için
+   * arkada kalan katmanların kapalı olması hem doğru hem zorunludur.
+   */
+  const closeOverlays = useCallback(() => {
+    setViewing(null);
+    setProfileOpen(false);
+    setBagOpen(false);
+    setVipOpen(false);
+    setStallsOpen(false);
+    setAbilitiesOpen(false);
+  }, []);
+
+  /**
    * 🏠 KAPI: "Evine gir" → kısa yükleme ekranı → oyuncunun KENDİ odası.
    *
    * Oda sunucuda otomatik açılır (`houses.enter`): ilk girişte kayıt oluşur.
@@ -1564,6 +1581,7 @@ export default function World() {
     // Oda modeli ağır olabilir: indirme YÜKLEME EKRANI açıkken başlar, oyuncu
     // odaya girdiğinde model ya hazırdır ya da yedek oda görünürken tamamlanır.
     preloadRoomModel();
+    closeOverlays();
     setRoomPct(6);
     setRoomStep(0);
     setRoomTipIndex(0);
@@ -1591,7 +1609,7 @@ export default function World() {
       roomBusyRef.current = false;
       setRoomGate(false);
     }
-  }, [enterHouse]);
+  }, [enterHouse, closeOverlays]);
 
   /** Komşunun odasına geç — adın onun ziyaretçi defterine yazılır (online). */
   const enterNeighborRoom = useCallback(
@@ -1599,6 +1617,7 @@ export default function World() {
       if (roomBusyRef.current) return;
       roomBusyRef.current = true;
       preloadRoomModel();
+      closeOverlays();
       setRoomGate(true);
       setRoomPct(6);
       setRoomStep(0);
@@ -1617,12 +1636,11 @@ export default function World() {
         toast.error(
           error instanceof Error ? error.message : "Ziyaret edilemedi.",
         );
-      } finally {
-        roomBusyRef.current = false;
-        setRoomGate(false);
-      }
+      } finally {      roomBusyRef.current = false;
+      setRoomGate(false);
+    }
     },
-    [visitHouse],
+    [visitHouse, closeOverlays],
   );
 
   /** Odanın adını kaydet (yalnızca sahibi). */

@@ -7,7 +7,8 @@
  *   · modeli ölçüp odaya oturtur (sabit ölçek yok — `roomModelPrep.ts`),
  *   · model HAZIR OLANA KADAR ve dosya eksik/bozuksa kodla çizilen YEDEK
  *     odayı gösterir (`ProceduralRoom`): oyuncu hiçbir koşulda boş ekranla
- *     kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır.
+ *     kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır. Yedek
+ *     odanın avatar canvas'ı, 3D sahne açıkken çizilmez (bağlam sınırı).
  *
  * Oda her oyuncuya özeldir: sahibi adını değiştirebilir, giriş sayısını ve
  * ziyaretçi defterini görür. Komşular listesinden başka bir oyuncunun odasına
@@ -74,8 +75,18 @@ export interface HouseRoomProps {
  * Katmanlar tek ekranlık bir "diorama" gibi üst üste bindirilir: duvar, zemin,
  * pencere, eşyalar DOM (Tailwind) ile; ortadaki karakter ise gerçek GLB
  * avatardır (`GlbProfileAvatar` — kendi şeffaf canvas'ı vardır).
+ *
+ * `showAvatar`, 3D oda sahnesi açıkken `false` gelir: avatar canvas'ı ikinci
+ * bir WebGL bağlamı açar ve oda açıkken caddeye EK bir bağlam eklenmesi
+ * mobilde `Error creating WebGL context` ile çökertiyordu.
  */
-function ProceduralRoom({ equipped }: { equipped: string[] }) {
+function ProceduralRoom({
+  equipped,
+  showAvatar,
+}: {
+  equipped: string[];
+  showAvatar: boolean;
+}) {
   return (
     <div className="absolute inset-0 overflow-hidden">
       {/* Duvar: sıcak badana + hafif dikey doku. */}
@@ -119,14 +130,17 @@ function ProceduralRoom({ equipped }: { equipped: string[] }) {
         <div className="absolute inset-[18%] rounded-[50%] border-2 border-[#f0d9a8]/70" />
       </div>
 
-      {/* Karakter: sokaktakiyle AYNI model/kuşam. */}
-      <div className="absolute bottom-[8%] left-1/2 -translate-x-1/2">
-        <GlbProfileAvatar
-          equipped={equipped}
-          height={2}
-          className="pointer-events-none h-56 w-40 sm:h-72 sm:w-52"
-        />
-      </div>
+      {/* Karakter: sokaktakiyle AYNI model/kuşam. 3D oda sahnesi açıkken
+          ÇİZİLMEZ (ikinci WebGL bağlamı açmasın — bkz. dosya başlığı). */}
+      {showAvatar && (
+        <div className="absolute bottom-[8%] left-1/2 -translate-x-1/2">
+          <GlbProfileAvatar
+            equipped={equipped}
+            height={2}
+            className="pointer-events-none h-56 w-40 sm:h-72 sm:w-52"
+          />
+        </div>
+      )}
 
       {/* Tavan lambası + sıcak ışık halkası. */}
       <div className="absolute left-1/2 top-0 h-[18%] w-1 -translate-x-1/2 bg-[#4a3527]" />
@@ -197,7 +211,9 @@ export function HouseRoom({
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <RoomStage
           equipped={equipped}
-          fallback={<ProceduralRoom equipped={equipped} />}
+          fallback={({ avatar }) => (
+            <ProceduralRoom equipped={equipped} showAvatar={avatar} />
+          )}
         />
       </div>
 
