@@ -14,6 +14,12 @@ import {
   WORLD_WIDTH,
   WORLD_Z_MAX,
   STALLS,
+  LAMPS,
+  BENCHES,
+  BUS_STOPS,
+  TRASH_CANS,
+  DIRECTION_SIGNS,
+  BENCH_WIDTH,
   ZONE,
 } from "../engine/constants";
 
@@ -575,17 +581,100 @@ export interface Rect {
 }
 
 /**
- * Solid objects the player cannot walk through (stalls).
- * Positions converted from 3D engine layout.
+ * Katı cisimler — karakterler (oyuncu, botlar, satıcılar, diğer oyuncular)
+ * bunların İÇİNDEN GEÇEMEZ. Hem doğrudan hareket çarpışmasında (`circleHitsRect`)
+ * hem `inWalkable`/`nearestWalkable` hem de A* yol bulmada (bkz. `pathfinding.ts`
+ * — engeller `PLAYER_RADIUS` kadar şişirilip ızgaraya "yakılır") kullanılır.
+ *
+ * NEDEN ARTIK ADRESLER DE VAR: eskiden yalnızca 6 tezgâh engeldi. Bank, lamba,
+ * otobüs durağı, çöp kutusu ve yön tabelası yürünebilir kaldırım şeridinin
+ * İÇİNDE duruyordu — karakterler içlerinden geçiyor ve üstlerine çıkabiliyordu
+ * (bkz. "DURAK 34" bankının üstünde duran oyuncu). Artık hepsi katı.
+ *
+ * Ayak izleri `engine/constants`teki yerleşimlerden + 3D prop ölçülerinden
+ * türetilir; yerleşim değişirse kendiliğinden uyar.
  */
-/** Tezgâh ayak izi (X 1.6 × Z 0.6 birim). */
-const STALL_W_PX = 1.6 * S;
-const STALL_D_PX = 0.6 * S;
+export const OBSTACLES: Rect[] = [
+  // Tezgâh masaları (X 1.6 × Z 0.6 birim) — satıcıların arkasında durur.
+  ...STALLS.map((s) => propRect(s.x, s.z, 1.6, 0.6)),
+  // Sokak lambaları (ince direk + taban).
+  ...LAMPS.map((l) => propRect(l.x, l.z, 0.34, 0.34)),
+  // Çöp kutuları.
+  ...TRASH_CANS.map((t) => propRect(t.x, t.z, 0.46, 0.46)),
+  // Yön tabelaları (direk + plakalar).
+  ...DIRECTION_SIGNS.map((d) => propRect(d.x, d.z, 0.36, 0.36)),
+  // Park bankları (BENCH_WIDTH en × ~0.9 derinlik — çıtalar + ayaklar).
+  ...BENCHES.map((b) => propRect(b.x, b.z, BENCH_WIDTH, 0.9)),
+  // Otobüs durakları (çatı 1.8 × gövde 0.72 birim + saçak).
+  ...BUS_STOPS.map((b) => propRect(b.x, b.z, 1.9, 0.95)),
+];
 
-// Vendor stall tables — tezgâh sayısı/konumu değişirse kendiliğinden uyar.
-export const OBSTACLES: Rect[] = STALLS.map((stall) => ({
-  x: svgX(stall.x) - STALL_W_PX / 2,
-  y: svgY(stall.z) - STALL_D_PX / 2,
-  w: STALL_W_PX,
-  h: STALL_D_PX,
-}));
+/** Dünya merkezli (x,z) + dünya birimi (w,d) → piksel `Rect`. */
+function propRect(x: number, z: number, w: number, d: number): Rect {
+  const wPx = w * S;
+  const dPx = d * S;
+  return { x: svgX(x) - wPx / 2, y: svgY(z) - dPx / 2, w: wPx, h: dPx };
+}
+
+/**
+ * Bir daire (karakter) katı cisimlerin içindeyse en yakın DIŞARI noktaya taşır.
+ *
+ * Neden gerekli: karakter konumu yalnızca kendi girdisiyle değişmez — ayrıştırma
+ * itmesi (botlar, satıcılar, diğer oyuncular) onu bir prop'un içine sokabilir.
+ * Bu fonksiyon en kısa eksen boyunca dışarı iter; `nearestWalkable` ile birlikte
+ * kullanıldığında karakter ne prop içinde kalır ne de çime taşar.
+ */
+export function pushOutOfObstacles(x: number, y: number, radius: number): { x: number; y: number } {
+  let px = x;
+  let py = y;
+  for (const r of OBSTACLES) {
+    const cx = Math.min(Math.max(px, r.x), r.x + r.w);
+    const cy = Math.min(Math.max(py, r.y), r.y + r.h);
+    const dx = px - cx;
+    const dy = py - cy;
+    const d2 = dx * dx + dy * dy;
+    if (d2 >= radius * radius) continue;
+    if (d2 > 1e-6) {
+      const d = Math.sqrt(d2);
+      px = cx + (dx / d) * radius;
+      py = cy + (dy / d) * radius;
+    } else {
+      // Merkez dikdörtgenin İÇİNDE: en sığ kenardan dışarı it.
+      const left = px - r.x;
+      const right = r.x + r.w - px;
+      const top = py - r.y;
+      const bottom = r.y + r.h - py;
+      const m = Math.min(left, right, top, bottom);
+      if (m === left) px = r.x - radius;
+      else if (m === right) px = r.x + r.w + radius;
+      else if (m === top) py = r.y - radius;
+      else py = r.y + r.h + radius;
+    }
+  }
+  return { x: px, y: py };
+}
+
+/**
+ * Bir konum, `radius` yarıçaplı bir karakterin gövdesiyle KATI cisimlerden
+ * herhangi birine değiyor mu?
+ *
+ * `inWalkable` yalnızca NOKTA testi yapar (karakterin merkezi). Botların
+ * yolları nokta nokta doğrulanırken bu yetersiz kalıyordu: merkez çizgisi bir
+ * tezgâhın yanından "temiz" geçse bile gövdenin yarısı tezgâhın/ bankın
+ * İÇİNDEN geçebiliyordu. Bu fonksiyon merkez testine gövde yarıçapını da katar.
+ */
+export function circleHitsObstacles(
+  x: number,
+  y: number,
+  radius: number,
+): boolean {
+  const r2 = radius * radius;
+  for (const r of OBSTACLES) {
+    const cx = Math.min(Math.max(x, r.x), r.x + r.w);
+    const cy = Math.min(Math.max(y, r.y), r.y + r.h);
+    const dx = x - cx;
+    const dy = y - cy;
+    if (dx * dx + dy * dy < r2) return true;
+  }
+  return false;
+}

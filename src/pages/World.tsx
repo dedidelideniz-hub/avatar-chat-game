@@ -50,6 +50,7 @@ import {
   ABILITIES,
   abilityOf,
   BUBBLE_COLORS,
+  circleHitsObstacles,
   CURRENCY_EMOJI,
   DAILY_BONUS_MS,
   DEFAULT_ABILITY,
@@ -62,6 +63,7 @@ import {
   MAP_W,
   nearestWalkable,
   OBSTACLES,
+  pushOutOfObstacles,
   PLAYER_RADIUS,
   PLAYER_SPEED,
   svgX,
@@ -321,22 +323,41 @@ function mulberry32(seed: number) {
 /** A random walkable spot on the street (seeded — same on every device). */
 function randomWalkablePoint(rng: () => number) {
   const zone = WALKABLE_ZONES[0];
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 48; i++) {
     const x = zone.x + 40 + rng() * (zone.w - 80);
     const y = zone.y + 40 + rng() * (zone.h - 80);
-    if (inWalkable(x, y)) return { x, y };
+    // Gövde yarıçapı kadar da boş olmalı: bot bir tezgâhın/lambanın içine
+    // yarım girmesin.
+    if (inWalkable(x, y) && !circleHitsObstacles(x, y, BOT_RADIUS)) {
+      return { x, y };
+    }
   }
   return { x: zone.x + zone.w / 2, y: zone.y + zone.h / 2 };
 }
 
+/**
+ * Bir nokta hem yürünebilir hem de karakter gövdesiyle engellere değmiyor mu?
+ * `radius` verilmezse yalnızca nokta testi yapılır (eski davranış).
+ */
+function pointClear(x: number, y: number, radius = 0) {
+  if (!inWalkable(x, y)) return false;
+  return radius <= 0 || !circleHitsObstacles(x, y, radius);
+}
+
 /** True when the straight line between two points stays on the street. */
-function segmentClear(ax: number, ay: number, bx: number, by: number) {
-  const steps = 10;
+function segmentClear(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  radius = 0,
+) {
+  const steps = 16;
   for (let i = 1; i < steps; i++) {
     const t = i / steps;
-    if (!inWalkable(ax + (bx - ax) * t, ay + (by - ay) * t)) return false;
+    if (!pointClear(ax + (bx - ax) * t, ay + (by - ay) * t, radius)) return false;
   }
-  return true;
+  return pointClear(bx, by, radius);
 }
 
 /** A closed walking loop per bot: wait, stroll to the next point, repeat. */
@@ -347,20 +368,61 @@ interface BotPath {
   total: number; // loop duration in seconds
 }
 
+/** Bir L-bacağı (yatay + dikey, ya da düz çizgi) tamamen temiz mi? */
+function botLegClear(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): boolean {
+  const dx = Math.abs(b.x - a.x);
+  const dy = Math.abs(b.y - a.y);
+  // Ara nokta YALNIZCA iki eksende de fark varsa eklenir (aşağıda, `pts`
+  // kurulurken); doğrulama da tam olarak aynı şekli ölçmeli.
+  if (dx > 2 && dy > 2) {
+    const corner = { x: b.x, y: a.y };
+    return (
+      pointClear(corner.x, corner.y, BOT_RADIUS) &&
+      segmentClear(a.x, a.y, corner.x, corner.y, BOT_RADIUS) &&
+      segmentClear(corner.x, corner.y, b.x, b.y, BOT_RADIUS)
+    );
+  }
+  return segmentClear(a.x, a.y, b.x, b.y, BOT_RADIUS);
+}
+
 function buildBotPath(def: BotDef): BotPath {
   const rng = mulberry32(djb2(def.id));
-  // Generate 8 destination waypoints
-  const waypoints: { x: number; y: number }[] = [{ x: def.x, y: def.y }];
-  for (let i = 0; i < 8; i++) {
-    let next: { x: number; y: number } | null = null;
-    for (let attempt = 0; attempt < 14 && next === null; attempt++) {
-      const cand = randomWalkablePoint(rng);
-      const last = waypoints[waypoints.length - 1];
-      if (segmentClear(last.x, last.y, cand.x, cand.y)) next = cand;
+  const start = { x: def.x, y: def.y };
+
+  // Tur KAPALI olduğu için yalnızca ara noktalar değil KAPANIŞ bacağı (son ara
+  // nokta → başlangıç) da temiz olmalı. Eskiden kapanış bacağı sonradan tek bir
+  // nokta değiştirilerek yamanıyordu; bu da ondan ÖNCEKİ bacağı geçersiz
+  // kılabiliyordu (bot yine bir prop'un içinden kesebiliyordu). Artık turun
+  // TAMAMI baştan üretilir ve TÜM bacaklar — kapanış dahil — gövde yarıçapıyla
+  // doğrulanır.
+  let waypoints: { x: number; y: number }[] = [];
+  for (let round = 0; round < 32 && waypoints.length === 0; round++) {
+    const draft: { x: number; y: number }[] = [start];
+    let ok = true;
+    for (let i = 0; i < 8 && ok; i++) {
+      const last = draft[draft.length - 1];
+      let next: { x: number; y: number } | null = null;
+      for (let attempt = 0; attempt < 24 && next === null; attempt++) {
+        const cand = randomWalkablePoint(rng);
+        if (botLegClear(last, cand)) next = cand;
+      }
+      if (next) draft.push(next);
+      else ok = false;
     }
-    waypoints.push(next ?? waypoints[waypoints.length - 1]);
+    if (!ok) continue;
+    // Kapanış bacağı: son ara noktadan başlangıca dönüş.
+    if (!botLegClear(draft[draft.length - 1], start)) continue;
+    draft.push(start);
+    waypoints = draft;
   }
-  waypoints.push({ x: def.x, y: def.y }); // close the loop
+  if (waypoints.length === 0) {
+    // Beklenmedik dar bir bantta tur kurulamazsa bot SABİT dursun: içinden
+    // geçmektense hiç yürümemesi yeğdir.
+    waypoints = [start, start];
+  }
 
   // Insert cardinal-only intermediate points between each destination.
   // Between A and B: go horizontal first, then vertical (L-shape = no diagonal).
@@ -801,6 +863,20 @@ function circleHitsRect(cx: number, cy: number, r: number, rect: Rect) {
   return dx * dx + dy * dy < r * r;
 }
 
+/**
+ * İki karakter merkezi bu mesafeden yakınsa birbirlerinin İÇİNDEN geçemesinler
+ * diye yarım yarım itilirler (gövde genişliği + pay).
+ */
+const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
+
+/**
+ * 🚶‍♂️ BOTLARIN GÖVDE YARIÇAPI — yol doğrulamasında kullanılır.
+ *
+ * Botlar oyuncuyla aynı sprite'ı taşır, yani aynı genişliktedir: yolları
+ * nokta nokta değil, `PLAYER_RADIUS` kadar şişirilmiş engellerle doğrulanır.
+ */
+const BOT_RADIUS = PLAYER_RADIUS;
+
 /* Yürünebilirlik testi ve konumu caddeye geri çeken yardımcılar
    (`inWalkable`, `nearestWalkable`) `@/lib/shop` içindedir: çitlerin
    belirlediği yürünebilir alan oradaki `WALKABLE_ZONES` ile tanımlıdır ve
@@ -981,6 +1057,10 @@ export default function World() {
     y: number;
   } | null>(null);
   const targetRef = useRef<{ x: number; y: number } | null>(null);
+  // 🪵 Çarpma ("donk"): son ses anı + önceki karede dayanıyor muyduk (kenar
+  // tetikleme — duvara yaslanınca ses tekrarlanıp makineleşmesin).
+  const bumpAtRef = useRef(0);
+  const blockedRef = useRef(false);
   // 🪑 Bank: hangi bankın menzilinde olduğumuz (buton) ve oturulan bank.
   const [nearBench, setNearBench] = useState<number | null>(null);
   const [seatBench, setSeatBench] = useState<number | null>(null);
@@ -1010,6 +1090,11 @@ export default function World() {
   // Cache querySelector results for bots to avoid per-frame DOM traversal.
   const botSpriteCache = useRef(new Map<string, SVGGElement>());
   const botPoseCache = useRef(new Map<string, SVGSVGElement>());
+  // Botların kare başına ÇÖZÜLMÜŞ konumlarından ÖNCEKİ "taban" konumları
+  // (paylaşılan saatten türeyen yol üzerindeki nokta). Ayrıştırma itmesi
+  // yalnızca bu taban konumlara bakar → sıraya bağlı olmayan, deterministik
+  // bir çözüm (her cihazda aynı).
+  const botBaseRef = useRef<({ x: number; y: number } | null)[]>([]);
   const botsRef = useRef([
     ...BOT_DEFS.map((def) => ({
       def,
@@ -1533,6 +1618,8 @@ export default function World() {
         let vy = 0;
         // `moving` and `pos` are also read by the sprite/camera code below.
         let moving = false;
+        // Bir engel/karakter yüzünden bu karede ilerleme engellendi mi?
+        let bumped = false;
         const pos = posRef.current;
         // 🪑 OTURMA/KALKMA GEÇİŞİ: konum iki nokta arasında smoothstep ile
         // kayar — banka dokununca karakter ışınlanmaz, yürür ve yerleşir.
@@ -1565,12 +1652,26 @@ export default function World() {
         } else if (sitRequestRef.current !== null) {
           // 🪑 Bankın önündeki durağa VARINCA oturulur.
           const req = sitRequestRef.current;
-          if (Math.hypot(req.x - pos.x, req.y - pos.y) <= SIT_ARRIVE_PX) {
+          const distToStand = Math.hypot(req.x - pos.x, req.y - pos.y);
+          const targetDone =
+            targetRef.current === null && waypointsRef.current.length === 0;
+          if (distToStand <= SIT_ARRIVE_PX) {
             sitOnBench(req.index);
           } else if (
-            targetRef.current === null &&
-            waypointsRef.current.length === 0
+            // Yedek varış ölçütü: bank artık KATI cisim olduğu için A* durağı
+            // birkaç px kısa çözebiliyor (durağın hücresi bankın şişirilmiş
+            // gölgesinde kalır) ve tam `SIT_ARRIVE_PX` içine girmek
+            // başarısız olabiliyordu — oyuncu bankın önünde durup "oturmuyor"
+            // kalıyordu. Yürüyüş bittiğinde bank etkileşim menzilinde
+            // olduğumuz sürece otur.
+            targetDone &&
+            Math.hypot(
+              BENCH_SEATS[req.index].x - pos.x,
+              BENCH_SEATS[req.index].y - pos.y,
+            ) <= BENCH_RADIUS_PX
           ) {
+            sitOnBench(req.index);
+          } else if (targetDone) {
             // Yürüyüş iptal edildi (tuş/sıkışma) → istek düşer.
             sitRequestRef.current = null;
           }
@@ -1700,6 +1801,8 @@ export default function World() {
 
           if (moving) {
             phase += dt * 10;
+            const fromX = pos.x;
+            const fromY = pos.y;
             const stepX = vx * PLAYER_SPEED * dt;
             const stepY = vy * PLAYER_SPEED * dt;
 
@@ -1775,22 +1878,53 @@ export default function World() {
             px = snapped.x;
             py = snapped.y;
 
-            // ── 3. Character separation: push apart if overlapping ──
-            const CHAR_MIN_DIST = PLAYER_RADIUS * 2.2;
-            // Check against bots/vendors
+            pos.x = px;
+            pos.y = py;
+            // ── Çarpma tespiti ("donk") ──
+            // Amaçlanan adımın büyük kısmı engellendiyse (düz engel) çarpma
+            // sayılır. Engel BOYUNCA KAYARKEN amaçlanan yol alındığı için ses
+            // çalmaz — sürtünme gürültü yapmaz.
+            const intended = Math.hypot(stepX, stepY);
+            const advanced = Math.hypot(px - fromX, py - fromY);
+            if (intended > 0.01 && advanced < intended * 0.35) bumped = true;
+            // Update facing from horizontal movement direction. When moving
+            // purely vertically, preserve the last horizontal facing so the
+            // character doesn't snap to an arbitrary direction.
+            if (Math.abs(vx) > 0.1) facingRef.current = vx > 0 ? 1 : -1;
+            vyRef.current = vy;
+          } else {
+            // Reset vertical direction when stopped so sprite returns to normal.
+            vyRef.current = 0;
+          }
+
+          // ── Karakter ayrıştırma + engel dışına itme (HER KARE) ──
+          // Eskiden bu yalnızca `moving` iken çalışıyordu: DURAN oyuncunun
+          // içinden botlar/diğer oyuncular geçebiliyordu. Artık her karede:
+          //   1) örtüşen karakterler yarım yarım itilir (yalnızca oyuncu
+          //      itilir; botlar deterministik yollarında kalır),
+          //   2) konum hiçbir prop'un İÇİNDE kalamaz (`pushOutOfObstacles`),
+          //   3) son olarak yürünebilir alana/sınıra kırpılır.
+          if (
+            !inBattle &&
+            seatBenchRef.current === null &&
+            seatMoveRef.current === null
+          ) {
+            let px = pos.x;
+            let py = pos.y;
+            let pushed = 0;
+            // Botlar / satıcılar.
             for (const bot of botsRef.current) {
-              const bx = bot.pos.x;
-              const by = bot.pos.y;
-              const dx = px - bx;
-              const dy = py - by;
+              const dx = px - bot.pos.x;
+              const dy = py - bot.pos.y;
               const dist = Math.hypot(dx, dy);
               if (dist < CHAR_MIN_DIST && dist > 0.1) {
                 const push = (CHAR_MIN_DIST - dist) / 2;
                 px += (dx / dist) * push;
                 py += (dy / dist) * push;
+                pushed = Math.max(pushed, push);
               }
             }
-            // Check against remote players
+            // Diğer gerçek oyuncular.
             for (const remote of othersRef.current) {
               const d = remote.data;
               if (!d || typeof d.x !== "number" || typeof d.y !== "number")
@@ -1805,27 +1939,43 @@ export default function World() {
                 const push = (CHAR_MIN_DIST - dist) / 2;
                 px += (dx / dist) * push;
                 py += (dy / dist) * push;
+                pushed = Math.max(pushed, push);
               }
             }
-            // ── 4. Ayrıştırma itmesinden sonra SON GEÇERLİ KONUM ──
-            // İtme (botlar / diğer oyuncular) oyuncuyu caddenin dışına
-            // taşıyabilir; eskiden burada yalnızca `WORLD_BOUNDS`
-            // uygulanıyordu, yani oyuncu çimin üzerinde kalıp sıkışabiliyordu.
-            // Artık konum her karede yürünebilir alana geri çekilir.
-            px = Math.min(Math.max(px, WORLD_BOUNDS.minX), WORLD_BOUNDS.maxX);
-            py = Math.min(Math.max(py, WORLD_BOUNDS.minY), WORLD_BOUNDS.maxY);
-            const settled = nearestWalkable(px, py, pos);
+            // Bir prop'un içine itildiysek en yakın dışarı noktaya çık.
+            const ejected = pushOutOfObstacles(px, py, PLAYER_RADIUS);
+            px = Math.min(
+              Math.max(ejected.x, WORLD_BOUNDS.minX),
+              WORLD_BOUNDS.maxX,
+            );
+            py = Math.min(
+              Math.max(ejected.y, WORLD_BOUNDS.minY),
+              WORLD_BOUNDS.maxY,
+            );
+            if (!inWalkable(px, py)) {
+              const settled = nearestWalkable(px, py, pos);
+              px = settled.x;
+              py = settled.y;
+            }
+            if (px !== pos.x || py !== pos.y) {
+              if (pushed > 8) bumped = true;
+              pos.x = px;
+              pos.y = py;
+            }
+          }
 
-            pos.x = settled.x;
-            pos.y = settled.y;
-            // Update facing from horizontal movement direction. When moving
-            // purely vertically, preserve the last horizontal facing so the
-            // character doesn't snap to an arbitrary direction.
-            if (Math.abs(vx) > 0.1) facingRef.current = vx > 0 ? 1 : -1;
-            vyRef.current = vy;
+          // 🪵 Çarpma sesi — engel/karakter dayandığında TEK bir "donk".
+          // Kenar tetikleme: duvara yaslı kalırken ses tekrarlanmaz; ayrılıp
+          // yeniden çarpınca (kısa bir kilit sonrası) yine çalar.
+          if (bumped) {
+            const bumpNow = performance.now();
+            if (!blockedRef.current && bumpNow - bumpAtRef.current > 200) {
+              bumpAtRef.current = bumpNow;
+              playSound("bump");
+            }
+            blockedRef.current = true;
           } else {
-            // Reset vertical direction when stopped so sprite returns to normal.
-            vyRef.current = 0;
+            blockedRef.current = false;
           }
 
           // Share my position with the street — throttled while walking, plus a
@@ -1976,7 +2126,34 @@ export default function World() {
         // sees the exact same bots at the exact same spots (no local
         // randomness, no drift between devices).
         const botScratch = { x: 0, y: 0, moving: false, facing: 1 };
-        for (const bot of botsRef.current) {
+        const bots = botsRef.current;
+        const nBots = bots.length;
+        const botBase = botBaseRef.current;
+        if (botBase.length < nBots) botBase.length = nBots;
+        // ── 1) TABAN konumlar: paylaşılan saat → yol üzerindeki nokta.
+        //       Her cihazda birebir aynı (deterministik).
+        for (let i = 0; i < nBots; i++) {
+          const b = bots[i];
+          const path = b.path;
+          if (
+            !path ||
+            path.pts.length === 0 ||
+            battleRef.current?.opponent.id === b.def.id
+          ) {
+            botBase[i] = null;
+            continue;
+          }
+          const wallT =
+            (Date.now() + serverOffsetRef.current) / 1000 + b.offset;
+          const bt = ((wallT % path.total) + path.total) % path.total;
+          botPosAt(path, bt, botScratch);
+          const slot = botBase[i] ?? { x: 0, y: 0 };
+          slot.x = botScratch.x;
+          slot.y = botScratch.y;
+          botBase[i] = slot;
+        }
+        for (let bi = 0; bi < nBots; bi++) {
+          const bot = bots[bi];
           // Skip vendors (static shopkeepers with no movement path)
           if (!bot.path || bot.path.pts.length === 0) continue;
           const botEl0 = botRefs.current.get(bot.def.id);
@@ -1991,8 +2168,43 @@ export default function World() {
           const t =
             ((wallT % bot.path.total) + bot.path.total) % bot.path.total;
           botPosAt(bot.path, t, botScratch);
-          bot.pos.x = botScratch.x;
-          bot.pos.y = botScratch.y;
+          // ── 2) Bot ↔ bot ayrıştırma: botlar da birbirinin İÇİNDEN geçmesin.
+          //       İtme YALNIZCA taban konumlara (yani saate) bağlıdır —
+          //       oyuncunun/uzak oyuncuların konumuna DEĞİL. Böylece sonuç yine
+          //       deterministiktir: her cihaz aynı botu aynı yerde gösterir.
+          //       (Oyuncu tarafında itme yerel oyuncuya uygulanır, bkz.
+          //       yukarıdaki "Karakter ayrıştırma" bloğu.)
+          let bpx = botScratch.x;
+          let bpy = botScratch.y;
+          for (let j = 0; j < nBots; j++) {
+            if (j === bi) continue;
+            const other = botBase[j];
+            if (!other) continue;
+            const dx = bpx - other.x;
+            const dy = bpy - other.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < CHAR_MIN_DIST && dist > 0.1) {
+              const push = (CHAR_MIN_DIST - dist) / 2;
+              bpx += (dx / dist) * push;
+              bpy += (dy / dist) * push;
+            }
+          }
+          // ── 3) İtmeden sonra bot yine de bir prop'un içinde çim üzerinde
+          //       kalmasın: önce katı cisimlerden dışarı, sonra caddeye geri.
+          const botEject = pushOutOfObstacles(bpx, bpy, BOT_RADIUS);
+          if (inWalkable(botEject.x, botEject.y)) {
+            bpx = botEject.x;
+            bpy = botEject.y;
+          } else {
+            const botSettle = nearestWalkable(botEject.x, botEject.y, {
+              x: botScratch.x,
+              y: botScratch.y,
+            });
+            bpx = botSettle.x;
+            bpy = botSettle.y;
+          }
+          bot.pos.x = bpx;
+          bot.pos.y = bpy;
           bot.moving = botScratch.moving;
           if (botScratch.moving) bot.facing = botScratch.facing;
           bot.phase = botScratch.moving ? t * 8 : 0;

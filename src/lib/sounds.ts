@@ -53,6 +53,13 @@ export type SoundName =
   | "step"
   | "thud"
   | "whoosh"
+  /**
+   * "Donk" — karakter bir engele/propa çarptığında çalan tok, boş vuruş.
+   * `thud` kaydını düşük perdeden çalıp altına thump + kırılma transienti
+   * bindirir (bkz. SPECS.bump); böylece cam/metal "tak" değil, ahşap "donk"
+   * gibi okunur.
+   */
+  | "bump"
   /** Aktif kulenin ateşi — silaha göre daha ağır, alçak ve yankılı. */
   | "towerShot"
   /** Kule aktivasyonu / güçlendirmesi (inşa geri bildirimi). */
@@ -128,6 +135,7 @@ const FALLBACK_PRESETS: Partial<Record<SoundName, string>> = {
   vs: "blipSelect",
   step: "blipSelect",
   thud: "hitHurt",
+  bump: "hitHurt",
   whoosh: "jump",
   towerShot: "laserShoot",
   towerUp: "powerUp",
@@ -290,6 +298,26 @@ const SPECS: Record<SoundName, SoundSpec> = {
     layerGain: 0.5,
     throttleMs: 45,
     maxVoices: 4,
+  },
+  /**
+   * 🪵 Çarpma sesi ("donk"). Karakter bir engele dayandığında çalar: `thud`
+   * kaydı alçak perdeden (0.7 civarı) çalınır — kayıt zaten yumuşak bir hava
+   * darbesi olduğu için "içi boş" tok bir tını verir — altına thump (gövde) +
+   * crack (kısa kırılma) katmanları bindirilir. Elle sıkça çarpıldığı için
+   * throttle nispeten uzun: duvar boyunca sürtünürken ses makineleşmesin.
+   */
+  bump: {
+    variants: [{ key: "thud", rate: 0.72 }, { key: "thud", rate: 0.66 }],
+    gain: 0.95,
+    reverb: 0.14,
+    jitter: 0.06,
+    gainJitter: 0.1,
+    layers: ["thump", "crack"],
+    layerGain: 0.6,
+    // Kenar tetiklemesi çarpmalar arasında 200 ms bırakır; throttle bunun
+    // ALTINDA kalmalı, yoksa gerçek bir ikinci çarpma yutulur.
+    throttleMs: 140,
+    maxVoices: 2,
   },
   whoosh: {
     variants: [{ key: "whoosh" }, { key: "whoosh", rate: 1.08 }],
@@ -757,6 +785,7 @@ export function warmUpSounds(
     "explode",
     "whoosh",
     "thud",
+    "bump",
     "super",
     "towerShot",
     "step",

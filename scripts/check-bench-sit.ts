@@ -1,7 +1,10 @@
 /**
  * 🪑 Bankta oturma doğrulaması.
  *
- *  1. Oturma noktaları yürünebilir mi? (BENCHES → WALKABLE_ZONES)
+ *  1. Bankın ETKİLEŞİM noktaları erişilebilir mi? (BENCHES → WALKABLE_ZONES)
+ *     · ÖNÜNDEKİ durak (oraya yürünür) yürünebilir olmalı,
+ *     · OTURMA noktası ise bankın KATI cisim gölgesinin İÇİNDE olmalı —
+ *       karakter bankın üstüne çıkmaz, içinden geçmez (bkz. `OBSTACLES`).
  *  2. Oturma pozu geometrisi: ayaklar zemine gömülüyor / havada kalıyor mu?
  *  3. Oturan karakterin bacakları bir binanın içine giriyor mu?
  *  4. GERÇEK GLB iskeletlerinde: kemik tespiti, kemik zinciri yapısı,
@@ -58,8 +61,8 @@ function check(label: string, ok: boolean, detail = "") {
 const THIGH_DIR = new THREE.Vector3(0, -0.18, 1).normalize();
 const SHIN_DIR = new THREE.Vector3(0, -1, 0.06).normalize();
 
-/* ── 1. Oturma noktası yürünebilir mi? ─────────────────────────────── */
-console.log("── oturma noktaları yürünebilir alanda mı? ──");
+/* ── 1. Bankın erişim noktaları ────────────────────────────────────── */
+console.log("── bank etkileşim noktaları ──");
 const seats = BENCHES.map((def) => {
   const spot = benchSeatSpot(def);
   return {
@@ -78,14 +81,24 @@ function inWalkable(x: number, y: number) {
     !OBSTACLES.some((r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)
   );
 }
-let allWalkable = true;
+function insideObstacle(x: number, y: number) {
+  return OBSTACLES.some(
+    (r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h,
+  );
+}
+// Bank artık katı cisim: oturma noktası onun gölgesinin içinde olmalı, aksi
+// hâlde karakter bankın İÇİNDEN geçip üstüne çıkabilirdi.
+let allSeatsSolid = true;
 for (let i = 0; i < seats.length; i++) {
-  if (!inWalkable(seats[i].px, seats[i].py)) {
-    allWalkable = false;
-    console.log(`     ✘ bank ${i} (x ${seats[i].x}) yürünebilir değil`);
+  if (!insideObstacle(seats[i].px, seats[i].py)) {
+    allSeatsSolid = false;
+    console.log(`     ✘ bank ${i} (x ${seats[i].x}) oturma noktası katı cisim değil`);
   }
 }
-check(`${seats.length} bankın oturma noktası yürünebilir`, allWalkable);
+check(
+  `${seats.length} bankın oturma noktası katı cisim (içinden geçilemez)`,
+  allSeatsSolid,
+);
 
 /* ── 2. Poz geometrisi (insan oranları) ────────────────────────────── */
 console.log("── oturma pozu geometrisi ──");

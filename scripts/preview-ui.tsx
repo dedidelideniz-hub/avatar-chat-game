@@ -933,6 +933,222 @@ const scenarios: Scenario[] = [
       ];
     },
   },
+  {
+    id: "carpisma",
+    title: "ÇARPIŞMA · karakterler hiçbir prop'un içinden geçmez + 'donk' sesi",
+    handles:
+      "src/lib/shop.ts (OBSTACLES/pushOutOfObstacles) + src/pages/World.tsx + src/lib/sounds.ts",
+    run: async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (path: string) =>
+        readFileSync(new URL(path, import.meta.url), "utf8");
+      const world = read("../src/pages/World.tsx");
+      const sounds = read("../src/lib/sounds.ts");
+      const pathing = read("../src/lib/pathfinding.ts");
+
+      const {
+        OBSTACLES,
+        inWalkable,
+        nearestWalkable,
+        pushOutOfObstacles,
+        svgX,
+        svgY,
+        PLAYER_RADIUS,
+      } = await import("../src/lib/shop");
+      const { findPath } = await import("../src/lib/pathfinding");
+      const K = await import("../src/engine/constants");
+      const checks: Check[] = [];
+
+      // ── 1) Sokak mobilyasının TAMAMI artık katı cisim ──
+      const expected =
+        K.STALLS.length +
+        K.LAMPS.length +
+        K.TRASH_CANS.length +
+        K.DIRECTION_SIGNS.length +
+        K.BENCHES.length +
+        K.BUS_STOPS.length;
+      checks.push(
+        check(
+          "OBSTACLES tezgâh + lamba + bank + durak + çöp + tabelayı kapsıyor",
+          OBSTACLES.length === expected,
+          `${OBSTACLES.length} engel (beklenen ${expected})`,
+        ),
+      );
+
+      const props: [string, number, number][] = [
+        ...K.STALLS.map((s) => ["tezgâh", s.x, s.z] as [string, number, number]),
+        ...K.LAMPS.map((l) => ["lamba", l.x, l.z] as [string, number, number]),
+        ...K.TRASH_CANS.map((t) => ["çöp", t.x, t.z] as [string, number, number]),
+        ...K.DIRECTION_SIGNS.map(
+          (d) => ["tabela", d.x, d.z] as [string, number, number],
+        ),
+        ...K.BENCHES.map((b) => ["bank", b.x, b.z] as [string, number, number]),
+        ...K.BUS_STOPS.map((b) => ["durak", b.x, b.z] as [string, number, number]),
+      ];
+      const penetrable = props.filter(([, x, z]) =>
+        inWalkable(svgX(x), svgY(z)),
+      );
+      checks.push(
+        check(
+          "hiçbir prop'un merkezine girilemiyor (üstüne çıkılamaz)",
+          penetrable.length === 0,
+          penetrable.length
+            ? `${penetrable.length} geçirgen: ${[...new Set(penetrable.map((p) => p[0]))].join(", ")}`
+            : `${props.length} prop katı`,
+        ),
+      );
+
+      // ── 2) A* engelleri gövde yarıçapı kadar şişirip yaktığı için yollar
+      //       engelin İÇİNDEN değil ÇEVRESİNDEN dolaşır. Prop merkezine tıklansa
+      //       bile varış noktası yürünebilir bir komşu hücreye çözülür ve orası
+      //       KARARLI olmalı (prop dışına itme + caddeye kırpma kare kare
+      //       titretmemeli).
+      //
+      //       World.tsx'teki sıra birebir: pushOutOfObstacles → yürünebilir
+      //       değilse nearestWalkable(son geçerli konum).
+      const settle = (x: number, y: number, from: { x: number; y: number }) => {
+        const e = pushOutOfObstacles(x, y, PLAYER_RADIUS);
+        if (inWalkable(e.x, e.y)) return e;
+        return nearestWalkable(e.x, e.y, from);
+      };
+      const spawn = { x: 1200, y: 460 };
+      let unreachable = 0;
+      let unstable = 0;
+      let dragged = 0;
+      for (const [, px0, pz0] of props) {
+        const path = findPath(spawn.x, spawn.y, svgX(px0), svgY(pz0));
+        if (path.length <= 1) {
+          unreachable++;
+          continue;
+        }
+        // Izgara hücre merkezi bant kenarını birkaç px aşabilir → caddeye çek.
+        let stand = path[path.length - 1];
+        if (!inWalkable(stand.x, stand.y)) {
+          stand = nearestWalkable(stand.x, stand.y, { x: spawn.x, y: spawn.y });
+        }
+        if (!inWalkable(stand.x, stand.y)) {
+          unstable++;
+          continue;
+        }
+        // Prop merkezinden oraya itilse bile konum caddeye döner...
+        let cur = settle(svgX(px0), svgY(pz0), stand);
+        if (!inWalkable(cur.x, cur.y)) {
+          unstable++;
+          continue;
+        }
+        // ...ve orada YAKINSAYARAK durur: her karedeki itme küçülür, sonsuz
+        // titreşim (iki nokta arasında gidip gelme) oluşmaz.
+        let lastStep = 0;
+        for (let i = 0; i < 40; i++) {
+          const next = settle(cur.x, cur.y, cur);
+          if (!inWalkable(next.x, next.y)) {
+            unstable++;
+            break;
+          }
+          lastStep = Math.hypot(next.x - cur.x, next.y - cur.y);
+          cur = next;
+          if (lastStep < 0.05) break;
+        }
+        if (lastStep >= 0.5) dragged++;
+      }
+      checks.push(
+        check(
+          "tüm proplara yol var (engel etrafından dolaşarak)",
+          unreachable === 0,
+          unreachable ? `${unreachable} hedefe yol yok` : `${props.length} hedef erişilebilir`,
+        ),
+        check(
+          "prop dışına itme sonrası konum daima caddede kalır",
+          unstable === 0,
+          unstable ? `${unstable} prop'ta geçersiz konum` : `${props.length} prop test edildi`,
+        ),
+        check(
+          "itme sonrası konum kararlı (kare kare titreme yok)",
+          dragged === 0,
+          dragged ? `${dragged} prop'ta sürüklenme` : "tüm proplar sabit",
+        ),
+      );
+      checks.push(
+        check(
+          "A* ızgarası engelleri PLAYER_RADIUS kadar şişiriyor",
+          /const pad = PLAYER_RADIUS/.test(pathing),
+        ),
+      );
+
+      // ── 4) World.tsx: her karede ayrıştırma + prop dışına itme, çarpma sesi ──
+      checks.push(
+        check(
+          "World: konum her karede prop dışına itiliyor (duran oyuncu dahil)",
+          /pushOutOfObstacles\(px, py, PLAYER_RADIUS\)/.test(world) &&
+            /!inBattle &&[\s\S]{0,200}seatBenchRef\.current === null/.test(world),
+        ),
+        check(
+          "World: karakter-karakter ayrıştırma mesafesi tek kaynaktan",
+          /const CHAR_MIN_DIST = PLAYER_RADIUS \* 2\.2/.test(world) &&
+            (world.match(/CHAR_MIN_DIST/g) ?? []).length >= 3,
+        ),
+        check(
+          "World: engel yüzünden ilerleme engellenince çarpma işaretlenir",
+          /advanced < intended \* 0\.35\) bumped = true/.test(world),
+        ),
+        check(
+          "World: 'donk' sesi KENAR tetiklemeli (duvara yaslıyken tekrarlamaz)",
+          /if \(!blockedRef\.current && bumpNow - bumpAtRef\.current > 200\)/.test(
+            world,
+          ) && /playSound\("bump"\)/.test(world),
+        ),
+        check(
+          "World: botlar da birbirinden ayrışır (deterministik taban konumlardan)",
+          /botBaseRef/.test(world) &&
+            /bot \u2194 bot ayr\u0131\u015Ft\u0131rma/i.test(world),
+        ),
+        check(
+          "World: bank katı olduğu için kısa çözülen durağa varışta da oturur",
+          /const targetDone =/.test(world) &&
+            /targetDone &&[\s\S]{0,240}BENCH_RADIUS_PX/.test(world),
+        ),
+        check(
+          "World: bot yolları GÖVDE YARIÇAPIYLA doğrulanıyor (L-bacak + kapanış)",
+          /const BOT_RADIUS = PLAYER_RADIUS/.test(world) &&
+            /function botLegClear/.test(world) &&
+            /botLegClear\(draft\[draft\.length - 1\], start\)/.test(world) &&
+            /segmentClear\(a\.x, a\.y, b\.x, b\.y, BOT_RADIUS\)/.test(world),
+        ),
+      );
+
+      // ── 5) 'donk' sesi tanımlı, çalınabilir ve throttle'ı kenar
+      //       tetiklemesinden KISA (yoksa gerçek ikinci çarpma yutulur).
+      const sounds2 = await import("../src/lib/sounds");
+      const bumpSpec = sounds.match(
+        /bump:\s*\{([\s\S]*?)\n  \},\n/,
+      )?.[1];
+      const throttle = bumpSpec
+        ? Number(/throttleMs:\s*(\d+)/.exec(bumpSpec)?.[1] ?? NaN)
+        : NaN;
+      let plays = true;
+      try {
+        sounds2.playSound("bump");
+      } catch {
+        plays = false;
+      }
+      checks.push(
+        check(
+          "'donk' sesi tanımlı: thud kaydı + thump/crack katmanı",
+          /variants:\s*\[\{ key: "thud"/.test(bumpSpec ?? "") &&
+            /layers:\s*\["thump", "crack"\]/.test(bumpSpec ?? "") &&
+            plays,
+          bumpSpec ? "SPECS.bump var" : "SPECS.bump yok",
+        ),
+        check(
+          "'bump' throttle'ı kenar tetiklemesinden kısa (< 200ms)",
+          Number.isFinite(throttle) && throttle < 200,
+          Number.isFinite(throttle) ? `throttle ${throttle}ms` : "throttleMs bulunamadı",
+        ),
+      );
+
+      return checks;
+    },
+  },
 ];
 
 /* ─────────────────────────────────── Çalıştır ────────────────────────────── */
