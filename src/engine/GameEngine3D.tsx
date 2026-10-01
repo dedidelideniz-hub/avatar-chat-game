@@ -70,9 +70,11 @@ import { GrassGround } from "./GrassGround";
 // Yeşillik SADECE akçaağaç GLB'sinden (ağaç) ve çim öbeği GLB'sinden gelir:
 // ilkel ağaç/çalı/çiçek geometrisi (küre top, kutu çit, mantar çiçek) kaldırıldı.
 import { StreetGrassClumps, StreetTrees } from "./VegetationModels";
-// Cadde sırasındaki TEK bina (`WITCH_SHOP_INDEX`) düz `Building` yerine gerçek
-// bir GLB modeliyle çizilir ve yalnızca O binaya giden yürünebilir bir yol alır.
-import { WitchShopBuilding, WitchShopWalkway } from "./WitchShop";
+// Bina satırı artık prosedürel geometriyle DEĞİL, tek tek eklenen GLB
+// modelleriyle kurulur (bkz. `constants.BUILDINGS` → `modelUrl`).
+import { GlbBuilding } from "./GlbBuilding";
+// Cadı dükkânının görünen kapı yolu (yürünebilir şeritle aynı sınırlar).
+import { WitchShopWalkway } from "./WitchShop";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Helpers                                                    */
@@ -333,6 +335,15 @@ function Ground() {
 /*  Building — polished with ledges, awnings, window frames   */
 /* ═══════════════════════════════════════════════════════════ */
 
+/**
+ * ESKİ PROSEDÜREL BİNA — şu an ÇİZİLMİYOR.
+ *
+ * Bina satırı artık GLB modelleriyle kurulur (`GlbBuilding`): gözler boştur ve
+ * `constants.BUILDINGS` içindeki `modelUrl` alanı dolduruldukça dikilir.
+ * Bu bileşen silinmedi çünkü göz tanımları (renk/pencere/tabela/tente) hâlâ
+ * orada duruyor ve bir binayı ilkel geometriyle geri koymak gerekirse tek
+ * satırla kullanılabilir. Kullanılmadığı için hiçbir maliyeti yoktur.
+ */
 function Building({ def }: { def: BuildingDef }) {
   const storyH = def.h / def.floors;
   const winW = Math.min(0.38, ((def.w - 0.6) / def.windows) * 0.52);
@@ -1420,18 +1431,19 @@ export function GameEngine3D({
       <Ground />
 
       {/* === BUILDINGS === */}
-      {/* Cadı dükkânı indeksindeki bina gerçek modelle değiştirilir; caddenin
-          geri kalanı aynı `Building` bileşeniyle çizilir. */}
+      {/* Satır BOŞ GÖZLERDEN oluşur: yalnızca `modelUrl` atanmış göz dikilir,
+          diğerlerinin yeri boştur (yeni GLB eklendikçe `constants.BUILDINGS`
+          içindeki ilgili göze `modelUrl` yazılır). Cadı dükkânı oyuncu içeri
+          girebildiği için `fade` alır: görüşü kesince yalnızca O saydamlaşır. */}
       {BUILDINGS.map((def, i) =>
-        i === WITCH_SHOP_INDEX ? (
-          <WitchShopBuilding
+        def.modelUrl ? (
+          <GlbBuilding
             key={i}
             def={def}
             playerPosRef={playerPosRef}
+            fade={i === WITCH_SHOP_INDEX}
           />
-        ) : (
-          <Building key={i} def={def} />
-        ),
+        ) : null,
       )}
 
       {/* Cadı dükkânının GÖRÜNEN giriş yolu (yürünebilir şeritle aynı sınırlar). */}

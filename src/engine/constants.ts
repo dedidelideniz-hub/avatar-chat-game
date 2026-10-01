@@ -154,6 +154,16 @@ export interface BuildingDef {
   awningB?: string;
   /** Çatı detayı — dükkan silüetine canlılık katar. */
   roofDetail?: "ac" | "antenna" | "tank" | "vent";
+  /**
+   * Gözün dikili olduğu GLB modeli. YOKSA GÖZ BOŞ KALIR — hiçbir şey
+   * çizilmez (bkz. `engine/GlbBuilding.tsx`).
+   *
+   * Bina satırı artık prosedürel `Building` geometrisiyle değil, tek tek
+   * eklenen modellerle kurulur: `public/models/` altına yeni bir GLB konup
+   * ilgili göze bu alan yazıldığında bina otomatik olarak dikilir (ölçek,
+   * zemin ve cephe hizası `buildingModelPrep.ts` içinde ÖLÇÜLEREK bulunur).
+   */
+  modelUrl?: string;
 }
 
 /**
@@ -198,10 +208,34 @@ const BACK_NAMES = [
   "BELEDİYE", "SPOR", "SANAT EVİ", "KLİNİK",
 ] as const;
 
+/* ── MODEL DİKİLEN GÖZLER ─────────────────────────────────────
+   Satır artık prosedürel geometriyle değil, GLB modelleriyle kurulur.
+   Aşağıdaki iki sabit yalnızca "hangi göz hangi modele sahip" bilgisini
+   taşır; ölçek ve hizalamayı `GlbBuilding` modelden ÖLÇEREK yapar. */
+
+/** Cadı dükkânı modeli (bkz. `engine/WitchShop.tsx`, `public/ASSETS.md`). */
+export const WITCH_SHOP_MODEL_URL = "/models/witch_shop.glb";
+
 /**
- * Binalar İKİ sıra: (1) ana cadde boyunca 12 dükkan, (2) arka caddenin
- * arkasında 8 bina. İki sıranın da cephesi güneye (kameraya) bakar; cephe
+ * Cadı dükkânının dikildiği göz — 2 → X −13.0 (satırın batı blokları).
+ *
+ * GÖZÜN SEÇİM SEBEBİ: dükkânın kapı yolu batı komşusu DİKEY ARA SOKAKTAN
+ * (X −16) cephe boyunca uzanır (bkz. `WITCH_SHOP_WALKWAY`). Cephenin önündeki
+ * kaldırım şeridi sokak mobilyasıyla (lamba/bank/durak/tabela) dolu ve hepsi
+ * KATI cisim: kaldırımı çimden kesen dikey bir koridor A* ızgarasında tek
+ * hücreye düşüp karakteri sıkıştırıyordu. Ara sokaktan gelen yol HİÇBİR
+ * propla kesişmez — bu yüzden bu göz seçildi.
+ */
+export const WITCH_SHOP_INDEX = 2;
+
+/**
+ * Bina GÖZLERİ — İKİ sıra: (1) ana cadde boyunca 12 göz, (2) arka caddenin
+ * arkasında 8 göz. İki sıranın da cephesi güneye (kameraya) bakar; cephe
  * hattı kendi çim şeridinin kuzey/arka kenarından 0.3 birim içeride durur.
+ *
+ * GÖZLER BOŞTUR: yalnızca `modelUrl` atanmış göz dikilir. Renk/pencere/tabela
+ * alanları prosedürel `Building` bileşeni için duruyor (o bileşen şu an
+ * ÇİZİLMİYOR) ve yeni model geldikçe gözü tarif eden veri olarak kalıyor.
  */
 export const BUILDINGS: BuildingDef[] = [
   ...SHOP_CENTERS.map((x, i) => ({
@@ -215,6 +249,7 @@ export const BUILDINGS: BuildingDef[] = [
     roofDetail: SHOP_DETAILS[i % SHOP_DETAILS.length],
     ...SHOP_STYLES[i % SHOP_STYLES.length],
     signText: SHOP_NAMES[i],
+    modelUrl: i === WITCH_SHOP_INDEX ? WITCH_SHOP_MODEL_URL : undefined,
   })),
   ...BACK_CENTERS.map((x, i) => ({
     x,
@@ -227,36 +262,16 @@ export const BUILDINGS: BuildingDef[] = [
     roofDetail: SHOP_DETAILS[(i + 2) % SHOP_DETAILS.length],
     ...SHOP_STYLES[(i + 3) % SHOP_STYLES.length],
     signText: BACK_NAMES[i],
+    // Arka sıra da boş: modeller eklendikçe buraya yazılacak.
   })),
 ];
 
 /* ════════════════════════════════════════════════════════════
-   CADI DÜKKÂNI — cadde sırasındaki bir bina değiştirilir
+   CADI DÜKKÂNI — giriş yolu ve yürünebilir iç mekân
    ════════════════════════════════════════════════════════════ */
 
-/**
- * Cadde sırasındaki (kuzey dükkanları) hangi binanın cadı dükkânı modeliyle
- * DEĞİŞTİRİLDİĞİ — `BUILDINGS` indeksi.
- *
- * 2 → "FIRIN" (X −13.0). Yeri, ölçüsü ve yerleşimi `BUILDINGS`ten okunur;
- * `GameEngine3D` bu indekste düz `Building` yerine `WitchShopBuilding` çizer,
- * yani satırın geri kalanı hiç değişmez.
- *
- * SEÇİM SEBEBİ: dükkânın kapı yolu batı komşusu DİKEY ARA SOKAKTAN (X −16)
- * cephe boyunca uzanır (bkz. `WITCH_SHOP_WALKWAY`). Sokak cephesinin önündeki
- * kaldırım şeridi sokak mobilyalarıyla (lamba/bank/durak/tabela) dolu olduğu
- * için çimden düz bir koridor açmak mümkün değil: kaldırımı en seyrek yerinden
- * (lamba −14 ile yön tabelası −12 arası) kesecek bir koridor A* ızgarasında
- * tek hücreye düşüyor ve karakter takılıyordu. Ara sokaktan gelen yol ise
- * HİÇBİR propla kesişmez.
- */
-export const WITCH_SHOP_INDEX = 2;
-
-/** Değiştirilen binanın tanımı — hem render hem yürünebilirlik buradan okur. */
+/** Cadı dükkânının göz tanımı — hem render hem yürünebilirlik buradan okur. */
 export const WITCH_SHOP_DEF: BuildingDef = BUILDINGS[WITCH_SHOP_INDEX];
-
-/** Cadı dükkânı modeli (bkz. `engine/WitchShop.tsx`). */
-export const WITCH_SHOP_MODEL_URL = "/models/witch_shop.glb";
 
 /**
  * Cadı dükkânına giden en yakın DİKEY ARA SOKAK (X) — dükkânın batı komşusu.

@@ -1198,9 +1198,10 @@ const scenarios: Scenario[] = [
   },
   {
     id: "cadi-dukkani",
-    title: "CADI DÜKKÂNI · bina değişti, kapı yolu ve içerisi gerçekten yürünebilir",
+    title:
+      "CADI DÜKKÂNI · satır boş, tek model dikili; kapı yolu ve içerisi yürünebilir",
     handles:
-      "src/engine/constants.ts + src/lib/shop.ts + src/engine/witchShopPrep.ts + src/engine/WitchShop.tsx",
+      "src/engine/constants.ts + src/lib/shop.ts + src/engine/buildingModelPrep.ts + src/engine/GlbBuilding.tsx + src/engine/WitchShop.tsx",
     run: async () => {
       const { readFileSync } = await import("node:fs");
       const read = (path: string) =>
@@ -1210,30 +1211,48 @@ const scenarios: Scenario[] = [
       const { inWalkable, nearestWalkable, svgX, svgY, WITCH_SHOP_WALK_ZONES } =
         await import("../src/lib/shop");
       const { findPath } = await import("../src/lib/pathfinding");
-      const { measureWitchShop, planWitchShopPlacement } = await import(
-        "../src/engine/witchShopPrep"
+      const { measureBuildingModel, planBuildingPlacement } = await import(
+        "../src/engine/buildingModelPrep"
       );
       const checks: Check[] = [];
 
       const W = K.WITCH_SHOP_WALKWAY;
       const def = K.WITCH_SHOP_DEF;
 
-      // ── 1) Değiştirilen bina: cadde sırasından tam olarak BİR tanesi ve
-      //       yalnızca RENDER katmanında `Building` yerine model çizilir.
+      // ── 1) Satır artık BOŞ GÖZLERDEN oluşur: yalnızca `modelUrl` atanmış
+      //       gözler dikilir. Bu turda tek model var (cadı dükkânı).
       const engine = read("../src/engine/GameEngine3D.tsx");
+      const withModel = K.BUILDINGS.filter((b) => b.modelUrl);
       checks.push(
         check(
-          "GameEngine3D cadı dükkânı indeksinde modeli, diğerlerinde `Building` çiziyor",
-          engine.includes("WITCH_SHOP_INDEX") &&
-            /i === WITCH_SHOP_INDEX \?/.test(engine) &&
-            engine.includes("<Building key={i} def={def} />"),
+          "BUILDINGS listesi bozulmadı (12 dükkan + 8 arka bina = 20 göz)",
+          K.BUILDINGS.length === 20,
+          `${K.BUILDINGS.length} göz`,
         ),
       );
       checks.push(
         check(
-          "BUILDINGS listesi bozulmadı (12 dükkan + 8 arka bina = 20)",
-          K.BUILDINGS.length === 20,
-          `${K.BUILDINGS.length} bina`,
+          "satırdaki TEK model cadı dükkânı; diğer 19 göz boş",
+          withModel.length === 1 && withModel[0] === K.WITCH_SHOP_DEF,
+          `${withModel.length} dolu göz (${withModel.map((b) => b.signText).join(", ") || "-"})`,
+        ),
+      );
+      checks.push(
+        check(
+          "boş gözler HİÇBİR ŞEY çizmiyor (yerleri boş kalıyor)",
+          engine.includes("<GlbBuilding") &&
+            /def\.modelUrl \? \([\s\S]*?\) : null,/.test(engine),
+        ),
+      );
+      checks.push(
+        check(
+          "tek bina bileşeni modeli ölçüp dikiyor (ortak GlbBuilding)",
+          read("../src/engine/GlbBuilding.tsx").includes(
+            "planBuildingPlacement",
+          ) &&
+            read("../src/engine/buildingModelPrep.ts").includes(
+              "export function measureBuildingModel",
+            ),
         ),
       );
       checks.push(
@@ -1368,7 +1387,7 @@ const scenarios: Scenario[] = [
       const fake = new THREE.Group();
       fake.add(radio, body);
 
-      const box = measureWitchShop(fake);
+      const box = measureBuildingModel(fake);
       checks.push(
         check(
           "ölçüm `Road` parçasını dışlıyor (bina gövdesi 10 birim geniş)",
@@ -1376,19 +1395,28 @@ const scenarios: Scenario[] = [
           box ? `${(box.max.x - box.min.x).toFixed(2)} geniş` : "kutu yok",
         ),
       );
-      const place = box ? planWitchShopPlacement(box, def) : null;
+      const place = box ? planBuildingPlacement(box, def) : null;
       checks.push(
         check(
-          "model binanın genişliğine ölçekleniyor",
+          "model gözün genişliğine ölçekleniyor",
           !!place && Math.abs(place.size.x - def.w) < 1e-6,
           place ? `genişlik ${place.size.x.toFixed(2)} (hedef ${def.w})` : "plan yok",
         ),
         check(
-          "taban zemine (y 0), cephe `frontZ`e hizalanıyor",
+          "bina ALTTAN oturuyor (taban y 0) ve cephe `frontZ`e hizalı",
           !!place &&
             Math.abs(place.offset.y + box!.min.y * place.scale) < 1e-6 &&
             Math.abs(place.offset.z + box!.max.z * place.scale) < 1e-6,
           place ? `ölçek ${place.scale.toFixed(4)}, yükseklik ${place.size.y.toFixed(2)}` : "plan yok",
+        ),
+      );
+      // Modelin EN ALT noktası ölçülen kutunun `min.y`i olmalı — yani bina
+      // hiçbir parçası zemine gömülmeden/havada kalmadan tabanından oturur.
+      checks.push(
+        check(
+          "ölçüm modelin en alt noktasını (tabanı) veriyor",
+          !!box && Math.abs(box.min.y - (body.position.y - 10)) < 1e-6,
+          box ? `taban y ${box.min.y.toFixed(2)}` : "kutu yok",
         ),
       );
 
@@ -1407,13 +1435,14 @@ const scenarios: Scenario[] = [
       );
 
       // ── 7) Saydamlaştırma yalnızca bu binayı hedefliyor: çekirdek tek
-      //       binadan occluder kurabiliyor ve WitchShop onu kullanıyor.
-      const witch = read("../src/engine/WitchShop.tsx");
+      //       binadan occluder kurabiliyor ve bina onu `fade` ile kullanıyor.
+      const glb = read("../src/engine/GlbBuilding.tsx");
       checks.push(
         check(
-          "WitchShop tek binayı saydamlaştırıyor (buildOccluder) — caddenin kalanı etkilenmez",
-          witch.includes("buildOccluder") &&
-            witch.includes("resetOccluders") &&
+          "tek bina saydamlaştırması (buildOccluder) — caddenin kalanı etkilenmez",
+          glb.includes("buildOccluder") &&
+            glb.includes("resetOccluders") &&
+            glb.includes("!root || !placement || !fade") &&
             read("../src/engine/buildingOcclusion.ts").includes(
               "export function buildOccluder",
             ),
