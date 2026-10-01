@@ -1,10 +1,14 @@
 /**
  * 🏠 ODA — evin İÇİ. Kapıdaki "Evine gir" düğmesine basınca açılan ekran.
  *
- * Odanın içi gerçek bir GLB modelidir (`constants.ROOM_MODEL_URL`) ve ortada
- * sokaktaki karakterin TA KENDİSİ durur (`RoomStage` → aynı GLB avatar,
- * kuşamıyla). Bileşen:
- *   · modeli ölçüp odaya oturtur (sabit ölçek yok — `roomModelPrep.ts`),
+ * Odanın içi gerçek bir GLB modelidir (`constants.ROOM_MODEL_URL` →
+ * `public/models/empty_office_space.glb`) ve ortada sokaktaki karakterin TA
+ * KENDİSİ durur (`RoomStage` → aynı GLB avatar, kuşamıyla). Bileşen:
+ *   · modeli ölçüp ana haritadan İZOLE bir bölgeye oturtur (sabit ölçek yok —
+ *     `roomModelPrep.ts`), sahne izometrik bakar; karakter zemine dokunarak
+ *     yürür ve duvar sınırından dışarı çıkamaz,
+ *   · oda SAHİBİNE eşya dizme (0,5 m ızgara + duvar sınırı) araçlarını verir;
+ *     düzenleme yalnızca istemcidedir, oda kapanınca sıfırlanır,
  *   · model HAZIR OLANA KADAR ve dosya eksik/bozuksa kodla çizilen YEDEK
  *     odayı gösterir (`ProceduralRoom`): oyuncu hiçbir koşulda boş ekranla
  *     kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır. Yedek
@@ -211,6 +215,9 @@ export function HouseRoom({
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <RoomStage
           equipped={equipped}
+          // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını
+          // gezen oyuncu misafirdir, dekoru değiştirmez.
+          canBuild={view.isMine}
           fallback={({ avatar }) => (
             <ProceduralRoom equipped={equipped} showAvatar={avatar} />
           )}

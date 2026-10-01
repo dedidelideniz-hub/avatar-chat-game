@@ -1,10 +1,16 @@
 /**
- * 🏠 ODA SAHNESİ — oyuncu evinin İÇİ gerçek bir GLB modelidir.
+ * 🏠 ODA SAHNESİ — oyuncu evinin İÇİ gerçek bir GLB modelidir
+ * (`constants.ROOM_MODEL_URL` → `public/models/empty_office_space.glb`).
  *
- * Kapıdaki "Evine gir" düğmesine basınca açılan odanın içi bu bileşenle
- * kurulur: `constants.ROOM_MODEL_URL` modeli indirilir, ÖLÇÜLÜR ve odaya
- * oturtulur (`roomModelPrep.ts`), ortada da sokaktaki karakterin TA KENDİSİ
- * durur (aynı GLB avatarlar — `GlbCharacterPortrait`).
+ * Kapıdaki "Evine gir" düğmesine basınca açılan oda bu bileşenle kurulur:
+ *   · model İNDİRİLİR, ÖLÇÜLÜR ve ana haritadan İZOLE bir bölgeye yerleştirilir
+ *     (`ROOM_ISO.origin` = X/Z 2000 — caddeden 2000 birim uzak, hiçbir şeye
+ *     çarpmaz), `roomModelPrep.ts` → `planIsoRoom`,
+ *   · kamera odayı üstten İZOMETRİK görür, hedefi odanın merkezine sabittir,
+ *   · karakter tam odanın merkezine doğar ve zeminin neresine dokunursan oraya
+ *     yürür; DUVAR SINIRLARINDAN dışarı çıkamaz (odanın dışında zemin yoktur),
+ *   · modelin "Floor"/"Zemin" mesh'i `placementZone` olarak işaretlenir ve
+ *     düzenleme modunda eşyalar bu zeminin üstüne 0,5 m ızgaraya oturur.
  *
  * ⚠️ WEBGL BAĞLAM SAYISI — bu dosyanın en kritik kuralı:
  * Caddede ana sahne zaten bir WebGL bağlamı tutuyor ve cihazlar (özellikle
@@ -41,19 +47,51 @@ import {
   type ReactNode,
 } from "react";
 import { CanvasGuard, WebglContextKeeper, useWebglRetry } from "./WebglCanvas";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import {
+  Canvas,
+  useFrame,
+  useThree,
+  type ThreeEvent,
+} from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import { ROOM_CAMERA, ROOM_FIT, ROOM_MODEL_URL } from "./constants";
+import { ROOM_ISO, ROOM_MODEL_URL } from "./constants";
 import {
+  clampToRoom,
+  findFloorMesh,
+  markPlacementZone,
   measureRoomModel,
-  planRoomCamera,
-  planRoomPlacement,
-  roomStandPoint,
-  type RoomPlacement,
+  planIsoRoom,
+  toRoomLocal,
+  type IsoRoomPlan,
 } from "./roomModelPrep";
+import {
+  FURNITURE,
+  furnitureById,
+  placeFurniture,
+  type FurnitureDef,
+} from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
 import { webglPowerPreference } from "./webglSupport";
+
+/**
+ * İzometrik bakışı kapatan parçaların ADI.
+ *
+ * Kamera odanın dışından, üstten baktığı için tavan/çatı varsa iç mekân
+ * görünmez. Desen bilinçli olarak DAR tutuldu: yalnızca adı tavanı/çatıyı
+ * açıkça söyleyen parçalar gizlenir (ör. "solid" gibi araya kaçabilecek
+ * parçalar için `lid` gibi kısa desenler KULLANILMAZ).
+ */
+const CEILING_PARTS = /ceiling|roof|tavan|çatı|cati|plafon/i;
+
+/** Odada dizilmiş tek bir eşya (yalnızca istemci belleğinde). */
+interface PlacedItem {
+  key: string;
+  id: string;
+  /** Odanın merkezine göre YEREL konum (ızgaraya oturmuş). */
+  x: number;
+  z: number;
+}
 
 /** Oda modelini indirmeye başla (kapı açılırken çağrılır — bkz. `World`). */
 export function preloadRoomModel(): void {
@@ -64,21 +102,21 @@ export function preloadRoomModel(): void {
 /**
  * Odanın ışıkları.
  *
- * Modelin kendi ışığı yoktur (Sketchfab sahneleri ışıksız gelir); oda
- * yumuşak bir gündüz ışığı + tepeden sıcak bir ampulle aydınlatılır.
- * Yoğunluklar odanın ÖLÇÜLEN boyutuna göre kurulur: küçük modelin içinde
- * patlamış parlaklık, büyük modelde karanlık olmasın.
+ * Modelin kendi ışığı yoktur (Sketchfab sahneleri ışıksız gelir); oda yumuşak
+ * bir gündüz ışığı + tepeden sıcak bir ampulle aydınlatılır. Yoğunluklar odanın
+ * ÖLÇÜLEN boyutuna göre kurulur: küçük modelin içinde patlamış parlaklık, büyük
+ * modelde karanlık olmasın.
  */
-function RoomLights({ plan }: { plan: RoomPlacement }) {
+function RoomLights({ plan }: { plan: IsoRoomPlan }) {
   const height = Math.max(1.8, plan.size.y);
   const reach = Math.max(4, plan.size.x + plan.size.z);
   return (
     <>
-      <ambientLight intensity={0.8} />
-      <hemisphereLight args={["#fff3e2", "#4c3a2b", 0.5]} />
-      <directionalLight position={[2.5, height + 1, 2.5]} intensity={1.1} />
+      <ambientLight intensity={0.85} />
+      <hemisphereLight args={["#fff3e2", "#4c3a2b", 0.55]} />
+      <directionalLight position={[6, height + 6, 6]} intensity={1.15} />
       <pointLight
-        position={[0, height * 0.86, 0]}
+        position={[0, height * 0.9, 0]}
         intensity={7}
         distance={reach}
         decay={2}
@@ -89,21 +127,19 @@ function RoomLights({ plan }: { plan: RoomPlacement }) {
 }
 
 /**
- * Odanın kamerası — dikiz açı: odanın ön kenarında, göz hizasında durur.
+ * Odanın kamerası — İZOMETRİK ve SABİT.
  *
- * Kamera, model yüklendiğinde BİR KEZ yerleştirilir (`roomModelPrep.
- * planRoomCamera`); ardından çok hafif bir salınım (nefes) eklenir. Salınım
- * sahneyi canlı tutar ve gerçek bir 3D hacim olduğunu okutur — abartılı
- * hareket, odada duran oyuncuyu rahatsız eder.
+ * Kamera `planIsoRoom`un hesapladığı noktaya bir kez konur ve hedefi odanın
+ * MERKEZİNE kilitlenir (`ROOM_ISO.origin`). Salınım YOKTUR: eşya dizme
+ * (raycaster) ve dokunarak yürütme, kameranın kıpırdamamasını gerektirir —
+ * sallanan kamerada ızgara kayar ve dokunulan nokta kayar.
  */
-function RoomCamera({ plan }: { plan: RoomPlacement }) {
+function RoomCamera({ plan }: { plan: IsoRoomPlan }) {
   const { camera } = useThree();
-  const base = useRef(new THREE.Vector3());
 
   useLayoutEffect(() => {
-    const shot = planRoomCamera(plan);
-    base.current.set(shot.position[0], shot.position[1], shot.position[2]);
-    camera.position.copy(base.current);
+    const shot = plan.camera;
+    camera.position.set(shot.position[0], shot.position[1], shot.position[2]);
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       (camera as THREE.PerspectiveCamera).fov = shot.fov;
       camera.updateProjectionMatrix();
@@ -111,43 +147,214 @@ function RoomCamera({ plan }: { plan: RoomPlacement }) {
     camera.lookAt(shot.target[0], shot.target[1], shot.target[2]);
   }, [camera, plan]);
 
-  useFrame(({ camera: cam, clock }) => {
-    const t = clock.elapsedTime;
-    cam.position.set(
-      base.current.x + Math.sin(t * 0.33) * 0.07,
-      base.current.y + Math.sin(t * 0.51) * 0.025,
-      base.current.z,
-    );
-    const shot = planRoomCamera(plan);
-    cam.lookAt(shot.target[0], shot.target[1], shot.target[2]);
-  });
-
   return null;
 }
 
-/** Odanın içi: model + karakter + ışık/kamera. */
+/**
+ * GÖRÜNMEZ DUVAR ÇARPIŞMASI — odanın ölçülen ayak izinin çevresine konan
+ * engeller.
+ *
+ * SAHİBİ `clampToRoom`dur: bu kutular fizik motoru olmadığı için kendiliğinden
+ * hiçbir şeyi durdurmaz; asıl sınır matematiktir (karakter ve eşya sınırın
+ * dışına ÇIKARILAMAZ). Kutular ileride raycast/fizik eklenirse hazır dursun ve
+ * sahnenin gerçekten kapalı bir hacim olduğunu okutsun diye çizilir —
+ * `visible={false}` oldukları için raycast onları ATLAR: zemine dokunuşu
+ * engellemezler.
+ */
+function WallColliders({ half }: { half: { x: number; z: number } }) {
+  const t = 0.12;
+  const h = 3;
+  const walls: [number, number, number, number, number, number][] = [
+    [
+      half.x + t,
+      h / 2,
+      0,
+      t,
+      h,
+      half.z * 2 + t * 2,
+    ],
+    [-half.x - t, h / 2, 0, t, h, half.z * 2 + t * 2],
+    [0, h / 2, half.z + t, half.x * 2 + t * 2, h, t],
+    [0, h / 2, -half.z - t, half.x * 2 + t * 2, h, t],
+  ];
+  return (
+    <>
+      {walls.map((wall, i) => (
+        <mesh
+          key={i}
+          position={[wall[0], wall[1], wall[2]]}
+          visible={false}
+          userData={{ roomWall: true }}
+        >
+          <boxGeometry args={[wall[3], wall[4], wall[5]]} />
+          <meshBasicMaterial />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Odadaki karakter — sokaktaki avatarla AYNI model ve kuşam.
+ *
+ * Zeminin neresine dokunulursa oraya yürür (`moveTarget`) ve yürürken gittiği
+ * yöne döner. Hareket hedefi `clampToRoom`dan geçmiş olduğu için karakter
+ * odanın dışına — zemini olmayan boşluğa — çıkamaz.
+ */
+function RoomCharacter({
+  plan,
+  equipped,
+  moveTarget,
+}: {
+  plan: IsoRoomPlan;
+  equipped: string[];
+  moveTarget: { current: { x: number; z: number } };
+}) {
+  const root = useRef<THREE.Group>(null);
+  const yaw = useRef(0);
+
+  useFrame((_, delta) => {
+    const group = root.current;
+    if (!group) return;
+    const target = moveTarget.current;
+    const dx = target.x - group.position.x;
+    const dz = target.z - group.position.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > 0.03) {
+      const step = Math.min(distance, 2.4 * Math.min(delta, 0.05));
+      group.position.x += (dx / distance) * step;
+      group.position.z += (dz / distance) * step;
+      yaw.current = Math.atan2(dx, dz);
+    }
+    // Yumuşak dönüş: ani sıçrama yok.
+    group.rotation.y += (yaw.current - group.rotation.y) * Math.min(1, delta * 9);
+  });
+
+  const radius = ROOM_ISO.characterHeight * 0.42;
+  return (
+    <group ref={root}>
+      {/* Temas gölgesi: havada duruyor izlenimi vermesin. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
+        <circleGeometry args={[radius, 32]} />
+        <meshBasicMaterial
+          color="#000000"
+          transparent
+          opacity={0.16}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* Portre bileşeni karakteri kendi ekseninde ortalar; bu yüzden yarım boy
+          yukarı alınarak AYAKLARI zemine (y 0) bastırılır. */}
+      <group position={[0, ROOM_ISO.characterHeight / 2, 0]}>
+        <GlbCharacterPortrait
+          equipped={equipped}
+          height={ROOM_ISO.characterHeight}
+          spin={false}
+        />
+      </group>
+    </group>
+  );
+}
+
+/** Dizilmiş bir eşya — basit prizmalarla çizilir (harici varlık yok). */
+function FurniturePiece({
+  def,
+  position,
+  canRemove,
+  onRemove,
+}: {
+  def: FurnitureDef;
+  position: [number, number, number];
+  canRemove: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <group
+      position={position}
+      onPointerDown={(event) => {
+        // Yalnızca düzenleme modunda: eşyaya dokunmak onu KALDIRIR. Normal
+        // modda eşya sadece dekor.
+        if (!canRemove) return;
+        event.stopPropagation();
+        onRemove();
+      }}
+    >
+      <mesh position={[0, def.h / 2, 0]} receiveShadow castShadow>
+        <boxGeometry args={[def.w, def.h, def.d]} />
+        <meshStandardMaterial color={def.color} roughness={0.85} />
+      </mesh>
+      {def.accent && (
+        <mesh position={[0, def.h - 0.03, 0]} castShadow>
+          <boxGeometry args={[def.w * 0.9, 0.06, def.d * 0.9]} />
+          <meshStandardMaterial color={def.accent} roughness={0.6} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+/**
+ * Odanın içi: izole bölge grubu + model + zemin + duvarlar + karakter + eşyalar.
+ *
+ * BÜTÜN ODA TEK BİR `origin` GRUBUNUN İÇİNDE durur: model, zemin, duvar
+ * engelleri, karakter ve eşyalar aynı yerel uzayı paylaşır (merkez = odanın
+ * merkezi, y 0 = zemin). Böylece "2000'e taşıma" tek satırdır ve oda içi
+ * matematik temiz kalır.
+ */
 function RoomInterior({
   equipped,
   onReady,
+  isBuildMode,
+  buildItem,
+  placed,
+  onPlace,
+  onRemove,
 }: {
   equipped: string[];
   onReady: () => void;
+  isBuildMode: boolean;
+  buildItem: string;
+  placed: PlacedItem[];
+  onPlace: (x: number, z: number) => void;
+  onRemove: (key: string) => void;
 }) {
   const { scene } = useGLTF(ROOM_MODEL_URL);
+  const moveTarget = useRef({ x: 0, z: 0 });
 
   const plan = useMemo(() => {
     const box = measureRoomModel(scene as THREE.Object3D);
-    return box ? planRoomPlacement(box, ROOM_FIT.span) : null;
+    return box ? planIsoRoom(box) : null;
+  }, [scene]);
+
+  // ZEMİN: adından/seklinden bulunur ve `placementZone` işaretlenir. Hiçbir
+  // parça zemin sayılamıyorsa (tek mesh'e sıkışmış model) ölçülen kutudan
+  // kodla bir düzlem kurulur → eşya dizme yine çalışır.
+  const { floorMesh, fallbackFloor } = useMemo(() => {
+    const found = findFloorMesh(scene as THREE.Object3D);
+    return {
+      floorMesh: markPlacementZone(found),
+      fallbackFloor: found === null,
+    };
   }, [scene]);
 
   // Gölge bayrakları: oda iç mekân olduğu için yalnızca ALIR (dışarıdan güneş
-  // gelmez); karakterin altına ayrıca yumuşak bir temas gölgesi çizilir.
+  // gelmez); karakter ve eşyalar gölge düşürür.
+  //
+  // TAVAN/ÇATI GİZLEME: kamera odayı DIŞARIDAN, üstten (izometrik) görür.
+  // Modelde tavan/çatı parçası varsa oyuncu odanın içini değil ÇATIYI görür.
+  // Bu yüzden yalnızca ADI bunu açıkça söyleyen parçalar gizlenir — bir tahmin
+  // değil, modele sorulmuş bir bilgidir (bina tarafındaki `IGNORED_PARTS` ile
+  // aynı desen). Adında geçmiyorsa hiçbir şeye dokunulmaz.
   useEffect(() => {
     const root = scene as THREE.Object3D;
     if (!root?.isObject3D) return;
     root.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
+      if (CEILING_PARTS.test(mesh.name ?? "")) {
+        mesh.visible = false;
+        return;
+      }
       mesh.castShadow = false;
       mesh.receiveShadow = true;
     });
@@ -157,43 +364,98 @@ function RoomInterior({
     if (plan) onReady();
   }, [plan, onReady]);
 
+  /**
+   * Zemine dokunuş: raycast sonuçları arasından `placementZone` işaretli ilk
+   * kesişim seçilir. NEDEN TÜM KESİŞİMLER TARANIR: izometrik bakışta öndeki bir
+   * duvar/tavan zeminden önce kesilebilir; ilk kesişime bakmak dokunuşu
+   * "ölü" bırakırdı. Yüzeyi YİNE zemin seçiyoruz — duvara dokunmak eşya
+   * yerleştirmez.
+   */
+  const handleFloorPress = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      if (!plan) return;
+      const hit = event.intersections.find(
+        (i) => i.object.userData?.placementZone === true,
+      );
+      if (!hit) return;
+      event.stopPropagation();
+      const local = toRoomLocal(hit.point, plan);
+      if (isBuildMode) {
+        const def = furnitureById(buildItem);
+        const spot = placeFurniture(local, def, plan.half);
+        onPlace(spot.x, spot.z);
+      } else {
+        moveTarget.current = clampToRoom(
+          local,
+          plan.half,
+          ROOM_ISO.characterRadius,
+        );
+      }
+    },
+    [plan, isBuildMode, buildItem, onPlace],
+  );
+
   if (!plan) return null;
 
-  const stand = roomStandPoint(plan);
+  const gridSpan = Math.max(plan.size.x, plan.size.z);
+  const gridDivisions = Math.max(2, Math.round(gridSpan / ROOM_ISO.grid));
 
   return (
     <>
       <RoomCamera plan={plan} />
       <RoomLights plan={plan} />
 
-      {/* Oda: tabanı zemine (y 0), merkezi orijinde — ölçülen kutuya göre. */}
-      <group
-        position={[plan.offset.x, plan.offset.y, plan.offset.z]}
-        scale={plan.scale}
-      >
-        <primitive object={scene} />
-      </group>
+      {/* ── İZOLE ODA BÖLGESİ: tek grup, tek merkez (ROOM_ISO.origin) ── */}
+      <group position={plan.origin}>
+        {/* Model: merkez X/Z'de, taban y 0'da — ölçülen kutuya göre. */}
+        <group
+          position={[plan.offset.x, plan.offset.y, plan.offset.z]}
+          scale={plan.scale}
+          onPointerDown={handleFloorPress}
+        >
+          <primitive object={scene} />
+        </group>
 
-      {/* Karakterin altındaki temas gölgesi: havada duruyor izlenimi vermesin. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[stand.x, 0.012, stand.z]}>
-        <circleGeometry args={[ROOM_FIT.characterHeight * 0.42, 32]} />
-        <meshBasicMaterial
-          color="#000000"
-          transparent
-          opacity={0.16}
-          depthWrite={false}
-        />
-      </mesh>
+        {/* Zemin yedeği: model kendi zeminini ayırt ettirmediğinde. */}
+        {fallbackFloor && (
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.005, 0]}
+            userData={{ placementZone: true }}
+            onPointerDown={handleFloorPress}
+          >
+            <planeGeometry args={[plan.size.x, plan.size.z]} />
+            <meshBasicMaterial
+              color="#c9a06a"
+              transparent
+              opacity={0.12}
+              depthWrite={false}
+            />
+          </mesh>
+        )}
 
-      {/* Ortadaki karakter: sokaktakiyle AYNI model ve kuşam. Portre
-          bileşeni karakteri kendi ekseninde ortalar; bu yüzden yarım boy
-          yukarı alınarak AYAKLARI zemine (y 0) bastırılır. */}
-      <group position={[stand.x, ROOM_FIT.characterHeight / 2, stand.z]}>
-        <GlbCharacterPortrait
-          equipped={equipped}
-          height={ROOM_FIT.characterHeight}
-          spin={false}
-        />
+        {/* Duvarlar: karakter/eşya bu ölçülmüş ayak izinin dışına çıkamaz. */}
+        <WallColliders half={plan.half} />
+
+        {/* Düzenleme modunda 0,5 m ızgarası: eşyanın nereye oturacağı görünür. */}
+        {isBuildMode && (
+          <gridHelper
+            args={[gridSpan, gridDivisions, "#f0c987", "#8a5a34"]}
+            position={[0, 0.02, 0]}
+          />
+        )}
+
+        {placed.map((item) => (
+          <FurniturePiece
+            key={item.key}
+            def={furnitureById(item.id)}
+            position={[item.x, 0, item.z]}
+            canRemove={isBuildMode}
+            onRemove={() => onRemove(item.key)}
+          />
+        ))}
+
+        <RoomCharacter plan={plan} equipped={equipped} moveTarget={moveTarget} />
       </group>
     </>
   );
@@ -221,8 +483,15 @@ class RoomBoundary extends Component<
 }
 
 export interface RoomStageProps {
-  /** Karakterin kuşandığı eşyalar (sokaktakiyle aynı görünüm). */
+  /** Karakterin kuşandığı eşyalar (sokattakiyle aynı görünüm). */
   equipped: string[];
+  /**
+   * Düzenleme (eşya dizme) araçları gösterilsin mi?
+   *
+   * Yalnızca odanın SAHİBİ için `true` gelir: komşunun odasına misafir olarak
+   * giren oyuncu eşya dizmez (odayı yalnızca gezer).
+   */
+  canBuild?: boolean;
   /**
    * Model hazır değilken/hazırlanamazken gösterilen yedek oda.
    *
@@ -237,8 +506,12 @@ export interface RoomStageProps {
  * Oda sahnesi: yedek oda altta durur, 3D oda hazır olduğunda üstüne açılır.
  * 3D oda hiç kurulamazsa/yüklenemezse sahne sökülür ve yedek oda (avatarıyla
  * birlikte) kalıcı olur.
+ *
+ * DÜZENLEME DURUMU (eşya listesi, seçili eşya) burada tutulur ve HİÇBİR YERE
+ * YAZILMAZ: oda kapanınca (bileşen sökülünce) liste kendiliğinden sıfırlanır.
+ * İstenen davranış bu: düzenleme istemci tarafı ve kalıcı değil.
  */
-export function RoomStage({ equipped, fallback }: RoomStageProps) {
+export function RoomStage({ equipped, canBuild = false, fallback }: RoomStageProps) {
   // Bağlam açılabiliyor mu ve hangi `powerPreference` ile? Açılamıyorsa 3D
   // sahneyi hiç denemeyiz; seçilen ayar gerçek sahneye aynen geçirilir
   // (`webglSupport.ts` → deneme ile sahne AYNI şeyi ister).
@@ -250,11 +523,30 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
   // yeniden dener; denemeler biterse (`exhausted`) yedek oda kalıcı olur.
   const { attempt, exhausted, handleCreated } = useWebglRetry(2);
 
+  // ── Düzenleme modu (yalnızca istemci belleği) ──
+  const [isBuildMode, setBuildMode] = useState(false);
+  const [buildItem, setBuildItem] = useState(FURNITURE[0].id);
+  const [placed, setPlaced] = useState<PlacedItem[]>([]);
+
   const handleReady = useCallback(() => setReady(true), []);
   const handleFail = useCallback(() => setFailed(true), []);
   const handleCanvasCreated = useCallback(() => {
     handleCreated();
   }, [handleCreated]);
+
+  const handlePlace = useCallback(
+    (x: number, z: number) => {
+      setPlaced((prev) => [
+        ...prev,
+        { key: `f${prev.length}_${buildItem}`, id: buildItem, x, z },
+      ]);
+    },
+    [buildItem],
+  );
+  const handleRemove = useCallback(
+    (key: string) => setPlaced((prev) => prev.filter((item) => item.key !== key)),
+    [],
+  );
 
   // Yedek oda, 3D oda açıldıktan SONRA sökülür: geçiş yumuşak olur ve
   // gereksiz bir WebGL bağlamı açık kalmaz.
@@ -265,10 +557,12 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
   }, [ready]);
 
   // 3D sahne yok: yedek oda kalıcı ve avatarını kendi çizebilir (başka
-  // bağlam yok).
+  // bağlam yok). Düzenleme araçları da anlamsız → gösterilmez.
   if (!power || failed || exhausted) {
     return <div className="absolute inset-0">{fallback({ avatar: true })}</div>;
   }
+
+  const selected = furnitureById(buildItem);
 
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -287,6 +581,62 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
           🚪 Oda yerleştiriliyor…
         </div>
       )}
+
+      {/* ── DÜZENLEME PANELİ (yalnızca odanın sahibi) ── */}
+      {canBuild && ready && (
+        <div className="absolute inset-x-0 bottom-0 z-20 space-y-1.5 px-2 pb-2">
+          {isBuildMode && (
+            <p className="rounded-full bg-black/45 px-3 py-1 text-center text-[10px] font-bold text-white/85 backdrop-blur-sm">
+              Zemine dokun → “{selected.label}” 0,5 m ızgaraya oturur · eşyaya
+              dokun → kaldır
+            </p>
+          )}
+          <div className="flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/45 p-1.5 backdrop-blur">
+            <button
+              type="button"
+              onClick={() => setBuildMode((v) => !v)}
+              className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-extrabold transition-colors ${
+                isBuildMode
+                  ? "bg-[#f0c987] text-[#3d2f2a]"
+                  : "bg-white/10 text-white/90 hover:bg-white/20"
+              }`}
+            >
+              {isBuildMode ? "✅ Bitti" : "🛠️ Düzenle"}
+            </button>
+            {isBuildMode && (
+              <>
+                <div className="flex flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {FURNITURE.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      title={item.label}
+                      onClick={() => setBuildItem(item.id)}
+                      className={`shrink-0 rounded-xl px-2.5 py-2 text-base transition-colors ${
+                        item.id === buildItem
+                          ? "bg-[#f0c987]"
+                          : "bg-white/10 hover:bg-white/20"
+                      }`}
+                    >
+                      {item.emoji}
+                    </button>
+                  ))}
+                </div>
+                {placed.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPlaced([])}
+                    className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-extrabold text-white/90 hover:bg-white/20"
+                  >
+                    🧹 Temizle
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <CanvasGuard onFail={handleFail} resetKey={attempt}>
         <Canvas
           key={attempt}
@@ -297,11 +647,17 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
             transition: "opacity 700ms ease",
           }}
           dpr={[1, 1.6]}
+          shadows
           camera={{
-            fov: ROOM_CAMERA.fov,
-            position: [0, ROOM_CAMERA.eyeY, 2.4],
-            near: 0.05,
-            far: 300,
+            fov: ROOM_ISO.camera.fov,
+            // İzometrik açı: odanın merkezine göre (12, 15, 12).
+            position: [
+              ROOM_ISO.origin[0] + ROOM_ISO.camera.offset[0],
+              ROOM_ISO.origin[1] + ROOM_ISO.camera.offset[1],
+              ROOM_ISO.origin[2] + ROOM_ISO.camera.offset[2],
+            ],
+            near: ROOM_ISO.near,
+            far: ROOM_ISO.far,
           }}
           gl={{
             alpha: true,
@@ -325,7 +681,15 @@ export function RoomStage({ equipped, fallback }: RoomStageProps) {
           />
           <RoomBoundary onFail={handleFail}>
             <Suspense fallback={null}>
-              <RoomInterior equipped={equipped} onReady={handleReady} />
+              <RoomInterior
+                equipped={equipped}
+                onReady={handleReady}
+                isBuildMode={isBuildMode}
+                buildItem={buildItem}
+                placed={placed}
+                onPlace={handlePlace}
+                onRemove={handleRemove}
+              />
             </Suspense>
           </RoomBoundary>
         </Canvas>

@@ -1889,9 +1889,9 @@ const scenarios: Scenario[] = [
   {
     id: "oda-modeli",
     title:
-      "🏠 ODA MODELİ · odanın içi GLB ile kurulur: ölçülür, ölçeklenir, karakter zemine basar",
+      "🏠 ODA MODELİ · odanın içi GLB ile kurulur: ölçülür, izole bölgeye kurulur, duvar sınırı + 0,5 m ızgara",
     handles:
-      "src/engine/constants.ts (ROOM_*) + src/engine/roomModelPrep.ts + src/engine/RoomStage.tsx + src/components/world/HouseRoom.tsx + src/pages/World.tsx",
+      "src/engine/constants.ts (ROOM_ISO/ROOM_MODEL_URL) + src/engine/roomModelPrep.ts + src/engine/roomBuild.ts + src/engine/RoomStage.tsx + src/components/world/HouseRoom.tsx + src/pages/World.tsx",
     run: async () => {
       const { readFileSync } = await import("node:fs");
       const read = (path: string) =>
@@ -1900,10 +1900,14 @@ const scenarios: Scenario[] = [
       const K = await import("../src/engine/constants");
       const {
         measureRoomModel,
-        planRoomPlacement,
-        planRoomCamera,
-        roomStandPoint,
+        findFloorMesh,
+        planIsoRoom,
+        clampToRoom,
+        markPlacementZone,
       } = await import("../src/engine/roomModelPrep");
+      const { FURNITURE, placeFurniture, snapToGrid } = await import(
+        "../src/engine/roomBuild"
+      );
 
       const checks: Check[] = [];
 
@@ -1947,118 +1951,279 @@ const scenarios: Scenario[] = [
       );
 
       const rawSize = box.getSize(new THREE.Vector3());
-      const plan = planRoomPlacement(box, K.ROOM_FIT.span);
+      const plan = planIsoRoom(box);
+      const prep = read("../src/engine/roomModelPrep.ts");
+      const build = read("../src/engine/roomBuild.ts");
+      const stage = read("../src/engine/RoomStage.tsx");
+      const house = read("../src/components/world/HouseRoom.tsx");
+      const world = read("../src/pages/World.tsx");
 
-      // ── 2) ÖLÇEK: en geniş YATAY kenar hedef açıklığa eşitlenir, ölçek
-      //       modelin kendi oranından çıkar (sabit sayı yok).
-      checks.push(
-        check(
-          "oda en geniş yatay kenarı `span`a ölçekleniyor",
-          Math.abs(Math.max(plan.size.x, plan.size.z) - K.ROOM_FIT.span) < 1e-6,
-          `${Math.max(plan.size.x, plan.size.z).toFixed(2)} (hedef ${K.ROOM_FIT.span})`,
-        ),
-      );
-      checks.push(
-        check(
-          "ölçek modelin kendi ölçüsünden türüyor (sabit ölçek yazılmamış)",
-          Math.abs(
-            plan.scale - K.ROOM_FIT.span / Math.max(rawSize.x, rawSize.z),
-          ) < 1e-9,
-          `ölçek ${plan.scale.toFixed(5)}`,
-        ),
-      );
-
-      // ── 3) OTURMA: taban zemine (y 0), merkez orijinde. Formül tekrarı
-      //       yerine dönüşüm GERÇEKTEN uygulanıp kutunun nereye düştüğü ölçülür.
-      const placed = box
+      // ── 2) İZOLE YERLEŞİM: oda ana haritadan uzakta (X/Z 2000) durur. Formül
+      //       tekrarı yerine dönüşüm GERÇEKTEN uygulanıp kutunun nereye
+      //       düştüğü ölçülür.
+      const placedWorld = box
         .clone()
         .applyMatrix4(
           new THREE.Matrix4()
             .makeScale(plan.scale, plan.scale, plan.scale)
             .setPosition(plan.offset.x, plan.offset.y, plan.offset.z),
-        );
-      const pSize = placed.getSize(new THREE.Vector3());
-      const pCenter = placed.getCenter(new THREE.Vector3());
+        )
+        .translate(new THREE.Vector3(...plan.origin));
+      const worldSize = placedWorld.getSize(new THREE.Vector3());
+      const worldCenter = placedWorld.getCenter(new THREE.Vector3());
+
       checks.push(
         check(
-          "oda ALTTAN oturuyor (taban y 0) — zemine gömülmez, havada kalmaz",
-          Math.abs(placed.min.y) < 1e-6,
-          `taban y ${placed.min.y.toFixed(4)}`,
+          "oda ana haritadan İZOLE bir bölgeye yerleşiyor (X/Z 2000)",
+          plan.origin[0] === K.ROOM_ISO.origin[0] &&
+            plan.origin[2] === K.ROOM_ISO.origin[2] &&
+            plan.origin[0] > K.WORLD_WIDTH,
+          `origin ${plan.origin.join(", ")}`,
         ),
       );
       checks.push(
         check(
-          "oda X/Z merkezinde duruyor (oyuncu odanın ortasına bakar)",
-          Math.abs(pCenter.x) < 1e-6 && Math.abs(pCenter.z) < 1e-6,
-          `merkez ${pCenter.x.toFixed(3)}, ${pCenter.z.toFixed(3)}`,
+          "oda merkezi TAM origin'de (oyuncu/kamera odanın ortasını paylaşır)",
+          Math.abs(worldCenter.x - plan.origin[0]) < 1e-6 &&
+            Math.abs(worldCenter.z - plan.origin[2]) < 1e-6,
+          `merkez ${worldCenter.x.toFixed(4)}, ${worldCenter.z.toFixed(4)}`,
+        ),
+      );
+      checks.push(
+        check(
+          "oda ALTTAN oturuyor (taban y 0) — zemine gömülmez, havada kalmaz",
+          Math.abs(placedWorld.min.y) < 1e-6,
+          `taban y ${placedWorld.min.y.toFixed(4)}`,
+        ),
+      );
+      checks.push(
+        check(
+          "duvar sınırları ÖLÇÜLEN kutudan türüyor (elle yazılmamış)",
+          Math.abs(plan.half.x - worldSize.x / 2) < 1e-9 &&
+            Math.abs(plan.half.z - worldSize.z / 2) < 1e-9 &&
+            Math.abs(plan.bounds.maxX - (plan.origin[0] + plan.half.x)) < 1e-9,
+          `yarı açıklık ${plan.half.x.toFixed(2)} × ${plan.half.z.toFixed(2)}`,
+        ),
+      );
+
+      // ── 3) ÖLÇEK: test kutusu dünya biriminde DEĞİL (125×90×300) → otomatik
+      //       ölçek. Normal ölçekli modelde varsayılan (scale 1) korunur.
+      checks.push(
+        check(
+          "ham model dünya biriminde değilse oda otomatik ölçekleniyor",
+          plan.autoScaled &&
+            Math.abs(Math.max(plan.size.x, plan.size.z) - K.ROOM_ISO.span) < 1e-6,
+          `${Math.max(plan.size.x, plan.size.z).toFixed(2)} (ham ${Math.max(rawSize.x, rawSize.z).toFixed(0)})`,
+        ),
+      );
+      const normalPlan = planIsoRoom(
+        new THREE.Box3(new THREE.Vector3(-5, 0, -4), new THREE.Vector3(5, 3, 4)),
+      );
+      checks.push(
+        check(
+          "normal ölçekli model `scale: 1` ile yerleşiyor (spesifikasyon)",
+          normalPlan.autoScaled === false && normalPlan.scale === K.ROOM_ISO.scale,
+          `ölçek ${normalPlan.scale}`,
         ),
       );
       checks.push(
         check(
           "ölçek TEK TİP: odanın oranları bozulmuyor",
-          Math.abs(pSize.y / pSize.x - rawSize.y / rawSize.x) < 1e-6 &&
-            Math.abs(pSize.z / pSize.x - rawSize.z / rawSize.x) < 1e-6,
+          Math.abs(worldSize.y / worldSize.x - rawSize.y / rawSize.x) < 1e-9 &&
+            Math.abs(worldSize.z / worldSize.x - rawSize.z / rawSize.x) < 1e-9,
         ),
       );
 
-      // ── 4) KAMERA: odanın İÇİNDE, göz hizasında, karaktere `minDistance`ten
-      //       yakın değil. Alçak modellerde de tavanın altında kalmalı.
-      const shot = planRoomCamera(plan);
-      const stand = roomStandPoint(plan);
+      // ── 4) KAMERA: izometrik, hedefi odanın MERKEZİNDE sabit. Spec yönü
+      //       (12, 15, 12); oda büyükse mesafe AÇILIR (yakınlaşmaz).
+      const camOffset = new THREE.Vector3(
+        plan.camera.position[0] - plan.camera.target[0],
+        plan.camera.position[1] - plan.camera.target[1],
+        plan.camera.position[2] - plan.camera.target[2],
+      );
+      const camDir = camOffset.clone().normalize();
+      const specDir = new THREE.Vector3(...K.ROOM_ISO.camera.offset).normalize();
       checks.push(
         check(
-          "kamera odanın İÇİNDE (duvarın/tavanın arkasından bakmıyor)",
-          shot.position[1] > 0 &&
-            shot.position[1] < plan.size.y &&
-            shot.position[2] < plan.size.z / 2 &&
-            Math.abs(shot.target[2]) < plan.size.z / 2,
-          `göz y ${shot.position[1].toFixed(2)} / tavan ${plan.size.y.toFixed(2)}`, 
+          "kamera hedefi odanın merkezine sabit (lookAt → origin)",
+          plan.camera.target[0] === plan.origin[0] &&
+            plan.camera.target[1] === plan.origin[1] &&
+            plan.camera.target[2] === plan.origin[2],
+          `hedef ${plan.camera.target.join(", ")}`,
         ),
       );
       checks.push(
         check(
-          "kamera karaktere `minDistance`ten yakın değil (burun buruna değil)",
-          shot.position[2] - stand.z >= K.ROOM_CAMERA.minDistance - 1e-9,
-          `${(shot.position[2] - stand.z).toFixed(2)} ≥ ${K.ROOM_CAMERA.minDistance}`,
+          "kamera İZOMETRİK: spec yönü (12, 15, 12) korunuyor",
+          Math.abs(camDir.x - specDir.x) < 1e-6 &&
+            Math.abs(camDir.y - specDir.y) < 1e-6 &&
+            Math.abs(camDir.z - specDir.z) < 1e-6,
+        ),
+      );
+      checks.push(
+        check(
+          "varsayılan odada kamera spec noktasında (2000+12, 15, 2000+12)",
+          Math.abs(plan.camera.position[0] - (K.ROOM_ISO.origin[0] + 12)) < 1e-6 &&
+            Math.abs(plan.camera.position[1] - 15) < 1e-6 &&
+            Math.abs(plan.camera.position[2] - (K.ROOM_ISO.origin[2] + 12)) < 1e-6,
+          `kamera ${plan.camera.position.map((n) => n.toFixed(1)).join(", ")}`,
+        ),
+      );
+      const bigPlan = planIsoRoom(
+        new THREE.Box3(new THREE.Vector3(-10, 0, -10), new THREE.Vector3(10, 4, 10)),
+      );
+      checks.push(
+        check(
+          "büyük odada kamera geri çekiliyor (oda yine de çerçevede)",
+          bigPlan.camera.position[1] > plan.camera.position[1],
+          `göz y ${bigPlan.camera.position[1].toFixed(1)} > ${plan.camera.position[1].toFixed(1)}`,
         ),
       );
 
-      const flat = new THREE.Box3(
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(10, 2, 10),
+      // ── 5) KARAKTER: tam merkeze doğar, duvar sınırından DIŞARI çıkamaz
+      //       (odanın dışında zemin yoktur — düşme yoktur).
+      const spawn = clampToRoom({ x: 0, z: 0 }, normalPlan.half, K.ROOM_ISO.characterRadius);
+      const escaped = clampToRoom(
+        { x: 9999, z: -9999 },
+        normalPlan.half,
+        K.ROOM_ISO.characterRadius,
       );
-      const flatPlan = planRoomPlacement(flat, K.ROOM_FIT.span);
-      const flatShot = planRoomCamera(flatPlan);
       checks.push(
         check(
-          "alçak odada kamera tavanın ALTINDA kalıyor",
-          flatShot.position[1] < flatPlan.size.y,
-          `göz ${flatShot.position[1].toFixed(2)} < tavan ${flatPlan.size.y.toFixed(2)}`,
-        ),
-      );
-
-      // ── 5) KARAKTER: zemine basar, odanın içinde ve tavanın altında.
-      const stage = read("../src/engine/RoomStage.tsx");
-      const house = read("../src/components/world/HouseRoom.tsx");
-      const world = read("../src/pages/World.tsx");
-      checks.push(
-        check(
-          "karakter zemine basıyor (portre yarım boy yukarı alınıyor)",
-          stage.includes("ROOM_FIT.characterHeight / 2"),
+          "oyuncu odanın TAM merkezine doğuyor (2000, 0, 2000)",
+          spawn.x === 0 && spawn.z === 0,
         ),
       );
       checks.push(
         check(
-          "karakter odanın derinliği içinde duruyor (duvara girmiyor)",
-          stand.z >= 0 && stand.z <= plan.size.z / 2,
-          `z ${stand.z.toFixed(2)} (yarı derinlik ${(plan.size.z / 2).toFixed(2)})`,
+          "karakter duvar sınırından DIŞARI çıkamıyor (boşluğa düşmez)",
+          Math.abs(escaped.x) <=
+            normalPlan.half.x - K.ROOM_ISO.characterRadius + 1e-9 &&
+            Math.abs(escaped.z) <=
+              normalPlan.half.z - K.ROOM_ISO.characterRadius + 1e-9,
+          `kırpılmış ${escaped.x.toFixed(2)}, ${escaped.z.toFixed(2)} (yarı ${normalPlan.half.x.toFixed(2)} × ${normalPlan.half.z.toFixed(2)})`,
         ),
       );
       checks.push(
         check(
           "karakter odanın yüksekliğine sığıyor",
-          K.ROOM_FIT.characterHeight < plan.size.y,
-          `karakter ${K.ROOM_FIT.characterHeight} < oda ${plan.size.y.toFixed(2)}`,
+          K.ROOM_ISO.characterHeight < plan.size.y,
+          `karakter ${K.ROOM_ISO.characterHeight} < oda ${plan.size.y.toFixed(2)}`,
+        ),
+      );
+      checks.push(
+        check(
+          "karakter zemine basıyor (portre yarım boy yukarı alınıyor)",
+          stage.includes("ROOM_ISO.characterHeight / 2"),
+        ),
+      );
+
+      // ── 6) ZEMİN (placementZone): ad/sekil sezgisi + yedek düzlem + ızgara.
+      const floored = new THREE.Group();
+      const floorSlab = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 0.2, 8),
+        new THREE.MeshBasicMaterial(),
+      );
+      floorSlab.name = "Floor";
+      const wallSlab = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 3, 0.2),
+        new THREE.MeshBasicMaterial(),
+      );
+      wallSlab.name = "Wall";
+      floored.add(floorSlab, wallSlab);
+      const foundFloor = findFloorMesh(floored);
+      checks.push(
+        check(
+          "adında 'Floor' geçen mesh zemin olarak bulunuyor",
+          foundFloor === floorSlab,
+          foundFloor ? foundFloor.name : "bulunamadı",
+        ),
+      );
+      checks.push(
+        check(
+          "zemin `placementZone` olarak işaretleniyor (raycaster tespiti)",
+          markPlacementZone(foundFloor)?.userData.placementZone === true &&
+            prep.includes("export function markPlacementZone"),
+        ),
+      );
+      const anon = new THREE.Group();
+      const anonSlab = new THREE.Mesh(
+        new THREE.BoxGeometry(6, 0.15, 6),
+        new THREE.MeshBasicMaterial(),
+      );
+      anon.add(
+        anonSlab,
+        new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), new THREE.MeshBasicMaterial()),
+      );
+      checks.push(
+        check(
+          "ad yoksa en GENİŞ ve en İNCE parça zemin sayılıyor",
+          findFloorMesh(anon) === anonSlab,
+        ),
+      );
+      const solid = new THREE.Group();
+      solid.add(
+        new THREE.Mesh(new THREE.BoxGeometry(10, 4, 10), new THREE.MeshBasicMaterial()),
+      );
+      checks.push(
+        check(
+          "zemin ayırt edilemezse null döner ve ÖLÇÜLEN kutudan yedek zemin kurulur",
+          findFloorMesh(solid) === null &&
+            stage.includes("findFloorMesh") &&
+            stage.includes("fallbackFloor"),
+        ),
+      );
+      checks.push(
+        check(
+          "zemin dokunuşu TÜM kesişimler taranıp placementZone'dan seçiliyor",
+          stage.includes("placementZone === true") &&
+            stage.includes("event.intersections.find"),
+        ),
+      );
+
+      // ── 7) DÜZENLEME (BUILD MODE): 0,5 m ızgara, duvar sınırı dışına taşmaz.
+      const sofa = FURNITURE.find((f) => f.id === "sofa") ?? FURNITURE[0];
+      const onGrid = (v: number) =>
+        Math.abs(v / K.ROOM_ISO.grid - Math.round(v / K.ROOM_ISO.grid)) < 1e-9;
+      checks.push(
+        check(
+          "ızgara adımı 0,5 m × 0,5 m (spesifikasyon)",
+          K.ROOM_ISO.grid === 0.5,
+          `${K.ROOM_ISO.grid} m`,
+        ),
+      );
+      checks.push(
+        check(
+          "eşya en yakın ızgara çizgisine yuvarlanıyor",
+          Math.abs(snapToGrid(1.24) - 1.0) < 1e-9 &&
+            Math.abs(snapToGrid(1.26) - 1.5) < 1e-9,
+          `1.24→${snapToGrid(1.24)} · 1.26→${snapToGrid(1.26)}`,
+        ),
+      );
+      const centered = placeFurniture({ x: 1.24, z: -2.7 }, sofa, normalPlan.half);
+      checks.push(
+        check(
+          "dizilen eşya oda içinde ve ızgaraya oturuyor",
+          onGrid(centered.x) && onGrid(centered.z),
+          `${centered.x}, ${centered.z}`,
+        ),
+      );
+      const overflow = placeFurniture({ x: 9999, z: -9999 }, sofa, normalPlan.half);
+      const limitX = normalPlan.half.x - sofa.w / 2 - K.ROOM_ISO.wallMargin;
+      const limitZ = normalPlan.half.z - sofa.d / 2 - K.ROOM_ISO.wallMargin;
+      checks.push(
+        check(
+          "eşya DUVAR SINIRI dışına çıkamıyor (ızgara sınırı ezemez)",
+          overflow.x <= limitX + 1e-9 && overflow.z >= -limitZ - 1e-9,
+          `x ${overflow.x} ≤ ${limitX.toFixed(2)} · z ${overflow.z} ≥ ${(-limitZ).toFixed(2)}`,
+        ),
+      );
+      checks.push(
+        check(
+          "eşya kataloğu ve yerleştirme matematiği ayrı modülde (roomBuild.ts)",
+          build.includes("export const FURNITURE") &&
+            build.includes("export function placeFurniture") &&
+            build.includes("export function snapToGrid"),
         ),
       );
 
@@ -2066,23 +2231,60 @@ const scenarios: Scenario[] = [
       checks.push(
         check(
           "oda modeli tek yerden yönetiliyor (ROOM_MODEL_URL → /models/)",
-          K.ROOM_MODEL_URL === "/models/room.glb",
+          K.ROOM_MODEL_URL === "/models/empty_office_space.glb",
           K.ROOM_MODEL_URL,
         ),
         check(
           "oda sahnesi modeli ÖLÇÜP kuruyor (sabit ölçek/konum yok)",
           stage.includes("measureRoomModel") &&
-            stage.includes("planRoomPlacement") &&
-            stage.includes("planRoomCamera") &&
-            read("../src/engine/roomModelPrep.ts").includes(
-              "export function measureRoomModel",
-            ),
+            stage.includes("planIsoRoom") &&
+            prep.includes("export function measureRoomModel") &&
+            prep.includes("export function planIsoRoom"),
+        ),
+        check(
+          "oda ana haritadan İZOLE bölgeye kuruluyor (tek origin grubu)",
+          stage.includes("position={plan.origin}") &&
+            stage.includes("ROOM_ISO.origin"),
+        ),
+        check(
+          "kamera izometrik kuruluyor ve hedefi odanın merkezine kilitleniyor",
+          stage.includes("const shot = plan.camera") &&
+            stage.includes("camera.lookAt(shot.target[0]") &&
+            stage.includes("ROOM_ISO.camera.offset") &&
+            stage.includes("ROOM_ISO.camera.fov"),
+        ),
+        check(
+          "duvar çarpışması ölçülen sınırlardan geliyor (clampToRoom + WallColliders)",
+          stage.includes("clampToRoom") &&
+            stage.includes("WallColliders") &&
+            prep.includes("export function clampToRoom"),
         ),
         check(
           "odadaki karakter sokaktakiyle AYNI avatar (GlbCharacterPortrait + kuşam)",
           stage.includes("GlbCharacterPortrait") &&
             stage.includes("equipped={equipped}") &&
             stage.includes("spin={false}"),
+        ),
+        check(
+          "DÜZENLEME MODU: 0,5 m ızgara görünür + eşya ızgaraya oturuyor",
+          stage.includes("isBuildMode") &&
+            stage.includes("gridHelper") &&
+            stage.includes("placeFurniture"),
+        ),
+        check(
+          "düzenleme KALICI DEĞİL (sunucuya yazılmıyor, oda kapanınca sıfırlanır)",
+          !stage.includes("useMutation") &&
+            !stage.includes("convex") &&
+            !read("../src/convex/houses.ts").includes("furniture"),
+        ),
+        check(
+          "eşya dizme yalnızca odanın SAHİBİNE açık (misafir dekoru değiştirmez)",
+          house.includes("canBuild={view.isMine}"),
+        ),
+        check(
+          "izometrik bakışı kapatan tavan/çatı parçaları gizleniyor (dar desen)",
+          stage.includes("const CEILING_PARTS") &&
+            /ceiling\|roof\|tavan/.test(stage),
         ),
         check(
           "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",

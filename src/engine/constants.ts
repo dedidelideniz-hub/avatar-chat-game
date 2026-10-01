@@ -375,52 +375,69 @@ export const WITCH_SHOP_WALKWAY = {
 } as const;
 
 /* ════════════════════════════════════════════════════════════
-   🏠 ODANIN İÇİ — oyuncu evinin odası (`public/models/room.glb`)
+   🏠 ODANIN İÇİ — oyuncu evinin odası (`public/models/empty_office_space.glb`)
 
-   Kapıdaki "Evine gir" düğmesiyle açılan oda, GERÇEK bir iç mekân modelidir.
-   Model ölçülür ve odaya oturtulur (`engine/roomModelPrep.ts`): sabit ölçek
-   yazılmaz, çünkü modeller farklı kaynaklardan geliyor ve hiçbiri dünya
-   biriminde değil — kutudan ölçek ve konum TÜRETİLİR.
+   Kapıdaki "Evine gir" düğmesiyle açılan oda GERÇEK bir iç mekân modelidir ve
+   ana haritadan TAMAMEN İZOLE bir bölgede durur (X/Z 2000): caddenin, çimin,
+   binaların, ağaçların hiçbiri oraya uzanmaz — oda kendi başına bir sahnedir.
 
-   MODEL YOKSA (dosya inmemiş/bozuk): oda, kodla çizilen YEDEK odaya düşer
+   ÖLÇÜM KURALI (projedeki diğer model yükleyicileriyle aynı): model uzayına
+   GÜVENİLMEZ. Ölçek, yerleşim, duvar sınırları ve kamera `engine/
+   roomModelPrep.ts` içinde `Box3` ile ÖLÇÜLEREK bulunur — çünkü modeller
+   farklı kaynaklardan gelir ve hiçbiri dünya biriminde değildir. Duvar
+   sınırları da ELLE yazılmaz: odanın ölçülen kutusundan TÜRETİLİR.
+
+   MODEL YOKSA (dosya inmemiş/bozuk): oda kodla çizilen YEDEK odaya düşer
    (bkz. `components/world/HouseRoom.tsx`) — oyuncu yine odasını görür, cadde
    ve kapı akışı bozulmaz. Model hazır olduğunda yedek oda yumuşakça kaybolur.
    ════════════════════════════════════════════════════════════ */
 
-export const ROOM_MODEL_URL = "/models/room.glb";
-
-/** Odanın modele göre kurulumu (hepsi ölçülen kutudan türetilir). */
-export const ROOM_FIT = {
-  /** Odanın EN GENİŞ yatay kenarı bu birime ölçeklenir (≈ 8 m geniş salon). */
-  span: 8,
-  /** Odada duran karakterin boyu — sokaktaki avatarla aynı okunacak ölçek. */
-  characterHeight: 1.75,
-  /** Karakter odanın merkezinden NE KADAR öne (kameraya) dursun. */
-  standZ: 0.25,
-} as const;
-
 /**
- * Odanın kamerası — odanın ÖN (güney, +Z) kenarından içeri bakar.
+ * ODANIN İZOMETRİK KURULUMU — hepsi tek yerde.
  *
- * Kamera odaya DİKİZ yerleştirilir (sabit bir "diorama" açısı): oyuncu odanın
- * içinde duran karakteri ve arkasındaki mekânı görür. Yükseklik/hedef, odanın
- * ölçülen yüksekliğine göre kısılır (`roomModelPrep.planRoomCamera`) — alçak
- * bir modelde kamera tavanın dışında kalmasın.
+ * Oda dünya uzayında `origin`e (X/Z 2000) yerleştirilir. Ana harita ±24
+ * birimde bittiği için 2000 birimlik uzaklık hiçbir şeye çarpmaz: İZOLE.
+ * Kamera bu bölgenin üstünden izometrik bakar, oyuncu tam merkeze doğar.
+ *
+ * Buradaki sayılar YALNIZCA varsayılanlardır; odanın gerçek ölçüsü/sınırı
+ * modelden ölçülür (`roomModelPrep.planIsoRoom`). Model dünya biriminde
+ * gelmediyse `scale` varsayılanı yerine otomatik ölçek devreye girer.
  */
-export const ROOM_CAMERA = {
-  /** Dikey görüş açısı. */
-  fov: 48,
-  /** Göz yüksekliği (birim) — karakterin göz hizası. */
-  eyeY: 1.6,
-  /** Bakış hedefinin yüksekliği. */
-  targetY: 1.3,
-  /** Kameranın odanın ön kenarından içeri girme miktarı. */
-  inset: 0.8,
-  /** Bakış hedefinin oda merkezinden kuzeye kayması (birim). */
-  targetZ: 1.1,
-  /** Kameranın karaktere en yakın kalabileceği mesafe (dar odalarda). */
-  minDistance: 1.4,
+export const ROOM_ISO = {
+  /** Odanın dünyadaki MERKEZİ — ana haritadan izole bölge. */
+  origin: [2000, 0, 2000] as [number, number, number],
+  /**
+   * Varsayılan ölçek. Model dünya biriminde geldiyse AYNEN kullanılır; ham
+   * açıklık `fitBand` dışındaysa (ör. 312 birimlik bir diorama) otomatik ölçek
+   * devreye girer ve oda `span`a oturtulur — odanın dışında/çok küçük kalmak
+   * yerine her koşulda okunur bir oda.
+   */
+  scale: 1,
+  /** Otomatik ölçeğin devreye girdiği ham açıklık bandı (birim). */
+  fitBand: { min: 2.5, max: 60 },
+  /** Otomatik ölçekte odanın oturtulacağı açıklık (birim). */
+  span: 10,
+  /** İzometrik kamera: merkeze göre yön ve görüş açısı. Hedef HER ZAMAN `origin`. */
+  camera: {
+    offset: [12, 15, 12] as [number, number, number],
+    fov: 45,
+  },
+  /** Kamera düzlemleri — oda izole bölgede olduğu için menzil rahat seçilir. */
+  near: 0.05,
+  far: 500,
+  /** Mobilya ızgarası (birim) — 0,5 m × 0,5 m. */
+  grid: 0.5,
+  /** Odadaki karakterin boyu — sokaktaki avatarla aynı ölçek. */
+  characterHeight: 1.75,
+  /** Karakterin duvara değmeden durabilmesi için yarıçapı (birim). */
+  characterRadius: 0.35,
+  /** Mobilyanın duvara değmemesi için bırakılan pay (birim). */
+  wallMargin: 0.25,
 } as const;
+
+export const ROOM_MODEL_URL = "/models/empty_office_space.glb";
+
+
 
 // ─── AĞAÇ SIRALARI (caddenin yeşillik şeritleri) ───
 // Ağaçlar artık tek tek elle değil, EŞİT ARALIKLI sıralar hâlinde dizilir:

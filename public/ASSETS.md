@@ -43,8 +43,8 @@ yine devredir.
 
 Bu model caddedeki OYUNCU EVİDİR: kapısına gelince "Evine gir" düğmesi çıkar,
 oyuncunun KENDİ odası açılır (odanın İÇİ ayrı bir modeldir — bkz.
-`models/room.glb`, `src/engine/RoomStage.tsx`). Evin içi yürünemez; bina
-katıdır.
+`models/empty_office_space.glb`, `src/engine/RoomStage.tsx`). Evin içi
+yürünemez; bina katıdır.
 
 NOT: Dosya boyutunun ~21MiB'ı 43 PNG dokudur. Görünüşü bozmadan küçültmek
 (dokuları 1K'ya indirmek) yüklemeyi belirgin hızlandırır; yapılırsa bu satır
@@ -55,7 +55,7 @@ yapraklar içerir. Bunlar binanın parçası sayılmaz; ölçek/konum yalnızca 
 gövdesinden ÖLÇÜLEREK hesaplanır (`src/engine/witchShopPrep.ts`) — cephe hattı
 komşu dükkânlarla aynı hizaya oturur, önündeki yol o hattın önüne taşar.
 
-### `models/room.glb` (oyuncu evinin ODASI — iç mekân)
+### `models/empty_office_space.glb` (oyuncu evinin ODASI — iç mekân)
 
 Evin kapısından girilen odanın içi bu modeldir (`src/engine/constants.ts` →
 `ROOM_MODEL_URL`, `src/engine/RoomStage.tsx`). Diğer modeller gibi **embedded
@@ -63,14 +63,35 @@ JSON glTF** olarak durmalıdır (yukarıdaki kural: hosting boru hattı binary
 dosyayı bozar). Gerçek bir GLB geldiğinde:
 
 ```bash
-node scripts/glb-to-embedded-json.mjs public/models/room.glb
+node scripts/glb-to-embedded-json.mjs public/models/empty_office_space.glb
 ```
 
-Ölçek/konum SABİT DEĞİLDİR: model `Box3` ile ölçülür, en geniş yatay kenarı
-`ROOM_FIT.span`e (8 birim) ölçeklenir, tabanı zemine (y 0) oturtulur ve merkezi
-orijine alınır (`src/engine/roomModelPrep.ts`). Kamera odanın ön kenarında,
-göz hizasında durur; ortada sokaktaki karakterin TA KENDİSİ
-(`GlbCharacterPortrait`) durur.
+**Ana haritadan İZOLE**: oda, dünya uzayında X/Z **2000**'e yerleştirilir
+(`ROOM_ISO.origin`); ana harita ±24 birimde bittiği için orada hiçbir şey
+yoktur — cadde/çim/ağaçla çakışmaz.
+
+Ölçek/konum SABİT DEĞİLDİR: model `Box3` ile ölçülür
+(`src/engine/roomModelPrep.ts`). Ham açıklık dünya birimindeyse `scale: 1`
+aynen kullanılır;
+ham açıklık `fitBand` (2,5–60 birim) dışındaysa oda `span`a (10 birim) otomatik
+ölçeklenir — 312 birimlik bir diorama odayı yutmaz. Merkez X/Z origin'e,
+taban y 0'a oturur.
+
+Kamera **İZOMETRİKTİR**: `origin + (12, 15, 12)` noktasından odanın merkezine
+bakar (`camera.lookAt(2000, 0, 2000)`). Oda büyükse mesafe odayı çerçeveleyecek
+kadar AÇILIR; yön asla değişmez. Oyuncu odanın TAM merkezine doğar
+(`player.position = (2000, 0, 2000)`), zemine dokunarak yürür ve **duvar
+sınırından** (ölçülen ayak izi) dışarı çıkamaz (`clampToRoom` + `WallColliders`)
+— odanın dışında zemin yoktur.
+
+**DÜZENLEME (build mode)**: modelin zemin mesh'i (adında `floor`/`zemin`/`taban`/
+`ground` geçen en geniş parça; yoksa en geniş + en ince parça) `placementZone`
+olarak işaretlenir ve eşya dizme raycaster'ı bunu hedefler. Zemin hiç
+ayırt edilemezse ölçülen kutudan kodla bir zemin düzlemi kurulur. Dizilen
+eşyalar **0,5 m ızgaraya** (`ROOM_ISO.grid`) oturur ve duvar sınırının dışına
+ÇIKAMAZ (`src/engine/roomBuild.ts` → `placeFurniture`). Düzenleme **yalnızca
+istemcidedir**, hiçbir yere kaydedilmez ve oda kapanınca sıfırlanır; araçlar
+yalnızca odanın sahibine görünür.
 
 **Dosya yoksa/bozuksa oyun çökmez:** oda, kodla çizilen YEDEK odaya
 (`HouseRoom` → `ProceduralRoom`) düşer ve oyuncu yine odasını görür; model
