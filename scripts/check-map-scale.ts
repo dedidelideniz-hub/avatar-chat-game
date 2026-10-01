@@ -34,6 +34,7 @@ import {
   STALLS,
   TRASH_CANS,
   TREE_ROWS,
+  WITCH_SHOP_DEF,
   WORLD_DEPTH,
   WORLD_WIDTH,
   WORLD_Z_MAX,
@@ -48,6 +49,7 @@ import {
   SIDE_STREET_ZONES,
   VENDORS,
   WALKABLE_ZONES,
+  WITCH_SHOP_WALK_ZONES,
   WORLD_BOUNDS,
   svgX,
   svgY,
@@ -157,8 +159,9 @@ walkBands.forEach(([name, south, north], i) => {
 console.log("\nDİKEY ARA SOKAKLAR");
 check(SIDE_STREET_ZONES.length === SIDE_STREETS.length, "her sokak için bir yürünebilir kolon", `${SIDE_STREET_ZONES.length} sokak`);
 check(
-  WALKABLE_ZONES.length === walkBands.length + SIDE_STREET_ZONES.length,
-  "yürünebilir alan = bantlar + sokak kolonları",
+  WALKABLE_ZONES.length ===
+    walkBands.length + SIDE_STREET_ZONES.length + WITCH_SHOP_WALK_ZONES.length,
+  "yürünebilir alan = bantlar + sokak kolonları + cadı dükkânı kapı yolu",
   `${WALKABLE_ZONES.length} bölge`,
 );
 SIDE_STREET_ZONES.forEach((zone, i) => {
@@ -366,6 +369,10 @@ for (const b of BUILDINGS) {
   const x1 = b.x + b.w / 2;
   const z0 = b.frontZ - b.d; // kuzey (arka) yüz
   const z1 = b.frontZ; // güney (cephe) yüz
+  // Cadı dükkânının KENDİ ayak izi, kapı yolu + iç koridoru barındırır —
+  // yürünebilir alanın binaya girmesi bu bina için İSTENEN davranıştır
+  // (bkz. `constants.WITCH_SHOP_WALKWAY`). Diğer binalarda kural aynen geçerli.
+  if (b === WITCH_SHOP_DEF) continue;
   for (const zone of WALKABLE_ZONES) {
     const zx0 = zone.x / S - WORLD_WIDTH / 2;
     const zx1 = (zone.x + zone.w) / S - WORLD_WIDTH / 2;
@@ -460,10 +467,12 @@ check(!inWalkable(svgX(-4.4), svgY(-9.0)), "kuzey çim şeridi yürünebilir de�
 // Bu bölüm oyuncunun asfalt şeritten çime geçemediği çit hattını ölçer.
 console.log("\nDİKEY SOKAK ÇİTLERİ (sokak asfaltı ↔ çim)");
 const streetEdges = FENCE_EDGES.filter((e) => e.enabled);
+// Cadı dükkânının kapı yolu ara sokağın doğu çitini kestiği için o kenar
+// İKİYE bölünür → beklenen kenar sayısı bir fazladır (bkz. `FENCE_EDGES`).
 check(
-  streetEdges.length === SIDE_STREETS.length * 4,
-  "her sokakta iki kenar × iki çim bandı",
-  `${streetEdges.length} kenar (${SIDE_STREETS.length} sokak × 2 yan × 2 bant)`,
+  streetEdges.length === SIDE_STREETS.length * 4 + 1,
+  "her sokakta iki kenar × iki çim bandı (+ cadı yolu için bölünmüş kenar)",
+  `${streetEdges.length} kenar (${SIDE_STREETS.length} sokak × 2 yan × 2 bant + 1 bölünme)`,
 );
 
 // Kenarlar TAM sokak asfaltının kenarında mı? (X = sokak ± SIDE_STREET_W/2)

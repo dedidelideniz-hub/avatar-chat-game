@@ -82,19 +82,30 @@ export function collectBuildingOccluders(scene: THREE.Object3D): BuildingOcclude
   // Küre hesabı dünya matrislerini gerektirir.
   scene.updateMatrixWorld(true);
 
-  return roots.map((root) => {
-    const meshes: THREE.Object3D[] = [];
-    root.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) meshes.push(obj);
-    });
+  return roots.map(buildOccluder);
+}
 
-    return {
-      meshes,
-      materials: isolateMaterials(root),
-      sphere: new THREE.Box3().setFromObject(root).getBoundingSphere(new THREE.Sphere()),
-      occluded: false,
-    };
+/**
+ * TEK bir bina kökünden occluder üretir — malzemeleri o binaya özel klonlar
+ * ve kaba küresini hesaplar.
+ *
+ * `collectBuildingOccluders` tüm sahneyi tarar; bu sürüm ise yalnızca verilen
+ * grubu işler. Cadı dükkânı gibi TEK bir binanın, sahnedeki diğer binaları
+ * etkilemeden saydamlaşabilmesi için ayrılmıştır (bkz. `WitchShop.tsx`).
+ */
+export function buildOccluder(root: THREE.Object3D): BuildingOccluder {
+  const meshes: THREE.Object3D[] = [];
+  root.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) meshes.push(obj);
   });
+  root.updateWorldMatrix(true, true);
+
+  return {
+    meshes,
+    materials: isolateMaterials(root),
+    sphere: new THREE.Box3().setFromObject(root).getBoundingSphere(new THREE.Sphere()),
+    occluded: false,
+  };
 }
 
 /**

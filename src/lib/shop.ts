@@ -21,6 +21,7 @@ import {
   DIRECTION_SIGNS,
   BENCH_WIDTH,
   ZONE,
+  WITCH_SHOP_WALKWAY,
 } from "../engine/constants";
 
 /* ── SVG px katmanı ───────────────────────────────────────────
@@ -492,6 +493,48 @@ export const SIDE_STREET_ZONES: Rect[] = SIDE_STREETS.map((x) => ({
   h: (SIDE_STREET_SOUTH - ZONE.backNorthWalkBot) * S,
 }));
 
+/**
+ * Bir dünya dikdörtgenini (`westX`…`eastX` × `southZ`…`northZ`) px `Rect`e
+ * çevirir. `band` yalnızca caddenin TAM genişliğini kaplar; cadı dükkânı yolu
+ * gibi dar şeritler için bu yardımcı kullanılır.
+ */
+function span(westX: number, southZ: number, eastX: number, northZ: number): Rect {
+  return {
+    x: svgX(westX),
+    y: svgY(southZ),
+    w: (eastX - westX) * S,
+    h: (southZ - northZ) * S,
+  };
+}
+
+/**
+ * CADI DÜKKÂNI GİRİŞ YOLU (bkz. `constants.WITCH_SHOP_WALKWAY`).
+ *
+ * NEDEN CADDEDEN DEĞİL, ARA SOKAKTAN: kuzey kaldırımı sokak mobilyalarıyla
+ * (lamba/bank/otobüs durağı/tabela) doludur ve hepsi KATI cisimdir. Kaldırımı
+ * en seyrek yerinden kesen dikey bir koridor bile A* ızgarasında — engeller
+ * `PLAYER_RADIUS` kadar şişirildiği için — tek hücreye düşüyor ve karakter
+ * sıkışıyordu. Ara sokağın (X −16) asfaltı Z −17.4'e kadar kesintisiz
+ * yürünebilir; yol oradan çıkıp dükkân cephesi boyunca (Z −11.0…−10.0, yani
+ * çimin içinde, HİÇBİR propla kesişmeyen bir bant) kapıya uzanır.
+ */
+export const WITCH_SHOP_WALK_ZONES: Rect[] = [
+  // 1) Ara sokaktan dükkân cephesi boyunca uzanan yol bandı.
+  span(
+    WITCH_SHOP_WALKWAY.pathWestX,
+    WITCH_SHOP_WALKWAY.pathSouthZ,
+    WITCH_SHOP_WALKWAY.entryEastX,
+    WITCH_SHOP_WALKWAY.pathNorthZ,
+  ),
+  // 2) Kapıdan binanın İÇİNE giren koridor.
+  span(
+    WITCH_SHOP_WALKWAY.entryWestX,
+    WITCH_SHOP_WALKWAY.pathNorthZ,
+    WITCH_SHOP_WALKWAY.entryEastX,
+    WITCH_SHOP_WALKWAY.insideZ,
+  ),
+];
+
 export const WALKABLE_ZONES: Rect[] = [
   band(ZONE.southSidewalkBot, ZONE.southSidewalkTop), // güney kaldırım (tezgâhlar)
   band(ZONE.roadBot, ZONE.roadTop), // ana cadde / yaya yolu
@@ -499,6 +542,8 @@ export const WALKABLE_ZONES: Rect[] = [
   // Arka sokak: kaldırım + asfalt + karşı kaldırım tek parça hâlinde.
   band(ZONE.backWalkTop, ZONE.backNorthWalkBot),
   ...SIDE_STREET_ZONES,
+  // Cadı dükkânının kapı yolu (tek bina — diğerleri etkilenmez).
+  ...WITCH_SHOP_WALK_ZONES,
 ];
 
 export const PLAYER_SPEED = 80; // world units per second — natural walking pace

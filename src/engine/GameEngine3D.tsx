@@ -36,6 +36,7 @@ import {
   SPAWN_SVG,
   ZONE,
   BUILDINGS,
+  WITCH_SHOP_INDEX,
   LAMPS,
   BENCHES,
   BENCH_WIDTH,
@@ -69,6 +70,9 @@ import { GrassGround } from "./GrassGround";
 // Yeşillik SADECE akçaağaç GLB'sinden (ağaç) ve çim öbeği GLB'sinden gelir:
 // ilkel ağaç/çalı/çiçek geometrisi (küre top, kutu çit, mantar çiçek) kaldırıldı.
 import { StreetGrassClumps, StreetTrees } from "./VegetationModels";
+// Cadde sırasındaki TEK bina (`WITCH_SHOP_INDEX`) düz `Building` yerine gerçek
+// bir GLB modeliyle çizilir ve yalnızca O binaya giden yürünebilir bir yol alır.
+import { WitchShopBuilding, WitchShopWalkway } from "./WitchShop";
 
 /* ═══════════════════════════════════════════════════════════ */
 /*  Helpers                                                    */
@@ -1416,9 +1420,22 @@ export function GameEngine3D({
       <Ground />
 
       {/* === BUILDINGS === */}
-      {BUILDINGS.map((def, i) => (
-        <Building key={i} def={def} />
-      ))}
+      {/* Cadı dükkânı indeksindeki bina gerçek modelle değiştirilir; caddenin
+          geri kalanı aynı `Building` bileşeniyle çizilir. */}
+      {BUILDINGS.map((def, i) =>
+        i === WITCH_SHOP_INDEX ? (
+          <WitchShopBuilding
+            key={i}
+            def={def}
+            playerPosRef={playerPosRef}
+          />
+        ) : (
+          <Building key={i} def={def} />
+        ),
+      )}
+
+      {/* Cadı dükkânının GÖRÜNEN giriş yolu (yürünebilir şeritle aynı sınırlar). */}
+      <WitchShopWalkway />
 
       {/* === LAMPS === */}
       {LAMPS.map((def, i) => (

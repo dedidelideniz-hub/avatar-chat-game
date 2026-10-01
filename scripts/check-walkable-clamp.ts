@@ -25,6 +25,7 @@ import {
   SIDE_STREETS,
   SIDE_STREET_SOUTH,
   SIDE_STREET_W,
+  WITCH_SHOP_WALKWAY,
   WORLD_CENTER_Z,
   WORLD_WIDTH,
   WORLD_Z_MAX,
@@ -46,6 +47,23 @@ function check(label: string, ok: boolean, detail = "") {
 }
 
 const px = (x: number, z: number) => ({ x: svgX(x), y: svgY(z) });
+
+/**
+ * CADI DÜKKÂNI İSTİSNASI — kapı yolu ve binanın iç koridoru bilinçli olarak
+ * yürünebilir (bkz. `constants.WITCH_SHOP_WALKWAY` + `lib/shop.ts`).
+ * Bu betiğin "çime çıkış yok" kuralı yalnızca ÇİTİN arkası için geçerlidir;
+ * yol çitin bu tarafında, dükkânın kendi parselinde uzanır.
+ */
+const W = WITCH_SHOP_WALKWAY;
+const inWitchWalk = (x: number, z: number) =>
+  (z <= W.pathSouthZ &&
+    z >= W.pathNorthZ &&
+    x >= W.pathWestX &&
+    x <= W.entryEastX) ||
+  (z <= W.pathNorthZ &&
+    z >= W.insideZ &&
+    x >= W.entryWestX &&
+    x <= W.entryEastX);
 
 console.log("\n=== YÜRÜNEBİLİRLİK SINIRI ===\n");
 
@@ -85,7 +103,7 @@ for (const band of GRASS_BANDS) {
       const inAlleyMouth = SIDE_STREETS.some(
         (sx) => Math.abs(x - sx) <= SIDE_STREET_W / 2,
       );
-      if (inAlleyMouth) continue;
+      if (inAlleyMouth || inWitchWalk(x, z)) continue;
       scanned++;
       const p = px(x, z);
       if (inWalkable(p.x, p.y)) leaked++;
@@ -124,7 +142,7 @@ for (const band of GRASS_BANDS) {
           z <= SIDE_STREET_SOUTH &&
           z >= ZONE.backNorthWalkBot,
       );
-      if (!paved(z) && !inAlley) {
+      if (!paved(z) && !inAlley && !inWitchWalk(x, z)) {
         leaked++;
         if (samples.length < 4) {
           samples.push(`(${x.toFixed(1)}, ${z.toFixed(1)})`);

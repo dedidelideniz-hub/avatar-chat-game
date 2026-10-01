@@ -22,6 +22,26 @@ Regenerate from a real GLB:
 node scripts/glb-to-embedded-json.mjs public/models/5v5_game_map.glb
 ```
 
+### `models/witch_shop.glb` (caddedeki CADI DÜKKÂNI binası)
+
+Cadde sırasındaki bir bina bu modelle çizilir (`WITCH_SHOP_INDEX` →
+`src/engine/WitchShop.tsx`). Sketchfab dışa aktarımı olarak **binary** geldiği
+ve yukarıdaki kural gereği hosting boru hattında bozulacağı için çevrildi:
+
+```bash
+node scripts/glb-to-embedded-json.mjs public/models/witch_shop.glb
+# 20.05MiB -> 26.72MiB (ascii-only, byte-exact base64 buffer)
+```
+
+Model 18 mesh + 43 PNG doku taşır (uzantı gerektirmez; `EXT_meshopt` yok).
+Ağır olduğu için caddenin yükleme kapısına (`streetPreload.STREET_MODELS`)
+**eklenmez**: arka planda iner, hazır olana kadar satırdaki yer boş kalır.
+
+Model bir dioramadır: dükkânın yanı sıra önünde bir `Road` ve dökülmüş
+yapraklar içerir. Bunlar binanın parçası sayılmaz; ölçek/konum yalnızca bina
+gövdesinden ÖLÇÜLEREK hesaplanır (`src/engine/witchShopPrep.ts`) — cephe hattı
+komşu dükkânlarla aynı hizaya oturur, önündeki yol o hattın önüne taşar.
+
 ### `models/comical_bomb.glb` (samurayın elindeki bomba — birincil model)
 
 Samurayın elindeki bomba **bu dosyadan** yüklenir; yüklenemezse sırayla

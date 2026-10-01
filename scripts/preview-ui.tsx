@@ -1196,6 +1196,233 @@ const scenarios: Scenario[] = [
       return checks;
     },
   },
+  {
+    id: "cadi-dukkani",
+    title: "CADI DÜKKÂNI · bina değişti, kapı yolu ve içerisi gerçekten yürünebilir",
+    handles:
+      "src/engine/constants.ts + src/lib/shop.ts + src/engine/witchShopPrep.ts + src/engine/WitchShop.tsx",
+    run: async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (path: string) =>
+        readFileSync(new URL(path, import.meta.url), "utf8");
+      const THREE = await import("three");
+      const K = await import("../src/engine/constants");
+      const { inWalkable, nearestWalkable, svgX, svgY, WITCH_SHOP_WALK_ZONES } =
+        await import("../src/lib/shop");
+      const { findPath } = await import("../src/lib/pathfinding");
+      const { measureWitchShop, planWitchShopPlacement } = await import(
+        "../src/engine/witchShopPrep"
+      );
+      const checks: Check[] = [];
+
+      const W = K.WITCH_SHOP_WALKWAY;
+      const def = K.WITCH_SHOP_DEF;
+
+      // ── 1) Değiştirilen bina: cadde sırasından tam olarak BİR tanesi ve
+      //       yalnızca RENDER katmanında `Building` yerine model çizilir.
+      const engine = read("../src/engine/GameEngine3D.tsx");
+      checks.push(
+        check(
+          "GameEngine3D cadı dükkânı indeksinde modeli, diğerlerinde `Building` çiziyor",
+          engine.includes("WITCH_SHOP_INDEX") &&
+            /i === WITCH_SHOP_INDEX \?/.test(engine) &&
+            engine.includes("<Building key={i} def={def} />"),
+        ),
+      );
+      checks.push(
+        check(
+          "BUILDINGS listesi bozulmadı (12 dükkan + 8 arka bina = 20)",
+          K.BUILDINGS.length === 20,
+          `${K.BUILDINGS.length} bina`,
+        ),
+      );
+      checks.push(
+        check(
+          "seçilen bina kaldırım mobilyalarına çarpmayan bir X'te",
+          def.x === W.x && Number.isFinite(W.pathWestX),
+          `X ${def.x}`,
+        ),
+      );
+      checks.push(
+        check(
+          "görünen yol (WitchShopWalkway) sahnede çiziliyor",
+          engine.includes("<WitchShopWalkway />") &&
+            read("../src/engine/WitchShop.tsx").includes(
+              "export function WitchShopWalkway",
+            ),
+        ),
+      );
+      // Görünen yol ile yürünebilir şerit AYNI sınırları kullanmalı: oyuncunun
+      // yürüdüğü yerle gördüğü yol ayrılırsa "havada yürüme" hissi doğar.
+      const walkZone = WITCH_SHOP_WALK_ZONES[0];
+      checks.push(
+        check(
+          "görünen yol ↔ yürünebilir şerit sınırları birebir",
+          Math.abs(walkZone.x - svgX(W.pathWestX)) < 1e-6 &&
+            Math.abs(walkZone.y - svgY(W.pathSouthZ)) < 1e-6 &&
+            Math.abs(walkZone.w - (W.entryEastX - W.pathWestX) * K.S) < 1e-6 &&
+            Math.abs(walkZone.h - (W.pathSouthZ - W.pathNorthZ) * K.S) < 1e-6,
+        ),
+      );
+
+      // ── 2) Çit, yolun geçtiği yerde bölündü (görünen çit yolun ortasından
+      //       geçmesin). Ölçüt: sokak kenarındaki (X −14.6) Z bandı DİKİŞSİZ.
+      const edgeX = W.pathWestX + 0.6;
+      const edge = K.FENCE_EDGES.filter((e) => Math.abs(e.x - edgeX) < 0.01).sort(
+        (a, b) => b.startZ - a.startZ,
+      );
+      const covered = (z: number) =>
+        edge.some((e) => z <= e.startZ + 1e-6 && z >= e.endZ - 1e-6);
+      // Yol bandının tamamı (yürünebilir şerit) çitsiz olmalı.
+      const steps = 12;
+      let blockedZ = 0;
+      for (let i = 0; i <= steps; i++) {
+        const z = W.pathSouthZ + ((W.pathNorthZ - W.pathSouthZ) * i) / steps;
+        // Uçlar çit parçalarının bittiği noktalardır; 1e-3 pay bırakılır.
+        const edgeTouch =
+          Math.abs(z - W.pathSouthZ) < 1e-3 || Math.abs(z - W.pathNorthZ) < 1e-3;
+        if (!edgeTouch && covered(z)) blockedZ++;
+      }
+      checks.push(
+        check(
+          "ara sokak çiti yolun Z bandında BOŞLUK bırakıyor (çit yolun ortasından geçmiyor)",
+          blockedZ === 0 && edge.length === 3,
+          `kenar X ${edgeX}, parça ${edge.length}, bloke örnek ${blockedZ}`,
+        ),
+      );
+
+      // ── 3) Yürünebilirlik: yol bandı + kapı koridoru gerçekten yürünebilir,
+      //       koridorun DIŞI (binanın içi ama duvar tarafı) yürünemez kalır.
+      const pathMid = {
+        x: svgX(W.pathWestX + 0.4),
+        y: svgY((W.pathSouthZ + W.pathNorthZ) / 2),
+      };
+      const door = { x: svgX(W.x), y: svgY(W.frontZ) };
+      const inside = { x: svgX(W.x), y: svgY(W.insideZ + 0.25) };
+      const wallSide = { x: svgX(W.entryEastX + 0.6), y: svgY(W.insideZ + 0.25) };
+      checks.push(
+        check("yol bandı yürünebilir", inWalkable(pathMid.x, pathMid.y)),
+        check("kapı (cephe hattı) yürünebilir", inWalkable(door.x, door.y)),
+        check("binanın İÇİ yürünebilir", inWalkable(inside.x, inside.y)),
+        check(
+          "koridorun dışı (duvar tarafı) yürünemez — duvarlar geçirgen değil",
+          !inWalkable(wallSide.x, wallSide.y),
+        ),
+      );
+      checks.push(
+        check(
+          "yol şeridi yalnızca cadı dükkânı için tanımlı (2 dikdörtgen)",
+          WITCH_SHOP_WALK_ZONES.length === 2,
+          `${WITCH_SHOP_WALK_ZONES.length} bölge`,
+        ),
+      );
+
+      // ── 4) A*: caddeden (doğuş noktası) dükkânın İÇİNE yol var. Kapının
+      //       önündeki cadde kapalı olsaydı (kaldırım mobilyası) yol
+      //       bulunamazdı — ara sokağa bağlılık bu testle doğrulanır.
+      const spawn = { x: 1200, y: 460 };
+      const toDoor = findPath(spawn.x, spawn.y, door.x, door.y);
+      const toInside = findPath(spawn.x, spawn.y, inside.x, inside.y);
+      checks.push(
+        check(
+          "caddeden kapıya A* yolu var",
+          toDoor.length > 1,
+          `${toDoor.length} düğüm`,
+        ),
+        check(
+          "caddeden binanın İÇİNE A* yolu var",
+          toInside.length > 1 &&
+            Math.abs(toInside[toInside.length - 1].y - inside.y) < 48,
+          `${toInside.length} düğüm, varış ${toInside[toInside.length - 1] ? `${toInside[toInside.length - 1].x.toFixed(0)},${toInside[toInside.length - 1].y.toFixed(0)}` : "yok"}`,
+        ),
+      );
+
+      // Yolun SON noktası da yürünebilir olmalı (ızgara hücresi bant kenarını
+      // birkaç px aşabilir; `World` orada `nearestWalkable`e düşer).
+      const last = toInside[toInside.length - 1];
+      const settled = inWalkable(last.x, last.y)
+        ? last
+        : nearestWalkable(last.x, last.y, { x: spawn.x, y: spawn.y });
+      checks.push(
+        check(
+          "yolun varış noktası yürünebilir bölgeye oturuyor (takılma yok)",
+          inWalkable(settled.x, settled.y),
+        ),
+      );
+
+      // ── 5) Ölçüm/yerleştirme matematiği GERÇEK three.js nesneleriyle:
+      //       modelin önündeki `Road` ölçüme girmemeli; sonuç binanın
+      //       genişliği/cephe hizası ile birebir olmalı.
+      const radio = new THREE.Mesh(
+        new THREE.BoxGeometry(4, 2, 4),
+        new THREE.MeshStandardMaterial(),
+      );
+      radio.name = "Road_Road_0";
+      radio.position.set(0, 1, 40);
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(10, 20, 12),
+        new THREE.MeshStandardMaterial(),
+      );
+      body.name = "Wall_Wall_0";
+      body.position.set(1, 10, 0);
+      const fake = new THREE.Group();
+      fake.add(radio, body);
+
+      const box = measureWitchShop(fake);
+      checks.push(
+        check(
+          "ölçüm `Road` parçasını dışlıyor (bina gövdesi 10 birim geniş)",
+          !!box && Math.abs(box.max.x - box.min.x - 10) < 1e-6,
+          box ? `${(box.max.x - box.min.x).toFixed(2)} geniş` : "kutu yok",
+        ),
+      );
+      const place = box ? planWitchShopPlacement(box, def) : null;
+      checks.push(
+        check(
+          "model binanın genişliğine ölçekleniyor",
+          !!place && Math.abs(place.size.x - def.w) < 1e-6,
+          place ? `genişlik ${place.size.x.toFixed(2)} (hedef ${def.w})` : "plan yok",
+        ),
+        check(
+          "taban zemine (y 0), cephe `frontZ`e hizalanıyor",
+          !!place &&
+            Math.abs(place.offset.y + box!.min.y * place.scale) < 1e-6 &&
+            Math.abs(place.offset.z + box!.max.z * place.scale) < 1e-6,
+          place ? `ölçek ${place.scale.toFixed(4)}, yükseklik ${place.size.y.toFixed(2)}` : "plan yok",
+        ),
+      );
+
+      // ── 6) Model dosyası: bu depoda binary GLB bozuluyor (bkz.
+      //       public/ASSETS.md) → dosya ASCII gömülü JSON glTF olmalı.
+      const raw = readFileSync(
+        new URL("../public/models/witch_shop.glb", import.meta.url),
+      );
+      const head = raw.subarray(0, 4).toString("latin1");
+      checks.push(
+        check(
+          "witch_shop.glb ASCII gömülü JSON glTF (binary glTF değil)",
+          head !== "glTF" && head.trimStart().startsWith("{"),
+          `${(raw.length / 1048576).toFixed(1)}MiB, ilk 4 bayt "${head.trim()}"`,
+        ),
+      );
+
+      // ── 7) Saydamlaştırma yalnızca bu binayı hedefliyor: çekirdek tek
+      //       binadan occluder kurabiliyor ve WitchShop onu kullanıyor.
+      const witch = read("../src/engine/WitchShop.tsx");
+      checks.push(
+        check(
+          "WitchShop tek binayı saydamlaştırıyor (buildOccluder) — caddenin kalanı etkilenmez",
+          witch.includes("buildOccluder") &&
+            witch.includes("resetOccluders") &&
+            read("../src/engine/buildingOcclusion.ts").includes(
+              "export function buildOccluder",
+            ),
+        ),
+      );
+
+      return checks;
+    },
+  },
 ];
 
 /* ─────────────────────────────────── Çalıştır ────────────────────────────── */
