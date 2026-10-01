@@ -1,4 +1,8 @@
-import { CHARACTER_COLORS, characterColorLabel } from "@/lib/avatar";
+import {
+  CHARACTER_COLORS,
+  VIP_CHARACTER_COLORS,
+  characterColorLabel,
+} from "@/lib/avatar";
 import { Crown, Lock } from "lucide-react";
 import { toast } from "sonner";
 
@@ -7,14 +11,16 @@ import { toast } from "sonner";
  *
  * Aynı palet İKİ yerde kullanılır ve ikisi de AYNI davranır:
  *   · oyun girişindeki "Karakter Rengi" kartı (`Entry`),
- *   · Avatar Stüdyosu'ndaki "Üst (Kıyafet)" bölümü (`Studio`).
+ *   · Avatar Stüdyosu'ndaki "Karakter Rengi" bölümü (`Studio`).
  *
  * Kural (sunucuda da zorlanır, bkz. `profiles.saveProfile`):
  *   · Renk yalnızca VARSAYILAN görünümü boyar. Hazır karakter skini
  *     (Kraliyet Savaşçısı / Samuray / Şövalye) kuşanılmışsa palet kapalıdır.
- *   · Renk hakkı TEK SEFERLİKTİR (`locked`): seçtikten sonra değiştirmek için
- *     👑 VIP üyelik gerekir.
- *   · VIP renkleri parlayan/yari saydam premium renklerdir; VIP olmadan
+ *   · Renk hakkı TEK SEFERLİKTİR (`locked` = `colorChosen && !isVip`):
+ *     seçim yapıldıktan sonra VIP olmayan oyuncuya palette HİÇ
+ *     gösterilmez — ikinci bir renk seçme hakkı yoktur, yalnızca kilitli
+ *     renk kartı + VIP yönlendirmesi görünür.
+ *   · VIP renkleri parlayan/yarı saydam premium renklerdir; VIP olmadan
  *     seçilemez (kilitli gösterilir).
  *
  * Bu bileşen hem seçimi (`onSelect`) hem de açıklama/uyarı satırlarını
@@ -32,7 +38,7 @@ export function CharacterColorPicker({
   /** Yeni renk seçildiğinde çağrılır. */
   onSelect: (hex: string) => void;
   isVip: boolean;
-  /** Renk hakkı kullanıldı mı? (VIP değilse palet kilitlenir.) */
+  /** Renk hakkı kullanıldı mı? (`colorChosen && !isVip`) */
   locked: boolean;
   /** Kuşanılmış hazır görünümün adı — varsa renk seçimi tamamen kapalıdır. */
   wornSkinName?: string;
@@ -61,6 +67,72 @@ export function CharacterColorPicker({
     );
   }
 
+  // RENK HAKKI KULLANILDI (VIP değil): palette hiç çizilmez.
+  // Oyuncu ikinci bir renk seçemez — yalnızca kilitli rengini görür ve
+  // VIP ile açılan premium renkler tanıtılır.
+  if (locked) {
+    return (
+      <>
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-amber-300/30 bg-amber-300/[0.08] p-3">
+          <span
+            className="size-11 shrink-0 rounded-2xl border border-white/25 shadow-inner"
+            style={{ backgroundColor: color }}
+          />
+          <div className="min-w-0">
+            <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-amber-200/80">
+              Kilitli renk · ikinci seçim yok
+            </p>
+            <p className="truncate text-sm font-black text-white">
+              {characterColorLabel(color)}
+            </p>
+          </div>
+          <Lock className="ml-auto size-4 shrink-0 text-amber-200" />
+        </div>
+
+        <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-amber-100">
+          <Lock className="mt-0.5 size-3 shrink-0" />
+          <span>
+            Renk hakkını kullandın! Karakter rengi <strong>tek sefer</strong>{" "}
+            seçilir — ikinci bir renk seçimi yapılamaz. Değiştirmek için 👑{" "}
+            <strong>VIP üyelik</strong> gerekiyor.
+          </span>
+        </p>
+
+        {/* VIP paletini yalnızca TANIT: tıklanabilir değil, bu yüzden
+            kilitli oyuncu yanlışlıkla seçim yapamaz. */}
+        <div className="mt-3 flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.04] p-2.5">
+          <div className="flex shrink-0 items-center gap-1.5">
+            {VIP_CHARACTER_COLORS.map((c) => (
+              <span
+                key={c.id}
+                aria-hidden="true"
+                title={`${c.label} — VIP üyeliğe özel`}
+                className="grid size-8 place-items-center rounded-xl border"
+                style={{
+                  background: `radial-gradient(circle at 32% 28%, #ffffff 0%, ${c.hex} 58%)`,
+                  boxShadow: `0 0 12px ${c.hex}`,
+                  borderColor: c.hex,
+                  opacity: 0.8,
+                }}
+              >
+                <Crown className="size-3 text-black/60" />
+              </span>
+            ))}
+          </div>
+          <p className="text-[10px] font-bold leading-4 text-amber-200/75">
+            👑 VIP alınca bu 2 premium renk açılır ve rengini istediğin zaman
+            değiştirebilirsin.
+          </p>
+        </div>
+
+        <p className="mt-3 flex items-center justify-between text-[11px] font-bold text-white/50">
+          <span>Seçilen renk</span>
+          <span className="text-amber-200">{characterColorLabel(color)}</span>
+        </p>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="mt-3 grid grid-cols-6 gap-2">
@@ -81,13 +153,6 @@ export function CharacterColorPicker({
                   );
                   return;
                 }
-                // Renk hakkı kullanıldıysa palet kilitlidir.
-                if (locked && c.hex !== color) {
-                  toast.info(
-                    "🎨 Rengini bir kez seçtin — değiştirmek için 👑 VIP üyelik gerekiyor.",
-                  );
-                  return;
-                }
                 onSelect(c.hex);
               }}
               aria-label={c.label}
@@ -99,7 +164,7 @@ export function CharacterColorPicker({
                   : vipLocked
                     ? "border-amber-300/40"
                     : "border-white/15 hover:border-white/40"
-              } ${vipLocked ? "opacity-60" : locked ? "opacity-70" : ""}`}
+              } ${vipLocked ? "opacity-60" : ""}`}
               style={
                 premium
                   ? {
@@ -132,18 +197,10 @@ export function CharacterColorPicker({
         })}
       </div>
 
-      {locked ? (
-        <p className="mt-2 flex items-start gap-1.5 rounded-xl border border-amber-300/25 bg-amber-300/10 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-amber-100">
-          <Lock className="mt-0.5 size-3 shrink-0" />
-          Renk hakkını kullandın! Karakter rengi tek sefer seçilir —
-          değiştirmek için 👑 VIP üyelik gerekiyor.
-        </p>
-      ) : (
-        <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
-          ⚠️ Renk hakkın <strong>tek seferlik</strong>: seçtiğin renk kalıcı
-          olur (VIP üyeler serbestçe değiştirir).
-        </p>
-      )}
+      <p className="mt-2 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold leading-4 text-white/55">
+        ⚠️ Renk hakkın <strong>tek seferlik</strong>: ilk seçtiğin renk kalıcı
+        olur ve bir daha değiştiremezsin (VIP üyeler serbestçe değiştirir).
+      </p>
 
       <p className="mt-2 text-[10px] font-bold leading-4 text-amber-200/70">
         👑 VIP renkleri parlar ve yarı saydam boyanır — VIP alınca çantana
