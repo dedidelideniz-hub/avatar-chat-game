@@ -550,6 +550,8 @@ interface GlbAvatarCoreProps {
    * `ChatBubble3D.CHAT_BUBBLE_MS`.
    */
   speech?: string | null;
+  /** Baloncukta yazan gönderen adı (Sanalika düzeni: "İsim: mesaj"). */
+  speechName?: string;
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si) — VIP balon renkleri buradan gelir. */
   speechColorId?: string;
 }
@@ -581,6 +583,7 @@ function GlbAvatarCore({
   seat = null,
   readSeatStore = false,
   speech = null,
+  speechName,
   speechColorId,
 }: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -1121,7 +1124,11 @@ function GlbAvatarCore({
           ölçeğinden bağımsız, sabit ve okunur kalır. Dış grup yön
           (rotation.y) ile döner ama `distanceFactor` verildiğinde drei
           `<Html>` dönüşü DOM'a taşımaz → yazı hiçbir yönde ters görünmez. */}
-      <ChatBubble text={speech} colorId={speechColorId} />
+      <ChatBubble
+        text={speech}
+        name={speechName}
+        colorId={speechColorId}
+      />
     </group>
   );
 }
@@ -1143,6 +1150,8 @@ export interface GlbAvatar3DProps {
   readSeatStore?: boolean;
   /** Baş üstündeki sohbet baloncuğu metni (Sanalika/Habbo stili). */
   speech?: string | null;
+  /** Baloncukta görünen gönderen adı. */
+  speechName?: string;
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
   speechColorId?: string;
 }

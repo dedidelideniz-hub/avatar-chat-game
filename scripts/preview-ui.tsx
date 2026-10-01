@@ -568,7 +568,12 @@ const scenarios: Scenario[] = [
       const { ChatBubbleBody, CHAT_BUBBLE_MS, CHAT_BUBBLE_FADE_MS, CHAT_BUBBLE_HEIGHT } =
         await import("../src/engine/ChatBubble3D");
       await p.render(
-        <ChatBubbleBody text="Merhaba Vaelos!" colorId="beyaz" visible />,
+        <ChatBubbleBody
+          text="Merhaba Vaelos!"
+          name="Dkdkdkk"
+          colorId="beyaz"
+          visible
+        />,
       );
       // Baloncuk GÖVDESİ = border-radius taşıyan div (sarmalayıcılar da aynı
       // metni içerdiği için en içteki eşleşme alınır).
@@ -578,6 +583,8 @@ const scenarios: Scenario[] = [
         );
       const bubble = findBody();
       const style = bubble?.getAttribute("style") ?? "";
+      const wrapper = wrapperStyle(p);
+      const text = (p.root.textContent ?? "").replace(/\s+/g, " ").trim();
       const tails = Array.from(p.root.querySelectorAll("span")).filter((s) =>
         (s.getAttribute("style") ?? "").includes("border-top"),
       );
@@ -597,8 +604,35 @@ const scenarios: Scenario[] = [
         check("kuyruk kafayı işaret eder (üst kenardan aşağı)", tails.every((t) => (t.getAttribute("style") ?? "").includes("top: 100%"))),
         check(
           "tıklamayı yakalamaz (pointer-events none)",
-          /pointer-events: none/.test(wrapperStyle(p)),
+          /pointer-events: none/.test(wrapper),
         ),
+        // ⛔ REGRESYON: esneyen (flex) sarmalayıcı + genişliksiz kapsayıcı
+        // metni HER HARFİ AYRI SATIRA düşürüyordu (ekran görüntüsündeki
+        // "J / d / j / d / d / j"). Baloncuk kendi genişliğini almalı.
+        check(
+          "metin harf harf SARMAZ (flex değil)",
+          !/display: flex/.test(wrapper),
+          wrapper.slice(0, 70),
+        ),
+        check(
+          "baloncuk içeriğe göre boyutlanır (inline-block + max-content)",
+          wrapper.includes("display: inline-block") &&
+            wrapper.includes("width: max-content"),
+        ),
+        check("satır sınırı var (max-width)", /max-width: \d+px/.test(wrapper), wrapper.slice(0, 90)),
+        check("uzun mesaj için satır kaydırma açık", style.includes("overflow-wrap: anywhere")),
+        check(
+          "yazı Sanalika ölçeğinde (≥17px)",
+          /font-size: (1[7-9]|2\d)px/.test(style),
+          (style.match(/font-size: [^;]+/) ?? [""])[0],
+        ),
+        // Sanalika düzeni: gönderen adı baloncuğun İÇİNDE.
+        check(
+          "gönderen adı baloncukta yazıyor (İsim: mesaj)",
+          text === "Dkdkdkk: Merhaba Vaelos!",
+          text,
+        ),
+        check("ad kalın (strong) yazılıyor", p.root.querySelector("strong") !== null),
         check("5 saniye ekranda kalır", CHAT_BUBBLE_MS === 5000, `${CHAT_BUBBLE_MS} ms`),
         check("yumuşak kaybolma süresi tanımlı", CHAT_BUBBLE_FADE_MS > 0, `${CHAT_BUBBLE_FADE_MS} ms`),
         check("baş üstü çapası 2.2", CHAT_BUBBLE_HEIGHT === 2.2),
@@ -618,14 +652,57 @@ const scenarios: Scenario[] = [
         check("geçiş animasyonu (transition) var", fading.includes("transition")),
       );
 
-      // VIP balon rengi: zemin + yazı rengi renkten gelir.
+      // 👑 VIP balon rengi: Sanalika'nın renkli + kalın beyaz çerçeveli +
+      // ışıyan baloncuğu; yazı rengi zemine göre beyaz/koyu seçilir.
       await p.render(
-        <ChatBubbleBody text="VIP balon" colorId="nane" visible />,
+        <ChatBubbleBody
+          text="VIP balon"
+          name="VIPOyuncu"
+          colorId="nane"
+          visible
+        />,
       );
       const vipStyle = findBody()?.getAttribute("style") ?? "";
+      const vipText = (p.root.textContent ?? "").replace(/\s+/g, " ").trim();
       checks.push(
         check("VIP renk zemine uygulanıyor", vipStyle.includes("#14b8a6"), vipStyle.slice(0, 60)),
-        check("VIP renkte yazı beyaz", vipStyle.includes("#ffffff")),
+        check("VIP renkte yazı beyaz", vipStyle.includes("color: #ffffff")),
+        check("VIP renkte kalın beyaz çerçeve (2px)", /border: 2px solid rgba\(255, 255, 255/.test(vipStyle)),
+        check("VIP renkte renkli IŞIMA (glow)", /box-shadow: 0 0 18px rgba\(20, 184, 166/.test(vipStyle)),
+        check("VIP baloncuğunda taç işareti var", vipText.includes("👑")),
+        check(
+          "VIP renkte kuyruk da beyaz çerçeveli",
+          (() => {
+            const t = Array.from(p.root.querySelectorAll("span")).map(
+              (s) => s.getAttribute("style") ?? "",
+            );
+            // happy-dom kısa yazımı uzun yazıma açıyor: `border-top-color`.
+            return (
+              t.some((s) => /border-top-color: rgba\(255, ?255, ?255/.test(s)) &&
+              t.some((s) => s.includes("border-top-color: #14b8a6"))
+            );
+          })(),
+          Array.from(p.root.querySelectorAll("span"))
+            .map((s) => (s.getAttribute("style") ?? "").replace(/.*border-top: /, ""))
+            .join(" || "),
+        ),
+      );
+      // Kırmızı (koyu zemin / beyaz yazı) ve sarı (açık zemin / koyu yazı)
+      // renkleri: yazı renkleri veriden gelir, kontrast otomatik ayarlanır.
+      await p.render(
+        <ChatBubbleBody text="Kırmızı balon" colorId="kirmizi" visible />,
+      );
+      const redStyle = findBody()?.getAttribute("style") ?? "";
+      checks.push(
+        check("kırmızı VIP balon zemini", redStyle.includes("background: #ef4444")),
+        check("kırmızı balonda beyaz yazı + koyu gölge", redStyle.includes("color: #ffffff") && redStyle.includes("rgba(0, 0, 0, 0.35)")),
+      );
+      await p.render(
+        <ChatBubbleBody text="Sarı balon" colorId="sari" visible />,
+      );
+      const yellowStyle = findBody()?.getAttribute("style") ?? "";
+      checks.push(
+        check("sarı VIP balonda koyu yazı", yellowStyle.includes("color: #2b2320")),
       );
       return checks;
     },
@@ -657,11 +734,18 @@ const scenarios: Scenario[] = [
         ),
         check(
           "avatar, baloncuğu kendi grubunda çiziyor",
-          /<ChatBubble text=\{speech\}/.test(avatar),
+          /<ChatBubble\s+text=\{speech\}/.test(avatar),
         ),
         check(
           "yerel oyuncuya baloncuğu bağlı",
           /speech=\{speech\}/.test(engine) && /speechColorId=\{speechColorId\}/.test(engine),
+        ),
+        check(
+          "baloncukta gönderen adı yazılıyor (Sanalika düzeni)",
+          /speechName=\{speechName\}/.test(engine) &&
+            /speechName=\{data\.name\}/.test(engine) &&
+            /speechName=\{bot\?\.def\.name\}/.test(engine) &&
+            /speechName=\{username\}/.test(world),
         ),
         check("botların baloncuğu bağlı", /botSpeech\?\./.test(engine)),
         check("karşı oyuncunun baloncuğu bağlı (varlık yayını)", /speech=\{data\.speech/.test(engine)),

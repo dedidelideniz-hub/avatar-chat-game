@@ -780,7 +780,7 @@ function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
 
 /** Normal gameplay: real 3D GLB avatar (skeleton + animations). ?svg=1 restores legacy SVG. */
 function PlayerAvatar3D({
-  posRef, config, equipped, facingRef, seat, speech, speechColorId,
+  posRef, config, equipped, facingRef, seat, speech, speechName, speechColorId,
 }: {
   posRef: React.RefObject<{ x: number; y: number }>;
   config: AvatarConfig;
@@ -789,6 +789,8 @@ function PlayerAvatar3D({
   seat?: SeatState | null;
   /** Baş üstündeki sohbet baloncuğu metni (bkz. ChatBubble3D). */
   speech?: string | null;
+  /** Baloncukta yazan gönderen adı. */
+  speechName?: string;
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
   speechColorId?: string;
 }) {
@@ -809,6 +811,7 @@ function PlayerAvatar3D({
       // ve uzak oyuncular bu bayrağı almaz (birlikte oturmasınlar).
       readSeatStore
       speech={speech}
+      speechName={speechName}
       speechColorId={speechColorId}
     />
   );
@@ -925,6 +928,7 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
         // 💬 Karşı oyuncunun sohbet baloncuğu — kendi seçtiği balon rengiyle
         // (VIP renkleri dahil) varlık yayını üzerinden gelir.
         speech={data.speech ?? null}
+        speechName={data.name}
       />
     </>
   );
@@ -951,6 +955,8 @@ function BotAvatar3D({
   botsDataRef: React.RefObject<Array<{
     def: {
       id: string;
+      /** Görünen ad (baloncukta "İsim: mesaj" olarak yazılır). */
+      name?: string;
       config: AvatarConfig;
       equipped: string[];
       /** Satıcı NPC'ler sabit ve simli renkte görünür. */
@@ -985,6 +991,8 @@ function GlbBotAvatar3D({
   botsDataRef: React.RefObject<Array<{
     def: {
       id: string;
+      /** Görünen ad (baloncukta "İsim: mesaj" olarak yazılır). */
+      name?: string;
       config: AvatarConfig;
       equipped: string[];
       /** Satıcı NPC'ler sabit ve simli renkte görünür. */
@@ -1035,6 +1043,7 @@ function GlbBotAvatar3D({
       tint={tint}
       sparkle={isVendor}
       speech={speech}
+      speechName={bot?.def.name}
     />
   );
 }
@@ -1257,6 +1266,8 @@ export interface GameEngine3DProps {
    * `null` → baloncuk yok. Süre `ChatBubble3D.CHAT_BUBBLE_MS` kadardır.
    */
   speech?: string | null;
+  /** Baloncukta görünen gönderen adı (yerel oyuncunun kullanıcı adı). */
+  speechName?: string;
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si — VIP renkleri buradan gelir). */
   speechColorId?: string;
   /**
@@ -1282,6 +1293,7 @@ export function GameEngine3D({
   onSceneReady,
   readyModelUrls,
   speech = null,
+  speechName,
   speechColorId,
   botSpeech,
 }: GameEngine3DProps) {
@@ -1452,6 +1464,7 @@ export function GameEngine3D({
         facingRef={facingRef}
         seat={seat}
         speech={speech}
+        speechName={speechName}
         speechColorId={speechColorId}
       />
       {presenceSessionId && <StreetRemotePlayers sessionId={presenceSessionId} onSelect={onRemotePlayerSelect ?? ((entry) => remotePlayerSelectRef?.current?.(entry))} />}

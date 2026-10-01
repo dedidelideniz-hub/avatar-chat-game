@@ -2170,7 +2170,9 @@ export default function World() {
       // SPEECH BUBBLE — Sanalika/Habbo stili: mesaj gönderilir gönderilmez
       // karakterin baş üstünde görünür (sohbet satırı sunucudan gelince
       // düşer). Uzun mesaj kısaltılır, baloncuk DOM içinde sarar.
-      const shown = trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed;
+      // Baloncuk ~3 satıra kadar sarabilir (max-width 210px); daha uzun
+      // mesajlar kısaltılır, sohbet panelinde tam metin kalır.
+      const shown = trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
       setBubble(shown);
       if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
       // Baloncuk 5 sn ekranda kalır, sonra yumuşakça kaybolur (bkz.
@@ -2841,8 +2843,10 @@ export default function World() {
                 : null
             }
             // 💬 Sohbet baloncuğu: mesaj gönderilince baş üstünde görünür
-            // (Sanalika/Habbo stili), `CHAT_BUBBLE_MS` sonra kaybolur.
+            // (Sanalika/Habbo stili; içinde "İsim: mesaj" yazar),
+            // `CHAT_BUBBLE_MS` sonra kaybolur.
             speech={bubble}
+            speechName={username}
             speechColorId={bubbleColorId}
             botSpeech={botBubbles}
           />
