@@ -31,6 +31,7 @@ import {
 } from "./RoyalWarriorEffects";
 import { useSamuraiBomb } from "./SamuraiBomb";
 import { VendorBadge, VendorSparkle } from "./VendorSparkle";
+import { ChatBubble } from "./ChatBubble3D";
 import { VENDOR_COLOR, isVipCharacterColor } from "@/lib/avatar";
 
 // Re-export for backward compatibility
@@ -543,6 +544,14 @@ interface GlbAvatarCoreProps {
    * için varsayılan `false` (yoksa hepsi birlikte otururdu).
    */
   readSeatStore?: boolean;
+  /**
+   * Baş üstündeki sohbet baloncuğunun metni (Sanalika/Habbo stili).
+   * `null` → baloncuk yok. Süre yönetimi çağırana aittir; bkz.
+   * `ChatBubble3D.CHAT_BUBBLE_MS`.
+   */
+  speech?: string | null;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si) — VIP balon renkleri buradan gelir. */
+  speechColorId?: string;
 }
 
 /** Işıması salınacak materyaller — boyanmış (klon) materyaller toplanır. */
@@ -571,6 +580,8 @@ function GlbAvatarCore({
   sparkle = false,
   seat = null,
   readSeatStore = false,
+  speech = null,
+  speechColorId,
 }: GlbAvatarCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   // Scaled inner group: model transform (scale + feet offset) lives here so
@@ -1105,6 +1116,12 @@ function GlbAvatarCore({
       {sparkle && (
         <VendorBadge height={PLAYER_3D_HEIGHT} color={VENDOR_COLOR} />
       )}
+      {/* 💬 SOHBET BALONCUĞU — başın üstünde, Sanalika/Habbo stili.
+          Dış grupta durur (ölçekli iç grupta DEĞİL): baloncuk karakter
+          ölçeğinden bağımsız, sabit ve okunur kalır. Dış grup yön
+          (rotation.y) ile döner ama `distanceFactor` verildiğinde drei
+          `<Html>` dönüşü DOM'a taşımaz → yazı hiçbir yönde ters görünmez. */}
+      <ChatBubble text={speech} colorId={speechColorId} />
     </group>
   );
 }
@@ -1124,6 +1141,10 @@ export interface GlbAvatar3DProps {
   seat?: SeatState | null;
   /** Oturma durumunu `benchSeat` deposundan oku (yalnızca yerel oyuncu). */
   readSeatStore?: boolean;
+  /** Baş üstündeki sohbet baloncuğu metni (Sanalika/Habbo stili). */
+  speech?: string | null;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
+  speechColorId?: string;
 }
 
 /** Primary URL can be overridden per-instance (used by the fallback). */

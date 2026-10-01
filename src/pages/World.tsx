@@ -1,5 +1,6 @@
 // The Vaelos street — tap to walk, chat with vendors, shop with SP.
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
+import { CHAT_BUBBLE_MS } from "@/engine/ChatBubble3D";
 import {
   GameEngine3D,
   raycastScreenToSVG,
@@ -48,7 +49,6 @@ import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
 import {
   ABILITIES,
   abilityOf,
-  bubbleColorOf,
   BUBBLE_COLORS,
   CURRENCY_EMOJI,
   DAILY_BONUS_MS,
@@ -256,6 +256,12 @@ interface WorldPresence {
   vy?: number;
   moving: boolean;
   inBattle?: boolean;
+  /**
+   * Baş üstü sohbet baloncuğu metni (Sanalika/Habbo stili). Mesaj
+   * gönderilince hemen yayınlanır, baloncuk kaybolunca `null` gider —
+   * böylece baloncuk TÜM telefonlarda aynı karakterin üstünde görünür.
+   */
+  speech?: string | null;
 }
 
 /** Fighter identity captured at invite time (name / avatar / equipped / super). */
@@ -426,14 +432,6 @@ function botPosAt(
 
 // Precomputed once at module load — identical on every device.
 const BOT_PATHS = new Map(BOT_DEFS.map((d) => [d.id, buildBotPath(d)]));
-
-/** Speech-bubble width adapts to the message and the sender's name. */
-function bubbleWidth(text: string, name: string) {
-  return Math.min(
-    190,
-    Math.max(150, text.length * 7 + 26, name.length * 7.5 + 28),
-  );
-}
 
 const sheetPanel = {
   initial: { y: 40, opacity: 0 },
@@ -1118,7 +1116,6 @@ export default function World() {
   const nextLevelWins = level >= 10 ? null : level * WINS_PER_LEVEL;
   const vipUntil = profile?.vipUntil ?? 0;
   const bubbleColorId = profile?.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
-  const bubbleDef = bubbleColorOf(bubbleColorId);
   const giftClaimed =
     profile !== undefined &&
     (profile?.lastDailyClaim ?? 0) > Date.now() - DAILY_BONUS_MS;
@@ -1209,14 +1206,6 @@ export default function World() {
   useEffect(() => {
     gateOpenRef.current = gateOpen;
   }, [gateOpen]);
-  // Speech bubble width adapts to the message and the sender's name.
-  const bubbleW = bubble
-    ? Math.min(
-        190,
-        Math.max(150, bubble.length * 7 + 26, username.length * 7.5 + 28),
-      )
-    : 0;
-
   // Online street — publish my position and watch other real players.
   const { publish, sessionId } = usePresencePublisher("world");
   // PvP: incoming duel invites addressed to my session + the fight document.
@@ -1246,6 +1235,24 @@ export default function World() {
     ability: equippedAbility,
     vip: isVip,
   });
+  // 💬 Kendi sohbet baloncuğum: `speechRef` varlık yayınına eklenir ve
+  // diğer telefonlar baloncuğu bu oyuncunun başının üstünde çizer.
+  const speechRef = useRef<string | null>(null);
+  const publishSpeech = useCallback(
+    (text: string | null) => {
+      speechRef.current = text;
+      const p = posRef.current;
+      publish({
+        ...profileRef.current,
+        x: p.x,
+        y: p.y,
+        facing: facingRef.current,
+        moving: false,
+        speech: text,
+      });
+    },
+    [publish],
+  );
   const othersRef = useRef<PresenceEntry<WorldPresence>[]>([]);
   const { others: liveOthers } = usePresenceOthers<WorldPresence>(
     "world",
@@ -1302,6 +1309,8 @@ export default function World() {
         facing: facingRef.current,
         moving: false,
         inBattle: battleRef.current !== null || pvpBattleRef.current !== null,
+        // Baloncuk 5 sn görünür; yayın bunu tazeleyip sonra siler.
+        speech: speechRef.current,
       });
     }, 2000);
     return () => window.clearInterval(id);
@@ -1832,6 +1841,7 @@ export default function World() {
                 facing: facingRef.current,
                 vy: vyRef.current,
                 moving: true,
+                speech: speechRef.current,
               });
             }
             lastPubMovingRef.current = true;
@@ -1845,6 +1855,7 @@ export default function World() {
               facing: facingRef.current,
               vy: 0,
               moving: false,
+              speech: speechRef.current,
             });
           }
         }
@@ -2156,11 +2167,20 @@ export default function World() {
       const trimmed = text.trim();
       if (!trimmed) return;
       playSound("chat");
-      // Speech bubble appears instantly; the chat row lands when the server
-      // confirms the message (so every phone sees it too).
-      setBubble(trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed);
+      // SPEECH BUBBLE — Sanalika/Habbo stili: mesaj gönderilir gönderilmez
+      // karakterin baş üstünde görünür (sohbet satırı sunucudan gelince
+      // düşer). Uzun mesaj kısaltılır, baloncuk DOM içinde sarar.
+      const shown = trimmed.length > 36 ? `${trimmed.slice(0, 36)}…` : trimmed;
+      setBubble(shown);
       if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
-      bubbleTimerRef.current = setTimeout(() => setBubble(null), 4000);
+      // Baloncuk 5 sn ekranda kalır, sonra yumuşakça kaybolur (bkz.
+      // ChatBubble3D → CHAT_BUBBLE_FADE_MS).
+      bubbleTimerRef.current = setTimeout(() => {
+        setBubble(null);
+        publishSpeech(null);
+      }, CHAT_BUBBLE_MS);
+      // Diğer telefonlar da baloncuğu hemen görsün (varlık yayınına ekle).
+      publishSpeech(shown);
       try {
         const msg = await sendChat({ room: "world", text: trimmed });
         seenServerIds.current.add(msg._id);
@@ -2178,7 +2198,7 @@ export default function World() {
         );
       }
     },
-    [appendMessage, username, sendChat],
+    [appendMessage, publishSpeech, sendChat],
   );
 
   const openChat = () => {
@@ -2519,7 +2539,7 @@ export default function World() {
             setBotBubbles((prev) => ({ ...prev, [bot.id]: text }));
             setTimeout(() => {
               setBotBubbles((prev) => ({ ...prev, [bot.id]: null }));
-            }, 4000);
+            }, CHAT_BUBBLE_MS);
           } else {
             const vendor = VENDORS[Math.floor(Math.random() * VENDORS.length)];
             const pool = VENDOR_PHRASES[vendor.id];
@@ -2820,6 +2840,11 @@ export default function World() {
                   }
                 : null
             }
+            // 💬 Sohbet baloncuğu: mesaj gönderilince baş üstünde görünür
+            // (Sanalika/Habbo stili), `CHAT_BUBBLE_MS` sonra kaybolur.
+            speech={bubble}
+            speechColorId={bubbleColorId}
+            botSpeech={botBubbles}
           />
 
           {/* character profile card — tapping a character opens it here */}

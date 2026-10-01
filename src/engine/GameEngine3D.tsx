@@ -780,13 +780,17 @@ function MoveTarget3D({ target }: { target: { x: number; y: number } | null }) {
 
 /** Normal gameplay: real 3D GLB avatar (skeleton + animations). ?svg=1 restores legacy SVG. */
 function PlayerAvatar3D({
-  posRef, config, equipped, facingRef, seat,
+  posRef, config, equipped, facingRef, seat, speech, speechColorId,
 }: {
   posRef: React.RefObject<{ x: number; y: number }>;
   config: AvatarConfig;
   equipped: string[];
   facingRef: React.RefObject<number>;
   seat?: SeatState | null;
+  /** Baş üstündeki sohbet baloncuğu metni (bkz. ChatBubble3D). */
+  speech?: string | null;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
+  speechColorId?: string;
 }) {
   if (SVG_DEBUG_MODE) {
     return <SvgPlayerAvatar3D posRef={posRef} config={config} equipped={equipped} facingRef={facingRef} />;
@@ -804,6 +808,8 @@ function PlayerAvatar3D({
       // Yerel oyuncu oturma durumunu px katmanının deposundan okur; botlar
       // ve uzak oyuncular bu bayrağı almaz (birlikte oturmasınlar).
       readSeatStore
+      speech={speech}
+      speechColorId={speechColorId}
     />
   );
 }
@@ -877,6 +883,8 @@ interface StreetPresence {
   moving: boolean;
   vy?: number;
   inBattle?: boolean;
+  /** Baş üstü sohbet baloncuğu metni (varlık yayınından gelir). */
+  speech?: string | null;
 }
 
 function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresence>; onSelect: (entry: PresenceEntry<StreetPresence>) => void }) {
@@ -914,6 +922,9 @@ function RemoteAvatar3D({ entry, onSelect }: { entry: PresenceEntry<StreetPresen
             ? undefined
             : data.config?.shirt
         }
+        // 💬 Karşı oyuncunun sohbet baloncuğu — kendi seçtiği balon rengiyle
+        // (VIP renkleri dahil) varlık yayını üzerinden gelir.
+        speech={data.speech ?? null}
       />
     </>
   );
@@ -934,6 +945,7 @@ function StreetRemotePlayers({ sessionId, onSelect }: { sessionId: string; onSel
 function BotAvatar3D({
   index,
   botsDataRef,
+  speech,
 }: {
   index: number;
   botsDataRef: React.RefObject<Array<{
@@ -948,17 +960,26 @@ function BotAvatar3D({
     facing: number;
     moving: boolean;
   }>>;
+  /** Bu botun baş üstü sohbet baloncuğu (varsa). */
+  speech?: string | null;
 }) {
   if (SVG_DEBUG_MODE) {
     return <SvgBotAvatar3D index={index} botsDataRef={botsDataRef} />;
   }
-  return <GlbBotAvatar3D index={index} botsDataRef={botsDataRef} />;
+  return (
+    <GlbBotAvatar3D
+      index={index}
+      botsDataRef={botsDataRef}
+      speech={speech}
+    />
+  );
 }
 
 /** GLB bot/vendor avatar — feeds the shared ref into GlbAvatar3D. */
 function GlbBotAvatar3D({
   index,
   botsDataRef,
+  speech,
 }: {
   index: number;
   botsDataRef: React.RefObject<Array<{
@@ -973,6 +994,7 @@ function GlbBotAvatar3D({
     facing: number;
     moving: boolean;
   }>>;
+  speech?: string | null;
 }) {
   const posRef = useRef({ x: 0, y: 0 });
   const facingRef = useRef(1);
@@ -1012,6 +1034,7 @@ function GlbBotAvatar3D({
       lerpSpeed={12}
       tint={tint}
       sparkle={isVendor}
+      speech={speech}
     />
   );
 }
@@ -1229,6 +1252,18 @@ export interface GameEngine3DProps {
    * içindedir, buraya yazılmaz.
    */
   readyModelUrls?: readonly string[];
+  /**
+   * Yerel oyuncunun baş üstü sohbet baloncuğu metni (Sanalika/Habbo stili).
+   * `null` → baloncuk yok. Süre `ChatBubble3D.CHAT_BUBBLE_MS` kadardır.
+   */
+  speech?: string | null;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si — VIP renkleri buradan gelir). */
+  speechColorId?: string;
+  /**
+   * Bot/satıcı baloncukları: `bot.def.id` → metin. Caddede gezinirken
+   * botların kendi aralarında konuşması baş üstünde görünür.
+   */
+  botSpeech?: Record<string, string | null | undefined>;
 }
 
 export function GameEngine3D({
@@ -1246,6 +1281,9 @@ export function GameEngine3D({
   seat = null,
   onSceneReady,
   readyModelUrls,
+  speech = null,
+  speechColorId,
+  botSpeech,
 }: GameEngine3DProps) {
   // Yükleme kapısı için: cadde varlıkları çözüldü mü? (`onSceneReady`
   // verilmediyse hiç kullanılmaz — durum makinesi boşta durur.)
@@ -1413,12 +1451,19 @@ export function GameEngine3D({
         equipped={playerEquipped}
         facingRef={facingRef}
         seat={seat}
+        speech={speech}
+        speechColorId={speechColorId}
       />
       {presenceSessionId && <StreetRemotePlayers sessionId={presenceSessionId} onSelect={onRemotePlayerSelect ?? ((entry) => remotePlayerSelectRef?.current?.(entry))} />}
 
       {/* === BOTS + VENDORS (read from ref every frame) === */}
       {Array.from({ length: botsLen }, (_, i) => (
-        <BotAvatar3D key={botsRef.current[i]?.def.id ?? `bot-${i}`} index={i} botsDataRef={botsRef} />
+        <BotAvatar3D
+          key={botsRef.current[i]?.def.id ?? `bot-${i}`}
+          index={i}
+          botsDataRef={botsRef}
+          speech={botSpeech?.[botsRef.current[i]?.def.id ?? ""] ?? null}
+        />
       ))}
 
       {/* === PHASE 1 GLB AVATAR TEST (dev-only, ?glbtest=1) === */}

@@ -320,6 +320,9 @@ async function mockAppLayer() {
   }));
   // Model indirme zinciri: sunucu yok → indirme tamamlanmış varsay.
   mock.module("@react-three/drei", () => ({
+    // drei'nin DOM katmanı: sahne olmadan yalnızca çocukları çiz (baloncuk
+    // bileşeni bu modülü import ediyor).
+    Html: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
     useProgress: () => ({ progress: 100, active: false, loaded: 4, total: 4, errors: [] }),
     useGLTF: Object.assign(() => ({ scene: {}, nodes: {}, materials: {} }), {
       preload: () => {},
@@ -335,6 +338,14 @@ async function mockAppLayer() {
 }
 
 /* ──────────────────────────────── Senaryolar ─────────────────────────────── */
+
+/** En dıştaki (stil taşıyan) sarmalayıcı div'in satır içi stili. */
+function wrapperStyle(p: Preview): string {
+  const first = Array.from(p.root.querySelectorAll("div")).find((d) =>
+    d.getAttribute("style"),
+  );
+  return first?.getAttribute("style") ?? "";
+}
 
 const scenarios: Scenario[] = [
   {
@@ -546,6 +557,123 @@ const scenarios: Scenario[] = [
         check("kilit kartı görünüyor", snap.text.includes("Kilitli renk")),
         check("renk paleti ÇİZİLMİYOR (Kızıl seçeneği yok)", !snap.inventory.join("|").includes("Kızıl")),
         check("OYUNA GİR düğmesi duruyor", /OYUNA GİR|BAĞLANIYOR/.test(snap.text)),
+      ];
+    },
+  },
+  {
+    id: "balon-gorunum",
+    title: "SOHBET BALONCUĞU · Sanalika stili görünüm (beyaz / kaybolma / VIP)",
+    handles: "src/engine/ChatBubble3D.tsx → ChatBubbleBody",
+    run: async (p) => {
+      const { ChatBubbleBody, CHAT_BUBBLE_MS, CHAT_BUBBLE_FADE_MS, CHAT_BUBBLE_HEIGHT } =
+        await import("../src/engine/ChatBubble3D");
+      await p.render(
+        <ChatBubbleBody text="Merhaba Vaelos!" colorId="beyaz" visible />,
+      );
+      // Baloncuk GÖVDESİ = border-radius taşıyan div (sarmalayıcılar da aynı
+      // metni içerdiği için en içteki eşleşme alınır).
+      const findBody = () =>
+        Array.from(p.root.querySelectorAll("div")).find((d) =>
+          (d.getAttribute("style") ?? "").includes("border-radius"),
+        );
+      const bubble = findBody();
+      const style = bubble?.getAttribute("style") ?? "";
+      const tails = Array.from(p.root.querySelectorAll("span")).filter((s) =>
+        (s.getAttribute("style") ?? "").includes("border-top"),
+      );
+      const checks: Check[] = [
+        check("mesaj metni çizildi", bubble !== undefined),
+        check(
+          "beyaz gövde (background: white)",
+          /background: (rgb\(255, 255, 255\)|#ffffff)/.test(style),
+          style.slice(0, 60),
+        ),
+        check("yumuşak köşe 12px", style.includes("border-radius: 12px")),
+        check("dolgu 8px 12px", style.includes("padding: 8px 12px")),
+        check("koyu, okunur yazı rengi", /color: (rgb\(43, 35, 32\)|#2b2320)/.test(style)),
+        check("ince kenarlık (border)", /border: 1px solid rgba\(/.test(style)),
+        check("tatlı gölge (box-shadow)", style.includes("box-shadow")),
+        check("CSS kuyruk (aşağı bakan üçgen) var", tails.length === 2, `üçgen ${tails.length}`),
+        check("kuyruk kafayı işaret eder (üst kenardan aşağı)", tails.every((t) => (t.getAttribute("style") ?? "").includes("top: 100%"))),
+        check(
+          "tıklamayı yakalamaz (pointer-events none)",
+          /pointer-events: none/.test(wrapperStyle(p)),
+        ),
+        check("5 saniye ekranda kalır", CHAT_BUBBLE_MS === 5000, `${CHAT_BUBBLE_MS} ms`),
+        check("yumuşak kaybolma süresi tanımlı", CHAT_BUBBLE_FADE_MS > 0, `${CHAT_BUBBLE_FADE_MS} ms`),
+        check("baş üstü çapası 2.2", CHAT_BUBBLE_HEIGHT === 2.2),
+      ];
+
+      // Kaybolma hali: opacity 0 (fade out).
+      await p.render(
+        <ChatBubbleBody text="Merhaba Vaelos!" colorId="beyaz" visible={false} />,
+      );
+      const fading = wrapperStyle(p);
+      checks.push(
+        check(
+          "kaybolurken opacity 0",
+          /opacity: 0(\.\d+)?;?/.test(fading),
+          fading,
+        ),
+        check("geçiş animasyonu (transition) var", fading.includes("transition")),
+      );
+
+      // VIP balon rengi: zemin + yazı rengi renkten gelir.
+      await p.render(
+        <ChatBubbleBody text="VIP balon" colorId="nane" visible />,
+      );
+      const vipStyle = findBody()?.getAttribute("style") ?? "";
+      checks.push(
+        check("VIP renk zemine uygulanıyor", vipStyle.includes("#14b8a6"), vipStyle.slice(0, 60)),
+        check("VIP renkte yazı beyaz", vipStyle.includes("#ffffff")),
+      );
+      return checks;
+    },
+  },
+  {
+    id: "balon-baglanti",
+    title: "SOHBET BALONCUĞU · kablolama (gönderince görünür, her karakterde)",
+    handles: "World → GameEngine3D → GlbAvatar3D → ChatBubble",
+    run: async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+      const world = read("../src/pages/World.tsx");
+      const engine = read("../src/engine/GameEngine3D.tsx");
+      const avatar = read("../src/engine/GlbAvatar3D.tsx");
+      const bubble = read("../src/engine/ChatBubble3D.tsx");
+      return [
+        check(
+          "drei <Html center distanceFactor> kullanılıyor",
+          /<Html[^>]*center/.test(bubble) && /distanceFactor=\{distanceFactor\}/.test(bubble),
+        ),
+        check(
+          "baloncuk oyun girdisini yakalamaz (pointerEvents none)",
+          /pointerEvents="none"/.test(bubble),
+        ),
+        check(
+          "çapa başın üstünde: [0, 2.2, 0]",
+          /CHAT_BUBBLE_HEIGHT = 2\.2/.test(bubble) &&
+            /position = \[0, CHAT_BUBBLE_HEIGHT, 0\]/.test(bubble),
+        ),
+        check(
+          "avatar, baloncuğu kendi grubunda çiziyor",
+          /<ChatBubble text=\{speech\}/.test(avatar),
+        ),
+        check(
+          "yerel oyuncuya baloncuğu bağlı",
+          /speech=\{speech\}/.test(engine) && /speechColorId=\{speechColorId\}/.test(engine),
+        ),
+        check("botların baloncuğu bağlı", /botSpeech\?\./.test(engine)),
+        check("karşı oyuncunun baloncuğu bağlı (varlık yayını)", /speech=\{data\.speech/.test(engine)),
+        check(
+          "World, mesajı baloncuğa veriyor",
+          /speech=\{bubble\}/.test(world) && /botSpeech=\{botBubbles\}/.test(world),
+        ),
+        check("World, 5 sn'lik süreyi tek kaynaktan kullanıyor", /CHAT_BUBBLE_MS/.test(world)),
+        check(
+          "mesaj gönderilince varlık yayınına ekleniyor (diğer telefonlar)",
+          /publishSpeech\(shown\)/.test(world) && /publishSpeech\(null\)/.test(world),
+        ),
       ];
     },
   },
