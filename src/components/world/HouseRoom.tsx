@@ -100,7 +100,7 @@ function ProceduralRoom({
   showAvatar: boolean;
 }) {
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div data-room-fallback="true" className="absolute inset-0 overflow-hidden">
       {/* Duvar: sıcak badana + hafif dikey doku. */}
       <div className="absolute inset-0 bg-[#e9d6bb]" />
       <div className="absolute inset-0 bg-[repeating-linear-gradient(90deg,rgba(0,0,0,0.035)_0px,rgba(0,0,0,0.035)_1px,transparent_1px,transparent_34px)]" />

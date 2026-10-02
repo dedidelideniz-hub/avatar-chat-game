@@ -1,4 +1,5 @@
 import "@vly-ai/integrations";
+import { ensureWebglFailureGuard } from "@/engine/webglSupport";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
@@ -119,6 +120,11 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 // corrupts React's DOM and causes "insertBefore" runtime crashes on re-render.
 document.documentElement.setAttribute("lang", "tr");
 document.documentElement.setAttribute("translate", "no");
+
+// 🧯 WebGL supabı: R3F'ın asenkron `configure()` reddi ("Error creating WebGL
+// context") React hata sınırına UĞRAMAZ; açılışta kurulan bu dinleyici onu
+// yakalar ve sayfaya düşmesini engeller (sahne kendi kendini yeniden dener).
+ensureWebglFailureGuard();
 
 function RouteSyncer() {
   const location = useLocation();

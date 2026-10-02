@@ -56,6 +56,9 @@ export function probe(powerPreference: WebglPowerPreference): boolean {
     // `Error creating WebGL context` bunun yüzünden çıkıyordu).
     canvas.width = 0;
     canvas.height = 0;
+    // Yuva zamanlayıcısını işle: denemenin tuttuğu yuva da bir "bırakma"dır,
+    // gerçek canvas ondan hemen sonra kurulmamalıdır (`webglContextSlotDelay`).
+    markContextReleased();
     return !!context;
   } catch {
     return false;
@@ -77,6 +80,69 @@ interface ManagedContext {
 }
 
 const managed: ManagedContext[] = [];
+
+/* ────── BAĞLAM YUVASI ZAMANLAYICISI (yarışın kökü) ──────
+ * Bağlam bırakma SENKRON DEĞİLDİR: `forceContextLoss()` / `loseContext()`
+ * yuvayı işaretler ama tarayıcı yuvayı bir sonraki görevde boşaltır. Bu arada
+ * yeni bir canvas kurulursa cihaz, "üçüncü bağlam" istenmiş gibi görür ve
+ * `THREE.WebGLRenderer: Error creating WebGL context.` ile reddeder. Bu hata
+ * `@react-three/fiber`ın ASENKRON `configure()`ından geldiği için React hata
+ * sınırına UĞRAMAZ.
+ *
+ * Bu yüzden bırakmalar zaman damgasıyla işlenir ve YENİ canvas'lar
+ * `webglContextSlotDelay()` kadar bekletilir (`WebglCanvas.useCanvasGate`).
+ * Rota geçişlerinde (giriş → cadde → oda) eski sahnenin canvas'ı bu yüzden
+ * "hâlâ açık" görünüyordu — hatanın asıl kaynağı buydu.
+ */
+let lastReleaseAt = 0;
+
+/** Bırakma işleminden sonra yuvanın oturması için beklenen süre (ms). */
+export const CONTEXT_SETTLE_MS = 220;
+
+/**
+ * ARDIŞIK CANVAS'LAR ARASINDAKİ PAY (ms).
+ *
+ * Aynı anda birden çok sahne kurulunca (cadde + oda + avatar; ya da oda
+ * açılırken yedek oda avatarı) hepsi TEK görevde bağlam ister ve cihaz
+ * isteklerin bir kısmını reddeder. Sıralı bir yerleşim kuyruğu, her yeni
+ * canvas'ı bir öncekinden `CONTEXT_STAGGER_MS` kadar sonra kurar; bağlam
+ * istekleri böylece TIRMANMAZ, teker teker açılır.
+ */
+export const CONTEXT_STAGGER_MS = 140;
+
+/** Bir sonraki canvas'ın kurulabileceği en erken an (yerleşim kuyruğu). */
+let nextSlotAt = 0;
+
+/**
+ * Yeni bir `<Canvas>` için sıra al: KAÇ ms beklenmeli? (`setTimeout` ile).
+ *
+ * Hem son bırakmanın oturmasını (`webglContextSlotDelay`) hem de AYNI ANDA
+ * kurulmaya çalışan diğer sahnelerin payını (`nextSlotAt`) hesaba katar. Her
+ * çağrı kuyruğu bir adım ileri taşır — böylece beş sahne aynı karede bağlam
+ * istemek yerine sırayla ister (mobildeki `Error creating WebGL context`
+ * redlerinin bir kaynağı buydu).
+ */
+export function reserveContextSlot(): number {
+  const now = Date.now();
+  const wait = Math.max(32, webglContextSlotDelay() + 32, nextSlotAt - now);
+  nextSlotAt = now + wait + CONTEXT_STAGGER_MS;
+  return wait;
+}
+
+/** Bir bağlamın (veya denemenin) bırakıldığını işaretle. */
+function markContextReleased(): void {
+  lastReleaseAt = Date.now();
+}
+
+/**
+ * Yeni bir `<Canvas>` kurmadan ÖNCE beklenmesi gereken süre (ms).
+ * Son bırakmanın üzerinden `CONTEXT_SETTLE_MS` geçmediyse kalan süreyi verir.
+ */
+export function webglContextSlotDelay(): number {
+  if (lastReleaseAt === 0) return 0;
+  const since = Date.now() - lastReleaseAt;
+  return since >= CONTEXT_SETTLE_MS ? 0 : CONTEXT_SETTLE_MS - since;
+}
 
 /** Bu renderer'ı "açık bağlamlar" defterine yaz. */
 export function registerCanvasContext(
@@ -100,6 +166,10 @@ export function unregisterCanvasContext(gl: THREE.WebGLRenderer): void {
  */
 export function releaseCanvasContext(gl: THREE.WebGLRenderer): void {
   unregisterCanvasContext(gl);
+  markContextReleased();
+  // Bağlam yükü değişti: "hangi powerPreference açılabiliyor?" cevabı artık
+  // bayat olabilir, bir sonraki kurulumda yeniden ölçülür.
+  cached = null;
   try {
     gl.forceContextLoss?.();
     gl.dispose?.();
@@ -146,7 +216,7 @@ const pendingRelease = new WeakMap<HTMLCanvasElement, number>();
 
 export function scheduleCanvasRelease(
   gl: THREE.WebGLRenderer,
-  delayMs = 400,
+  delayMs = 50,
 ): void {
   const element = gl.domElement;
   if (!element || typeof window === "undefined") {
@@ -213,7 +283,6 @@ export function webglPowerPreference(): WebglPowerPreference | null {
 type FailureListener = () => void;
 
 const failureListeners = new Set<FailureListener>();
-let watchedCanvases = 0;
 let failureGuardInstalled = false;
 
 function installFailureGuard(): void {
@@ -221,11 +290,13 @@ function installFailureGuard(): void {
   if (typeof window === "undefined" || !window.addEventListener) return;
   failureGuardInstalled = true;
   window.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => {
-    if (watchedCanvases === 0) return; // hiç 3D sahne yok → bize ait değil
     const reason = event.reason as { message?: string } | string | undefined;
     const message =
       typeof reason === "string" ? reason : (reason?.message ?? "");
     if (!/webgl context/i.test(message)) return;
+    // `configure()` reddi HİÇBİR ZAMAN sayfaya düşmemeli: dinleyen sahne varsa
+    // o yeniden dener, yoksa bile sayfa yaşar (geliştirme katmanı bu reddi
+    // "build error" olarak göstermesin diye işaretlenir).
     event.preventDefault?.();
     console.warn(
       "[webgl] Bağlam kurulamadı — kurtarma devrede (sahne yeniden denenecek):",
@@ -236,15 +307,26 @@ function installFailureGuard(): void {
 }
 
 /**
+ * Supabı UYGULAMA AÇILIŞINDA kur (`main.tsx`).
+ *
+ * `watchCanvasFailures` supabı zaten tembelce kurar; ama o gecikme, 3D sahnenin
+ * HİÇ aboneliği olmadığı anlarda (ör. giriş ekranı) gelen reddin sayfaya
+ * düşmesine yetebiliyordu. Açılışta kurmak bu pencereyi tamamen kapatır ve
+ * "Error creating WebGL context" bir daha ASLA `unhandledrejection` olarak
+ * dışarı çıkmaz.
+ */
+export function ensureWebglFailureGuard(): void {
+  installFailureGuard();
+}
+
+/**
  * Bağlam kurulumunu izlemeye başla. Dönen fonksiyon izlemeyi bırakır.
  * Abonelik boyunca gelen "WebGL context" redleri `onFail`e dönüşür.
  */
 export function watchCanvasFailures(onFail: FailureListener): () => void {
   installFailureGuard();
   failureListeners.add(onFail);
-  watchedCanvases += 1;
   return () => {
     failureListeners.delete(onFail);
-    watchedCanvases = Math.max(0, watchedCanvases - 1);
   };
 }

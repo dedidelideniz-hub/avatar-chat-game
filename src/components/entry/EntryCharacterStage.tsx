@@ -1,8 +1,12 @@
 import { GlbCharacterPortrait } from "@/engine/GlbAvatar3D";
 import { hasCharacterSkin } from "@/engine/EquipmentRegistry";
-import { WebglContextKeeper } from "@/engine/WebglCanvas";
+import {
+  CanvasGuard,
+  WebglContextKeeper,
+  useWebglRetry,
+} from "@/engine/WebglCanvas";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Suspense, useMemo, useRef } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 /**
@@ -138,9 +142,37 @@ export function EntryCharacterStage({
   // orijinal renkleriyle gösterilir; seçilen renk yalnızca VARSAYILAN
   // görünümü boyar. Kaide ışığı da skinde nötr kalır.
   const skinWorn = hasCharacterSkin(equipped);
+  // 🧯 Giriş sahnesi de KENDİNİ İYİLEŞTİRSİN: bağlam kurulamazsa feda
+  // edilebilir bir bağlam bırakılıp YENİ canvas ile yeniden denenir. Bu
+  // abonelik olmadan, hiçbir bağlam dinleyicisi yokken (giriş ekranı tek
+  // başına) gelen red sayfaya düşüyordu.
+  const { attempt, exhausted, handleCreated } = useWebglRetry(2);
+  const [noGpu, setNoGpu] = useState(false);
+  if (exhausted || noGpu) {
+    // Bağlam hiç açılamadı: karakter yerine renkli, sakin bir parıltı kalır
+    // (giriş ekranı bozulmaz, sayfa yaşar).
+    return (
+      <div
+        className={className}
+        style={{
+          background: `radial-gradient(circle at 50% 70%, ${color}33, transparent 68%)`,
+        }}
+      />
+    );
+  }
   return (
     <div className={className}>
+      {/* BAĞLAM KAPISI (paylaşılan `CanvasGuard`): giriş ekranından giriş →
+          cadde → oda arasında geçerken eski sahnenin canvas'ı bırakılır; yeni
+          canvas, yuva OTURMADAN kurulmaz. Ayrıca bağlam hiç açılamıyorsa
+          canvas DENENMEZ (R3F'ın asenkron `configure()` hatası React sınırına
+          uğramaz — tek güvenli yol denememektir). */}
+      <CanvasGuard
+        resetKey={attempt}
+        onUnavailable={() => setNoGpu(true)}
+      >
       <Canvas
+        key={attempt}
         dpr={[1, 1.75]}
         camera={{ position: [0, 1.05, 4.3], fov: 38 }}
         gl={{ alpha: true, antialias: true }}
@@ -154,7 +186,7 @@ export function EntryCharacterStage({
         }}        >
         {/* Bağlam defteri: bu sahne sökülünce WebGL bağlamı BIRAKILIR
             (birikip caddenin/odanın bağlamını engellemesin). */}
-        <WebglContextKeeper />
+        <WebglContextKeeper onCreated={handleCreated} />
         <ambientLight intensity={0.55} />
         <hemisphereLight args={["#8fb6ff", "#120c06", 0.5]} />
         <directionalLight position={[2.6, 4.4, 3.4]} intensity={1.35} />
@@ -187,6 +219,7 @@ export function EntryCharacterStage({
         </Suspense>
         <Aura color={color} />
       </Canvas>
+      </CanvasGuard>
     </div>
   );
 }

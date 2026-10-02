@@ -1,4 +1,11 @@
-import { Suspense, useEffect, useMemo, useRef, Component } from "react";
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  Component,
+} from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
@@ -1522,7 +1529,10 @@ export function GlbProfileAvatar({
   // Bu canvas tam olarak oda yedeği/bağlam baskısı anında açılabildiği için
   // korumasız kalması `Error creating WebGL context` ile oyunu düşürebiliyordu.
   const { attempt, exhausted, handleCreated } = useWebglRetry(2);
-  if (exhausted) return null;
+  // Bağlam yuvası yoksa (`CanvasGuard` → `onUnavailable`) avatar da ÇİZİLMEZ:
+  // denemeye kalkışmak yeni bir hata üretir, oysa kart avatarsız da okunur.
+  const [noGpuSlot, setNoGpuSlot] = useState(false);
+  if (exhausted || noGpuSlot) return null;
 
   const sceneFor = (url: string) => (
     <Canvas
@@ -1557,7 +1567,10 @@ export function GlbProfileAvatar({
 
   return (
     <div className={className}>
-      <CanvasGuard resetKey={attempt}>
+      <CanvasGuard
+        resetKey={attempt}
+        onUnavailable={() => setNoGpuSlot(true)}
+      >
         {primary === FALLBACK_MODEL_URL ? (
           sceneFor(primary)
         ) : (

@@ -80,11 +80,7 @@ import {
   type PlacedItem,
 } from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
-import {
-  releaseCanvasContext,
-  webglPowerPreference,
-  type WebglPowerPreference,
-} from "./webglSupport";
+import { releaseCanvasContext, webglPowerPreference } from "./webglSupport";
 
 /**
  * İzometrik bakışı kapatan parçaların ADI.
@@ -926,27 +922,16 @@ export interface RoomStageProps {
  * İstenen davranış bu: düzenleme istemci tarafı ve kalıcı değil.
  */
 export function RoomStage({ equipped, canBuild = false, fallback }: RoomStageProps) {
-  // Bağlam açılabiliyor mu ve hangi `powerPreference` ile? Açılamıyorsa 3D
-  // sahneyi hiç denemeyiz; seçilen ayar gerçek sahneye aynen geçirilir
-  // (`webglSupport.ts` → deneme ile sahne AYNI şeyi ister).
-  //
-  // AYAR ÖLÇÜLÜR ve KISA BİR BEKLEMEDEN SONRA uygulanır. Neden:
-  // `webglPowerPreference()` bir DENEME bağlamı açar ve hemen bırakır — ama
-  // `WEBGL_lose_context` ASENKRONdur (aynı gerçek, `useWebglRetry` için de
-  // geçerli). Deneme ile oda canvas'ı AYNI karede kurulursa, denemenin yuvası
-  // hâlâ doluyken ikinci bir bağlam istenir; cihaz (özellikle mobil) bunu
-  //
-  //   `THREE.WebGLRenderer: Error creating WebGL context.`
-  //
-  // ile reddeder. Bu hata R3F'ın ASENKRON `configure()`ından geldiği için
-  // React hata sınırına UĞRAMAZ: yakalanmazsa TÜM sayfayı düşürür. Ölçüm
-  // burada, CADDE BAĞLAMI AÇIKKEN yapılır (cihazın gerçekten ikinci bir bağlam
-  // verip vermediğinin doğru ölçüsü budur); canvas ise ancak deneme yuvası
-  // boşaldıktan sonra — bir sonraki görevde — kurulur.
-  const [power, setPower] = useState<WebglPowerPreference | null>(null);
-  const [powerChecked, setPowerChecked] = useState(false);
+  // BAĞLAM KAPISI: cihazın ikinci bir bağlam verip vermediği ÖLÇÜLÜR ve canvas
+  // ancak o zaman kurulur — bu iş `CanvasGuard`ın içindedir (`useCanvasGate`):
+  // deneme bağlamı hemen bırakılır, yuvanın oturması BEKLENİR, sonra oda
+  // canvas'ı açılır. Açılamıyorsa 3D sahne HİÇ kurulmaz ve `onUnavailable`
+  // yedeğe düşürür. NEDEN ÖNEMLİ: `configure()` hatası R3F'ın asenkron
+  // çağrısından geldiği için React hata sınırına UĞRAMAZ (bkz.
+  // `WebglCanvas.tsx` başlığı) — sahneyi HİÇ kurmamak tek güvenli yoldur.
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [notEnoughGpu, setNotEnoughGpu] = useState(false);
   const [showFallback, setShowFallback] = useState(true);
   // Bağlam kurulamazsa feda edilebilir bir bağlam bırakıp YENİ canvas ile
   // yeniden dener; denemeler biterse (`exhausted`) yedek oda kalıcı olur.
@@ -1016,23 +1001,6 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
     [],
   );
 
-  // Bağlam ayarını oku, sonra GECİKMELİ uygula. Sıra önemli: deneme bağlamı
-  // bu çağrıda açılır ve bırakılması bir sonraki göreve kadar sürer; canvas
-  // ancak aradan kısa bir süre geçince kurulmalı (yukarıdaki açıklama).
-  useEffect(() => {
-    const value = webglPowerPreference();
-    if (!value) {
-      // Bağlam açılamıyor: beklemeye gerek yok, yedek oda avatarsız kalır.
-      setPowerChecked(true);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setPower(value);
-      setPowerChecked(true);
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, []);
-
   // Yedek oda, 3D oda açıldıktan SONRA sökülür: geçiş yumuşak olur ve
   // gereksiz bir WebGL bağlamı açık kalmaz.
   useEffect(() => {
@@ -1041,20 +1009,15 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  // Bağlam ayarı HENÜZ ölçülmedi (kısa bekleme): 3D sahne kurulmaz, yedek oda
-  // avatarsız gösterilir — bu sırada YENİ bir bağlam açılmaz.
-  if (!powerChecked) {
+  // BAĞLAM YUVASI YOK: 3D oda HİÇ kurulmadı (deneme başarısız). Yedek odanın
+  // avatar canvas'ı da AÇILMAZ: ikinci bir bağlam isteği de reddedilir ve
+  // boşuna bir hata daha üretirdi. Oda, avatarsız da okunur.
+  if (notEnoughGpu) {
     return <div className="absolute inset-0">{fallback({ avatar: false })}</div>;
   }
-  // Bağlam HİÇ açılamıyor: 3D sahne kurulmaz. Yedek odanın avatar canvas'ı da
-  // AÇILMAZ — açılmaya çalışılsa tarayıcı yeni bir bağlam veremez ve oyun
-  // `Error creating WebGL context` ile çökerdi. Oda, avatarsız da okunur.
-  if (!power) {
-    return <div className="absolute inset-0">{fallback({ avatar: false })}</div>;
-  }
-  // 3D sahne kurulamadı/denemeler tükendi: yedek oda kalıcı olur. `power`
-  // dolu olduğu için ikinci bağlam (cadde + avatar) açılabilir; oda bağlamı da
-  // `handleFail` içinde bırakıldı. Düzenleme araçları anlamsız → gösterilmez.
+  // 3D sahne kuruldu ama çöktü / denemeler tükendi: yedek oda kalıcı olur. Oda
+  // bağlamı `handleFail` içinde BIRAKILDIĞI için avatar canvas'ı açılabilir.
+  // (Bağlamsız yol yukarıda ayrı ele alınır — orada yuva yoktur.)
   if (failed || exhausted) {
     return <div className="absolute inset-0">{fallback({ avatar: true })}</div>;
   }
@@ -1196,7 +1159,12 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
         style={{ background: ROOM_VIGNETTE }}
       />
 
-      <CanvasGuard onFail={handleFail} resetKey={attempt}>
+      <CanvasGuard
+        onFail={handleFail}
+        // Yuva yok: 3D oda hiç kurulmaz, yedek odaya düşülür.
+        onUnavailable={() => setNotEnoughGpu(true)}
+        resetKey={attempt}
+      >
         <Canvas
           key={attempt}
           style={{
@@ -1222,7 +1190,10 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
           gl={{
             alpha: true,
             antialias: true,
-            powerPreference: power,
+            // Ayar, KAPININ (deneme) ölçtüğü değerdir ve önbellekten gelir: bu
+            // satır yalnızca kapı geçildikten SONRA çalışır, yani burada yeni
+            // bir deneme bağlamı açılmaz (`webglSupport.webglPowerPreference`).
+            powerPreference: webglPowerPreference() ?? "default",
             failIfMajorPerformanceCaveat: false,
           }}
           onCreated={({ gl }) => {

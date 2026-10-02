@@ -1150,8 +1150,9 @@ const scenarios: Scenario[] = [
           roomSnap.inventory.some((l) => l.includes("Çık")),
         ),
         check(
-          "karakter odada duruyor (3D model yerleşti)",
-          p.root.querySelectorAll("canvas").length > 0,
+          "oda BOŞ EKRAN değil: 3D sahne ya da yedek oda çizilir",
+          p.root.querySelectorAll("canvas").length > 0 ||
+            p.root.querySelector("[data-room-fallback]") !== null,
           `${p.root.querySelectorAll("canvas").length} canvas`,
         ),
       ];
@@ -2640,7 +2641,7 @@ const scenarios: Scenario[] = [
           "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",
           house.includes("<RoomStage") &&
             house.includes("showAvatar={avatar}") &&
-            stage.includes("if (!power)") &&
+            stage.includes("notEnoughGpu") &&
             stage.includes("if (failed || exhausted)") &&
             stage.includes("showFallback"),
         ),
@@ -2653,20 +2654,23 @@ const scenarios: Scenario[] = [
         check(
           "bağlam açılamıyorsa 3D sahne HİÇ kurulmuyor (çökmek yerine yedeğe düşer)",
           stage.includes("webglPowerPreference") &&
-            stage.includes("if (!power)") &&
+            stage.includes("onUnavailable={() => setNotEnoughGpu(true)}") &&
             read("../src/engine/webglSupport.ts").includes(
               "export function webglPowerPreference",
+            ) &&
+            read("../src/engine/WebglCanvas.tsx").includes(
+              "export function useCanvasGate",
             ),
         ),
         check(
-          "bağlam yoksa (!power) yedek odanın avatar canvas'ı da hiç açılmıyor",
+          "bağlam yoksa yedek odanın avatar canvas'ı da hiç açılmıyor",
           (() => {
-            const noPower = stage.indexOf("if (!power)");
+            const noGpu = stage.indexOf("if (notEnoughGpu)");
             const noAvatar = stage.indexOf(
               "fallback({ avatar: false })",
-              noPower,
+              noGpu,
             );
-            return noPower >= 0 && noAvatar > noPower && noAvatar - noPower < 220;
+            return noGpu >= 0 && noAvatar > noGpu && noAvatar - noGpu < 220;
           })(),
         ),
         check(
@@ -2684,12 +2688,14 @@ const scenarios: Scenario[] = [
           ),
         ),
         check(
-          "yedek odanın avatar canvas'ı da bağlam hatasına dayanıklı (retry + sınır + `onCreated`)",
+          "profil avatarı da bağlam hatasına dayanıklı (retry + kapı + `onCreated`)",
           (() => {
             const avatar = read("../src/engine/GlbAvatar3D.tsx");
             return (
               avatar.includes("useWebglRetry(2)") &&
-              avatar.includes("<CanvasGuard resetKey={attempt}>") &&
+              avatar.includes("noGpuSlot") &&
+              avatar.includes("onUnavailable={() => setNoGpuSlot(true)}") &&
+              avatar.includes("if (exhausted || noGpuSlot) return null;") &&
               avatar.includes("<WebglContextKeeper priority={10} onCreated={handleCreated} />")
             );
           })(),
@@ -2700,7 +2706,9 @@ const scenarios: Scenario[] = [
           const highFirst = support.indexOf('probe("high-performance")');
           return check(
             "oda bağlamı SEÇİLEN `powerPreference` ile açılıyor (deneme = sahne)",
-            stage.includes("powerPreference: power") &&
+            stage.includes(
+              'powerPreference: webglPowerPreference() ?? "default"',
+            ) &&
               // İkinci bağlam için önce en uyumlu ayar denenir.
               lowFirst >= 0 &&
               highFirst > lowFirst,
@@ -2725,36 +2733,63 @@ const scenarios: Scenario[] = [
           })(),
         ),
         check(
-          "oda canvas'ı deneme bağlamından SONRA kuruluyor (gecikmeli ayar)",
+          "canvas'lar SIRAYA giriyor: yerleşim kuyruğu + zamanlayıcılı hazırlık",
           (() => {
-            const effect = stage.slice(
-              stage.indexOf("const value = webglPowerPreference()"),
+            const canvas = read("../src/engine/WebglCanvas.tsx");
+            const support = read("../src/engine/webglSupport.ts");
+            const reserve = canvas.indexOf("const wait = reserveContextSlot()");
+            const timer = canvas.indexOf("window.setTimeout", reserve);
+            const ready = canvas.indexOf("setState({ ready: true", timer);
+            return (
+              reserve >= 0 &&
+              timer > reserve &&
+              ready > timer &&
+              support.includes("export function reserveContextSlot") &&
+              support.includes("CONTEXT_STAGGER_MS")
             );
-            const timer = effect.indexOf("window.setTimeout");
-            const apply = effect.indexOf("setPower(value)");
-            return timer >= 0 && apply > timer;
           })(),
         ),
         check(
-          "ayar ölçülene kadar 3D sahne kurulmuyor (avatarsız yedek oda)",
+          "kapı GEÇİLMEDEN 3D canvas HİÇ kurulmuyor (asenkron red sayfayı düşürmesin)",
           (() => {
-            const pending = stage.indexOf("if (!powerChecked)");
-            const fallbackNoAvatar = stage.indexOf(
-              "fallback({ avatar: false })",
-              pending,
-            );
+            const canvas = read("../src/engine/WebglCanvas.tsx");
             return (
-              pending >= 0 &&
-              fallbackNoAvatar > pending &&
-              fallbackNoAvatar - pending < 220
+              canvas.includes("if (!gate.ready) return null;") &&
+              canvas.includes("export function CanvasGuard") &&
+              canvas.includes("export function useCanvasGate")
             );
           })(),
         ),
         check(
           "sahne kurulum hatası da yakalanıyor (CanvasGuard + RoomBoundary)",
-          /export class CanvasGuard/.test(read("../src/engine/WebglCanvas.tsx")) &&
+          /export function CanvasGuard/.test(
+            read("../src/engine/WebglCanvas.tsx"),
+          ) &&
+            /class CanvasErrorBoundary/.test(
+              read("../src/engine/WebglCanvas.tsx"),
+            ) &&
             /class RoomBoundary/.test(stage) &&
-            /<CanvasGuard onFail=/.test(stage),
+            /<CanvasGuard/.test(stage) &&
+            /onFail={handleFail}/.test(stage),
+        ),
+        check(
+          "bağlam reddi SAYFAYA DÜŞMEZ: supap açılışta kurulur (koşulsuz)",
+          read("../src/main.tsx").includes("ensureWebglFailureGuard()") &&
+            read("../src/engine/webglSupport.ts").includes(
+              "export function ensureWebglFailureGuard",
+            ) &&
+            !read("../src/engine/webglSupport.ts").includes(
+              "if (watchedCanvases === 0) return;",
+            ),
+        ),
+        check(
+          "feda edilebilir önizleme/arena sahneleri de kapıdan geçiyor",
+          read("../src/components/world/ShopSheets.tsx").includes(
+            "<CanvasGuard>",
+          ) &&
+            read("../src/components/world/Arena3D.tsx").includes(
+              "<CanvasGuard>",
+            ),
         ),
         check(
           "ASENKRON bağlam hatası oyunu düşürmüyor (supap → yeniden denenir)",

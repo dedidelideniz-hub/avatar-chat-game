@@ -36,11 +36,14 @@ import {
 } from "react";
 import { useThree } from "@react-three/fiber";
 import {
+  CONTEXT_SETTLE_MS,
   cancelScheduledRelease,
   registerCanvasContext,
   releaseExpendableContext,
+  reserveContextSlot,
   scheduleCanvasRelease,
   watchCanvasFailures,
+  webglPowerPreference,
 } from "./webglSupport";
 
 /* ───────────────── 1) BAĞLAMI KORU (Canvas'ın içine) ───────────────── */
@@ -82,11 +85,93 @@ export function WebglContextKeeper({
 export interface CanvasGuardProps {
   children: ReactNode;
   onFail?: () => void;
+  /**
+   * Bağlam HİÇ açılamıyor (cihaz/yuva): 3D sahne KURULMAZ.
+   *
+   * Ayrı bir geri çağırma olmasının sebebi: bu durumda R3F'ın `configure()`ı
+   * hiç çalıştırılmaz — yani ne senkron (hata sınırı) ne asenkron (supap) bir
+   * hata OLUŞUR. Çağıran tarafın yedeğe düşmesi gerektiğini bu sinyal söyler.
+   * Aksi hâlde boş bir alan kalırdı.
+   */
+  onUnavailable?: () => void;
   /** Değişince sınır sıfırlanır (yeniden deneme turu). */
   resetKey?: unknown;
 }
 
-export class CanvasGuard extends Component<
+/**
+ * BAĞLAM YUVASI KAPISI — yeni bir `<Canvas>` kurulmadan ÖNCE çalışır.
+ *
+ * İki iş yapar:
+ *   1. Bu cihazda (bu yükle) bağlam AÇILABİLİYOR mu? — `webglPowerPreference()`
+ *      bir deneme bağlamı açar ve hemen bırakır. Açılamıyorsa canvas HİÇ
+ *      KURULMAZ: R3F'ın asenkron `configure()`ı hiç çalışmadığı için
+ *      `Error creating WebGL context` de oluşmaz (bu hata React hata sınırına
+ *      uğramadığı için oyunu düşürüyordu).
+ *   2. Az önce bir bağlam bırakıldıysa (`webglContextSlotDelay`) yuvanın
+ *      oturmasını BEKLER — "bırakma + yeni canvas" aynı anda iki/üç yuva
+ *      tutmasın. Rota geçişlerinde (giriş → cadde → oda) hata buradan çıkıyordu.
+ *
+ * Deneme başarısız olursa feda edilebilir bağlamları bırakıp ARTAN aralıklarla
+ * (`maxRounds` kez) tekrar dener; hâlâ olmazsa `unavailable` der ve çağıran
+ * yedeğe düşer.
+ */
+export interface CanvasGateState {
+  /** `<Canvas>` kurulabilir (yuva hazır + bağlam açılabiliyor). */
+  ready: boolean;
+  /** Cihaz/yuva 3D sahneyi kaldıramıyor: çağıran yedek içerik göstermeli. */
+  unavailable: boolean;
+}
+
+export function useCanvasGate(maxRounds = 4): CanvasGateState {
+  const [state, setState] = useState<CanvasGateState>({
+    ready: false,
+    unavailable: false,
+  });
+
+  useEffect(() => {
+    let timer: number | null = null;
+    let cancelled = false;
+
+    const open = (round: number) => {
+      const power = webglPowerPreference();
+      if (!power) {
+        if (round < maxRounds) {
+          // Yuva DOLU olabilir: az önce bir canvas bırakıldı ve `loseContext`
+          // henüz işlenmedi. Feda edilebilir bir sahneyi daha bırakıp artan
+          // aralıklarla TEKRAR dene. Tek denemede pes etmek, geçici bir
+          // bağlam baskısını kalıcı "3D yok" durumuna çeviriyordu.
+          if (round > 0) releaseExpendableContext();
+          timer = window.setTimeout(
+            () => !cancelled && open(round + 1),
+            CONTEXT_SETTLE_MS * (round + 1),
+          );
+          return;
+        }
+        if (!cancelled) setState({ ready: false, unavailable: true });
+        return;
+      }
+      // YERLEŞİM KUYRUĞU: denemenin yuvası + bekleyen bırakmalar otursun,
+      // ayrıca AYNI ANDA kurulmak isteyen diğer sahneler sıraya girsin
+      // (`reserveContextSlot`) — bağlam istekleri tırmanmasın, teker teker
+      // açılsın (mobildeki toplu redlerin kaynağı buydu).
+      const wait = reserveContextSlot();
+      timer = window.setTimeout(() => {
+        if (!cancelled) setState({ ready: true, unavailable: false });
+      }, wait);
+    };
+
+    open(0);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [maxRounds]);
+
+  return state;
+}
+
+/** Yalnızca SENKRON sahne hatalarını yakalayan sınır (React sınıfı). */
+class CanvasErrorBoundary extends Component<
   CanvasGuardProps,
   { failed: boolean; key: unknown }
 > {
@@ -114,6 +199,31 @@ export class CanvasGuard extends Component<
   render() {
     return this.state.failed ? null : this.props.children;
   }
+}
+
+/**
+ * 3D sahnelerin ORTAK kabı: önce bağlam kapısı (`useCanvasGate`), sonra
+ * senkron hata sınırı. Kapı geçilmeden `children` (yani `<Canvas>`) hiç
+ * kurulmaz.
+ */
+export function CanvasGuard({
+  children,
+  onFail,
+  onUnavailable,
+  resetKey,
+}: CanvasGuardProps) {
+  const gate = useCanvasGate();
+
+  useEffect(() => {
+    if (gate.unavailable) onUnavailable?.();
+  }, [gate.unavailable, onUnavailable]);
+
+  if (!gate.ready) return null;
+  return (
+    <CanvasErrorBoundary resetKey={resetKey} onFail={onFail}>
+      {children}
+    </CanvasErrorBoundary>
+  );
 }
 
 /**

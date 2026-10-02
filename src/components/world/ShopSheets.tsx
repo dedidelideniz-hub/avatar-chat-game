@@ -3,7 +3,7 @@ import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, useAnimations } from "@react-three/drei";
-import { WebglContextKeeper } from "@/engine/WebglCanvas";
+import { CanvasGuard, WebglContextKeeper } from "@/engine/WebglCanvas";
 import { motion, AnimatePresence } from "framer-motion";
 import { Suspense, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -308,6 +308,10 @@ export function SkinPreviewModal({
         {/* 3D Canvas */}
         <div className="relative h-[55%] w-full">
           {product.skinUrl && (
+            /* BAĞLAM KAPISI: yuva doluysa önizleme canvas'ı HİÇ kurulmaz —
+               böylece mağaza önizlemesi, caddedeki/odadaki asıl sahnenin
+               bağlamını reddettirmez (feda edilebilir önizleme). */
+            <CanvasGuard>
             <Canvas
               dpr={[1, 1.5]}
               camera={{ position: [0, 0.5, 3], fov: 35 }}
@@ -319,6 +323,7 @@ export function SkinPreviewModal({
               <WebglContextKeeper priority={10} />
               <SkinPreviewScene url={product.skinUrl} />
             </Canvas>
+            </CanvasGuard>
           )}
           {/* Vignette overlay */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0c0c1e] via-transparent to-transparent" />

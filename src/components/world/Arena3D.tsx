@@ -13,7 +13,7 @@ import type { AbilityDef } from "@/lib/shop";
 
 import { useAnimations, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { WebglContextKeeper } from "@/engine/WebglCanvas";
+import { CanvasGuard, WebglContextKeeper } from "@/engine/WebglCanvas";
 import {
   FALLBACK_MODEL_URL,
   GlbModelBoundary,
@@ -2303,6 +2303,10 @@ export function Arena3D({
     [],
   );
   return (
+    /* BAĞLAM KAPISI: arena da feda edilebilir bir sahnedir. Yuva doluysa
+       canvas HİÇ kurulmaz — böylece arenaya girildiğinde bağlam reddi
+       ("Error creating WebGL context") oluşmaz. */
+    <CanvasGuard>
     <Canvas
       dpr={[1, coarse ? 1.5 : 2]}
       shadows={!coarse}
@@ -2349,5 +2353,6 @@ export function Arena3D({
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </Canvas>
+    </CanvasGuard>
   );
 }

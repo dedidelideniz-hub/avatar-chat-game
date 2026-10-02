@@ -1430,7 +1430,14 @@ export function GameEngine3D({
   }
 
   return (
-    <CanvasGuard resetKey={attempt} onFail={handleStageFail}>
+    <CanvasGuard
+      resetKey={attempt}
+      onFail={handleStageFail}
+      // Bağlam yuvası YOK (deneme başarısız): canvas HİÇ kurulmaz — R3F'ın
+      // asenkron `configure()` hatası React sınırına uğramaz, bu yüzden tek
+      // güvenli yol sahneyi denememektir. Aynı yedek bilgi katmanına düşülür.
+      onUnavailable={handleStageFail}
+    >
       <Canvas
         key={attempt}
         dpr={[1, isMobile ? 1.5 : 2]}
