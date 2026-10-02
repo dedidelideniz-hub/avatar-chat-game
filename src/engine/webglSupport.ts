@@ -49,6 +49,13 @@ export function probe(powerPreference: WebglPowerPreference): boolean {
       | null
       | undefined;
     lose?.loseContext?.();
+    // Boyutları SIFIRLA: `loseContext` bağlamı kayıp işaretler ama çizim
+    // tamponu (GPU belleği + bağlam yuvası) hemen boşalmayabilir. `releaseCanvasContext` ile
+    // aynı numara — deneme bağlamı, gerçek sahne kurulmadan ÖNCE tamamen
+    // bırakılsın ki "deneme + sahne" aynı anda iki yuva tutmasın (mobilde
+    // `Error creating WebGL context` bunun yüzünden çıkıyordu).
+    canvas.width = 0;
+    canvas.height = 0;
     return !!context;
   } catch {
     return false;
@@ -193,6 +200,7 @@ export function webglPowerPreference(): WebglPowerPreference | null {
   }
   return null;
 }
+
 
 /* ─────────────────── 5) ASENKRON BAĞLAM HATALARI (supap) ───────────────────
  * `@react-three/fiber` sahneleri ASENKRON kurar (`configure()`): orada çıkan

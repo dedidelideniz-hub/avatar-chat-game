@@ -77,7 +77,11 @@ import {
   type PlacedItem,
 } from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
-import { releaseCanvasContext, webglPowerPreference } from "./webglSupport";
+import {
+  releaseCanvasContext,
+  webglPowerPreference,
+  type WebglPowerPreference,
+} from "./webglSupport";
 
 /**
  * İzometrik bakışı kapatan parçaların ADI.
@@ -833,7 +837,22 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
   // Bağlam açılabiliyor mu ve hangi `powerPreference` ile? Açılamıyorsa 3D
   // sahneyi hiç denemeyiz; seçilen ayar gerçek sahneye aynen geçirilir
   // (`webglSupport.ts` → deneme ile sahne AYNI şeyi ister).
-  const [power] = useState(webglPowerPreference);
+  //
+  // AYAR ÖLÇÜLÜR ve KISA BİR BEKLEMEDEN SONRA uygulanır. Neden:
+  // `webglPowerPreference()` bir DENEME bağlamı açar ve hemen bırakır — ama
+  // `WEBGL_lose_context` ASENKRONdur (aynı gerçek, `useWebglRetry` için de
+  // geçerli). Deneme ile oda canvas'ı AYNI karede kurulursa, denemenin yuvası
+  // hâlâ doluyken ikinci bir bağlam istenir; cihaz (özellikle mobil) bunu
+  //
+  //   `THREE.WebGLRenderer: Error creating WebGL context.`
+  //
+  // ile reddeder. Bu hata R3F'ın ASENKRON `configure()`ından geldiği için
+  // React hata sınırına UĞRAMAZ: yakalanmazsa TÜM sayfayı düşürür. Ölçüm
+  // burada, CADDE BAĞLAMI AÇIKKEN yapılır (cihazın gerçekten ikinci bir bağlam
+  // verip vermediğinin doğru ölçüsü budur); canvas ise ancak deneme yuvası
+  // boşaldıktan sonra — bir sonraki görevde — kurulur.
+  const [power, setPower] = useState<WebglPowerPreference | null>(null);
+  const [powerChecked, setPowerChecked] = useState(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [showFallback, setShowFallback] = useState(true);
@@ -903,6 +922,23 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
     [],
   );
 
+  // Bağlam ayarını oku, sonra GECİKMELİ uygula. Sıra önemli: deneme bağlamı
+  // bu çağrıda açılır ve bırakılması bir sonraki göreve kadar sürer; canvas
+  // ancak aradan kısa bir süre geçince kurulmalı (yukarıdaki açıklama).
+  useEffect(() => {
+    const value = webglPowerPreference();
+    if (!value) {
+      // Bağlam açılamıyor: beklemeye gerek yok, yedek oda avatarsız kalır.
+      setPowerChecked(true);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setPower(value);
+      setPowerChecked(true);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   // Yedek oda, 3D oda açıldıktan SONRA sökülür: geçiş yumuşak olur ve
   // gereksiz bir WebGL bağlamı açık kalmaz.
   useEffect(() => {
@@ -911,6 +947,11 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
     return () => window.clearTimeout(timer);
   }, [ready]);
 
+  // Bağlam ayarı HENÜZ ölçülmedi (kısa bekleme): 3D sahne kurulmaz, yedek oda
+  // avatarsız gösterilir — bu sırada YENİ bir bağlam açılmaz.
+  if (!powerChecked) {
+    return <div className="absolute inset-0">{fallback({ avatar: false })}</div>;
+  }
   // Bağlam HİÇ açılamıyor: 3D sahne kurulmaz. Yedek odanın avatar canvas'ı da
   // AÇILMAZ — açılmaya çalışılsa tarayıcı yeni bir bağlam veremez ve oyun
   // `Error creating WebGL context` ile çökerdi. Oda, avatarsız da okunur.

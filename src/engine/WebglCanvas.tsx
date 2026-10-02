@@ -29,6 +29,7 @@ import {
   Component,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -156,6 +157,13 @@ export interface WebglRetry {
  *
  * Sahne SAĞLIKLI olduğunda abonelik hâlâ açıktır ama başka bir canvas'ın
  * hatası bu sahneyi etkilemez (`handleCreated` çağrıldığı için yok sayılır).
+ *
+ * ABONELİK NEDEN `useLayoutEffect` (useEffect DEĞİL): hatanın kendisi canvas'ın
+ * LAYOUT etkisinde doğar (`configure()`), reddin "unhandled rejection" olarak
+ * bildirilmesi ise aynı görevin sonunda olur. `useEffect` (passive) aboneliği
+ * bir mikro göreve ertelendiği için bu bildirimle YARIŞABİLİYOR; aboneliği
+ * layout etkisine almak supabın HER ZAMAN önce kurulmasını sağlar — bağlam
+ * hatası yüzünden "hiç dinleyici yokken" sayfa düşmez.
  */
 export function useWebglRetry(maxAttempts = 2): WebglRetry {
   const [attempt, setAttempt] = useState(0);
@@ -184,7 +192,7 @@ export function useWebglRetry(maxAttempts = 2): WebglRetry {
     createdRef.current = true;
   }, []);
 
-  useEffect(
+  useLayoutEffect(
     () =>
       watchCanvasFailures(() => {
         if (createdRef.current) return; // bizim canvas değil

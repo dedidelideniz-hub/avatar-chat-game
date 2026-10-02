@@ -2604,6 +2604,49 @@ const scenarios: Scenario[] = [
             `deneme sırası: default → high-performance`,
           );
         })(),
+        // ── DENEME ↔ CANVAS YARIŞI (kök neden: "Error creating WebGL context") ──
+        //    `webglPowerPreference()` bir deneme bağlamı açar ve HEMEN bırakır;
+        //    ama `WEBGL_lose_context` ASENKRONdur — yuva bir süre daha dolu kalır.
+        //    Deneme ile oda canvas'ı aynı karede kurulursa cihaz üçüncü bağlamı
+        //    ister gibi görünür ve reddeder; bu hata R3F'ın asenkron
+        //    `configure()`ından geldiği için React sınırına uğramaz, SAYFAYI
+        //    düşürür. İki kilit: (1) deneme bağlamı boyutları sıfırlanarak TAM
+        //    bırakılır, (2) oda canvas'ı denemeden SONRA kısa gecikmeyle kurulur.
+        check(
+          "deneme bağlamı TAM bırakılıyor (yuva sahne kurulmadan boşalsın)",
+          (() => {
+            const probe = read("../src/engine/webglSupport.ts");
+            const loseAt = probe.indexOf("loseContext?.()");
+            const clearAt = probe.indexOf("canvas.width = 0", loseAt);
+            return loseAt >= 0 && clearAt > loseAt;
+          })(),
+        ),
+        check(
+          "oda canvas'ı deneme bağlamından SONRA kuruluyor (gecikmeli ayar)",
+          (() => {
+            const effect = stage.slice(
+              stage.indexOf("const value = webglPowerPreference()"),
+            );
+            const timer = effect.indexOf("window.setTimeout");
+            const apply = effect.indexOf("setPower(value)");
+            return timer >= 0 && apply > timer;
+          })(),
+        ),
+        check(
+          "ayar ölçülene kadar 3D sahne kurulmuyor (avatarsız yedek oda)",
+          (() => {
+            const pending = stage.indexOf("if (!powerChecked)");
+            const fallbackNoAvatar = stage.indexOf(
+              "fallback({ avatar: false })",
+              pending,
+            );
+            return (
+              pending >= 0 &&
+              fallbackNoAvatar > pending &&
+              fallbackNoAvatar - pending < 220
+            );
+          })(),
+        ),
         check(
           "sahne kurulum hatası da yakalanıyor (CanvasGuard + RoomBoundary)",
           /export class CanvasGuard/.test(read("../src/engine/WebglCanvas.tsx")) &&
@@ -2620,6 +2663,12 @@ const scenarios: Scenario[] = [
             read("../src/engine/WebglCanvas.tsx").includes(
               "export function useWebglRetry",
             ),
+        ),
+        check(
+          "supap aboneliği LAYOUT etkisinde (asenkron reddin ÖNÜNE geçer)",
+          /useLayoutEffect\(\s*\(\) =>\s*watchCanvasFailures/.test(
+            read("../src/engine/WebglCanvas.tsx").replace(/\n\s+/g, " "),
+          ),
         ),
         // ── 7) BAĞLAM BÜTÇESİ: sökülen canvas bağlamını BIRAKIR, yer gerekirse
         //       feda edilebilir bağlam bırakılır, cadde bağlamı KORUNUR.
