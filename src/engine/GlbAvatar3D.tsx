@@ -1211,10 +1211,23 @@ interface PortraitCoreProps {
    * seçimini anında görür. Gameplay avatarları bundan etkilenmez.
    */
   tint?: string;
+  /**
+   * Hareket durumu (oda): `true` iken YÜRÜME klibi oynatılır. Verilmezse
+   * (seçim ekranı) yalnızca idle çalar. Kare başına yeniden render olmasın
+   * diye ref ile verilir (`RoomCharacter` her karede yazar).
+   */
+  movingRef?: React.RefObject<boolean>;
 }
 
 /** Static character shown facing the camera with its idle animation. */
-function GlbPortraitCore({ url, equipped, height, spin, tint }: PortraitCoreProps) {
+function GlbPortraitCore({
+  url,
+  equipped,
+  height,
+  spin,
+  tint,
+  movingRef,
+}: PortraitCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
   const { scene, animations } = useGLTF(skinUrl || url);
@@ -1246,17 +1259,38 @@ function GlbPortraitCore({ url, equipped, height, spin, tint }: PortraitCoreProp
     applyCharacterTint(clone, tint);
   }, [clone, tint]);
 
-  // Play the idle clip (or the first clip as a fallback).
+  // IDLE ↔ WALK. `movingRef` verilirse (oda) hareket hâlinde yürüme klibi
+  // çapraz geçişle çalınır — karakter kayarak değil, YÜRÜYEREK gider.
+  // Verilmezse (seçim ekranı) yalnızca idle oynar.
+  const portraitClips = useRef<{ idle?: string; walk?: string }>({});
+  const portraitClip = useRef<"idle" | "walk">("idle");
   useEffect(() => {
-    const { idle } = resolveIdleWalk(actions);
-    const key = idle ?? Object.keys(actions)[0];
+    const clips = resolveIdleWalk(actions);
+    portraitClips.current = clips;
+    const key = clips.idle ?? Object.keys(actions)[0];
     const action = key ? actions[key] : undefined;
     if (!action) return;
     action.reset().fadeIn(0.3).play();
+    portraitClip.current = "idle";
     return () => {
       action.fadeOut(0.3);
     };
   }, [actions]);
+
+  useFrame(() => {
+    if (!movingRef) return;
+    const want: "idle" | "walk" = movingRef.current ? "walk" : "idle";
+    if (want === portraitClip.current) return;
+    const clips = portraitClips.current;
+    const fromKey = portraitClip.current === "idle" ? clips.idle : clips.walk;
+    const toKey = want === "idle" ? clips.idle : clips.walk;
+    const to = toKey ? actions[toKey] : undefined;
+    if (!to) return; // yürüme klibi yoksa idle'da kal (donma yok)
+    const from = fromKey ? actions[fromKey] : undefined;
+    from?.fadeOut(0.2);
+    to.reset().fadeIn(0.2).play();
+    portraitClip.current = want;
+  });
 
   // Bone-based equipment — deferred to useFrame so model is in the scene.
   const equippedRef = useRef(equipped.join(","));
@@ -1298,6 +1332,11 @@ export interface GlbCharacterPortraitProps {
   spin?: boolean;
   /** Karakter rengi (oyun girişindeki renk seçimi) — modele boyanır. */
   tint?: string;
+  /**
+   * HAREKET ref'i (oda): doluysa `true` iken yürüme klibi çalınır ve karakter
+   * kaymak yerine yürür. Verilmezse davranış eskisi gibi (idle).
+   */
+  movingRef?: React.RefObject<boolean>;
 }
 
 /**
@@ -1328,45 +1367,30 @@ export function GlbCharacterPortrait({
   height = 2.2,
   spin = true,
   tint,
+  movingRef,
 }: GlbCharacterPortraitProps) {
   const primary = characterModelUrl();
+  const core = (url: string) => (
+    <GlbPortraitCore
+      url={url}
+      equipped={equipped}
+      height={height}
+      spin={spin}
+      tint={tint}
+      movingRef={movingRef}
+    />
+  );
 
   if (primary === FALLBACK_MODEL_URL) {
-    return (
-      <Suspense fallback={null}>
-        <GlbPortraitCore
-          url={primary}
-          equipped={equipped}
-          height={height}
-          spin={spin}
-          tint={tint}
-        />
-      </Suspense>
-    );
+    return <Suspense fallback={null}>{core(primary)}</Suspense>;
   }
   return (
     <GlbModelBoundary
       fallback={
-        <Suspense fallback={null}>
-          <GlbPortraitCore
-            url={FALLBACK_MODEL_URL}
-            equipped={equipped}
-            height={height}
-            spin={spin}
-            tint={tint}
-          />
-        </Suspense>
+        <Suspense fallback={null}>{core(FALLBACK_MODEL_URL)}</Suspense>
       }
     >
-      <Suspense fallback={null}>
-        <GlbPortraitCore
-          url={primary}
-          equipped={equipped}
-          height={height}
-          spin={spin}
-          tint={tint}
-        />
-      </Suspense>
+      <Suspense fallback={null}>{core(primary)}</Suspense>
     </GlbModelBoundary>
   );
 }

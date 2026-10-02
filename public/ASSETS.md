@@ -96,9 +96,10 @@ ham açıklık `fitBand` (2,5–60 birim) dışındaysa oda `span`a (10 birim) o
 (`roomInteriorBox`: zeminin ayak izi + tavan yüksekliği), böylece merkez X/Z
 origin'e, **taban y 0'a** oturur ve karakter zemine basar.
 
-Kamera **İZOMETRİKTİR**: `origin + (12, 15, 12)` yönünden odanın merkezine
-bakar (`camera.lookAt(2000, 0, 2000)`). İç mekânda kamera biraz yaklaşır
-(`camera.distanceScale = 0,7`) ki oda ekranı doldursun; oda büyükse mesafe oda
+Kamera **İZOMETRİKTİR**: `origin + (12, 10, 12)` yönünden odanın merkezine
+bakar (`camera.lookAt(2000, 0, 2000)`). Yükseklik 10 (~30°) Sanalika/Habbo
+tarzı yumuşak izometrik açı verir. İç mekânda kamera biraz yaklaşır
+(`camera.distanceScale = 0,55`) ki oda ekranı doldursun; oda büyükse mesafe oda
 yine çerçevede kalacak kadar AÇILIR, yön asla değişmez. Oyuncu odanın TAM
 merkezine doğar (`player.position = (2000, 0, 2000)`), zemine dokunarak yürür ve
 **duvar sınırından** (ölçülen ayak izi) dışarı çıkamaz (`clampToRoom` +

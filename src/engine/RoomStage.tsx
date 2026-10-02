@@ -115,15 +115,21 @@ function RoomLights({ plan }: { plan: IsoRoomPlan }) {
   const reach = Math.max(4, plan.size.x + plan.size.z);
   return (
     <>
-      <ambientLight intensity={0.85} />
-      <hemisphereLight args={["#fff3e2", "#4c3a2b", 0.55]} />
-      <directionalLight position={[6, height + 6, 6]} intensity={1.15} />
+      <ambientLight intensity={1.15} />
+      <hemisphereLight args={["#fff6ea", "#6b5340", 0.85]} />
+      <directionalLight position={[6, height + 6, 6]} intensity={1.55} />
+      {/* Dolgu ışığı: kesitte kalan uzak duvarlar gölgede siyaha düşmesin. */}
+      <directionalLight
+        position={[-5, height + 3, -5]}
+        intensity={0.5}
+        color="#cfe0ff"
+      />
       <pointLight
-        position={[0, height * 0.9, 0]}
-        intensity={7}
+        position={[0, height * 0.85, 0]}
+        intensity={6}
         distance={reach}
         decay={2}
-        color="#ffe7c2"
+        color="#ffe9c6"
       />
     </>
   );
@@ -215,6 +221,9 @@ function RoomCharacter({
 }) {
   const root = useRef<THREE.Group>(null);
   const yaw = useRef(0);
+  // Hareket bayrağı: avatar (portre) bu ref'e bakıp idle ↔ YÜRÜME geçişi
+  // yapar. Ref ile verilir çünkü kare başına React render'ı istemeyiz.
+  const moving = useRef(false);
 
   useFrame((_, delta) => {
     const group = root.current;
@@ -223,6 +232,7 @@ function RoomCharacter({
     const dx = target.x - group.position.x;
     const dz = target.z - group.position.z;
     const distance = Math.hypot(dx, dz);
+    moving.current = distance > 0.06;
     if (distance > 0.03) {
       const step = Math.min(distance, 2.4 * Math.min(delta, 0.05));
       group.position.x += (dx / distance) * step;
@@ -253,6 +263,7 @@ function RoomCharacter({
           equipped={equipped}
           height={ROOM_ISO.characterHeight}
           spin={false}
+          movingRef={moving}
         />
       </group>
     </group>
@@ -344,7 +355,9 @@ function RoomInterior({
         scale: ROOM_ISO.scale,
         span: ROOM_ISO.span,
         fitBand: ROOM_ISO.fitBand,
-        camera: { ...ROOM_ISO.camera, distanceScale: 0.7 },
+        // Sanalika/Habbo gibi oda EKRANI DOLDURSUN: kamera iç mekânda biraz
+        // daha yaklaşır (yön korunur).
+        camera: { ...ROOM_ISO.camera, distanceScale: 0.55 },
       });
     }
     const raw = measureRoomModel(scene as THREE.Object3D);

@@ -2057,7 +2057,7 @@ const scenarios: Scenario[] = [
       );
       checks.push(
         check(
-          "kamera İZOMETRİK: spec yönü (12, 15, 12) korunuyor",
+          "kamera İZOMETRİK: spec yönü (`ROOM_ISO.camera.offset`) korunuyor",
           Math.abs(camDir.x - specDir.x) < 1e-6 &&
             Math.abs(camDir.y - specDir.y) < 1e-6 &&
             Math.abs(camDir.z - specDir.z) < 1e-6,
@@ -2065,10 +2065,19 @@ const scenarios: Scenario[] = [
       );
       checks.push(
         check(
-          "varsayılan odada kamera spec noktasında (2000+12, 15, 2000+12)",
-          Math.abs(plan.camera.position[0] - (K.ROOM_ISO.origin[0] + 12)) < 1e-6 &&
-            Math.abs(plan.camera.position[1] - 15) < 1e-6 &&
-            Math.abs(plan.camera.position[2] - (K.ROOM_ISO.origin[2] + 12)) < 1e-6,
+          "varsayılan odada kamera `origin + izometrik offset` noktasında",
+          Math.abs(
+            plan.camera.position[0] -
+              (K.ROOM_ISO.origin[0] + K.ROOM_ISO.camera.offset[0]),
+          ) < 1e-6 &&
+            Math.abs(
+              plan.camera.position[1] -
+                (K.ROOM_ISO.origin[1] + K.ROOM_ISO.camera.offset[1]),
+            ) < 1e-6 &&
+            Math.abs(
+              plan.camera.position[2] -
+                (K.ROOM_ISO.origin[2] + K.ROOM_ISO.camera.offset[2]),
+            ) < 1e-6,
           `kamera ${plan.camera.position.map((n) => n.toFixed(1)).join(", ")}`,
         ),
       );
@@ -2263,10 +2272,12 @@ const scenarios: Scenario[] = [
             prep.includes("export function clampToRoom"),
         ),
         check(
-          "odadaki karakter sokaktakiyle AYNI avatar (GlbCharacterPortrait + kuşam)",
+          "odadaki karakter sokaktakiyle AYNI avatar + YÜRÜYOR (idle↔walk, kaymıyor)",
           stage.includes("GlbCharacterPortrait") &&
             stage.includes("equipped={equipped}") &&
-            stage.includes("spin={false}"),
+            stage.includes("spin={false}") &&
+            stage.includes("movingRef={moving}") &&
+            read("../src/engine/GlbAvatar3D.tsx").includes("movingRef"),
         ),
         check(
           "DÜZENLEME MODU: 0,5 m ızgara görünür + eşya ızgaraya oturuyor",

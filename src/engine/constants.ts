@@ -417,9 +417,13 @@ export const ROOM_ISO = {
   fitBand: { min: 2.5, max: 60 },
   /** Otomatik ölçekte odanın oturtulacağı açıklık (birim). */
   span: 10,
-  /** İzometrik kamera: merkeze göre yön ve görüş açısı. Hedef HER ZAMAN `origin`. */
+  /**
+   * İzometrik kamera: merkeze göre yön ve görüş açısı. Hedef HER ZAMAN
+   * `origin`. Yükseklik (10) Sanalika/Habbo tarzı yumuşak izometrik açı verir
+   * (~30°); 15 çok tepeden bakıyordu ve oda tepsi gibi görünüyordu.
+   */
   camera: {
-    offset: [12, 15, 12] as [number, number, number],
+    offset: [12, 10, 12] as [number, number, number],
     fov: 45,
   },
   /** Kamera düzlemleri — oda izole bölgede olduğu için menzil rahat seçilir. */
