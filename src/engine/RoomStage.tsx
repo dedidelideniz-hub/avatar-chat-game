@@ -54,6 +54,9 @@ import {
   type ThreeEvent,
 } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
+import { AnimatePresence, motion } from "framer-motion";
+import { Grid3x3, Hammer } from "lucide-react";
+import { playSound } from "@/lib/sounds";
 import * as THREE from "three";
 import { ROOM_ISO, ROOM_MODEL_URL } from "./constants";
 import {
@@ -104,8 +107,8 @@ const CEILING_PARTS = /ceiling|roof|tavan|çatı|cati|plafon/i;
      · aynı renkte UZAKLIK SİSİ ufku yutar (düz renk bandı oluşmasın),
      · odanın ÇEVRESİ zeminle döşenir (`RoomGround`): oda boşlukta yüzen bir
        kutu değil, bir yerde duran bir mekân olur,
-     · kamera çerçeve payını azaltıp odaya biraz DAHA YAKLAŞIR
-       (`ROOM_FRAME_FILL`): oda ekranı doldurur, kenarlardan hafifçe taşar.
+     · kamera ÇERÇEVEYE SIĞDIRMAK yerine ODAKLANIR (`ROOM_FRAMING`): oda,
+       oyun alanının ortasına dengeli oturur ve alanı doldurur.
 
    Renkler SICAK (alacakaranlık) seçildi: oda ışığı ve turuncu çerçeve sıcak;
    mavi bir gökyüzü sıcak iç mekânı soğuk/kopuk gösteriyordu. Krem duvarlar
@@ -249,15 +252,45 @@ const warmedMaterials = new WeakSet<THREE.Material>();
 const WALL_HEIGHT_FACTOR = 1.35;
 
 /**
- * ÇERÇEVE DOLDURMA — kamera odaya bu kadar DAHA YAKLAŞIR (1 = tam sığdırma).
+ * ODA KADRAJI — oda, oyun alanının ORTASINA dengeli oturur ve alanı DOLDURUR.
  *
- * "Oda küçük görünmesin" geri bildirimi: oda, ekran oranına tam sığdırıldığında
- * (izometrik eşkenar dörtgen, dikey ekranda) üstte/altta geniş boşluk kalıyordu.
- * 1,08 → odanın sol/sağ köşeleri ekranın birkaç santim dışına taşar; cadde
- * sahnesinde de dünya ekranın kenarlarından taşar. Taşan kısım yalnızca köşe
- * uçlarıdır (zeminin ortası ve duvarlar tam görünür kalır).
+ * "Oda ekranın ortasında dikey olarak çok küçük kalıyor, etrafında devasa boş
+ * alanlar var" geri bildirimi: oda kare bir hacim olduğu için izometrik izdüşümü
+ * EŞKENAR DÖRTGENdir; ekran oranına "tam sığdırıldığında" dikey ekranda üstte/
+ * altta geniş boşluk kalıyordu. Çözüm, sığdırmak yerine ODAKLANMAK:
+ *
+ *   · `targetHeightFill` — odanın dikeyde dolduracağı oran; kamera bunu
+ *     tutturmak için YAKLAŞIR,
+ *   · `maxWidthFill`     — yatay taşma sınırı. Dikey ekranda hedef dolgunluk
+ *     ancak yanlardan taşarak elde edilir (cadde sahnesinde de dünya ekranın
+ *     kenarlarından taşar). 1,3 → oda %30 taşar; taşan kısım yalnızca zeminin
+ *     sol/sağ KÖŞE UÇLARIdır (duvarlar, kapı, eşyalar ve zeminin ortası tam
+ *     görünür kalır — `maxWidthFill` bunu garanti eder),
+ *   · `buildReserve`     — düzenleme tepsisi açıkken ekranın ALTINDA bırakılan
+ *     pay: oda yukarı kayar, tepsisi odanın alt kısmını kapatmaz.
  */
-const ROOM_FRAME_FILL = 1.08;
+const ROOM_FRAMING = {
+  /** Odanın dikeyde dolduracağı hedef oran (1 = tam sığar). */
+  targetHeightFill: 0.9,
+  /** Yatay taşma sınırı (1 = tam sığar) — üstünde köşe uçları kırpılır. */
+  maxWidthFill: 1.35,
+  /** Düzenleme modunda altta bırakılacak pay (ekran yüksekliğinin oranı). */
+  buildReserve: 0.16,
+} as const;
+
+/**
+ * VİNYET — sahnenin kenarlarını yumuşakça karartır.
+ *
+ * İzometrik bakışta ufuk KADRAJIN DIŞINDA kalır (kamera 34° aşağı bakar, dikey
+yarı görüş açısı 22,5°): yani odanın çevresinde her zaman geniş bir ZEMİN
+kalır. Oda ortada küçük, çevresi düz renkte "boş alan" gibi okunuyordu.
+Vinyet bu alanı görsel olarak sakinleştirir ve odayı öne çıkarır (cadde
+sahnesindeki uzaklık sisinin yaptığı işin oda tarafındaki karşılığı).
+ */
+// ⚠️ Bu, Tailwind sınıfı DEĞİL satır içi CSS: ayraç olarak GERÇEK BOŞLUK
+// kullanılmalı (Tailwind'in `_` kısaltması düz CSS'te geçersizdir).
+const ROOM_VIGNETTE =
+  "radial-gradient(circle at 50% 45%, transparent 34%, rgba(30,20,13,0.5) 100%)";
 
 /**
  * Odanın kamerası — İZOMETRİK ve SABİT.
@@ -267,7 +300,16 @@ const ROOM_FRAME_FILL = 1.08;
  * (raycaster) ve dokunarak yürütme, kameranın kıpırdamamasını gerektirir —
  * sallanan kamerada ızgara kayar ve dokunulan nokta kayar.
  */
-function RoomCamera({ plan, topY }: { plan: IsoRoomPlan; topY: number }) {
+function RoomCamera({
+  plan,
+  topY,
+  bottomReserve = 0,
+}: {
+  plan: IsoRoomPlan;
+  topY: number;
+  /** Ekranın altında BIRAKILACAK pay (0…0,4) — oda o kadar yukarı ortalanır. */
+  bottomReserve?: number;
+}) {
   const { camera, size } = useThree();
 
   useLayoutEffect(() => {
@@ -277,7 +319,7 @@ function RoomCamera({ plan, topY }: { plan: IsoRoomPlan; topY: number }) {
       plan.origin[1],
       plan.origin[2],
     );
-    // Yön (origin → spec pozisyonu) KORUNUR; yalnız mesafe uyarlanır.
+    // Yön (origin → spec pozisyonu) KORUNUR; yalnız mesafe/kaydırma uyarlanır.
     const dir = new THREE.Vector3(
       shot.position[0] - center.x,
       shot.position[1] - center.y,
@@ -286,18 +328,19 @@ function RoomCamera({ plan, topY }: { plan: IsoRoomPlan; topY: number }) {
     if (dir.lengthSq() === 0) dir.set(1, 1, 1);
     dir.normalize();
 
-    // Odayı HER EKRAN ORANINDA TAM ÇERÇEVELE (telefonda taşmasın, masaüstünde
-    // boşluk kalmasın): kutunun köşelerini kameraya dik iki eksende ölçüp
-    // gereken mesafeyi bul. Kamera daha önce sabit uzaklıktaydı; zemin ekranda
-    // küçük kalıyordu.
+    // Kameraya dik iki eksen + görüş açıları (canlı ekran oranından).
     const up = new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(up, dir).normalize();
     const camUp = new THREE.Vector3().crossVectors(dir, right).normalize();
     const vFov = THREE.MathUtils.degToRad(shot.fov);
     const aspect = Math.max(0.25, size.width / Math.max(1, size.height));
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+    const tanV = Math.tan(vFov / 2);
+    const tanH = Math.tan(hFov / 2);
 
-    let distance = 0;
+    // Odanın 8 köşesi — kamera uzayındaki bileşenleriyle: yatay (right),
+    // dikey (camUp) ve derinlik (dir). Tüm çerçeveleme bu üç sayıdan çıkar.
+    const corners: { w: number; u: number; f: number }[] = [];
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         for (const y of [plan.origin[1], topY]) {
@@ -306,25 +349,64 @@ function RoomCamera({ plan, topY }: { plan: IsoRoomPlan; topY: number }) {
             y - center.y,
             sz * plan.half.z,
           );
-          distance = Math.max(
-            distance,
-            Math.abs(p.dot(right)) / Math.tan(hFov / 2) + p.dot(dir),
-            Math.abs(p.dot(camUp)) / Math.tan(vFov / 2) + p.dot(dir),
-          );
+          corners.push({
+            w: Math.abs(p.dot(right)),
+            u: p.dot(camUp),
+            f: p.dot(dir),
+          });
         }
       }
     }
-    // Pay: oda ekranı DOLDURSUN — köşeler kenara yapışsın, üstte/altta
-    // gereksiz boşluk kalmasın (bkz. `ROOM_FRAME_FILL`).
-    distance /= ROOM_FRAME_FILL;
 
-    camera.position.copy(center).addScaledVector(dir, distance);
+    // Odanın TAM SIĞDIĞI mesafe: her köşe için gereken mesafenin en büyüğü.
+    const fitFor = (fill: number, axis: "w" | "u") => {
+      const tan = axis === "w" ? tanH : tanV;
+      let need = 0;
+      for (const c of corners) {
+        const extent = axis === "w" ? c.w : Math.abs(c.u);
+        need = Math.max(need, extent / (fill * tan) + c.f);
+      }
+      return need;
+    };
+    const fitH = fitFor(1, "u");
+    const fitW = fitFor(1, "w");
+    const fit = Math.max(fitH, fitW);
+
+    // SIĞDIRMA DEĞİL ODAKLA (bkz. `ROOM_FRAMING`): hedef dikey dolgunluk için
+    // yaklaş; yatay taşma sınırını aşma; sığdırmadan daha uzağa açılma.
+    let distance = Math.max(
+      fitH / ROOM_FRAMING.targetHeightFill,
+      fitW / ROOM_FRAMING.maxWidthFill,
+    );
+    distance = Math.min(distance, fit);
+
+    // DENGELE: odanın izdüşümü, alt payın düşüldüğü ALANIN ortasına gelsin.
+    // NDC'de (kırpma uzayı) dikey aralık [-1, 1]; alt pay bırakılınca serbest
+    // bandın merkezi `bottomReserve` olur.
+    let yMax = -Infinity;
+    let yMin = Infinity;
+    for (const c of corners) {
+      const depth = Math.max(0.001, distance - c.f);
+      const ndcY = c.u / (depth * tanV);
+      if (ndcY > yMax) yMax = ndcY;
+      if (ndcY < yMin) yMin = ndcY;
+    }
+    const currentY = (yMax + yMin) / 2;
+    const shiftNdc = Math.max(0, bottomReserve) - currentY;
+    // NDC kayması → dünya kayması (hedef düzleminde). Kamera + hedef AYNI
+    // kadar kayar: yön bozulmaz, oda görüntüde yukarı/aşağı ötelenir.
+    const shift = camUp
+      .clone()
+      .multiplyScalar(-shiftNdc * distance * tanV);
+    const target = center.clone().add(shift);
+
+    camera.position.copy(target).addScaledVector(dir, distance);
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       (camera as THREE.PerspectiveCamera).fov = shot.fov;
       camera.updateProjectionMatrix();
     }
-    camera.lookAt(center);
-  }, [camera, plan, topY, size.width, size.height]);
+    camera.lookAt(target);
+  }, [camera, plan, topY, bottomReserve, size.width, size.height]);
 
   return null;
 }
@@ -539,6 +621,7 @@ function RoomInterior({
   onReady,
   onPlan,
   isBuildMode,
+  showGrid,
   buildItem,
   placed,
   onPlace,
@@ -552,6 +635,8 @@ function RoomInterior({
    */
   onPlan: (plan: IsoRoomPlan) => void;
   isBuildMode: boolean;
+  /** 0,5 m ızgarası görünsün mi? (Düzenleme tepsisindeki düğme.) */
+  showGrid: boolean;
   buildItem: string;
   placed: PlacedItem[];
   onPlace: (x: number, z: number) => void;
@@ -718,7 +803,13 @@ function RoomInterior({
 
   return (
     <>
-      <RoomCamera plan={plan} topY={plan.origin[1] + wallHeight} />
+      {/* Düzenleme tepsisi açıkken kamera odayı biraz YUKARI ortalar: tepsi,
+          odanın alt kısmını kapatmaz (bkz. `ROOM_FRAMING.buildReserve`). */}
+      <RoomCamera
+        plan={plan}
+        topY={plan.origin[1] + wallHeight}
+        bottomReserve={isBuildMode ? ROOM_FRAMING.buildReserve : 0}
+      />
       <RoomLights plan={plan} />
 
       {/* ── İZOLE ODA BÖLGESİ: tek grup, tek merkez (ROOM_ISO.origin) ── */}
@@ -759,8 +850,9 @@ function RoomInterior({
         {/* Sıcak turuncu çerçeve: duvarların üstünde + köşelerde (Sanalika). */}
         <RoomFrame half={plan.half} y={wallHeight} />
 
-        {/* Düzenleme modunda 0,5 m ızgarası: eşyanın nereye oturacağı görünür. */}
-        {isBuildMode && (
+        {/* Düzenleme modunda 0,5 m ızgarası: eşyanın nereye oturacağı görünür.
+            Tepsideki "Izgara" düğmesiyle açılıp kapanır (görüşü kapatmasın). */}
+        {isBuildMode && showGrid && (
           <gridHelper
             args={[gridSpan, gridDivisions, "#f0c987", "#8a5a34"]}
             position={[0, 0.02, 0]}
@@ -864,7 +956,9 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
   const roomGl = useRef<THREE.WebGLRenderer | null>(null);
 
   // ── Düzenleme modu (yalnızca istemci belleği) ──
+  // `isBuildMode`: tepsi açık mı? `showGrid`: 0,5 m ızgarası görünür mü?
   const [isBuildMode, setBuildMode] = useState(false);
+  const [showGrid, setShowGrid] = useState(true);
   const [buildItem, setBuildItem] = useState(FURNITURE[0].id);
   const [placed, setPlaced] = useState<PlacedItem[]>([]);
   // Açılış dekoru BİR KEZ serilir: model ölçülüp plan çıkınca (o zamana kadar
@@ -980,65 +1074,127 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
       )}
       {/* Model inerken dürüst bilgi: oyuncu "odam neden değişti" demesin. */}
       {!ready && (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1 text-[11px] font-bold text-white/85 backdrop-blur-sm">
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1 text-[11px] font-bold text-white/85 backdrop-blur-sm">
           🚪 Oda yerleştiriliyor…
         </div>
       )}
 
-      {/* ── DÜZENLEME PANELİ (yalnızca odanın sahibi) ── */}
+      {/* ── DÜZENLEME KATMANI (yalnızca odanın sahibi) ───────────────────
+          Ana kontrol çubuğu (butonlar + sohbet) evin içinde de ekranda; bu
+          yüzden mobilya tepsisini KALICI olarak açık tutmak ana arayüzü
+          bozar. Akış:
+            · düzenleme kapalı → sadece köşede "Evi Düzenle" düğmesi,
+            · "Evi Düzenle" → mobilya karuseli + ızgara düğmeleri alttan
+              YUMUŞAKÇA kayarak açılır,
+            · "✅ Bitti" → tepsi kayarak kapanır, oda yine sohbetli ve
+              navigasyonlu normal arayüzle kalır (kesintisiz). */}
       {canBuild && ready && (
-        <div className="absolute inset-x-0 bottom-0 z-20 space-y-1.5 px-2 pb-2">
-          {isBuildMode && (
-            <p className="rounded-full bg-black/45 px-3 py-1 text-center text-[10px] font-bold text-white/85 backdrop-blur-sm">
-              Zemine dokun → “{selected.label}” 0,5 m ızgaraya oturur · eşyaya
-              dokun → kaldır
-            </p>
-          )}
-          <div className="flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/45 p-1.5 backdrop-blur">
-            <button
+        <AnimatePresence mode="wait" initial={false}>
+          {!isBuildMode ? (
+            <motion.button
+              key="build-open"
               type="button"
-              onClick={() => setBuildMode((v) => !v)}
-              className={`shrink-0 rounded-xl px-3 py-2 text-[11px] font-extrabold transition-colors ${
-                isBuildMode
-                  ? "bg-[#f0c987] text-[#3d2f2a]"
-                  : "bg-white/10 text-white/90 hover:bg-white/20"
-              }`}
+              initial={{ opacity: 0, y: 18, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.94 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              onClick={() => {
+                playSound("click");
+                setBuildMode(true);
+              }}
+              className="absolute right-2 bottom-2 z-30 flex items-center gap-2 rounded-full border-2 border-[#f7c46a] bg-[#3d2f2a]/85 px-3.5 py-2.5 text-[11.5px] font-extrabold text-white shadow-[0_10px_26px_rgba(0,0,0,0.4)] backdrop-blur-sm transition-transform active:scale-95"
             >
-              {isBuildMode ? "✅ Bitti" : "🛠️ Düzenle"}
-            </button>
-            {isBuildMode && (
-              <>
-                <div className="flex flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <Hammer className="size-4" /> Evi Düzenle
+            </motion.button>
+          ) : (
+            <motion.div
+              key="build-tray"
+              initial={{ opacity: 0, y: 56 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 56 }}
+              transition={{ type: "spring", stiffness: 330, damping: 32 }}
+              className="absolute inset-x-0 bottom-0 z-30 space-y-1.5 px-2 pb-2"
+            >
+              <p className="rounded-full bg-black/50 px-3 py-1 text-center text-[10px] font-bold text-white/90 backdrop-blur-sm">
+                Zemine dokun → “{selected.label}” 0,5 m ızgaraya oturur ·
+                eşyaya dokun → kaldır
+              </p>
+              <div className="rounded-2xl border border-white/10 bg-black/55 p-1.5 backdrop-blur">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSound("click");
+                      setBuildMode(false);
+                    }}
+                    className="shrink-0 rounded-xl bg-[#f0c987] px-3 py-2 text-[11px] font-extrabold text-[#3d2f2a] transition-transform active:scale-95"
+                  >
+                    ✅ Bitti
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSound("click");
+                      setShowGrid((v) => !v);
+                    }}
+                    className={`flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-2 text-[11px] font-extrabold transition-colors ${
+                      showGrid
+                        ? "bg-white/15 text-white"
+                        : "bg-white/5 text-white/60 hover:bg-white/15"
+                    }`}
+                  >
+                    <Grid3x3 className="size-3.5" /> Izgara
+                  </button>
+                  {placed.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playSound("click");
+                        setPlaced([]);
+                      }}
+                      className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-extrabold text-white/90 hover:bg-white/20"
+                    >
+                      🧹 Temizle
+                    </button>
+                  )}
+                </div>
+                {/* MOBİLYA KARUSELİ — seçili eşya vurgulu, yatay kaydırmalı. */}
+                <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {FURNITURE.map((item) => (
                     <button
                       key={item.id}
                       type="button"
                       title={item.label}
                       onClick={() => setBuildItem(item.id)}
-                      className={`shrink-0 rounded-xl px-2.5 py-2 text-base transition-colors ${
+                      className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition-colors ${
                         item.id === buildItem
-                          ? "bg-[#f0c987]"
-                          : "bg-white/10 hover:bg-white/20"
+                          ? "bg-[#f0c987] text-[#3d2f2a]"
+                          : "bg-white/10 text-white/90 hover:bg-white/20"
                       }`}
                     >
-                      {item.emoji}
+                      <span className="text-base leading-none">
+                        {item.emoji}
+                      </span>
+                      <span className="text-[9px] font-bold">
+                        {item.label}
+                      </span>
                     </button>
                   ))}
                 </div>
-                {placed.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setPlaced([])}
-                    className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-extrabold text-white/90 hover:bg-white/20"
-                  >
-                    🧹 Temizle
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       )}
+
+      {/* VİNYET: odayı öne çıkarır, çevredeki zemini "boşluk" gibi
+          okutmaz (bkz. `ROOM_VIGNETTE`). Araç katmanlarının ALTINDA kalır
+          (`z-10` < `z-30`), dokunuşları engellemez. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-10"
+        style={{ background: ROOM_VIGNETTE }}
+      />
 
       <CanvasGuard onFail={handleFail} resetKey={attempt}>
         <Canvas
@@ -1100,6 +1256,7 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
                 onReady={handleReady}
                 onPlan={handlePlan}
                 isBuildMode={isBuildMode}
+                showGrid={showGrid}
                 buildItem={buildItem}
                 placed={placed}
                 onPlace={handlePlace}

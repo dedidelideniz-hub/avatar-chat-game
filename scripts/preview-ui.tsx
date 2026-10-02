@@ -1141,7 +1141,9 @@ const scenarios: Scenario[] = [
         ),
         check(
           "oda adı düzenlenebiliyor (sahibi)",
-          roomSnap.text.includes("Oda adını değiştir"),
+          // Ad düzenleme düğmesi kompakt şeritte İKON olarak durur; erişilebilir
+          // adı (`aria-label`) kontrol edilir.
+          roomSnap.inventory.some((l) => l.includes("Oda adını değiştir")),
         ),
         check(
           "kapıdan çıkma düğmesi var",
@@ -2263,9 +2265,12 @@ const scenarios: Scenario[] = [
             stage.includes("ROOM_ISO.origin"),
         ),
         check(
-          "kamera izometrik kuruluyor, merkeze kilitli ve HER ekran oranında çerçeveliyor",
+          "kamera izometrik kuruluyor, oda merkezine kilitli ve HER ekran oranında çerçeveliyor",
           stage.includes("const shot = plan.camera") &&
-            stage.includes("camera.lookAt(center)") &&
+            // Hedef, odanın merkezidir; alt pay bırakılınca aynı kadar KAYAR
+            // (`target`), yön yine de bozulmaz.
+            stage.includes("const target = center.clone().add(shift)") &&
+            stage.includes("camera.lookAt(target)") &&
             stage.includes("ROOM_ISO.camera.offset") &&
             stage.includes("shot.fov") &&
             stage.includes("hFov"),
@@ -2452,13 +2457,111 @@ const scenarios: Scenario[] = [
           );
         })(),
         check(
-          "kamera odaya biraz DAHA YAKLAŞIR (odayı çerçeveye sığdırmakla kalmıyor)",
-          /const ROOM_FRAME_FILL = 1\.0[1-9]/.test(stage) &&
-            stage.includes("distance /= ROOM_FRAME_FILL"),
+          "kamera odaya ODAKLANIR: dikey dolgunluk hedefi + yatay taşma sınırı",
+          /const ROOM_FRAMING = \{/.test(stage) &&
+            stage.includes("targetHeightFill") &&
+            stage.includes("maxWidthFill") &&
+            stage.includes("fitH / ROOM_FRAMING.targetHeightFill") &&
+            stage.includes("fitW / ROOM_FRAMING.maxWidthFill") &&
+            stage.includes("Math.min(distance, fit)"),
+        ),
+        check(
+          "odayı SIĞDIRMAKLA kalmıyor: dolgunluk hedefi sığdırmadan YAKIN",
+          (() => {
+            const framing = stage.slice(
+              stage.indexOf("const ROOM_FRAMING"),
+              stage.indexOf("const ROOM_FRAMING") + 700,
+            );
+            const fill = Number(
+              /targetHeightFill: ([0-9.]+)/.exec(framing)?.[1] ?? "0",
+            );
+            const overflow = Number(
+              /maxWidthFill: ([0-9.]+)/.exec(framing)?.[1] ?? "0",
+            );
+            return fill > 0.8 && fill < 1 && overflow > 1 && overflow <= 1.4;
+          })(),
+        ),
+        check(
+          "oda, alt payın düşüldüğü alana DENGELİ ortalanır (hedef kayar)",
+          stage.includes("bottomReserve") &&
+            stage.includes("camera.lookAt(target)") &&
+            stage.includes("camera.position.copy(target)"),
+        ),
+        check(
+          "düzenleme tepsisi açıkken oda YUKARI kayar (tepsi odayı kapatmaz)",
+          stage.includes(
+            "bottomReserve={isBuildMode ? ROOM_FRAMING.buildReserve : 0}",
+          ) &&
+            /buildReserve: 0\.[0-9]+/.test(stage),
         ),
         check(
           "canvasta boşluk yok: RoomGround sahnenin İÇİNDE çiziliyor",
           stage.includes("<RoomGround half={plan.half} />"),
+        ),
+        check(
+          "çevre zemini vinyetle sakinleşiyor (oda öne çıkar)",
+          // Satır içi CSS: Tailwind'in `_` kısaltması DEĞİL gerçek boşluk
+          // beklenir — yoksa gradyan sessizce geçersiz olur.
+          stage.includes("ROOM_VIGNETTE") &&
+            /radial-gradient\(circle at 50% 45%, transparent 34%/.test(stage) &&
+            !/circle_at_50%/.test(stage) &&
+            stage.includes("pointer-events-none absolute inset-0 z-10"),
+        ),
+      );
+
+      // ── ARAYÜZ BÜTÜNLÜĞÜ: oda artık BAĞIMSIZ bir ekran değil.
+      //    Oyunun ortak kabuğunun (üst şerit + alt kontrol çubuğu + sohbet)
+      //    İÇİNDE, caddenin yerine geçen bir katmandır; HUD evde de kalır.
+      checks.push(
+        check(
+          "oda TAM EKRAN DEĞİL: ana oyun alanının içinde yaşıyor (HUD kalkmaz)",
+          house.includes("absolute inset-0 z-30") &&
+            !house.includes("fixed inset-0 z-[60]") &&
+            world.includes("<HouseRoom") &&
+            world.indexOf("<HouseRoom") < world.indexOf("</main>"),
+        ),
+        check(
+          "üst HUD (cüzdan/oyuncu) + alt kontrol çubuğu + SOHBET evde de görünür",
+          // Oda katmanı yalnızca `<main>`ın içinde: üst şerit ve alt çubuk
+          // odanın KARDEŞİ olduğu için odanın onları kapatması MÜMKÜN DEĞİL.
+          (() => {
+            const mainEnd = world.indexOf("</main>");
+            const bottomBar = world.indexOf("bottom control bar");
+            const chatInput = world.indexOf("Sohbet mesajı");
+            const topBar = world.indexOf("top bar — wallet & player");
+            return (
+              mainEnd > 0 &&
+              bottomBar > mainEnd &&
+              chatInput > mainEnd &&
+              topBar > 0 &&
+              topBar < mainEnd
+            );
+          })(),
+        ),
+        check(
+          "DÜZENLEME KATMANI: 'Evi Düzenle' → mobilya karuseli + ızgara düğmesi",
+          stage.includes("Evi Düzenle") &&
+            stage.includes("setBuildMode(true)") &&
+            stage.includes("setBuildMode(false)") &&
+            stage.includes("FURNITURE.map") &&
+            stage.includes("Grid3x3") &&
+            stage.includes("showGrid") &&
+            stage.includes("gridSpan"),
+        ),
+        check(
+          "tepsi YUMUŞAK animasyonla açılıp kapanıyor (framer-motion + AnimatePresence)",
+          /import \{ AnimatePresence, motion \} from "framer-motion"/.test(stage) &&
+            stage.includes("<AnimatePresence mode=\"wait\"") &&
+            stage.includes("<motion.button") &&
+            stage.includes("initial={{ opacity: 0, y: 56 }}") &&
+            stage.includes("<AnimatePresence"),
+        ),
+        check(
+          "tepsi KAPALIYKEN mobilya araçları çizilmez (ana arayüz bozulmaz)",
+          // `!isBuildMode` dalı yalnızca "Evi Düzenle" düğmesini basar.
+          /\{!isBuildMode \? \(/.test(stage) &&
+            stage.indexOf("<Hammer className=\"size-4\" /> Evi Düzenle") <
+              stage.indexOf("FURNITURE.map"),
         ),
       );
 

@@ -1555,8 +1555,13 @@ export default function World() {
    *
    * Açık bir profil/çanta/karakter kartı kendi WebGL canvas'ını (avatarını)
    * tutuyor; oda sahnesiyle birlikte mobilde bağlam sınırı aşılıyor ve oyun
-   * `Error creating WebGL context` ile çöküyordu. Oda tam ekran olduğu için
-   * arkada kalan katmanların kapalı olması hem doğru hem zorunludur.
+   * `Error creating WebGL context` ile çöküyordu. Oda, oyun alanının ÜSTÜNÜ
+   * kapladığı için arkada kalan katmanların kapanması hem doğru hem zorunludur:
+   * oyuncu o katmanlara zaten dokunamaz.
+   *
+   * ANA HUD (üst şerit + alt kontrol çubuğu + SOHBET) BUNLARA DAHİL DEĞİLDİR:
+   * oda artık tam ekran değil, ana kabuğun İÇİNDE bir katman (bkz.
+   * `HouseRoom` başlığı); üst/alt çubuklar evin içinde de görünür ve çalışır.
    */
   const closeOverlays = useCallback(() => {
     setViewing(null);

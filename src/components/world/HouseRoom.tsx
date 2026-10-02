@@ -18,17 +18,25 @@
  * ziyaretçi defterini görür. Komşular listesinden başka bir oyuncunun odasına
  * geçilebilir (o zaman yalnızca gezer/izler, adın onun defterine yazılır).
  *
+ * ARAYÜZ BÜTÜNLÜĞÜ (neden "tam ekran" DEĞİL): oda, oyunun ORTAK KABUĞUNUN
+ * içinde yaşar — `World` sayfasındaki oyun alanının (`<main>`) yerine geçer,
+ * `absolute inset-0 z-30`. Üstteki oyuncu/cüzdan şeridi, alttaki kontrol
+ * çubuğu ve SOHBET girişi evin içinde de aynen görünür ve çalışır. Oda tam
+ * ekran olduğunda bu HUD tamamen kayboluyor ve oyun "başka bir ekran" gibi
+ * hissediliyordu. Dış harita ile ev arasındaki tek fark sahnedir; arayüz tek.
+ *
  * NEDEN AYRI DOSYA: cadde sahnesi (GameEngine3D) WebGL ve kare döngüsüyle dolu;
  * oda ise sahnenin durduğu, sakin bir iç mekân. Ayrı bileşen, cadde koduna
  * dokunmadan açılıp kapanabilir (battle ekranlarıyla aynı desen).
  */
 import { Button } from "@/components/ui/button";
 import type { HouseView } from "@/engine/houseDoor";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { DoorOpen, Home, Pencil, Users } from "lucide-react";
 import { useState } from "react";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
 import { RoomStage } from "@/engine/RoomStage";
+import { playSound } from "@/lib/sounds";
 
 /**
  * Oda örneği kimliğinin kısa gösterimi (`room_kd7…4a9`).
@@ -170,42 +178,106 @@ export function HouseRoom({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="fixed inset-0 z-[60] flex flex-col bg-[#4a3423]"
+      // ⚠️ ODA ARTIK TAM EKRAN DEĞİL — ana oyun kabuğunun (World) OYUN ALANI
+      // katmanı: caddenin yerine geçer, çevresindeki HUD'a dokunmaz. Üstteki
+      // oyuncu/cüzdan şeridi, alttaki kontrol çubuğu ve sohbet girişi evin
+      // içinde de AYNEN kalır (oyun hissi kopmaz, tek bir ortak kabuk).
+      className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-[#4a3423]"
     >
-      {/* ── ÜST ŞERİT: oda adı + çıkış ─────────────────────────── */}
-      <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-white">
-        <span className="flex size-9 items-center justify-center rounded-full bg-white/10">
-          <Home className="size-4" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-extrabold">
-            {view.name}
-            {!view.isMine && (
-              <span className="ml-2 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold">
-                {view.ownerName} odası
+      {/* ── ÜST ŞERİT: oda adı + oda araçları (kompakt) ─────────────
+          KOMPAKT: oda, oyun alanını paylaşır; bu şerit yalnızca ODANIN kimliği
+          ve oda araçlarına (adı değiştir / çık) ayrılır. Ana HUD (oyuncu,
+          cüzdan, ses, sohbet) bu şeridin ÜSTÜNDE ve ALTINDA yaşamaya devam
+          eder. */}
+      <div className="shrink-0 bg-[#4a3423]">
+        <div className="flex items-center gap-2 px-2 py-1.5 text-white">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/10">
+            <Home className="size-3.5" />
+          </span>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-[13px] font-extrabold">
+              {view.name}
+              {!view.isMine && (
+                <span className="ml-1.5 rounded-full bg-white/15 px-1.5 py-0.5 text-[9px] font-bold">
+                  {view.ownerName} odası
+                </span>
+              )}
+            </p>
+            <p className="truncate text-[10px] font-semibold text-white/60">
+              🚪 {view.visits} giriş
+              {view.isMine ? " · senin evin" : " · misafir"}
+              {" · "}
+              <span
+                className="rounded bg-white/10 px-1 py-0.5 font-mono text-[9px] text-white/70"
+                title={`Oda örneği kimliği: ${view.roomId}`}
+              >
+                #{shortRoomId(view.roomId)}
               </span>
-            )}
-          </p>
-          <p className="truncate text-[11px] font-semibold text-white/60">
-            🚪 {view.visits} giriş
-            {view.isMine ? " · senin evin" : " · misafir olarak geziyorsun"}
-            {" · "}
-            <span
-              className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px] text-white/70"
-              title={`Oda örneği kimliği: ${view.roomId}`}
+            </p>
+          </div>
+          {view.isMine && (
+            <button
+              type="button"
+              onClick={() => {
+                playSound("click");
+                setEditing((v) => !v);
+              }}
+              aria-label="Oda adını değiştir"
+              title="Oda adını değiştir"
+              className={`flex size-7 shrink-0 items-center justify-center rounded-full transition-colors ${
+                editing
+                  ? "bg-[#f0c987] text-[#3d2f2a]"
+                  : "bg-white/10 text-white hover:bg-white/20"
+              }`}
             >
-              #{shortRoomId(view.roomId)}
-            </span>
-          </p>
+              <Pencil className="size-3.5" />
+            </button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 shrink-0 rounded-full px-2.5 text-white hover:bg-white/15"
+            onClick={onExit}
+          >
+            <DoorOpen className="size-3.5" /> Çık
+          </Button>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="rounded-full text-white hover:bg-white/15"
-          onClick={onExit}
-        >
-          <DoorOpen className="size-4" /> Çık
-        </Button>
+
+        {/* Ad düzenleme yalnızca sahibine ve YALNIZCA istenince açılır:
+            oyun alanını kalıcı olarak işgal etmez. */}
+        <AnimatePresence initial={false}>
+          {editing && view.isMine && (
+            <motion.div
+              key="rename"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-2 px-2 pb-2">
+                <input
+                  value={name}
+                  maxLength={24}
+                  autoFocus
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={`${view.ownerName} Odası`}
+                  className="min-w-0 flex-1 rounded-xl border border-[#c8ab7d] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#3d2f2a] outline-none focus:border-[#8a5a34]"
+                />
+                <Button
+                  size="sm"
+                  className="rounded-full"
+                  onClick={() => {
+                    onRename(name);
+                    setEditing(false);
+                  }}
+                >
+                  Kaydet
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* ── ODA SAHNESİ ───────────────────────────────────────────
@@ -215,8 +287,13 @@ export function HouseRoom({
       {/* Oda alanı SICAK bir çerçeveyle sarılır (Sanalika'daki kalın
           sarı/turuncu kenar) ve arka plan, 3D odanın KENDİ gökyüzü rengidir
           (`RoomStage` → `ROOM_ENV.sky`): oda canvas'ı hazır olana kadar görünen
-          bu zemin ile sahne birbirine karışsın, geçişte renk atlaması olmasın. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden border-[6px] border-[#f2a93b] bg-[radial-gradient(circle_at_50%_38%,#5b412d,#4a3423_80%)]">
+          bu zemin ile sahne birbirine karışsın, geçişte renk atlaması olmasın.
+
+          ALTTAN/ÜSTTEN PAY: oyun alanının altındaki ana kontrol çubuğu ve
+          sohbet girişi oda alanının DIŞINDA kalır — oda, arayüzün altında
+          kalmaz; kamera payı (`RoomStage` → `buildReserve`) da düzenleme
+          tepsisi için ayrıca yer bırakır. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden border-x-[5px] border-[#f2a93b] bg-[radial-gradient(circle_at_50%_38%,#5b412d,#4a3423_80%)]">
         <RoomStage
           equipped={equipped}
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını
@@ -228,62 +305,29 @@ export function HouseRoom({
         />
       </div>
 
-      {/* ── ALT PANEL: ad / defter / komşular ──────────────────── */}
-      <div className="shrink-0 space-y-3 border-t-4 border-[#3d2f2a]/30 bg-[#f3e0bd] px-3 pb-[max(env(safe-area-inset-bottom),0.6rem)] pt-3">
-        {view.isMine ? (
-          editing ? (
-            <div className="flex items-center gap-2">
-              <input
-                value={name}
-                maxLength={24}
-                autoFocus
-                onChange={(e) => setName(e.target.value)}
-                placeholder={`${view.ownerName} Odası`}
-                className="min-w-0 flex-1 rounded-2xl border border-[#c8ab7d] bg-white px-3 py-2 text-sm font-semibold text-[#3d2f2a] outline-none focus:border-[#8a5a34]"
-              />
-              <Button
-                size="sm"
-                className="rounded-full"
-                onClick={() => {
-                  onRename(name);
-                  setEditing(false);
-                }}
-              >
-                Kaydet
-              </Button>
-            </div>
-          ) : (
+      {/* ── ALT ŞERİT: defter + komşular (kompakt, tek satır) ───────
+          Eskiden bu panel iki kat yükseklikte bir bloktu ve oyun alanını
+          yiyordu; artık tek satıra indi: ziyaretçi defteri + komşuya geç
+          düğmeleri yan yana, yatay kaydırmalı. */}
+      <div className="flex shrink-0 items-center gap-2 border-t-[3px] border-[#3a2a1e]/50 bg-[#f3e0bd] px-2 py-1.5">
+        <Users className="size-3.5 shrink-0 text-[#7a5a37]" />
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <span className="shrink-0 text-[10.5px] font-bold text-[#7a5a37]">
+            {view.visitors.length > 0
+              ? `📖 Son ziyaretçiler: ${view.visitors.slice(0, 4).join(", ")}`
+              : "Defter boş — komşularını davet et!"}
+          </span>
+          {neighbors.slice(0, 8).map((who) => (
             <button
+              key={who}
               type="button"
-              onClick={() => setEditing(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#b99a6a] px-3 py-2 text-xs font-bold text-[#7a5a37] transition-colors hover:bg-[#e9d5ae]"
+              onClick={() => onVisit(who)}
+              className="shrink-0 rounded-full border border-[#c8ab7d] bg-white/70 px-2.5 py-1 text-[10.5px] font-extrabold text-[#5c4326] transition-colors hover:bg-white"
             >
-              <Pencil className="size-3.5" /> Oda adını değiştir
+              🚪 {who}
             </button>
-          )
-        ) : null}
-
-        <div className="flex items-center gap-2 text-[11px] font-bold text-[#7a5a37]">
-          <Users className="size-3.5" />
-          {view.visitors.length > 0
-            ? `Son ziyaretçiler: ${view.visitors.slice(0, 4).join(", ")}`
-            : "Defter boş — komşularını davet et!"}
+          ))}
         </div>
-
-        {neighbors.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {neighbors.slice(0, 8).map((who) => (
-              <button
-                key={who}
-                type="button"
-                onClick={() => onVisit(who)}
-                className="shrink-0 rounded-full border border-[#c8ab7d] bg-white/70 px-3 py-1.5 text-[11px] font-extrabold text-[#5c4326] transition-colors hover:bg-white"
-              >
-                🚪 {who}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </motion.div>
   );

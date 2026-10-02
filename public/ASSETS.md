@@ -97,13 +97,24 @@ ham açıklık `fitBand` (2,5–60 birim) dışındaysa oda `span`a (10 birim) o
 origin'e, **taban y 0'a** oturur ve karakter zemine basar.
 
 Kamera **İZOMETRİKTİR**: `origin + (12, 11,5, 12)` yönünden odanın merkezine
-bakar (`camera.lookAt(2000, 0, 2000)`). Yükseklik 11,5 (~34°) Sanalika/Habbo
-tarzı yumuşak izometrik açı verir; 15 tepeden bakıp odayı tepsi gibi
-gösteriyordu, 10 ise dikey (telefon) ekranda üstte/altta geniş boşluk
-bırakıyordu. Kamera mesafesi SABİT DEĞİLDİR: `RoomCamera` odayı canlı ekran
-oranına göre (yatay + dikey FOV) ölçüp yerleşir ve `ROOM_FRAME_FILL` (1,08)
-kadar odaya DAHA YAKLAŞIR — oda kadrajı doldurur, yalnızca sol/sağ köşe uçları
-ekranın birkaç santim dışına taşar. Yön asla değişmez.
+bakar. Yükseklik 11,5 (~34°) Sanalika/Habbo tarzı yumuşak izometrik açı verir;
+15 tepeden bakıp odayı tepsi gibi gösteriyordu, 10 ise dikey (telefon) ekranda
+üstte/altta geniş boşluk bırakıyordu. Kamera mesafesi SABİT DEĞİLDİR:
+`RoomCamera` odayı canlı ekran oranına göre (yatay + dikey FOV) ölçer ve
+`ROOM_FRAMING` ile **sığdırmak yerine odaklanır**:
+
+* `targetHeightFill` (0,9) — odanın dikeyde dolduracağı oran; kamera bunu
+  tutturmak için YAKLAŞIR,
+* `maxWidthFill` (1,3) — yatay taşma sınırı: dikey ekranda hedef dolgunluk
+  ancak yanlardan taşarak elde edilir (cadde sahnesinde de dünya ekranın
+  kenarlarından taşar). Taşan kısım yalnızca zeminin sol/sağ KÖŞE UÇLARIdır;
+  duvarlar, kapı, eşyalar ve zeminin ortası tam görünür kalır,
+* `buildReserve` (0,16) — düzenleme tepsisi açıkken ekranın ALTINDA bırakılan
+  pay: oda o kadar YUKARI ortalanır (hedef noktası kayar, yön bozulmaz), tepsi
+  odanın alt kısmını kapatmaz.
+
+Yön asla değişmez; kamera hedefi her zaman odanın merkezidir (kaydırma
+uygulandığında merkez de aynı vektörle kayar).
 
 **ODA ORTAMI (oda ekranı cadde kadar dolu dursun)**: oda tek başına bir kesit
 kutusuydu ve çevresi düz koyu kahve bir BOŞLUKTU; cadde sahnesi ise ekranı
@@ -119,6 +130,21 @@ desenle kurulur (`RoomStage` → `ROOM_ENV`):
   seçildi ki ufuk okunsun,
 * renkler SICAK (alacakaranlık): mavi gökyüzü sıcak iç mekânı kopuk gösteriyordu;
   krem duvarlar (`WALL_WARM`) bu tonların üstünde net okunur.
+
+**ARAYÜZ BÜTÜNLÜĞÜ (oda, oyunun ORTAK KABUĞUNDA)**: oda artık bağımsız bir tam
+ekran değildir — `World` sayfasındaki oyun alanının (`<main>`) İÇİNDE,
+caddenin yerine geçen bir katmandır (`HouseRoom` kökü: `absolute inset-0 z-30`,
+kapalı sarmalayıcı yok). Sonuç: üstteki oyuncu/cüzdan şeridi, alttaki kontrol
+çubuğu ve **sohbet girişi** evin içinde de görünür ve çalışır; oyun tek bir
+arayüz gibi hissedilir. Oda içi araçlar iki kompakt şeride indirildi (üstte oda
+adı + çıkış, altta defter + komşuya geç) — böylece oyun alanı yemez.
+
+**DÜZENLEME KATMANI**: mobilya araçlarını kalıcı olarak ekranda tutmak ana
+arayüzü bozuyordu; artık düzenleme KAPALIYKEN yalnızca köşede "Evi Düzenle"
+düğmesi vardır. Basıldığında mobilya karuseli + ızgara düğmesi alttan yumuşak
+bir animasyonla (framer-motion `AnimatePresence`) açılır; "✅ Bitti" ile kayarak
+kapanır ve oda, sohbetli/navigasyonlu normal arayüze kesintisiz döner. Eşya
+listesi yine istemcide tutulur (kalıcı değil).
 
 **AÇILIŞ DEKORU**: model BOŞ bir mekândır (`empty_office_space`); hiçbir şey
 dizilmezse oyuncu ilk girdiğinde çıplak bir kutu görüyordu. Oda bu yüzden az
