@@ -98,9 +98,15 @@ origin'e, **taban y 0'a** oturur ve karakter zemine basar.
 
 Kamera **İZOMETRİKTİR**: `origin + (12, 10, 12)` yönünden odanın merkezine
 bakar (`camera.lookAt(2000, 0, 2000)`). Yükseklik 10 (~30°) Sanalika/Habbo
-tarzı yumuşak izometrik açı verir. İç mekânda kamera biraz yaklaşır
-(`camera.distanceScale = 0,55`) ki oda ekranı doldursun; oda büyükse mesafe oda
-yine çerçevede kalacak kadar AÇILIR, yön asla değişmez. Oyuncu odanın TAM
+tarzı yumuşak izometrik açı verir. Kamera mesafesi SABİT DEĞİLDİR: `RoomCamera`
+odayı canlı ekran oranına göre (yatay + dikey FOV) tam çerçeveler — telefonda
+taşmaz, masaüstünde boşluk kalmaz (zemin ekranı doldurur). Yön asla değişmez.
+
+**DUVAR YÜKSEKLİĞİ** karakterin `1,35` katına indirilir (`WALL_HEIGHT_FACTOR`) —
+modelin tavan yüksekliği (3,4 birim) tavan tavan durup odayı "kutu" gibi
+gösteriyordu. Duvar kaplaması SICAK tona çekilir (`WALL_WARM`; doku korunur,
+renk çarpılır) ve odanın çevresine **turuncu çerçeve** (`RoomFrame` + `HouseRoom`
+kenarlığı) eklenir — Sanalika'daki kalın sarı/turuncu kenar. Oyuncu odanın TAM
 merkezine doğar (`player.position = (2000, 0, 2000)`), zemine dokunarak yürür ve
 **duvar sınırından** (ölçülen ayak izi) dışarı çıkamaz (`clampToRoom` +
 `WallColliders`) — odanın dışında zemin yoktur.

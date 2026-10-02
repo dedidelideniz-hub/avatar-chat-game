@@ -212,7 +212,10 @@ export function HouseRoom({
           İç mekân gerçek GLB modeliyle kurulur; model hazır olana kadar
           (ya da dosya eksikse) yedek oda gösterilir. Ortada sokaktaki
           karakterin ta kendisi durur. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      {/* Oda alanı SICAK bir çerçeveyle sarılır (Sanalika'daki kalın
+          sarı/turuncu kenar) ve arka plan sıcak bir gradyandır: 3D oda
+          şeffaf olduğu için kesitin dışı koyu düz renk yerine sıcak kalsın. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden border-[6px] border-[#f2a93b] bg-[radial-gradient(circle_at_50%_32%,#5c4331,#2a1d17_78%)]">
         <RoomStage
           equipped={equipped}
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını

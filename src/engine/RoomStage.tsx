@@ -115,25 +115,100 @@ function RoomLights({ plan }: { plan: IsoRoomPlan }) {
   const reach = Math.max(4, plan.size.x + plan.size.z);
   return (
     <>
-      <ambientLight intensity={1.15} />
-      <hemisphereLight args={["#fff6ea", "#6b5340", 0.85]} />
-      <directionalLight position={[6, height + 6, 6]} intensity={1.55} />
+      {/* ORTAM IŞIĞI — Sanalika gibi CIVIL CIVIL, parlak ve SICAK: yüksek
+          ambient + sıcak sarı yönlü ışık (spec: “sıcak sarı/beyaz
+          DirectionalLight + AmbientLight”). Gölgede kalan yüz kalmıyor. */}
+      <ambientLight intensity={1.35} color="#fff1d6" />
+      <hemisphereLight args={["#fff5e2", "#8a6644", 0.95]} />
+      <directionalLight
+        position={[6, height + 6, 6]}
+        intensity={1.85}
+        color="#ffe3ad"
+      />
       {/* Dolgu ışığı: kesitte kalan uzak duvarlar gölgede siyaha düşmesin. */}
       <directionalLight
         position={[-5, height + 3, -5]}
-        intensity={0.5}
-        color="#cfe0ff"
+        intensity={0.65}
+        color="#d7e6ff"
       />
       <pointLight
-        position={[0, height * 0.85, 0]}
-        intensity={6}
+        position={[0, height * 0.8, 0]}
+        intensity={7}
         distance={reach}
         decay={2}
-        color="#ffe9c6"
+        color="#ffd99a"
       />
     </>
   );
 }
+
+/**
+ * Odanın çevresindeki SICAK ÇERÇEVE (Sanalika'daki sarı/turuncu kalın kenar).
+ *
+ * Dört duvarın üstüne oturan çubuklar + köşe direkleri: izometrik bakışta oda,
+ * kendi renginde bir çerçeveyle sarılmış görünür — iç mekân "kutunun içinde
+ * kaybolmuş" değil, çerçevelenmiş bir SAHNE olur.
+ */
+function RoomFrame({ half, y }: { half: { x: number; z: number }; y: number }) {
+  const t = 0.22; // çerçeve kalınlığı
+  const h = 0.16; // çerçeve yüksekliği
+  const bars: [number, number, number, number, number, number][] = [
+    [0, y, half.z + t / 2, half.x * 2 + t * 2, h, t],
+    [0, y, -half.z - t / 2, half.x * 2 + t * 2, h, t],
+    [half.x + t / 2, y, 0, t, h, half.z * 2 + t * 2],
+    [-half.x - t / 2, y, 0, t, h, half.z * 2 + t * 2],
+  ];
+  const posts: [number, number][] = [
+    [half.x + t / 2, half.z + t / 2],
+    [half.x + t / 2, -half.z - t / 2],
+    [-half.x - t / 2, half.z + t / 2],
+    [-half.x - t / 2, -half.z - t / 2],
+  ];
+  return (
+    <>
+      {bars.map((bar, i) => (
+        <mesh key={`bar-${i}`} position={[bar[0], bar[1], bar[2]]}>
+          <boxGeometry args={[bar[3], bar[4], bar[5]]} />
+          <meshStandardMaterial
+            color="#f2a93b"
+            emissive="#7a4a12"
+            emissiveIntensity={0.3}
+            roughness={0.5}
+          />
+        </mesh>
+      ))}
+      {posts.map((post, i) => (
+        <mesh
+          key={`post-${i}`}
+          position={[post[0], y / 2, post[1]]}
+        >
+          <boxGeometry args={[t, y, t]} />
+          <meshStandardMaterial
+            color="#e09a32"
+            emissive="#6b3f10"
+            emissiveIntensity={0.3}
+            roughness={0.55}
+          />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Sıcak duvar tonu. Modelin gri/beton duvar kaplaması (baseColorTexture) bu
+ * renkle ÇARPILIR: oda “ofis/depo” değil, SICAK EV gibi okunur. Doku korunur
+ * (harita değişmez), yalnız ton ısınır. Aynı malzemenin iki kez boyanmaması
+ * için `warmedMaterials` kullanılır (yeniden açılışta koyulaşmasın).
+ */
+const WALL_WARM = new THREE.Color("#e3b183");
+const warmedMaterials = new WeakSet<THREE.Material>();
+
+/**
+ * Duvar yüksekliği = karakterin bu katı (Sanalika duvarları alçaktır).
+ * Modelin tavan yüksekliği (ör. 3.4 birim) tavan tavan yüksek duruyordu.
+ */
+const WALL_HEIGHT_FACTOR = 1.35;
 
 /**
  * Odanın kamerası — İZOMETRİK ve SABİT.
@@ -143,18 +218,63 @@ function RoomLights({ plan }: { plan: IsoRoomPlan }) {
  * (raycaster) ve dokunarak yürütme, kameranın kıpırdamamasını gerektirir —
  * sallanan kamerada ızgara kayar ve dokunulan nokta kayar.
  */
-function RoomCamera({ plan }: { plan: IsoRoomPlan }) {
-  const { camera } = useThree();
+function RoomCamera({ plan, topY }: { plan: IsoRoomPlan; topY: number }) {
+  const { camera, size } = useThree();
 
   useLayoutEffect(() => {
     const shot = plan.camera;
-    camera.position.set(shot.position[0], shot.position[1], shot.position[2]);
+    const center = new THREE.Vector3(
+      plan.origin[0],
+      plan.origin[1],
+      plan.origin[2],
+    );
+    // Yön (origin → spec pozisyonu) KORUNUR; yalnız mesafe uyarlanır.
+    const dir = new THREE.Vector3(
+      shot.position[0] - center.x,
+      shot.position[1] - center.y,
+      shot.position[2] - center.z,
+    );
+    if (dir.lengthSq() === 0) dir.set(1, 1, 1);
+    dir.normalize();
+
+    // Odayı HER EKRAN ORANINDA TAM ÇERÇEVELE (telefonda taşmasın, masaüstünde
+    // boşluk kalmasın): kutunun köşelerini kameraya dik iki eksende ölçüp
+    // gereken mesafeyi bul. Kamera daha önce sabit uzaklıktaydı; zemin ekranda
+    // küçük kalıyordu.
+    const up = new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(up, dir).normalize();
+    const camUp = new THREE.Vector3().crossVectors(dir, right).normalize();
+    const vFov = THREE.MathUtils.degToRad(shot.fov);
+    const aspect = Math.max(0.25, size.width / Math.max(1, size.height));
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+    let distance = 0;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        for (const y of [plan.origin[1], topY]) {
+          const p = new THREE.Vector3(
+            sx * plan.half.x,
+            y - center.y,
+            sz * plan.half.z,
+          );
+          distance = Math.max(
+            distance,
+            Math.abs(p.dot(right)) / Math.tan(hFov / 2) + p.dot(dir),
+            Math.abs(p.dot(camUp)) / Math.tan(vFov / 2) + p.dot(dir),
+          );
+        }
+      }
+    }
+    // Pay: kenarlar ekran kenarına yapışmasın.
+    distance *= 1.06;
+
+    camera.position.copy(center).addScaledVector(dir, distance);
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
       (camera as THREE.PerspectiveCamera).fov = shot.fov;
       camera.updateProjectionMatrix();
     }
-    camera.lookAt(shot.target[0], shot.target[1], shot.target[2]);
-  }, [camera, plan]);
+    camera.lookAt(center);
+  }, [camera, plan, topY, size.width, size.height]);
 
   return null;
 }
@@ -364,6 +484,12 @@ function RoomInterior({
     return raw ? planIsoRoom(raw) : null;
   }, [scene, surfaces]);
 
+  // DUVAR YÜKSEKLİĞİ (kırpma + çerçeve): tavan tavan yüksek duvarlar yerine
+  // Sanalika gibi ALÇAK duvarlar — oda "kutu" değil, içine bakılan bir sahne.
+  const wallHeight = plan
+    ? Math.min(plan.size.y, ROOM_ISO.characterHeight * WALL_HEIGHT_FACTOR)
+    : 0;
+
   // ZEMİN: adından/seklinden bulunur ve `placementZone` işaretlenir. Hiçbir
   // parça zemin sayılamıyorsa (tek mesh'e sıkışmış model) ölçülen kutudan
   // kodla bir düzlem kurulur → eşya dizme yine çalışır.
@@ -402,7 +528,29 @@ function RoomInterior({
       mesh.castShadow = false;
       mesh.receiveShadow = true;
     });
-  }, [scene]);
+
+    // SICAK KAPLAMA: gri/beton duvar kaplaması ısıtılır (doku korunur, ton
+    // sıcak bej/ahşaba çekilir) → “ofis/depo” hissi yerine “sıcak ev”.
+    for (const wall of surfaces?.walls ?? []) {
+      if (!wall.mesh.visible) continue;
+      const material = wall.mesh.material;
+      const list = Array.isArray(material) ? material : [material];
+      for (const entry of list) {
+        if (!entry || warmedMaterials.has(entry)) continue;
+        warmedMaterials.add(entry);
+        const standard = entry as THREE.MeshStandardMaterial;
+        if (standard.color) standard.color.lerp(WALL_WARM, 0.55);
+        if (standard.emissive) {
+          standard.emissive.lerp(WALL_WARM, 0.22);
+          standard.emissiveIntensity = Math.max(
+            standard.emissiveIntensity ?? 0,
+            0.14,
+          );
+        }
+        standard.needsUpdate = true;
+      }
+    }
+  }, [scene, surfaces]);
 
   // DİKEY KIRPMA: duvarların oda dışına taşan gövdesi (bina yüksekliği) odanın
   // yüksekliğinde KESİLİR. Dünya uzayında y ∈ [zemin, zemin + oda yüksekliği]
@@ -411,7 +559,7 @@ function RoomInterior({
   useLayoutEffect(() => {
     if (!plan) return;
     const floorY = plan.origin[1];
-    const topY = plan.origin[1] + plan.size.y;
+    const topY = plan.origin[1] + wallHeight;
     gl.clippingPlanes = [
       new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY + 0.002),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), topY + 0.002),
@@ -419,7 +567,7 @@ function RoomInterior({
     return () => {
       gl.clippingPlanes = [];
     };
-  }, [gl, plan]);
+  }, [gl, plan, wallHeight]);
 
   useEffect(() => {
     if (plan) onReady();
@@ -463,7 +611,7 @@ function RoomInterior({
 
   return (
     <>
-      <RoomCamera plan={plan} />
+      <RoomCamera plan={plan} topY={plan.origin[1] + wallHeight} />
       <RoomLights plan={plan} />
 
       {/* ── İZOLE ODA BÖLGESİ: tek grup, tek merkez (ROOM_ISO.origin) ── */}
@@ -497,6 +645,9 @@ function RoomInterior({
 
         {/* Duvarlar: karakter/eşya bu ölçülmüş ayak izinin dışına çıkamaz. */}
         <WallColliders half={plan.half} />
+
+        {/* Sıcak turuncu çerçeve: duvarların üstünde + köşelerde (Sanalika). */}
+        <RoomFrame half={plan.half} y={wallHeight} />
 
         {/* Düzenleme modunda 0,5 m ızgarası: eşyanın nereye oturacağı görünür. */}
         {isBuildMode && (

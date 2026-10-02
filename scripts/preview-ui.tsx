@@ -2259,11 +2259,31 @@ const scenarios: Scenario[] = [
             stage.includes("ROOM_ISO.origin"),
         ),
         check(
-          "kamera izometrik kuruluyor ve hedefi odanın merkezine kilitleniyor",
+          "kamera izometrik kuruluyor, merkeze kilitli ve HER ekran oranında çerçeveliyor",
           stage.includes("const shot = plan.camera") &&
-            stage.includes("camera.lookAt(shot.target[0]") &&
+            stage.includes("camera.lookAt(center)") &&
             stage.includes("ROOM_ISO.camera.offset") &&
-            stage.includes("ROOM_ISO.camera.fov"),
+            stage.includes("shot.fov") &&
+            stage.includes("hFov"),
+        ),
+        check(
+          "ışık SICAK ve parlak (sıcak AmbientLight + DirectionalLight)",
+          stage.includes("<ambientLight intensity={1.35}") &&
+            /color="#ffe3ad"/.test(stage),
+        ),
+        check(
+          "duvarlar SICAK kaplamaya çekiliyor (gri/beton → sıcak ev)",
+          stage.includes("WALL_WARM") &&
+            stage.includes("warmedMaterials") &&
+            /color\.lerp\(WALL_WARM/.test(stage),
+        ),
+        check(
+          "duvarlar ALÇAK (tavan tavan değil) + turuncu çerçeve",
+          stage.includes("WALL_HEIGHT_FACTOR") &&
+            stage.includes("ROOM_ISO.characterHeight * WALL_HEIGHT_FACTOR") &&
+            stage.includes("RoomFrame") &&
+            /#f2a93b/.test(stage) &&
+            house.includes("border-[#f2a93b]"),
         ),
         check(
           "duvar çarpışması ölçülen sınırlardan geliyor (clampToRoom + WallColliders)",
