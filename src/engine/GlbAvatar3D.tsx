@@ -32,7 +32,7 @@ import {
 import { useSamuraiBomb } from "./SamuraiBomb";
 import { VendorBadge, VendorSparkle } from "./VendorSparkle";
 import { ChatBubble } from "./ChatBubble3D";
-import { WebglContextKeeper } from "./WebglCanvas";
+import { CanvasGuard, useWebglRetry, WebglContextKeeper } from "./WebglCanvas";
 import { VENDOR_COLOR, isVipCharacterColor } from "@/lib/avatar";
 
 // Re-export for backward compatibility
@@ -1493,9 +1493,16 @@ export function GlbProfileAvatar({
   tint,
 }: GlbProfileAvatarProps) {
   const primary = characterModelUrl();
+  // 🧯 Önizleme avatarı da bağlam yuvası doluysa yeni canvas ile yeniden
+  // denenir ve denemeler tükendiğinde ÇÖKMEK yerine sessizce kaybolur.
+  // Bu canvas tam olarak oda yedeği/bağlam baskısı anında açılabildiği için
+  // korumasız kalması `Error creating WebGL context` ile oyunu düşürebiliyordu.
+  const { attempt, exhausted, handleCreated } = useWebglRetry(2);
+  if (exhausted) return null;
 
   const sceneFor = (url: string) => (
     <Canvas
+      key={attempt}
       dpr={[1, 1.5]}
       camera={{ position: [0, 0, height * 1.7], fov: 35 }}
       gl={{ alpha: true, antialias: true }}
@@ -1510,7 +1517,7 @@ export function GlbProfileAvatar({
     >
       {/* Küçük önizleme sahneleri feda edilebilir: yer gerekirse bağlamları
           İLK bunlar bırakılır ve kart kapanınca bağlam serbest kalır. */}
-      <WebglContextKeeper priority={10} />
+      <WebglContextKeeper priority={10} onCreated={handleCreated} />
       <ambientLight intensity={1.1} />
       <directionalLight position={[2, 3, 4]} intensity={1.4} />
       <Suspense fallback={null}>
@@ -1526,13 +1533,15 @@ export function GlbProfileAvatar({
 
   return (
     <div className={className}>
-      {primary === FALLBACK_MODEL_URL ? (
-        sceneFor(primary)
-      ) : (
-        <GlbModelBoundary fallback={sceneFor(FALLBACK_MODEL_URL)}>
-          {sceneFor(primary)}
-        </GlbModelBoundary>
-      )}
+      <CanvasGuard resetKey={attempt}>
+        {primary === FALLBACK_MODEL_URL ? (
+          sceneFor(primary)
+        ) : (
+          <GlbModelBoundary fallback={sceneFor(FALLBACK_MODEL_URL)}>
+            {sceneFor(primary)}
+          </GlbModelBoundary>
+        )}
+      </CanvasGuard>
     </div>
   );
 }

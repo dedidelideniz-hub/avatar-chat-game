@@ -2290,7 +2290,8 @@ const scenarios: Scenario[] = [
           "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",
           house.includes("<RoomStage") &&
             house.includes("showAvatar={avatar}") &&
-            /if \(!power \|\| failed \|\| exhausted\)/.test(stage) &&
+            stage.includes("if (!power)") &&
+            stage.includes("if (failed || exhausted)") &&
             stage.includes("showFallback"),
         ),
         check(
@@ -2302,10 +2303,46 @@ const scenarios: Scenario[] = [
         check(
           "bağlam açılamıyorsa 3D sahne HİÇ kurulmuyor (çökmek yerine yedeğe düşer)",
           stage.includes("webglPowerPreference") &&
-            stage.includes("if (!power || failed") &&
+            stage.includes("if (!power)") &&
             read("../src/engine/webglSupport.ts").includes(
               "export function webglPowerPreference",
             ),
+        ),
+        check(
+          "bağlam yoksa (!power) yedek odanın avatar canvas'ı da hiç açılmıyor",
+          (() => {
+            const noPower = stage.indexOf("if (!power)");
+            const noAvatar = stage.indexOf(
+              "fallback({ avatar: false })",
+              noPower,
+            );
+            return noPower >= 0 && noAvatar > noPower && noAvatar - noPower < 220;
+          })(),
+        ),
+        check(
+          "oda sahnesi çökünce bağlam HEMEN bırakılıyor (yedek avatar yuvası açılır)",
+          stage.includes("roomGl.current = gl") &&
+            stage.includes("releaseCanvasContext(roomGl.current)") &&
+            read("../src/engine/webglSupport.ts").includes(
+              "export function releaseCanvasContext",
+            ),
+        ),
+        check(
+          "bağlam kurulamayınca yeniden deneme GECİKMELİ (forceContextLoss asenkron)",
+          /window\.setTimeout\(\(\) => \{[\s\S]{0,80}setAttempt\(\(n\) => n \+ 1\)/.test(
+            read("../src/engine/WebglCanvas.tsx"),
+          ),
+        ),
+        check(
+          "yedek odanın avatar canvas'ı da bağlam hatasına dayanıklı (retry + sınır + `onCreated`)",
+          (() => {
+            const avatar = read("../src/engine/GlbAvatar3D.tsx");
+            return (
+              avatar.includes("useWebglRetry(2)") &&
+              avatar.includes("<CanvasGuard resetKey={attempt}>") &&
+              avatar.includes("<WebglContextKeeper priority={10} onCreated={handleCreated} />")
+            );
+          })(),
         ),
         (() => {
           const support = read("../src/engine/webglSupport.ts");

@@ -162,10 +162,23 @@ export function useWebglRetry(maxAttempts = 2): WebglRetry {
   const [exhausted, setExhausted] = useState(false);
   const createdRef = useRef(false);
   const attemptRef = useRef(0);
+  // Bekleyen yeniden deneme zamanlayıcısı (aşağıdaki gecikme açıklaması).
+  const retryTimer = useRef<number | null>(null);
 
   useEffect(() => {
     attemptRef.current = attempt;
   }, [attempt]);
+
+  // Sökülürken bekleyen denemeyi iptal et (sökülmüş sahne için state yazma).
+  useEffect(
+    () => () => {
+      if (retryTimer.current !== null) {
+        window.clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
+    },
+    [],
+  );
 
   const handleCreated = useCallback(() => {
     createdRef.current = true;
@@ -179,8 +192,16 @@ export function useWebglRetry(maxAttempts = 2): WebglRetry {
           setExhausted(true);
           return;
         }
+        if (retryTimer.current !== null) return; // bir deneme zaten sırada
         releaseExpendableContext(); // yer aç (önizleme/yedek canvas'lar feda)
-        setAttempt((n) => n + 1);
+        // `forceContextLoss()` ASENKRONdur: yuva bir sonraki göreve kadar
+        // boşalmaz. Hemen yeni canvas açmak aynı dolu bütçeyle yine başarısız
+        // olur ve denemeler boşa gider. Kısa bir bekleme, bırakmanın
+        // gerçekleşmesine izin verir; böylece yeniden deneme işe yarar.
+        retryTimer.current = window.setTimeout(() => {
+          retryTimer.current = null;
+          setAttempt((n) => n + 1);
+        }, 220);
       }),
     [maxAttempts],
   );

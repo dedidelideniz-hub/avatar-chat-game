@@ -72,7 +72,7 @@ import {
   type FurnitureDef,
 } from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
-import { webglPowerPreference } from "./webglSupport";
+import { releaseCanvasContext, webglPowerPreference } from "./webglSupport";
 
 /**
  * İzometrik bakışı kapatan parçaların ADI.
@@ -522,6 +522,9 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
   // Bağlam kurulamazsa feda edilebilir bir bağlam bırakıp YENİ canvas ile
   // yeniden dener; denemeler biterse (`exhausted`) yedek oda kalıcı olur.
   const { attempt, exhausted, handleCreated } = useWebglRetry(2);
+  // Bu odanın canlı renderer'ı. Sahne çöktüğünde bağlamı HEMEN bırakmak için
+  // tutulur (bkz. `handleFail`).
+  const roomGl = useRef<THREE.WebGLRenderer | null>(null);
 
   // ── Düzenleme modu (yalnızca istemci belleği) ──
   const [isBuildMode, setBuildMode] = useState(false);
@@ -529,7 +532,24 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
   const [placed, setPlaced] = useState<PlacedItem[]>([]);
 
   const handleReady = useCallback(() => setReady(true), []);
-  const handleFail = useCallback(() => setFailed(true), []);
+  /**
+   * 3D oda çöktü (bağlam kurulamadı / model yüklenemedi): yedeğe düş.
+   *
+   * BAĞLAMI BURADA HEMEN BIRAKMAK ZORUNLUDUR. Oda canvas'ının kendi sökülme
+   * yolu `WebglContextKeeper` üzerinden bırakmayı 400 ms GECİKTİRİR
+   * (StrictMode'un aynı canvas'ı yeniden kurmasına dayanıklılık için). Ama
+   * yedek oda, avatarı için YENİ bir bağlam ister; gecikme sürerken eski bağlam
+   * hâlâ yuvayı tutar ve cihaz (özellikle mobil) üçüncü bağlamı reddeder →
+   * `Error creating WebGL context.` Oyunun çökmemesi için oda bağlamı, yedeğin
+   * avatar canvas'ı açılmadan ÖNCE serbest bırakılır.
+   */
+  const handleFail = useCallback(() => {
+    if (roomGl.current) {
+      releaseCanvasContext(roomGl.current);
+      roomGl.current = null;
+    }
+    setFailed(true);
+  }, []);
   const handleCanvasCreated = useCallback(() => {
     handleCreated();
   }, [handleCreated]);
@@ -556,9 +576,16 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  // 3D sahne yok: yedek oda kalıcı ve avatarını kendi çizebilir (başka
-  // bağlam yok). Düzenleme araçları da anlamsız → gösterilmez.
-  if (!power || failed || exhausted) {
+  // Bağlam HİÇ açılamıyor: 3D sahne kurulmaz. Yedek odanın avatar canvas'ı da
+  // AÇILMAZ — açılmaya çalışılsa tarayıcı yeni bir bağlam veremez ve oyun
+  // `Error creating WebGL context` ile çökerdi. Oda, avatarsız da okunur.
+  if (!power) {
+    return <div className="absolute inset-0">{fallback({ avatar: false })}</div>;
+  }
+  // 3D sahne kurulamadı/denemeler tükendi: yedek oda kalıcı olur. `power`
+  // dolu olduğu için ikinci bağlam (cadde + avatar) açılabilir; oda bağlamı da
+  // `handleFail` içinde bırakıldı. Düzenleme araçları anlamsız → gösterilmez.
+  if (failed || exhausted) {
     return <div className="absolute inset-0">{fallback({ avatar: true })}</div>;
   }
 
@@ -666,6 +693,8 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
             failIfMajorPerformanceCaveat: false,
           }}
           onCreated={({ gl }) => {
+            // Renderer'ı tut: sahne çökerse `handleFail` bağlamı hemen bırakır.
+            roomGl.current = gl;
             // Sokaktaki ana sahne gibi bu ikinci bağlam da kaybolursa sessizce
             // geri gelsin (mobilde bağlam baskısı altında oda siyah kalmasın).
             gl.domElement.addEventListener("webglcontextlost", (event) => {
