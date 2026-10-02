@@ -115,6 +115,8 @@ export interface PlacedItem {
   /** Odanın merkezine göre YEREL konum (ızgaraya oturmuş). */
   x: number;
   z: number;
+  /** Eşyanın kendi eksenindeki dönüşü (radyan, 0…2π). */
+  rot: number;
   /** Sunucudaki eşya satırı (kaldırma/dizme bu satırı hedefler). */
   rowId: string;
 }
@@ -123,13 +125,26 @@ export interface PlacedItem {
  * Sunucudan gelen SAHİP OLUNAN eşya satırı.
  *
  * `fx`/`fz` boşsa eşya DOLAPTA (satın alınmış ama dizilmemiş); doluysa odada
- * durur. Konum oransaldır (bkz. dosya başlığı).
+ * durur. Konum oransaldır (bkz. dosya başlığı). `rot` eşyanın dönüşüdür
+ * (radyan); eski satırlarda yoktur → 0 kabul edilir.
  */
 export interface OwnedFurniture {
   rowId: string;
   itemId: string;
   fx?: number;
   fz?: number;
+  rot?: number;
+}
+
+/** Döndürme adımı: her dokunuşta çeyrek tur (45°). Tam tur = 8 dokunuş. */
+export const ROTATION_STEP = Math.PI / 4;
+
+/** Açıyı 0…2π aralığına sarar (geçersiz/NaN girdide 0). */
+export function normalizeAngle(angle: number): number {
+  if (!Number.isFinite(angle)) return 0;
+  const twoPi = Math.PI * 2;
+  const wrapped = angle % twoPi;
+  return wrapped < 0 ? wrapped + twoPi : wrapped;
 }
 
 /** Odada DURAN eşyalar (`fx/fz` dolu satırlar) — oransaldan metreye çevrilir. */
@@ -146,7 +161,14 @@ export function placedFurniture(
         def,
         half,
       );
-      return { key: row.rowId, id: def.id, x: spot.x, z: spot.z, rowId: row.rowId };
+      return {
+        key: row.rowId,
+        id: def.id,
+        x: spot.x,
+        z: spot.z,
+        rot: normalizeAngle(row.rot ?? 0),
+        rowId: row.rowId,
+      };
     });
 }
 

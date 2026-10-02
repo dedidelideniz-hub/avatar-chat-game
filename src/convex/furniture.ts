@@ -34,7 +34,7 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { STARTING_COINS } from "../lib/shop";
-import { FURNITURE } from "../engine/roomBuild";
+import { FURNITURE, normalizeAngle } from "../engine/roomBuild";
 
 /** Aynı eşyadan en fazla kaç adet (odayı aynı koltukla doldurmasın). */
 export const MAX_PER_ITEM = 4;
@@ -83,6 +83,7 @@ function toRow(row: Doc<"furniture">) {
     itemId: row.itemId,
     fx: row.fx,
     fz: row.fz,
+    rot: row.rot ?? 0,
   };
 }
 
@@ -160,14 +161,16 @@ export const buy = mutation({
   },
 });
 
-/** Eşyayı odada bir noktaya koy (oransal konum — KALICI). */
+/** Eşyayı odada bir noktaya koy (oransal konum + dönüş — KALICI). */
 export const place = mutation({
   args: {
     rowId: v.id("furniture"),
     fx: v.number(),
     fz: v.number(),
+    /** Dönüş (radyan). İstemci göndermezse mevcut dönüş korunur. */
+    rot: v.optional(v.number()),
   },
-  handler: async (ctx, { rowId, fx, fz }) => {
+  handler: async (ctx, { rowId, fx, fz, rot }) => {
     const { userId } = await profileOf(ctx);
     const row = await ctx.db.get(rowId);
     if (!row || row.userId !== userId) {
@@ -176,6 +179,7 @@ export const place = mutation({
     await ctx.db.patch(rowId, {
       fx: clampRatio(fx),
       fz: clampRatio(fz),
+      ...(rot === undefined ? {} : { rot: normalizeAngle(rot) }),
       updatedAt: Date.now(),
     });
   },
@@ -237,6 +241,7 @@ export const seedStarter = mutation({
         itemId: def.id,
         fx: clampRatio(item.fx),
         fz: clampRatio(item.fz),
+        rot: 0,
         createdAt: now,
         updatedAt: now,
       });

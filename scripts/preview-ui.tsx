@@ -1975,6 +1975,7 @@ const scenarios: Scenario[] = [
       const world = read("../src/pages/World.tsx");
       const furniture = read("../src/convex/furniture.ts");
       const stand = read("../src/components/world/FurnitureStandSheet.tsx");
+      const schema = read("../src/convex/schema.ts");
 
       // ── 2) İZOLE YERLEŞİM: oda ana haritadan uzakta (X/Z 2000) durur. Formül
       //       tekrarı yerine dönüşüm GERÇEKTEN uygulanıp kutunun nereye
@@ -2347,7 +2348,8 @@ const scenarios: Scenario[] = [
         check(
           "EKONOMİ: eşya stanttan SP ile alınır (fiyat SUNUCUDA doğrulanır)",
           furniture.includes("export const buy = mutation") &&
-            furniture.includes('import { FURNITURE } from "../engine/roomBuild"') &&
+            furniture.includes("from \"../engine/roomBuild\"") &&
+            furniture.includes("FURNITURE") &&
             furniture.includes("if (coins < def.price)") &&
             // Fiyat istemciden GELMEZ: yalnızca itemId taşınır.
             !furniture.includes("args: { itemId: v.string(), price") &&
@@ -2400,6 +2402,46 @@ const scenarios: Scenario[] = [
             world.includes("onOpenFurniture") &&
             stand.includes("Mobilya Stantı") &&
             stand.includes("furnitureOf(category)"),
+        ),
+        check(
+          "ZEMİN KARELERE BÖLÜNÜYOR: 0,5 m ızgara, düzenleme modunda odanın zeminini kaplıyor",
+          stage.includes("gridHelper") &&
+            stage.includes("gridDivisions") &&
+            stage.includes("ROOM_ISO.grid") &&
+            K.ROOM_ISO.grid === 0.5,
+        ),
+        check(
+          "SÜRÜKLE-BIRAK: zemine basınca başlar, parmağı takip eder, bırakınca yerleşir",
+          stage.includes("handleFloorDown") &&
+            stage.includes("handleFloorMove") &&
+            stage.includes("handleFloorUp") &&
+            stage.includes("dragging") &&
+            stage.includes("onPointerMove={handleFloorMove}") &&
+            stage.includes("onPointerUp={handleFloorUp}") &&
+            // Basılı tutma: parmak zeminden çıksa da akış kopmaz.
+            stage.includes("setPointerCapture"),
+        ),
+        check(
+          "YARI SAYDAM HAYALET: nereye oturacağı bırakmadan önce görünür + dokunuşa kapalı",
+          stage.includes("ghost") &&
+            stage.includes("opacity={0.45}") &&
+            stage.includes("depthWrite={false}") &&
+            stage.includes("raycast={ghost ? () => undefined") &&
+            stage.includes("node.visible = true"),
+        ),
+        check(
+          "EŞYA DÖNDÜRME: 45° adımlarla TAM TUR (8 dokunuş) + dönüş KALICI",
+          stage.includes("ROTATION_STEP") &&
+            stage.includes("setRotation") &&
+            stage.includes("normalizeAngle") &&
+            stage.includes("rotation={item.rot}") &&
+            build.includes("export const ROTATION_STEP") &&
+            build.includes("export function normalizeAngle") &&
+            build.includes("rot: normalizeAngle(row.rot ?? 0)") &&
+            schema.includes("rot: v.optional(v.number())") &&
+            furniture.includes("rot: v.optional(v.number())") &&
+            furniture.includes("normalizeAngle(rot)") &&
+            world.includes("rot,"),
         ),
         check(
           "izometrik bakışı kapatan tavan/çatı parçaları gizleniyor (dar desen)",

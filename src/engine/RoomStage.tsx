@@ -65,7 +65,7 @@ import {
 } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
-import { Grid3x3, Hammer, ShoppingBag } from "lucide-react";
+import { Grid3x3, Hammer, RotateCw, ShoppingBag } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import * as THREE from "three";
 import { ROOM_ISO, ROOM_MODEL_URL } from "./constants";
@@ -85,10 +85,12 @@ import {
 } from "./roomModelPrep";
 import {
   FURNITURE,
+  ROTATION_STEP,
   countFree,
   firstFree,
   furnitureById,
   furnitureRatios,
+  normalizeAngle,
   placeFurniture,
   placedFurniture,
   type FurnitureDef,
@@ -580,37 +582,82 @@ function RoomCharacter({
   );
 }
 
-/** Dizilmiş bir eşya — basit prizmalarla çizilir (harici varlık yok). */
+/**
+ * Dizilmiş bir eşya — basit prizmalarla çizilir (harici varlık yok).
+ *
+ * `rotation`: eşyanın kendi eksenindeki dönüşü (radyan).
+ * `ghost`: YARI SAYDAM önizleme — sürükleme sırasında eşyanın nereye
+ * oturacağını gösterir. Hayalet DOKUNUŞA KAPALIDIR (`raycast` ve olay yok):
+ * zemine/hayalete basmak yerleştirmeyi bozmaz.
+ */
 function FurniturePiece({
   def,
   position,
-  canRemove,
+  rotation = 0,
+  canRemove = false,
   onRemove,
+  ghost = false,
 }: {
   def: FurnitureDef;
   position: [number, number, number];
-  canRemove: boolean;
-  onRemove: () => void;
+  rotation?: number;
+  canRemove?: boolean;
+  onRemove?: () => void;
+  ghost?: boolean;
 }) {
   return (
     <group
       position={position}
-      onPointerDown={(event) => {
-        // Yalnızca düzenleme modunda: eşyaya dokunmak onu KALDIRIR. Normal
-        // modda eşya sadece dekor.
-        if (!canRemove) return;
-        event.stopPropagation();
-        onRemove();
-      }}
+      rotation={[0, rotation, 0]}
+      onPointerDown={
+        ghost
+          ? undefined
+          : (event) => {
+              // Yalnızca düzenleme modunda: eşyaya dokunmak onu KALDIRIR.
+              // Normal modda eşya sadece dekor.
+              if (!canRemove) return;
+              event.stopPropagation();
+              onRemove?.();
+            }
+      }
     >
-      <mesh position={[0, def.h / 2, 0]} receiveShadow castShadow>
+      <mesh
+        position={[0, def.h / 2, 0]}
+        receiveShadow={!ghost}
+        castShadow={!ghost}
+        raycast={ghost ? () => undefined : undefined}
+      >
         <boxGeometry args={[def.w, def.h, def.d]} />
-        <meshStandardMaterial color={def.color} roughness={0.85} />
+        {ghost ? (
+          <meshStandardMaterial
+            color={def.color}
+            roughness={0.85}
+            transparent
+            opacity={0.45}
+            depthWrite={false}
+          />
+        ) : (
+          <meshStandardMaterial color={def.color} roughness={0.85} />
+        )}
       </mesh>
       {def.accent && (
-        <mesh position={[0, def.h - 0.03, 0]} castShadow>
+        <mesh
+          position={[0, def.h - 0.03, 0]}
+          castShadow={!ghost}
+          raycast={ghost ? () => undefined : undefined}
+        >
           <boxGeometry args={[def.w * 0.9, 0.06, def.d * 0.9]} />
-          <meshStandardMaterial color={def.accent} roughness={0.6} />
+          {ghost ? (
+            <meshStandardMaterial
+              color={def.accent}
+              roughness={0.6}
+              transparent
+              opacity={0.35}
+              depthWrite={false}
+            />
+          ) : (
+            <meshStandardMaterial color={def.accent} roughness={0.6} />
+          )}
         </mesh>
       )}
     </group>
@@ -681,6 +728,8 @@ function RoomInterior({
   isBuildMode,
   showGrid,
   buildItem,
+  rotation,
+  canPlace,
   placed,
   onPlace,
   onRemove,
@@ -703,13 +752,23 @@ function RoomInterior({
   /** 0,5 m ızgarası görünsün mi? (Düzenleme tepsisindeki düğme.) */
   showGrid: boolean;
   buildItem: string;
+  /** Seçili eşyanın dönüşü (radyan) — hayalet ve bırakılan eşya bu açıyı alır. */
+  rotation: number;
+  /** Seçili eşyadan dolapta dizilecek adet var mı? (Yoksa hayalet başlamaz.) */
+  canPlace: boolean;
   placed: PlacedItem[];
-  onPlace: (x: number, z: number) => void;
+  /** Eşyayı bırak: konum + dönüş (oransala çevirme çağıranda yapılır). */
+  onPlace: (x: number, z: number, rot: number) => void;
   onRemove: (key: string) => void;
 }) {
   const { scene } = useGLTF(ROOM_MODEL_URL);
   const { gl } = useThree();
   const moveTarget = useRef({ x: 0, z: 0 });
+  // SÜRÜKLEME + HAYALET: zemine basınca hayalet eşya parmağı takip eder,
+  // parmak kalkınca o noktaya oturur. Konum ref'de tutulur ve imperatif olarak
+  // yazılır — her `pointermove`da React render'ı tetiklenmez.
+  const ghost = useRef<THREE.Group>(null);
+  const dragging = useRef({ active: false, x: 0, z: 0 });
 
   // Yüzeyler geometriden okunur (zemin/tavan/duvarlar) — isim varsayımı YOK.
   const surfaces = useMemo(
@@ -850,25 +909,59 @@ function RoomInterior({
   }, [plan, onReady, onPlan]);
 
   /**
-   * Zemine dokunuş: raycast sonuçları arasından `placementZone` işaretli ilk
-   * kesişim seçilir. NEDEN TÜM KESİŞİMLER TARANIR: izometrik bakışta öndeki bir
-   * duvar/tavan zeminden önce kesilebilir; ilk kesişime bakmak dokunuşu
-   * "ölü" bırakırdı. Yüzeyi YİNE zemin seçiyoruz — duvara dokunmak eşya
-   * yerleştirmez.
+   * Zeminden ızgara noktası çıkar: raycast sonuçları arasından `placementZone`
+   * işaretli ilk kesişim seçilir. NEDEN TÜM KESİŞİMLER TARANIR: izometrik
+   * bakışta öndeki bir duvar/tavan zeminden önce kesilebilir; ilk kesişime
+   * bakmak dokunuşu "ölü" bırakırdı. Yüzeyi YİNE zemin seçiyoruz — duvara
+   * dokunmak eşya yerleştirmez.
    */
-  const handleFloorPress = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      if (!plan) return;
+  const pointOnFloor = useCallback(
+    (event: ThreeEvent<PointerEvent>): { x: number; z: number } | null => {
+      if (!plan) return null;
       const hit = event.intersections.find(
         (i) => i.object.userData?.placementZone === true,
       );
-      if (!hit) return;
+      if (!hit) return null;
+      return toRoomLocal(hit.point, plan);
+    },
+    [plan],
+  );
+
+  /** Hayaleti (yarı saydam önizleme) verilen ızgara noktasına oturt. */
+  const showGhostAt = useCallback(
+    (x: number, z: number) => {
+      const node = ghost.current;
+      if (!node) return;
+      node.position.set(x, 0, z);
+      node.visible = true;
+    },
+    [],
+  );
+
+  /**
+   * Zemine BASMA: düzenleme modunda sürüklemeyi başlatır (hayalet belirir),
+   * normal modda karakteri yürütür. Dokun-bırak (sürüklemeden) de aynı noktaya
+   * bırakır; yani "dokun → koy" davranışı korunur, üstüne sürükleme eklenir.
+   * `canPlace` yoksa (dolapta adet yok) hayalet hiç başlamaz.
+   */
+  const handleFloorDown = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      if (!plan) return;
+      const local = pointOnFloor(event);
+      if (!local) return;
       event.stopPropagation();
-      const local = toRoomLocal(hit.point, plan);
       if (isBuildMode) {
+        if (!canPlace) return;
         const def = furnitureById(buildItem);
         const spot = placeFurniture(local, def, plan.half);
-        onPlace(spot.x, spot.z);
+        dragging.current = { active: true, x: spot.x, z: spot.z };
+        showGhostAt(spot.x, spot.z);
+        // İşaretçi yakalama: parmak zeminden/ekrandan çıksa da hareketi almaya
+        // devam eder (R3F bunu `event.target` üzerinden sağlar).
+        const target = event.target as {
+          setPointerCapture?: (id: number) => void;
+        };
+        target.setPointerCapture?.(event.pointerId);
       } else {
         moveTarget.current = clampToRoom(
           local,
@@ -877,8 +970,39 @@ function RoomInterior({
         );
       }
     },
-    [plan, isBuildMode, buildItem, onPlace],
+    [pointOnFloor, isBuildMode, canPlace, plan, buildItem, showGhostAt],
   );
+
+  /** Parmak/imleç hareket etti: hayalet ızgarada takip eder (snap'li). */
+  const handleFloorMove = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      if (!plan || !isBuildMode || !dragging.current.active) return;
+      const local = pointOnFloor(event);
+      if (!local) return;
+      const def = furnitureById(buildItem);
+      const spot = placeFurniture(local, def, plan.half);
+      dragging.current.x = spot.x;
+      dragging.current.z = spot.z;
+      showGhostAt(spot.x, spot.z);
+    },
+    [plan, isBuildMode, pointOnFloor, buildItem, showGhostAt],
+  );
+
+  /** Parmak/imleç kalktı: hayalet gizlenir ve eşya O NOKTaya bırakılır. */
+  const handleFloorUp = useCallback(() => {
+    if (!dragging.current.active) return;
+    dragging.current.active = false;
+    if (ghost.current) ghost.current.visible = false;
+    onPlace(dragging.current.x, dragging.current.z, rotation);
+  }, [onPlace, rotation]);
+
+  // Düzenleme kapanınca / adet kalmayınca hayaleti ve sürüklemeyi temizle.
+  useEffect(() => {
+    if (!isBuildMode || !canPlace) {
+      dragging.current.active = false;
+      if (ghost.current) ghost.current.visible = false;
+    }
+  }, [isBuildMode, canPlace]);
 
   if (!plan) return null;
 
@@ -905,7 +1029,10 @@ function RoomInterior({
         <group
           position={[plan.offset.x, plan.offset.y, plan.offset.z]}
           scale={plan.scale}
-          onPointerDown={handleFloorPress}
+          onPointerDown={handleFloorDown}
+          onPointerMove={handleFloorMove}
+          onPointerUp={handleFloorUp}
+          onPointerCancel={handleFloorUp}
         >
           <primitive object={scene} />
         </group>
@@ -916,7 +1043,10 @@ function RoomInterior({
             rotation={[-Math.PI / 2, 0, 0]}
             position={[0, 0.005, 0]}
             userData={{ placementZone: true }}
-            onPointerDown={handleFloorPress}
+            onPointerDown={handleFloorDown}
+            onPointerMove={handleFloorMove}
+            onPointerUp={handleFloorUp}
+            onPointerCancel={handleFloorUp}
           >
             <planeGeometry args={[plan.size.x, plan.size.z]} />
             <meshBasicMaterial
@@ -948,10 +1078,25 @@ function RoomInterior({
             key={item.key}
             def={furnitureById(item.id)}
             position={[item.x, 0, item.z]}
+            rotation={item.rot}
             canRemove={isBuildMode}
             onRemove={() => onRemove(item.key)}
           />
         ))}
+
+        {/* SÜRÜKLEME HAYALETİ — yarı saydam önizleme: eşya parmağı takip eder,
+            bırakıldığı yere oturur. Dokunuşa kapalıdır (`ghost`). Konumu her
+            `pointermove`da imperatif yazılır (React render'ı tetiklenmez). */}
+        {isBuildMode && (
+          <group ref={ghost} visible={false}>
+            <FurniturePiece
+              def={furnitureById(buildItem)}
+              position={[0, 0, 0]}
+              rotation={rotation}
+              ghost
+            />
+          </group>
+        )}
 
         <RoomCharacter
           plan={plan}
@@ -1006,8 +1151,11 @@ export interface RoomStageProps {
    * stanttan alınır — bkz. `convex/furniture.ts`).
    */
   owned: readonly OwnedFurniture[];
-  /** Eşyayı odaya koy (oransal konum) — KALICI: sunucuya yazılır. */
-  onPlaceItem: (rowId: string, fx: number, fz: number) => void;
+  /**
+   * Eşyayı odaya koy (oransal konum + dönüş) — KALICI: sunucuya yazılır.
+   * `rot` radyandır; verilmezse eşyanın mevcut dönüşü korunur.
+   */
+  onPlaceItem: (rowId: string, fx: number, fz: number, rot?: number) => void;
   /** Odadaki eşyayı kaldır — dolaba döner (sunucuya yazılır). */
   onLiftItem: (rowId: string) => void;
   /** Mobilya standını aç (satın alma). */
@@ -1090,6 +1238,9 @@ export function RoomStage({
   const [isBuildMode, setBuildMode] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [buildItem, setBuildItem] = useState(FURNITURE[0].id);
+  // Seçili eşyanın dönüşü (radyan). Tepsideki "↻ Döndür" düğmesi 45° ekler;
+  // hayalet ve bırakılan eşya bu açıyla dizilir (tam tur = 8 dokunuş).
+  const [rotation, setRotation] = useState(0);
   // Odanın ÖLÇÜLEN planı (iç hacim). Sahne içinde hesaplanır ve buraya bir
   // kez bildirilir: dizilen eşyaların oransal konumunu metreye çevirmek için
   // gerekir (`placedFurniture`/`furnitureRatios`).
@@ -1140,12 +1291,12 @@ export function RoomStage({
    * kabul etmez (bkz. `furniture.ts` başlığı).
    */
   const handlePlace = useCallback(
-    (x: number, z: number) => {
+    (x: number, z: number, rot: number) => {
       if (!plan) return;
       const free = firstFree(owned, buildItem);
       if (!free) return;
       const { fx, fz } = furnitureRatios(x, z, plan.half);
-      onPlaceItem(free.rowId, fx, fz);
+      onPlaceItem(free.rowId, fx, fz, normalizeAngle(rot));
     },
     [plan, owned, buildItem, onPlaceItem],
   );
@@ -1178,6 +1329,7 @@ export function RoomStage({
   // EKONOMİ DURUMU: seçili eşyadan kaç adet var, kaçı dizilebilir?
   const ownedCount = owned.filter((row) => row.itemId === buildItem).length;
   const freeCount = countFree(owned, buildItem);
+  const canPlace = freeCount > 0;
   const buildHint =
     freeCount > 0
       ? `Zemine dokun → “${selected.label}” 0,5 m ızgaraya oturur · eşyaya dokun → dolaba kalkar`
@@ -1251,6 +1403,18 @@ export function RoomStage({
                     }`}
                   >
                     <Grid3x3 className="size-3.5" /> Izgara
+                  </button>
+                  {/* DÖNDÜR: her dokunuşta 45° ekler, eşya tam tur dönebilir.
+                      Hayalet de aynı açıyla çizilir — bırakmadan önce görünür. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSound("click");
+                      setRotation((r) => normalizeAngle(r + ROTATION_STEP));
+                    }}
+                    className="flex shrink-0 items-center gap-1 rounded-xl bg-white/15 px-2.5 py-2 text-[11px] font-extrabold text-white transition-transform active:scale-95"
+                  >
+                    <RotateCw className="size-3.5" /> Döndür
                   </button>
                   {placed.length > 0 && (
                     <button
@@ -1416,6 +1580,8 @@ export function RoomStage({
                 isBuildMode={isBuildMode}
                 showGrid={showGrid}
                 buildItem={buildItem}
+                rotation={rotation}
+                canPlace={canPlace}
                 placed={placed}
                 onPlace={handlePlace}
                 onRemove={handleRemove}

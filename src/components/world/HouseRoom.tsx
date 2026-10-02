@@ -86,8 +86,8 @@ export interface HouseRoomProps {
    * gelir (dizme araçları yalnızca sahibinde açıktır).
    */
   furniture: readonly OwnedFurniture[];
-  /** Eşyayı odaya koy (oransal konum) — sunucuya yazılır. */
-  onPlaceItem: (rowId: string, fx: number, fz: number) => void;
+  /** Eşyayı odaya koy (oransal konum + dönüş) — sunucuya yazılır. */
+  onPlaceItem: (rowId: string, fx: number, fz: number, rot?: number) => void;
   /** Odadaki eşyayı kaldır (dolaba döner) — sunucuya yazılır. */
   onLiftItem: (rowId: string) => void;
   /** Mobilya standını aç (SP ile eşya alımı). */

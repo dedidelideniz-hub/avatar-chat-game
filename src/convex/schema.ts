@@ -157,6 +157,11 @@ const schema = defineSchema(
       itemId: v.string(), // katalog kimliği (fiyat SUNUCUDA doğrulanır)
       fx: v.optional(v.number()),
       fz: v.optional(v.number()),
+      /**
+       * EŞYANIN DÖNÜŞÜ (radyan, 0…2π). Oyuncu eşyayı yerleştirirken
+       * döndürebilir; dönüş de kalıcıdır. Eski satırlarda yoktur → 0 okunur.
+       */
+      rot: v.optional(v.number()),
       createdAt: v.number(),
       updatedAt: v.number(),
     }).index("by_userId", ["userId"]),

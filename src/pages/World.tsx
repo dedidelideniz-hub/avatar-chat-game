@@ -3693,11 +3693,13 @@ export default function World() {
                 // 🛋️ EŞYA: kendi odanda dolabın + yerleşimin, komşunun odasında
                 // ONUN düzeni gelir (yazma uçları yalnızca satır sahibine açık).
                 furniture={roomFurniture}
-                onPlaceItem={(rowId, fx, fz) => {
+                onPlaceItem={(rowId, fx, fz, rot) => {
                   void placeRoomItem({
                     rowId: rowId as Id<"furniture">,
                     fx,
                     fz,
+                    // Dönüş de kalıcı: eşya odadan çıkıp gelince aynı açıda durur.
+                    rot,
                   });
                 }}
                 onLiftItem={(rowId) => {
