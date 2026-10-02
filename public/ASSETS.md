@@ -66,6 +66,12 @@ dosyayı bozar). Gerçek bir GLB geldiğinde:
 node scripts/glb-to-embedded-json.mjs public/models/empty_office_space.glb
 ```
 
+Uygulandı: **7,06MiB binary GLB → 9,40MiB ascii-only embedded JSON** (19 mesh,
+13 PNG, 1 gömülü buffer). Dosya artık `{` ile başlar; `useGLTF` bunu düz JSON
+glTF olarak ayrıştırır. Binary hâliyken istek `Failed to fetch` ile düşüyordu
+(boru hattı gövdeyi UTF-8'e çevirirken bağlantıyı bozuyordu) — dönüştürülmüş
+dosyada bu olmaz.
+
 **Ana haritadan İZOLE**: oda, dünya uzayında X/Z **2000**'e yerleştirilir
 (`ROOM_ISO.origin`); ana harita ±24 birimde bittiği için orada hiçbir şey
 yoktur — cadde/çim/ağaçla çakışmaz.
