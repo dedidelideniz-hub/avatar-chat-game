@@ -80,6 +80,7 @@ import {
   type PlacedItem,
 } from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
+import { ChatBubble } from "./ChatBubble3D";
 import { releaseCanvasContext, webglPowerPreference } from "./webglSupport";
 
 /**
@@ -462,10 +463,19 @@ function RoomCharacter({
   plan,
   equipped,
   moveTarget,
+  speech,
+  speechName,
+  speechColorId,
 }: {
   plan: IsoRoomPlan;
   equipped: string[];
   moveTarget: { current: { x: number; z: number } };
+  /** Baş üstündeki sohbet baloncuğu metni (caddeyle AYNI bileşen). */
+  speech?: string | null;
+  /** Baloncukta yazan gönderen adı. */
+  speechName?: string;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
+  speechColorId?: string;
 }) {
   const root = useRef<THREE.Group>(null);
   const yaw = useRef(0);
@@ -514,6 +524,13 @@ function RoomCharacter({
           movingRef={moving}
         />
       </group>
+
+      {/* 💬 SOHBET BALONCUĞU — odada da CADDENİN TA KENDİSİ: aynı bileşen,
+          aynı "İsim: mesaj" düzeni, aynı renk, aynı 5 sn ömür. Evin içi
+          ayrı bir ekran değildir; tek fark eşya dizmektir. Baloncuk dış
+          grupta durur (yön dönüşü DOM'a taşınmaz → yazı hiçbir yönde ters
+          görünmez) — `GlbAvatar3D` ile birebir aynı desen. */}
+      <ChatBubble text={speech} name={speechName} colorId={speechColorId} />
     </group>
   );
 }
@@ -622,9 +639,16 @@ function RoomInterior({
   placed,
   onPlace,
   onRemove,
+  speech,
+  speechName,
+  speechColorId,
 }: {
   equipped: string[];
   onReady: () => void;
+  /** Karakterin baş üstü sohbet baloncuğu (caddeyle aynı). */
+  speech?: string | null;
+  speechName?: string;
+  speechColorId?: string;
   /**
    * Ölçülen plan sahne DIŞINA bildirilir (bir kez): açılış dekoru odanın
    * gerçek boyutuna göre YERLEŞTİRİLSİN diye (bkz. `RoomStage` → `handlePlan`).
@@ -865,7 +889,14 @@ function RoomInterior({
           />
         ))}
 
-        <RoomCharacter plan={plan} equipped={equipped} moveTarget={moveTarget} />
+        <RoomCharacter
+          plan={plan}
+          equipped={equipped}
+          moveTarget={moveTarget}
+          speech={speech}
+          speechName={speechName}
+          speechColorId={speechColorId}
+        />
       </group>
     </>
   );
@@ -903,6 +934,16 @@ export interface RoomStageProps {
    */
   canBuild?: boolean;
   /**
+   * Baş üstü sohbet baloncuğu — CADDEYLE AYNI: oyuncu evin içinde de mesaj
+   * yazar ve baloncuk karakterin tepesinde belirir. Odanın tek farkı eşya
+   * dizmektir; sohbet/HUD/özellikler kısıtlanmaz (bkz. `HouseRoom` başlığı).
+   */
+  speech?: string | null;
+  /** Baloncukta görünen gönderen adı. */
+  speechName?: string;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
+  speechColorId?: string;
+  /**
    * Model hazır değilken/hazırlanamazken gösterilen yedek oda.
    *
    * `avatar`: yedek odanın KENDİ WebGL canvas'ı (avatar) çizilsin mi?
@@ -921,7 +962,14 @@ export interface RoomStageProps {
  * YAZILMAZ: oda kapanınca (bileşen sökülünce) liste kendiliğinden sıfırlanır.
  * İstenen davranış bu: düzenleme istemci tarafı ve kalıcı değil.
  */
-export function RoomStage({ equipped, canBuild = false, fallback }: RoomStageProps) {
+export function RoomStage({
+  equipped,
+  canBuild = false,
+  fallback,
+  speech = null,
+  speechName,
+  speechColorId,
+}: RoomStageProps) {
   // BAĞLAM KAPISI: cihazın ikinci bir bağlam verip vermediği ÖLÇÜLÜR ve canvas
   // ancak o zaman kurulur — bu iş `CanvasGuard`ın içindedir (`useCanvasGate`):
   // deneme bağlamı hemen bırakılır, yuvanın oturması BEKLENİR, sonra oda
@@ -1232,6 +1280,9 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
                 placed={placed}
                 onPlace={handlePlace}
                 onRemove={handleRemove}
+                speech={speech}
+                speechName={speechName}
+                speechColorId={speechColorId}
               />
             </Suspense>
           </RoomBoundary>

@@ -35,6 +35,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { DoorOpen, Home, Pencil, Users } from "lucide-react";
 import { useState } from "react";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
+import { ChatBubbleBody } from "@/engine/ChatBubble3D";
 import { RoomStage } from "@/engine/RoomStage";
 import { playSound } from "@/lib/sounds";
 
@@ -71,6 +72,18 @@ export interface HouseRoomProps {
   view: HouseView;
   /** Karakterin kuşandığı eşyalar (sokaktakiyle aynı görünüm). */
   equipped: string[];
+  /**
+   * Baş üstü sohbet baloncuğu metni (caddeden AYNEN geçer).
+   *
+   * Evin içi ayrı bir ekran DEĞİLDİR: sohbet, baloncuk, HUD ve bütün
+   * özellikler caddede nasılsa burada da öyledir. Odanın tek farkı eşya
+   * dizmektir (düzenleme araçları yalnızca sahibinde).
+   */
+  speech?: string | null;
+  /** Baloncukta görünen gönderen adı. */
+  speechName?: string;
+  /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
+  speechColorId?: string;
   /** Caddede çevrimiçi diğer oyuncuların adları (komşu ziyareti). */
   neighbors: string[];
   /** Sahibi oda adını kaydeder. */
@@ -95,9 +108,15 @@ export interface HouseRoomProps {
 function ProceduralRoom({
   equipped,
   showAvatar,
+  speech,
+  speechName,
+  speechColorId,
 }: {
   equipped: string[];
   showAvatar: boolean;
+  speech?: string | null;
+  speechName?: string;
+  speechColorId?: string;
 }) {
   return (
     <div data-room-fallback="true" className="absolute inset-0 overflow-hidden">
@@ -154,6 +173,20 @@ function ProceduralRoom({
         </div>
       )}
 
+      {/* 💬 SOHBET BALONCUĞU — 3D sahne kurulamadığında da oyuncu yazdığını
+          GÖRÜR. Caddenin gerçek baloncuğuyla AYNI bileşen (`ChatBubbleBody`),
+          yalnızca karakterin üstünde DOM katmanına yerleştirilir; böylece
+          yedek oda da caddeden farksız kalır. */}
+      {speech && (
+        <div className="pointer-events-none absolute bottom-[46%] left-1/2 z-20 -translate-x-1/2">
+          <ChatBubbleBody
+            text={speech}
+            name={speechName}
+            colorId={speechColorId}
+          />
+        </div>
+      )}
+
       {/* Tavan lambası + sıcak ışık halkası. */}
       <div className="absolute left-1/2 top-0 h-[18%] w-1 -translate-x-1/2 bg-[#4a3527]" />
       <div className="absolute left-1/2 top-[16%] size-10 -translate-x-1/2 rounded-full bg-[#ffe9a8] shadow-[0_0_60px_30px_rgba(255,226,150,0.35)]" />
@@ -165,6 +198,9 @@ export function HouseRoom({
   view,
   equipped,
   neighbors,
+  speech = null,
+  speechName,
+  speechColorId,
   onRename,
   onVisit,
   onExit,
@@ -299,8 +335,19 @@ export function HouseRoom({
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını
           // gezen oyuncu misafirdir, dekoru değiştirmez.
           canBuild={view.isMine}
+          // 💬 Sohbet baloncuğu caddeyle AYNI şekilde odaya geçer: evin içi
+          // ayrı bir ekran değil, tek fark eşya dizmek.
+          speech={speech}
+          speechName={speechName}
+          speechColorId={speechColorId}
           fallback={({ avatar }) => (
-            <ProceduralRoom equipped={equipped} showAvatar={avatar} />
+            <ProceduralRoom
+              equipped={equipped}
+              showAvatar={avatar}
+              speech={speech}
+              speechName={speechName}
+              speechColorId={speechColorId}
+            />
           )}
         />
       </div>

@@ -3632,6 +3632,12 @@ export default function World() {
                 key="room"
                 view={room.view}
                 equipped={equipped}
+                // 💬 SOHBET BALONCUĞU — caddede olduğu GİBİ evin içinde de
+                // görünür: aynı `bubble` durumu, aynı ad ve aynı renk.
+                // Odanın tek farkı eşya dizmektir; sohbet kısıtlanmaz.
+                speech={bubble}
+                speechName={username}
+                speechColorId={bubbleColorId}
                 neighbors={neighborNames}
                 onRename={(name) => void renameMyRoom(name)}
                 onVisit={(who) => void enterNeighborRoom(who)}
