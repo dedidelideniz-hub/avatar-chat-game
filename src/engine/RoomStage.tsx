@@ -488,6 +488,7 @@ function WallColliders({ half }: { half: { x: number; z: number } }) {
 function RoomCharacter({
   plan,
   equipped,
+  tint,
   moveTarget,
   spawn,
   speech,
@@ -496,6 +497,8 @@ function RoomCharacter({
 }: {
   plan: IsoRoomPlan;
   equipped: string[];
+  /** Seçilen karakter rengi — odada da caddedeki renk görünür. */
+  tint?: string;
   moveTarget: { current: { x: number; z: number } };
   /**
    * Doğuş noktası — odanın YEREL uzayında (kapının önü, duvardan içeride).
@@ -566,6 +569,9 @@ function RoomCharacter({
       <group position={[0, ROOM_ISO.characterHeight / 2, 0]}>
         <GlbCharacterPortrait
           equipped={equipped}
+          // 🎨 RENK: portre, seçilen rengi modele boyar (`applyCharacterTint`).
+          // Verilmezse karakter varsayılan renkte kalır — odada ASLA.
+          tint={tint}
           height={ROOM_ISO.characterHeight}
           spin={false}
           movingRef={moving}
@@ -660,6 +666,33 @@ function FurniturePiece({
           )}
         </mesh>
       )}
+      {/* YÖN İŞARETİ: eşya bir kutudur — dönüş simetrik olduğu için tek başına
+          "hangi yöne baktığı" görünmez. ÖNE (yerel +Z) bakan altın bir ok,
+          eşyanın yönünü her açıda okunur kılar. */}
+      <mesh
+        position={[0, Math.max(0.05, def.h * 0.06), def.d / 2 + 0.02]}
+        rotation={[Math.PI / 2, 0, 0]}
+        castShadow={!ghost}
+        raycast={ghost ? () => undefined : undefined}
+      >
+        <coneGeometry args={[0.07, 0.18, 4]} />
+        {ghost ? (
+          <meshStandardMaterial
+            color="#ffe08a"
+            emissive="#7a4a12"
+            emissiveIntensity={0.2}
+            transparent
+            opacity={0.6}
+            depthWrite={false}
+          />
+        ) : (
+          <meshStandardMaterial
+            color="#ffd166"
+            emissive="#7a4a12"
+            emissiveIntensity={0.45}
+          />
+        )}
+      </mesh>
     </group>
   );
 }
@@ -723,6 +756,7 @@ function RoomGround({ half }: { half: { x: number; z: number } }) {
  */
 function RoomInterior({
   equipped,
+  tint,
   onReady,
   onPlan,
   isBuildMode,
@@ -738,6 +772,8 @@ function RoomInterior({
   speechColorId,
 }: {
   equipped: string[];
+  /** Seçilen karakter rengi — odada da caddedeki renk görünür. */
+  tint?: string;
   onReady: () => void;
   /** Karakterin baş üstü sohbet baloncuğu (caddeyle aynı). */
   speech?: string | null;
@@ -1101,6 +1137,7 @@ function RoomInterior({
         <RoomCharacter
           plan={plan}
           equipped={equipped}
+          tint={tint}
           moveTarget={moveTarget}
           spawn={spawn}
           speech={speech}
@@ -1136,6 +1173,12 @@ class RoomBoundary extends Component<
 export interface RoomStageProps {
   /** Karakterin kuşandığı eşyalar (sokattakiyle aynı görünüm). */
   equipped: string[];
+  /**
+   * Seçilen karakter rengi (oyun girişindeki renk seçimi). Odada da CADDEDEKİ
+   * renk geçerlidir: karakter seçtiği rengi taşır, başka bir renge bürünmez.
+   * Karakter derisi (skin) kuşanılmışsa çağıran `undefined` geçer.
+   */
+  tint?: string;
   /**
    * Düzenleme (eşya dizme) araçları gösterilsin mi?
    *
@@ -1205,6 +1248,7 @@ export interface RoomStageProps {
  */
 export function RoomStage({
   equipped,
+  tint,
   canBuild = false,
   fallback,
   onReadyChange,
@@ -1250,6 +1294,7 @@ export function RoomStage({
     () => (plan ? placedFurniture(owned, plan.half) : []),
     [owned, plan],
   );
+  const placedSelected = placed.filter((item) => item.id === buildItem);
 
   const handleReady = useCallback(() => setReady(true), []);
   /**
@@ -1416,6 +1461,22 @@ export function RoomStage({
                   >
                     <RotateCw className="size-3.5" /> Döndür
                   </button>
+                  {/* TEKLİ KALDIRMA: seçili eşyadan BİR adet dolaba döner.
+                      "Hepsini kaldır" odanın tamamını boşaltır; bu düğme
+                      yalnızca seçili eşyayı azaltır (ör. 3 koltuk → 2). */}
+                  {placedSelected.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playSound("click");
+                        onLiftItem(placedSelected[0].rowId);
+                      }}
+                      className="flex shrink-0 items-center gap-1 rounded-xl bg-white/15 px-2.5 py-2 text-[11px] font-extrabold text-white transition-transform active:scale-95"
+                    >
+                      ➖ 1 adet kaldır
+                      <span className="opacity-70">({placedSelected.length})</span>
+                    </button>
+                  )}
                   {placed.length > 0 && (
                     <button
                       type="button"
@@ -1575,6 +1636,7 @@ export function RoomStage({
             <Suspense fallback={null}>
               <RoomInterior
                 equipped={equipped}
+                tint={tint}
                 onReady={handleReady}
                 onPlan={handlePlan}
                 isBuildMode={isBuildMode}

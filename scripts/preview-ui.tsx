@@ -2444,6 +2444,31 @@ const scenarios: Scenario[] = [
             world.includes("rot,"),
         ),
         check(
+          "DÖNÜŞ YÖNÜ GÖRÜNÜR: eşyada öne bakan ok işareti (hangi yöne döndüğü okunur)",
+          stage.includes("YÖN İŞARETİ") &&
+            stage.includes("coneGeometry") &&
+            stage.includes("rotation={[Math.PI / 2, 0, 0]}"),
+        ),
+        check(
+          "TEKLİ KALDIRMA: seçili eşyadan 1 adet dolaba döner (Hepsini kaldır da durur)",
+          stage.includes("placedSelected") &&
+            stage.includes("1 adet kaldır") &&
+            stage.includes("onLiftItem(placedSelected[0].rowId)") &&
+            stage.includes("Hepsini kaldır"),
+        ),
+        check(
+          "KARAKTER RENGİ odada da CADDEDEKİ: seçilen renk boyanır, başka renge bürünmez",
+          world.includes(
+            "hasCharacterSkin(equipped) ? undefined : config.shirt",
+          ) &&
+            house.includes("tint?: string") &&
+            house.includes("tint={tint}") &&
+            stage.includes("tint?: string") &&
+            stage.includes("tint={tint}") &&
+            stage.includes("<GlbCharacterPortrait") &&
+            stage.includes("import { GlbCharacterPortrait }"),
+        ),
+        check(
           "izometrik bakışı kapatan tavan/çatı parçaları gizleniyor (dar desen)",
           stage.includes("const CEILING_PARTS") &&
             /ceiling\|roof\|tavan/.test(stage),

@@ -41,6 +41,7 @@ import {
 import { HouseRoom } from "@/components/world/HouseRoom";
 import { FurnitureStandSheet } from "@/components/world/FurnitureStandSheet";
 import { preloadRoomModel } from "@/engine/RoomStage";
+import { hasCharacterSkin } from "@/engine/EquipmentRegistry";
 import { starterFurniture } from "@/engine/roomBuild";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -3683,6 +3684,10 @@ export default function World() {
                 key="room"
                 view={room.view}
                 equipped={equipped}
+                // 🎨 KARAKTER RENGİ: odada da CADDEDEKİ renk geçerli. Karakter
+                // asla başka bir renge bürünmez — seçilen rengi (`config.shirt`)
+                // taşır. Karakter derisi (skin) kuşanılmışsa doğal rengi korunur.
+                tint={hasCharacterSkin(equipped) ? undefined : config.shirt}
                 // 💬 SOHBET BALONCUĞU — caddede olduğu GİBİ evin içinde de
                 // görünür: aynı `bubble` durumu, aynı ad ve aynı renk.
                 // Odanın tek farkı eşya dizmektir; sohbet kısıtlanmaz.

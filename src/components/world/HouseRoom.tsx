@@ -68,6 +68,11 @@ export interface HouseRoomProps {
   /** Karakterin kuşandığı eşyalar (sokaktakiyle aynı görünüm). */
   equipped: string[];
   /**
+   * Karakter rengi (oyun girişindeki renk seçimi) — odada da CADDEDEKİ renk
+   * geçerlidir: karakter seçilen rengi taşır, başka bir renge bürünmez.
+   */
+  tint?: string;
+  /**
    * Baş üstü sohbet baloncuğu metni (caddeden AYNEN geçer).
    *
    * Evin içi ayrı bir ekran DEĞİLDİR: sohbet, baloncuk, HUD ve bütün
@@ -115,12 +120,14 @@ export interface HouseRoomProps {
  */
 function ProceduralRoom({
   equipped,
+  tint,
   showAvatar,
   speech,
   speechName,
   speechColorId,
 }: {
   equipped: string[];
+  tint?: string;
   showAvatar: boolean;
   speech?: string | null;
   speechName?: string;
@@ -175,6 +182,7 @@ function ProceduralRoom({
         <div className="absolute bottom-[8%] left-1/2 -translate-x-1/2">
           <GlbProfileAvatar
             equipped={equipped}
+            tint={tint}
             height={2}
             className="pointer-events-none h-56 w-40 sm:h-72 sm:w-52"
           />
@@ -205,6 +213,7 @@ function ProceduralRoom({
 export function HouseRoom({
   view,
   equipped,
+  tint,
   neighbors,
   furniture,
   onPlaceItem,
@@ -361,6 +370,9 @@ export function HouseRoom({
       >
         <RoomStage
           equipped={equipped}
+          // 🎨 Seçilen karakter rengi odaya da geçer: karakter odada ASLA
+          // caddeden farklı bir renkte görünmez.
+          tint={tint}
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını
           // gezen oyuncu misafirdir, dekoru değiştirmez (onun yerleşimi görünür
           // ama dokunulamaz).
@@ -381,6 +393,7 @@ export function HouseRoom({
           fallback={({ avatar }) => (
             <ProceduralRoom
               equipped={equipped}
+              tint={tint}
               showAvatar={avatar}
               speech={speech}
               speechName={speechName}
