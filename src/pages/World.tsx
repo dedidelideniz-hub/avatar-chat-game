@@ -1274,6 +1274,22 @@ export default function World() {
 
   const handleSceneReady = useCallback(() => setGateSceneReady(true), []);
 
+  /**
+   * 🏠 ODA MODELİNİ ERKEN İNDİR — odaya giriş ANINDA açılsın.
+   *
+   * Oda modeli ağırdır (bkz. `constants.ROOM_MODEL_URL`). İndirme cadde ilk
+   * kez çizildikten kısa süre sonra kendiliğinden başlar; oyuncu kapıya
+   * vardığında oda çoğunlukla HAZIR olur. Böylece odaya girişte ekrana ne bir
+   * yükleme katmanı ne de uydurma/yedek bir oda basılır — oda doğrudan açılır.
+   * 1,5 sn gecikme bilinçli: önce oyuncu caddeyi görsün, indirme caddenin kendi
+   * modelleriyle/ilk kareleriyle yarışmasın.
+   */
+  useEffect(() => {
+    if (!gateSceneReady) return;
+    const timer = window.setTimeout(() => preloadRoomModel(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [gateSceneReady]);
+
   // Kapının beklediği EK modeller: oyuncuya özel karakter skini (varsa) +
   // CADDE BİNALARININ modelleri. Bina modelleri ağır olabilir (ör.
   // `witch_shop.glb` ~26 MB); kapı onları beklemezse oyuncu caddeyi açar ve
@@ -1563,9 +1579,10 @@ export default function World() {
    *
    * Oda sunucuda otomatik açılır (`houses.enter`): ilk girişte kayıt oluşur.
    * Arada TAM EKRAN yükleme ekranı YOKTUR — oyuncu "gir"e bastığı an oda
-   * açılır; 3D sahne kurulurken yedek oda görünür, model hazır olunca 3D oda
-   * yumuşakça üstüne açılır. Oda modeli ağır olduğu için indirme burada
-   * başlatılır ve kapıya yaklaşınca da ÖNCEDEN indirilir (`preloadRoomModel`).
+   * açılır; 3D oda hazır olana kadar oda alanı şeffaf kalır (arkada cadde
+   * görünür, oyuncuya yedek/uydurma bir oda GÖSTERİLMEZ) ve 3D oda hazır olunca
+   * açılır. Oda modeli ağır olduğu için indirme cadde hazır olur olmaz başlar ve
+   * kapıya yaklaşınca da yeniden tetiklenir (`preloadRoomModel`).
    */
   const enterMyRoom = useCallback(async () => {
     if (roomBusyRef.current || roomOpenRef.current) return;

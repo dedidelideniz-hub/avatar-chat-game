@@ -2360,7 +2360,8 @@ const scenarios: Scenario[] = [
         check(
           'oda üstünde "Oda yerleştiriliyor…" şeridi YOK (banner silindi)',
           !stage.includes("Oda yerleştiriliyor") &&
-            !house.includes("Oda yerleştiriliyor"),
+            !house.includes("Oda yerleştiriliyor") &&
+            !world.includes("Oda yerleştiriliyor"),
         ),
         check(
           "💬 SOHBET BALONCUĞU evin içinde de caddeden AYNEN geçer (kısıt yok)",
@@ -2757,12 +2758,24 @@ const scenarios: Scenario[] = [
 
       checks.push(
         check(
-          "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",
+          "odaya girişte ARA KATMAN yok: model hazırlanırken yedek oda EKRANA GELMEZ",
           house.includes("<RoomStage") &&
             house.includes("showAvatar={avatar}") &&
-            stage.includes("notEnoughGpu") &&
-            stage.includes("if (failed || exhausted)") &&
-            stage.includes("showFallback"),
+            // Oda alanı, 3D sahne hazır olana kadar ŞEFFAF kalır (`stageReady`):
+            // arkada cadde görünür, oyuncuya uydurma bir oda basılmaz.
+            house.includes(
+              "const [stageReady, setStageReady] = useState(false)",
+            ) &&
+            house.includes("onReadyChange={setStageReady}") &&
+            house.includes('stageReady ? "bg-[#4a3423]" : "bg-transparent"') &&
+            !stage.includes("showFallback") &&
+            stage.includes("onReadyChange?.(ready)"),
+        ),
+        check(
+          "yedek oda artık yalnızca SON ÇARE (yalnızca iki erken dönüşte çizilir)",
+          (stage.match(/fallback\(\{ avatar:/g) ?? []).length === 2 &&
+            stage.includes("if (notEnoughGpu)") &&
+            stage.includes("if (failed || exhausted)"),
         ),
         check(
           "3D oda açıkken yedek odanın avatar canvas'ı çizilmiyor (TEK ekstra bağlam)",
@@ -2994,6 +3007,11 @@ const scenarios: Scenario[] = [
             // Biri "Evine gir"e basılınca, biri kapıya YAKLAŞINCA: oda anında
             // açılsın diye indirme tıklamadan önce başlar.
             (world.match(/preloadRoomModel\(\)/g) ?? []).length >= 2,
+        ),
+        check(
+          "oda modeli cadde HAZIR OLUR OLMAZ önceden iniyor (oda açılırken bekleme yok)",
+          /if \(!gateSceneReady\) return;/.test(world) &&
+            world.includes("window.setTimeout(() => preloadRoomModel()"),
         ),
         check(
           "oda modeli cadde ön yüklemesine EKLENMEDİ (ağır iç mekân caddeyi geciktirmez)",

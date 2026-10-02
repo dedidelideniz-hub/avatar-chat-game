@@ -9,10 +9,10 @@
  *     yürür ve duvar sınırından dışarı çıkamaz,
  *   · oda SAHİBİNE eşya dizme (0,5 m ızgara + duvar sınırı) araçlarını verir;
  *     düzenleme yalnızca istemcidedir, oda kapanınca sıfırlanır,
- *   · model HAZIR OLANA KADAR ve dosya eksik/bozuksa kodla çizilen YEDEK
- *     odayı gösterir (`ProceduralRoom`): oyuncu hiçbir koşulda boş ekranla
- *     kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır. Yedek
- *     odanın avatar canvas'ı, 3D sahne açıkken çizilmez (bağlam sınırı).
+ *   · kodla çizilen YEDEK odayı (`ProceduralRoom`) YALNIZCA SON ÇARE tutar:
+ *     3D oda hiç kurulamazsa (cihaz bağlam vermiyor / model bozuk) oyuncu boş
+ *     ekranla kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır.
+ *     Yedek odanın avatar canvas'ı, 3D sahne açıkken çizilmez (bağlam sınırı).
  *
  * Oda her oyuncuya özeldir: sahibi adını değiştirebilir, giriş sayısını ve
  * ziyaretçi defterini görür. Komşular listesinden başka bir oyuncunun odasına
@@ -20,9 +20,10 @@
  *
  * ODAYA GİRİŞ DOĞRUDANDIR: kapıdaki "Evine gir" düğmesine basıldığı anda oda
  * açılır — arada tam ekran bir yükleme ekranı ya da oda üstünde bir "Oda
- * yerleştiriliyor…" şeridi YOKTUR. 3D sahne kurularken yedek oda görünür, model
- * hazır olunca 3D oda yumuşakça üstüne açılır; karakter ise odanın KAPISINDAN
- * doğar (`RoomStage` → `roomEntryPoint`).
+ * yerleştiriliyor…" şeridi YA DA oyuncuya gösterilen uydurma/yedek bir oda
+ * YOKTUR. Oda alanı, 3D sahne hazır olana kadar ŞEFFAF kalır: arkadaki cadde
+ * görünür, 3D oda hazır olunca yumuşakça açılır (`stageReady`); karakter ise
+ * odanın KAPISINDAN doğar (`RoomStage` → `roomEntryPoint`).
  *
  * ARAYÜZ BÜTÜNLÜĞÜ (neden "tam ekran" DEĞİL): oda, oyunun ORTAK KABUĞUNUN
  * içinde yaşar — `World` sayfasındaki oyun alanının (`<main>`) yerine geçer,
@@ -198,6 +199,11 @@ export function HouseRoom({
 }: HouseRoomProps) {
   const [name, setName] = useState(view.name);
   const [editing, setEditing] = useState(false);
+  // Oda GERÇEKTEN görünür oldu mu? (`RoomStage` → `onReadyChange`.)
+  // `false` iken oda alanı ŞEFFAF: odaya girişte ekrana uydurma/yedek bir
+  // katman basılmaz, arkadaki cadde görünür kalır ve 3D oda hazır olunca
+  // yumuşakça açılır.
+  const [stageReady, setStageReady] = useState(false);
 
   return (
     <motion.div
@@ -209,7 +215,11 @@ export function HouseRoom({
       // katmanı: caddenin yerine geçer, çevresindeki HUD'a dokunmaz. Üstteki
       // oyuncu/cüzdan şeridi, alttaki kontrol çubuğu ve sohbet girişi evin
       // içinde de AYNEN kalır (oyun hissi kopmaz, tek bir ortak kabuk).
-      className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-[#4a3423]"
+      className={`absolute inset-0 z-30 flex flex-col overflow-hidden ${
+        // Oda hazır olana kadar arka plan ŞEFFAF: alttaki cadde görünür kalsın
+        // (üst/alt şeritlerin kendi renkleri olduğu için arayüz yine okunur).
+        stageReady ? "bg-[#4a3423]" : "bg-transparent"
+      }`}
     >
       {/* ── ÜST ŞERİT: oda adı + oda araçları (kompakt) ─────────────
           KOMPAKT: oda, oyun alanını paylaşır; bu şerit yalnızca ODANIN kimliği
@@ -320,12 +330,22 @@ export function HouseRoom({
           sohbet girişi oda alanının DIŞINDA kalır — oda, arayüzün altında
           kalmaz; kamera payı (`RoomStage` → `buildReserve`) da düzenleme
           tepsisi için ayrıca yer bırakır. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden border-x-[5px] border-[#f2a93b] bg-[radial-gradient(circle_at_50%_38%,#5b412d,#4a3423_80%)]">
+      <div
+        className={`relative min-h-0 flex-1 overflow-hidden border-x-[5px] border-[#f2a93b] ${
+          // Hazır olana kadar şeffaf (cadde görünür); 3D oda açılınca sıcak
+          // zemin geri gelir ve oda kendi gökyüzünü çizer.
+          stageReady
+            ? "bg-[radial-gradient(circle_at_50%_38%,#5b412d,#4a3423_80%)]"
+            : "bg-transparent"
+        }`}
+      >
         <RoomStage
           equipped={equipped}
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını
           // gezen oyuncu misafirdir, dekoru değiştirmez.
           canBuild={view.isMine}
+          // Oda ne zaman gerçekten görünür oldu? (bkz. `stageReady` yorumu.)
+          onReadyChange={setStageReady}
           // 💬 Sohbet baloncuğu caddeyle AYNI şekilde odaya geçer: evin içi
           // ayrı bir ekran değil, tek fark eşya dizmek.
           speech={speech}

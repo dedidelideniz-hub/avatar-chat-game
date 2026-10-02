@@ -27,15 +27,18 @@
  *     oda kalır; oyun çökmez,
  *   · sahne kurulumu/indirme hata verirse sahne sökülür ve yedek oda kalır.
  *
- * YÜKLEME EKRANI/BANNER YOKTUR: oda, kapıya basıldığı ANDA açılır (bkz.
- * `World` → `enterMyRoom`) ve 3D sahne kurulurken oyuncuya yedek oda gösterilir.
- * Oda üstünde "hazırlanıyor…" türü bir şerit ÇIKMAZ: oda zaten görünür olduğu
- * için o şerit oyuncuya "oyun takıldı" hissi veriyordu.
+ * YÜKLEME EKRANI/BANNER YOKTUR: ne tam ekran bir yükleme ekranı, ne de oda
+ * üstünde "hazırlanıyor…" türü bir şerit. DAHA
+ * ÖNEMLİSİ: model hazırlanırken oyuncuya YEDEK ODA DA GÖSTERİLMEZ. Eskiden
+ * oda açılır açılmaz yedek oda ekrana geliyor, model hazır olunca 3D oda onun
+ * üstüne biniyordu; oyuncu kendi evine girdiğinde önce "uydurma" bir oda
+ * görüyordu. Artık odaya girişte ARA KATMAN YOKTUR: oda alanı 3D sahne hazır
+ * olana kadar ŞEFFAF kalır, arkadaki cadde görünür ve 3D oda hazır olunca
+ * yumuşakça açılır (`onReadyChange` → `HouseRoom`).
  *
- * NEDEN YEDEK VAR: model ağır olabilir ya da dosya eksik/bozuk olabilir.
- * Böyle bir durumda oyuncuyu boş bir ekranla bırakmak yoktur: `fallback`
- * (kodla çizilen oda) gösterilir; model hazır olduğunda 3D oda yumuşakça
- * ÜSTÜNE açılır. Yani oyun her koşulda odayı gösterir.
+ * NEDEN YEDEK VAR (yalnızca SON ÇARE): 3D oda HİÇ kurulamazsa (cihaz bağlam
+ * vermiyor / model yüklenemiyor) oyuncuyu boş bir ekranla bırakmak yoktur;
+ * `fallback` (kodla çizilen oda) gösterilir ve orada KALIR.
  *
  * HATA SINIRI NEDEN SAHNENİN İÇİNDE: `useGLTF` yükleme hatasını render
  * sırasında fırlatır ve WebGL sahnesinin içindeki hatalar yalnızca sahnenin
@@ -1002,13 +1005,25 @@ export interface RoomStageProps {
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
   speechColorId?: string;
   /**
-   * Model hazır değilken/hazırlanamazken gösterilen yedek oda.
+   * SON ÇARE yedek oda: 3D oda hiç kurulamazsa gösterilir.
+   *
+   * Model HAZIRLANIRKEN ÇAĞRILMAZ (ara katman yok — bkz. dosya başlığı);
+   * yalnızca cihaz bağlam vermediğinde (`notEnoughGpu`) ya da sahne/model
+   * çöktüğünde devreye girer.
    *
    * `avatar`: yedek odanın KENDİ WebGL canvas'ı (avatar) çizilsin mi?
    * 3D oda canvas'ı AÇIKKEN `false` gelir — böylece oda, caddeye tek
    * bağlam ekler (üç bağlam açılmaya çalışılınca oyun çöküyordu).
    */
   fallback: (opts: { avatar: boolean }) => ReactNode;
+  /**
+   * Oda GERÇEKTEN görünür oldu mu? (`false` → 3D sahne hâlâ kuruluyor.)
+   *
+   * Çağıran kabuk (`HouseRoom`) bu sinyalle oda alanını şeffaf tutar: odaya
+   * girişte ekrana uydurma bir oda/dolgu KATMANI basılmaz, arkadaki cadde
+   * görünür kalır ve 3D oda hazır olunca açılır.
+   */
+  onReadyChange?: (ready: boolean) => void;
 }
 
 /**
@@ -1024,6 +1039,7 @@ export function RoomStage({
   equipped,
   canBuild = false,
   fallback,
+  onReadyChange,
   speech = null,
   speechName,
   speechColorId,
@@ -1038,7 +1054,6 @@ export function RoomStage({
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [notEnoughGpu, setNotEnoughGpu] = useState(false);
-  const [showFallback, setShowFallback] = useState(true);
   // Bağlam kurulamazsa feda edilebilir bir bağlam bırakıp YENİ canvas ile
   // yeniden dener; denemeler biterse (`exhausted`) yedek oda kalıcı olur.
   const { attempt, exhausted, handleCreated } = useWebglRetry(2);
@@ -1107,13 +1122,11 @@ export function RoomStage({
     [],
   );
 
-  // Yedek oda, 3D oda açıldıktan SONRA sökülür: geçiş yumuşak olur ve
-  // gereksiz bir WebGL bağlamı açık kalmaz.
+  // "Oda görünür mü?" sinyalini çağıran kabuğa bildir: oda alanı 3D sahne
+  // hazır olana kadar şeffaf kalır (girişte ara katman/uyudurma oda yok).
   useEffect(() => {
-    if (!ready) return;
-    const timer = window.setTimeout(() => setShowFallback(false), 900);
-    return () => window.clearTimeout(timer);
-  }, [ready]);
+    onReadyChange?.(ready);
+  }, [ready, onReadyChange]);
 
   // BAĞLAM YUVASI YOK: 3D oda HİÇ kurulmadı (deneme başarısız). Yedek odanın
   // avatar canvas'ı da AÇILMAZ: ikinci bir bağlam isteği de reddedilir ve
@@ -1132,16 +1145,6 @@ export function RoomStage({
 
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {showFallback && (
-        <div
-          className="absolute inset-0 transition-opacity duration-700"
-          style={{ opacity: ready ? 0 : 1 }}
-        >
-          {/* 3D oda canvas'ı canlı → yedek oda AVATARSIZ çizilir. */}
-          {fallback({ avatar: false })}
-        </div>
-      )}
-
       {/* ── DÜZENLEME KATMANI (yalnızca odanın sahibi) ───────────────────
           Ana kontrol çubuğu (butonlar + sohbet) evin içinde de ekranda; bu
           yüzden mobilya tepsisini KALICI olarak açık tutmak ana arayüzü
@@ -1252,11 +1255,13 @@ export function RoomStage({
 
       {/* VİNYET: odayı öne çıkarır, çevredeki zemini "boşluk" gibi
           okutmaz (bkz. `ROOM_VIGNETTE`). Araç katmanlarının ALTINDA kalır
-          (`z-10` < `z-30`), dokunuşları engellemez. */}
+          (`z-10` < `z-30`), dokunuşları engellemez. Oda hazır DEĞİLKEN
+          görünmez: o anda arkada cadde duruyor, vinyet onu gölge gibi
+          karartırdı. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 z-10"
-        style={{ background: ROOM_VIGNETTE }}
+        className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-700"
+        style={{ background: ROOM_VIGNETTE, opacity: ready ? 1 : 0 }}
       />
 
       <CanvasGuard
