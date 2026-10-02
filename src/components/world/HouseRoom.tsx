@@ -18,6 +18,12 @@
  * ziyaretçi defterini görür. Komşular listesinden başka bir oyuncunun odasına
  * geçilebilir (o zaman yalnızca gezer/izler, adın onun defterine yazılır).
  *
+ * ODAYA GİRİŞ DOĞRUDANDIR: kapıdaki "Evine gir" düğmesine basıldığı anda oda
+ * açılır — arada tam ekran bir yükleme ekranı ya da oda üstünde bir "Oda
+ * yerleştiriliyor…" şeridi YOKTUR. 3D sahne kurularken yedek oda görünür, model
+ * hazır olunca 3D oda yumuşakça üstüne açılır; karakter ise odanın KAPISINDAN
+ * doğar (`RoomStage` → `roomEntryPoint`).
+ *
  * ARAYÜZ BÜTÜNLÜĞÜ (neden "tam ekran" DEĞİL): oda, oyunun ORTAK KABUĞUNUN
  * içinde yaşar — `World` sayfasındaki oyun alanının (`<main>`) yerine geçer,
  * `absolute inset-0 z-30`. Üstteki oyuncu/cüzdan şeridi, alttaki kontrol
@@ -51,21 +57,6 @@ export function shortRoomId(roomId: string): string {
   if (body.length <= 10) return body;
   return `${body.slice(0, 4)}…${body.slice(-4)}`;
 }
-
-/** Kapıdan girerken yükleme ekranında yanan adımlar. */
-export const HOUSE_STEPS = [
-  "Kapı açılıyor",
-  "Odan hazırlanıyor",
-  "Eşyalar yerleştiriliyor",
-  "Işıklar yanıyor",
-];
-
-/** Yükleme ekranında dönen ipuçları. */
-export const HOUSE_TIPS = [
-  "Odanı istediğin gibi adlandırabilirsin.",
-  "Komşular odaya girince defterde görünür.",
-  "Kapıdan çıkınca caddeye dönersin.",
-];
 
 export interface HouseRoomProps {
   /** Açılan oda. */

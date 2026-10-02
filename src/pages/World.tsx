@@ -38,11 +38,7 @@ import {
   setHouseNear,
   type HouseView,
 } from "@/engine/houseDoor";
-import {
-  HouseRoom,
-  HOUSE_STEPS,
-  HOUSE_TIPS,
-} from "@/components/world/HouseRoom";
+import { HouseRoom } from "@/components/world/HouseRoom";
 import { preloadRoomModel } from "@/engine/RoomStage";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -922,13 +918,6 @@ const BENCH_SEATS: { x: number; y: number; facing: 1 | -1 }[] = BENCHES.map(
 const BENCH_RADIUS_PX = BENCH_INTERACT_RADIUS * S;
 
 /**
- * 🏠 Kapı yükleme ekranı EN AZ bu kadar görünür (ms). Sunucu çok hızlı
- * yanıtlarsa ekran bir kare görünüp kaybolmasın; oyuncu kapının açıldığını ve
- * odanın hazırlandığını görsün.
- */
-const HOUSE_GATE_MIN_MS = 950;
-
-/**
  * 🏠 EV KAPISI MENZİLİ (px) — `constants.HOUSE_TRIGGER`ten türetilir, elle
  * yazılmaz. Oyuncu bu dikdörtgene girince evin kapısında "Evine gir" düğmesi
  * belirir (bkz. `houseDoor`). Sınırlar 3D katmanla aynı kaynaktan geldiği için
@@ -1104,13 +1093,10 @@ export default function World() {
   const chatOpenRef = useRef(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [stallsOpen, setStallsOpen] = useState(false);
-  // 🏠 ODA: kapıdaki "Evine gir" (ya da HUD'daki "Evim") → kısa yükleme
-  // ekranı → oyuncunun kendi odası. `roomGate` yükleme ekranı, `room` açık oda.
+  // 🏠 ODA: kapıdaki "Evine gir" (ya da HUD'daki "Evim") → doğrudan oyuncunun
+  // kendi odası (`room`). Arada TAM EKRAN yükleme ekranı YOKTUR: oda açılır,
+  // 3D sahne kurulurken yedek oda görünür (bkz. `HouseRoom` başlığı).
   const [room, setRoom] = useState<{ view: HouseView } | null>(null);
-  const [roomGate, setRoomGate] = useState(false);
-  const [roomPct, setRoomPct] = useState(6);
-  const [roomStep, setRoomStep] = useState(0);
-  const [roomTipIndex, setRoomTipIndex] = useState(0);
   const [vipOpen, setVipOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [targetMarker, setTargetMarker] = useState<{
@@ -1573,34 +1559,29 @@ export default function World() {
   }, []);
 
   /**
-   * 🏠 KAPI: "Evine gir" → kısa yükleme ekranı → oyuncunun KENDİ odası.
+   * 🏠 KAPI: "Evine gir" → DOĞRUDAN oyuncunun KENDİ odası.
    *
    * Oda sunucuda otomatik açılır (`houses.enter`): ilk girişte kayıt oluşur.
-   * Yükleme ekranı, istek bitene kadar EN AZ `HOUSE_GATE_MIN_MS` görünür —
-   * böylece ağ hızlıysa ekran bir kare görünüp kaybolmaz.
+   * Arada TAM EKRAN yükleme ekranı YOKTUR — oyuncu "gir"e bastığı an oda
+   * açılır; 3D sahne kurulurken yedek oda görünür, model hazır olunca 3D oda
+   * yumuşakça üstüne açılır. Oda modeli ağır olduğu için indirme burada
+   * başlatılır ve kapıya yaklaşınca da ÖNCEDEN indirilir (`preloadRoomModel`).
    */
   const enterMyRoom = useCallback(async () => {
     if (roomBusyRef.current || roomOpenRef.current) return;
     roomBusyRef.current = true;
     playSound("click");
-    // Oda modeli ağır olabilir: indirme YÜKLEME EKRANI açıkken başlar, oyuncu
-    // odaya girdiğinde model ya hazırdır ya da yedek oda görünürken tamamlanır.
+    // Oda modeli ağır olabilir: indirme oda açılırken başlar, oyuncu odaya
+    // girdiğinde model ya hazırdır ya da yedek oda görünürken tamamlanır.
     preloadRoomModel();
     closeOverlays();
-    setRoomPct(6);
-    setRoomStep(0);
-    setRoomTipIndex(0);
-    setRoomGate(true);
     // Odaya girerken yürüme/yol kalmasın (karakter kapının önünde dursun).
     targetRef.current = null;
     waypointsRef.current = [];
     waypointIdxRef.current = 0;
     setTargetMarker(null);
-    const started = performance.now();
     try {
       const view = await enterHouse({});
-      const wait = HOUSE_GATE_MIN_MS - (performance.now() - started);
-      if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
       if (view) {
         setRoom({ view });
         roomOpenRef.current = true;
@@ -1612,25 +1593,23 @@ export default function World() {
       );
     } finally {
       roomBusyRef.current = false;
-      setRoomGate(false);
     }
   }, [enterHouse, closeOverlays]);
 
-  /** Komşunun odasına geç — adın onun ziyaretçi defterine yazılır (online). */
+  /**
+   * Komşunun odasına geç — adın onun ziyaretçi defterine yazılır (online).
+   *
+   * Kendi odana girerken olduğu gibi arada yükleme ekranı YOKTUR: oda, sunucu
+   * yanıtı gelir gelmez açılır ve karakter komşunun odasının kapısından doğar.
+   */
   const enterNeighborRoom = useCallback(
     async (ownerName: string) => {
       if (roomBusyRef.current) return;
       roomBusyRef.current = true;
       preloadRoomModel();
       closeOverlays();
-      setRoomGate(true);
-      setRoomPct(6);
-      setRoomStep(0);
-      const started = performance.now();
       try {
         const view = await visitHouse({ ownerName });
-        const wait = HOUSE_GATE_MIN_MS - (performance.now() - started);
-        if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
         if (view) {
           setRoom({ view });
           roomOpenRef.current = true;
@@ -1641,9 +1620,9 @@ export default function World() {
         toast.error(
           error instanceof Error ? error.message : "Ziyaret edilemedi.",
         );
-      } finally {      roomBusyRef.current = false;
-      setRoomGate(false);
-    }
+      } finally {
+        roomBusyRef.current = false;
+      }
     },
     [visitHouse, closeOverlays],
   );
@@ -1669,17 +1648,6 @@ export default function World() {
     roomOpenRef.current = false;
     setRoom(null);
   }, []);
-
-  // 🏠 Yükleme ekranı ilerlemesi: adımlar sırayla yanar (çubuk %96'da bekler).
-  useEffect(() => {
-    if (!roomGate) return;
-    const tick = window.setInterval(() => {
-      setRoomPct((p) => Math.min(96, p + 11));
-      setRoomStep((s) => Math.min(HOUSE_STEPS.length - 1, s + 1));
-      setRoomTipIndex((i) => (i + 1) % HOUSE_TIPS.length);
-    }, 190);
-    return () => window.clearInterval(tick);
-  }, [roomGate]);
 
   /** Oturma durumunu 3D katmanın deposuna yazar (avatar + "Otur" düğmesi). */
   const publishBenchSeat = useCallback(() => {
@@ -2245,6 +2213,10 @@ export default function World() {
           if (houseNearRef.current !== isNear) {
             houseNearRef.current = isNear;
             setHouseNear(isNear);
+            // Oyuncu kapıya yaklaşır yaklaşmaz oda modeli ÖNCEDEN indirilir:
+            // "Evine gir"e basıldığında oda yedek odada beklemeden açılsın
+            // (ağır model indirmesi tıklamadan sonraya kalmasın).
+            if (isNear) preloadRoomModel();
           }
         }
         // 🏠 3D "Evine gir" düğmesinden gelen istek (bkz. `houseDoor`).
@@ -3075,7 +3047,6 @@ export default function World() {
         stallsOpen ||
         vipOpen ||
         room !== null ||
-        roomGate ||
         battleRef.current ||
         pvpBattleRef.current
       )
@@ -3204,7 +3175,6 @@ export default function World() {
       stallsOpen,
       vipOpen,
       room,
-      roomGate,
       pickTarget,
       handleClaim,
     ],
@@ -3646,38 +3616,6 @@ export default function World() {
             )}
           </AnimatePresence>
 
-          {/* 🏠 KAPI YÜKLEME EKRANI — girişte kısa bir "odaya bağlanılıyor"
-              ekranı (oyun girişindeki EntryLoader'ın aynısı). */}
-          <AnimatePresence>
-            {roomGate && (
-              <motion.div
-                key="room-gate"
-                className="fixed inset-0 z-[70]"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
-              >
-                <EntryLoader
-                  pct={roomPct}
-                  stepIndex={roomStep}
-                  tip={HOUSE_TIPS[roomTipIndex]}
-                  subtitle="Evine giriliyor"
-                  crestLabel="Oda açılıyor"
-                  pendingLabel="Kapı açılıyor"
-                  steps={HOUSE_STEPS}
-                  player={{
-                    name: username,
-                    rankName: rank.name,
-                    rankIcon: rank.icon,
-                    rankGradient: rank.gradient,
-                    vip: isVip,
-                    level,
-                  }}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
         </main>
 
         {/* bottom control bar — Vaelos style: all buttons centered in one

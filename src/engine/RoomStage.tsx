@@ -7,8 +7,10 @@
  *     (`ROOM_ISO.origin` = X/Z 2000 — caddeden 2000 birim uzak, hiçbir şeye
  *     çarpmaz), `roomModelPrep.ts` → `planIsoRoom`,
  *   · kamera odayı üstten İZOMETRİK görür, hedefi odanın merkezine sabittir,
- *   · karakter tam odanın merkezine doğar ve zeminin neresine dokunursan oraya
- *     yürür; DUVAR SINIRLARINDAN dışarı çıkamaz (odanın dışında zemin yoktur),
+ *   · karakter odanın KAPISINDAN doğar ve oradan yürümeye başlar
+ *     (`roomModelPrep.findRoomDoor` + `roomEntryPoint`); zeminin neresine
+ *     dokunursan oraya yürür ve DUVAR SINIRLARINDAN dışarı çıkamaz (odanın
+ *     dışında zemin yoktur),
  *   · modelin "Floor"/"Zemin" mesh'i `placementZone` olarak işaretlenir ve
  *     düzenleme modunda eşyalar bu zeminin üstüne 0,5 m ızgaraya oturur.
  *
@@ -24,6 +26,11 @@
  *     ve sahne yeniden denenir (`useWebglRetry`) — denemeler biterse yedek
  *     oda kalır; oyun çökmez,
  *   · sahne kurulumu/indirme hata verirse sahne sökülür ve yedek oda kalır.
+ *
+ * YÜKLEME EKRANI/BANNER YOKTUR: oda, kapıya basıldığı ANDA açılır (bkz.
+ * `World` → `enterMyRoom`) ve 3D sahne kurulurken oyuncuya yedek oda gösterilir.
+ * Oda üstünde "hazırlanıyor…" türü bir şerit ÇIKMAZ: oda zaten görünür olduğu
+ * için o şerit oyuncuya "oyun takıldı" hissi veriyordu.
  *
  * NEDEN YEDEK VAR: model ağır olabilir ya da dosya eksik/bozuk olabilir.
  * Böyle bir durumda oyuncuyu boş bir ekranla bırakmak yoktur: `fallback`
@@ -64,9 +71,11 @@ import {
   clampToRoom,
   cutRoomForInterior,
   findFloorMesh,
+  findRoomDoor,
   markPlacementZone,
   measureRoomModel,
   planIsoRoom,
+  roomEntryPoint,
   roomInteriorBox,
   toRoomLocal,
   type IsoRoomPlan,
@@ -247,6 +256,12 @@ const warmedMaterials = new WeakSet<THREE.Material>();
  * Modelin tavan yüksekliği (ör. 3.4 birim) tavan tavan yüksek duruyordu.
  */
 const WALL_HEIGHT_FACTOR = 1.35;
+
+/**
+ * Karakter kapıdan doğarken duvardan İÇERİ durur (birim): omuz genişliği +
+ * bir adım payı. Kapı düzleminin tam üstünde doğarsa gövdesi duvara gömülür.
+ */
+const ROOM_ENTRY_STANDOFF = ROOM_ISO.characterRadius + 0.6;
 
 /**
  * ODA KADRAJI — oda, oyun alanının ORTASINA dengeli oturur ve alanı DOLDURUR.
@@ -455,14 +470,17 @@ function WallColliders({ half }: { half: { x: number; z: number } }) {
 /**
  * Odadaki karakter — sokaktaki avatarla AYNI model ve kuşam.
  *
- * Zeminin neresine dokunulursa oraya yürür (`moveTarget`) ve yürürken gittiği
- * yöne döner. Hareket hedefi `clampToRoom`dan geçmiş olduğu için karakter
- * odanın dışına — zemini olmayan boşluğa — çıkamaz.
+ * ODAYA KAPIDAN GİRER: ilk karede odanın kapısının önüne (`spawn`) konur,
+ * içeri (odanın merkezine) döner ve oradan başlar. Ardından zeminin neresine
+ * dokunulursa oraya yürür (`moveTarget`) ve yürürken gittiği yöne döner.
+ * Hareket hedefi `clampToRoom`dan geçmiş olduğu için karakter odanın dışına —
+ * zemini olmayan boşluğa — çıkamaz.
  */
 function RoomCharacter({
   plan,
   equipped,
   moveTarget,
+  spawn,
   speech,
   speechName,
   speechColorId,
@@ -470,6 +488,11 @@ function RoomCharacter({
   plan: IsoRoomPlan;
   equipped: string[];
   moveTarget: { current: { x: number; z: number } };
+  /**
+   * Doğuş noktası — odanın YEREL uzayında (kapının önü, duvardan içeride).
+   * `roomModelPrep.roomEntryPoint` hesaplar.
+   */
+  spawn: { x: number; z: number };
   /** Baş üstündeki sohbet baloncuğu metni (caddeyle AYNI bileşen). */
   speech?: string | null;
   /** Baloncukta yazan gönderen adı. */
@@ -482,6 +505,21 @@ function RoomCharacter({
   // Hareket bayrağı: avatar (portre) bu ref'e bakıp idle ↔ YÜRÜME geçişi
   // yapar. Ref ile verilir çünkü kare başına React render'ı istemeyiz.
   const moving = useRef(false);
+
+  // DOĞUŞ: karakter ilk karede kapının önüne konur ve içeri bakar. Bu bir
+  // `useLayoutEffect`tir (kare döngüsünden ÖNCE çalışır) — oyuncu karakteri bir
+  // an odanın ortasında görüp kapıya ışınlanmış gibi hissetmez. Efekt AYNI
+  // değerlerle birden fazla kez çalışsa bile aynı noktaya yazar (StrictMode
+  // kurulumunda da doğru kalır).
+  useLayoutEffect(() => {
+    const group = root.current;
+    if (!group) return;
+    group.position.set(spawn.x, 0, spawn.z);
+    // Kapıdan İÇERİ bakar: yön, odanın merkezine doğrudur.
+    yaw.current = Math.atan2(-spawn.x, -spawn.z);
+    group.rotation.y = yaw.current;
+    moveTarget.current = { x: spawn.x, z: spawn.z };
+  }, [spawn, moveTarget]);
 
   useFrame((_, delta) => {
     const group = root.current;
@@ -692,6 +730,25 @@ function RoomInterior({
     return raw ? planIsoRoom(raw) : null;
   }, [scene, surfaces]);
 
+  // KAPI → DOĞUŞ NOKTASI: karakter odanın kapısından doğar (bkz.
+  // `roomModelPrep.findRoomDoor`). Kapı geometriden bulunur; bulunamazsa oda
+  // kesitin açıldığı ön kenardan girilir — oyuncu yine eşikte başlar.
+  const door = useMemo(
+    () =>
+      findRoomDoor(surfaces, {
+        x: ROOM_ISO.camera.offset[0],
+        z: ROOM_ISO.camera.offset[2],
+      }),
+    [surfaces],
+  );
+  const spawn = useMemo(
+    () =>
+      plan
+        ? roomEntryPoint(door, plan, ROOM_ENTRY_STANDOFF)
+        : { x: 0, z: 0 },
+    [door, plan],
+  );
+
   // DUVAR YÜKSEKLİĞİ (kırpma + çerçeve): tavan tavan yüksek duvarlar yerine
   // Sanalika gibi ALÇAK duvarlar — oda "kutu" değil, içine bakılan bir sahne.
   const wallHeight = plan
@@ -893,6 +950,7 @@ function RoomInterior({
           plan={plan}
           equipped={equipped}
           moveTarget={moveTarget}
+          spawn={spawn}
           speech={speech}
           speechName={speechName}
           speechColorId={speechColorId}
@@ -1081,12 +1139,6 @@ export function RoomStage({
         >
           {/* 3D oda canvas'ı canlı → yedek oda AVATARSIZ çizilir. */}
           {fallback({ avatar: false })}
-        </div>
-      )}
-      {/* Model inerken dürüst bilgi: oyuncu "odam neden değişti" demesin. */}
-      {!ready && (
-        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full bg-black/45 px-3 py-1 text-[11px] font-bold text-white/85 backdrop-blur-sm">
-          🚪 Oda yerleştiriliyor…
         </div>
       )}
 

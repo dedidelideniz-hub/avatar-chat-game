@@ -1101,17 +1101,19 @@ const scenarios: Scenario[] = [
 
       await p.click(button);
 
-      // ── 2) ODAYA GİRİŞ: "Evim" düğmesi önce KAPI YÜKLEME EKRANINI, sonra
-      //       oyuncunun KENDİ odasını açmalı (karakter odada durur).
+      // ── 2) ODAYA GİRİŞ: "Evim" düğmesi DOĞRUDAN oyuncunun KENDİ odasını
+      //       açmalı — arada TAM EKRAN yükleme ekranı yok, oda üstünde de
+      //       "Oda yerleştiriliyor…" şeridi çıkmaz (karakter odada durur).
       await React.act(async () => {
         await new Promise((r) => setTimeout(r, 400));
       });
       const gateSnap = p.snapshot();
       checks.push(
         check(
-          "kapı yükleme ekranı çıktı (odaya bağlanılıyor)",
-          gateSnap.text.includes("Kapı açılıyor") ||
-            gateSnap.text.includes("Evine giriliyor"),
+          "odaya girişte ARA EKRAN yok (tam ekran yükleme ekranı / şerit çıkmaz)",
+          !gateSnap.text.includes("Kapı açılıyor") &&
+            !gateSnap.text.includes("Evine giriliyor") &&
+            !gateSnap.text.includes("Oda yerleştiriliyor"),
           gateSnap.text.slice(0, 80),
         ),
       );
@@ -1865,11 +1867,13 @@ const scenarios: Scenario[] = [
             world.includes("setHouseNear"),
         ),
         check(
-          "odaya girişte YÜKLEME ekranı var (kapı açılıyor)",
-          world.includes("HOUSE_STEPS") &&
-            world.includes("EntryLoader") &&
-            world.includes("HOUSE_GATE_MIN_MS") &&
-            room.includes("export const HOUSE_STEPS"),
+          "odaya giriş DOĞRUDAN: \"gir\"e basılınca oda açılır, arada tam ekran yükleme ekranı yok",
+          world.includes("enterMyRoom") &&
+            !world.includes("roomGate") &&
+            !world.includes("HOUSE_GATE_MIN_MS") &&
+            !world.includes("HOUSE_STEPS") &&
+            !room.includes("HOUSE_STEPS") &&
+            world.includes("preloadRoomModel"),
         ),
         check(
           "oda içeriği GLB modeliyle kuruluyor + yedek oda hazır (RoomStage)",
@@ -1910,6 +1914,8 @@ const scenarios: Scenario[] = [
         analyzeRoomSurfaces,
         roomInteriorBox,
         cutRoomForInterior,
+        findRoomDoor,
+        roomEntryPoint,
       } = await import("../src/engine/roomModelPrep");
       const {
         FURNITURE,
@@ -2099,9 +2105,8 @@ const scenarios: Scenario[] = [
         ),
       );
 
-      // ── 5) KARAKTER: tam merkeze doğar, duvar sınırından DIŞARI çıkamaz
-      //       (odanın dışında zemin yoktur — düşme yoktur).
-      const spawn = clampToRoom({ x: 0, z: 0 }, normalPlan.half, K.ROOM_ISO.characterRadius);
+      // ── 5) KARAKTER: odanın KAPISINDAN doğar (odanın ortasından değil) ve
+      //       duvar sınırından DIŞARI çıkamaz (dışarıda zemin yoktur).
       const escaped = clampToRoom(
         { x: 9999, z: -9999 },
         normalPlan.half,
@@ -2109,8 +2114,30 @@ const scenarios: Scenario[] = [
       );
       checks.push(
         check(
-          "oyuncu odanın TAM merkezine doğuyor (2000, 0, 2000)",
-          spawn.x === 0 && spawn.z === 0,
+          "karakter odanın ortasına değil KAPISINDAN doğuyor (eşikte başlar)",
+          stage.includes("findRoomDoor") &&
+            stage.includes("roomEntryPoint") &&
+            stage.includes("spawn={spawn}") &&
+            stage.includes("group.position.set(spawn.x, 0, spawn.z)") &&
+            prep.includes("export function findRoomDoor") &&
+            prep.includes("export function roomEntryPoint"),
+        ),
+      );
+      // Kapı bulunamayan modelde de oda ORTADAN değil ÖN KENARDAN girilir
+      // (kesitin açıldığı taraf) — oyuncu her koşulda eşikte başlar.
+      const noDoorEntry = roomEntryPoint(
+        null,
+        normalPlan,
+        K.ROOM_ISO.characterRadius,
+      );
+      checks.push(
+        check(
+          "kapı yoksa oda ön kenardan girilir (yine eşik, yine ortada değil)",
+          Math.abs(noDoorEntry.x) < 1e-9 &&
+            Math.abs(
+              noDoorEntry.z - (normalPlan.half.z - K.ROOM_ISO.characterRadius),
+            ) < 1e-9,
+          `eşik ${noDoorEntry.x.toFixed(2)}, ${noDoorEntry.z.toFixed(2)}`,
         ),
       );
       checks.push(
@@ -2330,6 +2357,24 @@ const scenarios: Scenario[] = [
           stage.includes("const CEILING_PARTS") &&
             /ceiling\|roof\|tavan/.test(stage),
         ),
+        check(
+          'oda üstünde "Oda yerleştiriliyor…" şeridi YOK (banner silindi)',
+          !stage.includes("Oda yerleştiriliyor") &&
+            !house.includes("Oda yerleştiriliyor"),
+        ),
+        check(
+          "💬 SOHBET BALONCUĞU evin içinde de caddeden AYNEN geçer (kısıt yok)",
+          world.includes("speech={bubble}") &&
+            world.includes("speechColorId={bubbleColorId}") &&
+            house.includes("speech={speech}") &&
+            house.includes("ChatBubbleBody") &&
+            house.includes("colorId={speechColorId}") &&
+            stage.includes("<ChatBubble") &&
+            stage.includes("text={speech}") &&
+            stage.includes("speechColorId={speechColorId}") &&
+            !house.includes("chatDisabled") &&
+            !house.includes("hideHud"),
+        ),
       );
 
       // ── İÇ MEKÂN KESİTİ (Sanalika/Habbo): model KAPALI bir kutudur;
@@ -2416,6 +2461,80 @@ const scenarios: Scenario[] = [
               stage.includes("cutRoomForInterior") &&
                 stage.includes("roomInteriorBox") &&
                 stage.includes("gl.clippingPlanes"),
+            ),
+          );
+        })();
+
+      // ── KAPI (eşik): karakter odanın kapısından doğar. Kapı modelin JENERİK
+        //    adlarından değil GEOMETRİDEN bulunur (kanat: dar + zeminden başlar);
+        //    kesitte GİZLENEN (kameraya bakan) duvarın kapısı seçilmez.
+        (() => {
+          const mk = (
+            w: number,
+            h: number,
+            d: number,
+            x: number,
+            y: number,
+            z: number,
+          ) => {
+            const m = new THREE.Mesh(
+              new THREE.BoxGeometry(w, h, d),
+              new THREE.MeshBasicMaterial(),
+            );
+            m.position.set(x, y, z);
+            return m;
+          };
+          const g = new THREE.Group();
+          const floor = mk(8, 0.1, 8, 0, 0, 0);
+          const ceil = mk(8, 0.1, 8, 0, 3.2, 0);
+          const nearZ = mk(8, 3, 0.1, 0, 1.5, 4); // kameraya BAKAN duvar
+          const farZ = mk(8, 3, 0.1, 0, 1.5, -4);
+          const nearX = mk(0.1, 3, 8, 4, 1.5, 0);
+          const farX = mk(0.1, 3, 8, -4, 1.5, 0);
+          const nearDoor = mk(1.9, 2, 0.2, 0, 1, 4); // kesitte GİZLENECEK kapı
+          const farDoor = mk(1.9, 2, 0.2, 0, 1, -4); // görünen kapı
+          const skirting = mk(0.2, 0.2, 8, 3.9, 0.1, 0); // süpürgelik
+          g.add(floor, ceil, nearZ, farZ, nearX, farX, nearDoor, farDoor, skirting);
+
+          const door = findRoomDoor(analyzeRoomSurfaces(g), { x: 1, z: 1 });
+          checks.push(
+            check(
+              "oda kapısı GEOMETRİDEN bulunuyor (duvar/süpürgelik değil, eşik paneli)",
+              door !== null &&
+                Math.abs(door.x - farDoor.position.x) < 1e-9 &&
+                Math.abs(door.z - farDoor.position.z) < 1e-9,
+              door
+                ? `${door.x.toFixed(2)}, ${door.z.toFixed(2)}`
+                : "kapı bulunamadı",
+            ),
+          );
+          const surfaces = analyzeRoomSurfaces(g);
+          const interior = surfaces ? roomInteriorBox(surfaces) : null;
+          const doorPlan = interior
+            ? planIsoRoom(interior, {
+                origin: K.ROOM_ISO.origin,
+                scale: K.ROOM_ISO.scale,
+                span: K.ROOM_ISO.span,
+                fitBand: K.ROOM_ISO.fitBand,
+                camera: K.ROOM_ISO.camera,
+              })
+            : null;
+          const entry =
+            doorPlan && door
+              ? roomEntryPoint(door, doorPlan, K.ROOM_ISO.characterRadius)
+              : null;
+          checks.push(
+            check(
+              "doğuş noktası kapının ÖNÜ, duvardan içeride ve oda sınırı içinde",
+              !!entry &&
+                !!doorPlan &&
+                Math.abs(entry.x) < 1e-9 &&
+                Math.abs(entry.z + doorPlan.half.z) <
+                  K.ROOM_ISO.characterRadius + 1e-9 &&
+                Math.abs(entry.z) < doorPlan.half.z,
+              entry
+                ? `eşik ${entry.x.toFixed(2)}, ${entry.z.toFixed(2)} (yarı ${doorPlan?.half.z.toFixed(2)})`
+                : "doğuş noktası yok",
             ),
           );
         })();
@@ -2869,9 +2988,11 @@ const scenarios: Scenario[] = [
             /setFailed/.test(stage),
         ),
         check(
-          "oda modeli KAPI açılırken inmeye başlıyor (yükleme ekranı gizler)",
+          "oda modeli kapı MENZİLİNE girince önceden iniyor (odaya giriş beklemesin)",
           stage.includes("export function preloadRoomModel") &&
             stage.includes("useGLTF.preload(ROOM_MODEL_URL)") &&
+            // Biri "Evine gir"e basılınca, biri kapıya YAKLAŞINCA: oda anında
+            // açılsın diye indirme tıklamadan önce başlar.
             (world.match(/preloadRoomModel\(\)/g) ?? []).length >= 2,
         ),
         check(

@@ -190,6 +190,12 @@ export interface RoomWall {
   thin: "x" | "z";
   /** Duvarın ince eksendeki konumu (duvar düzlemi). */
   at: number;
+  /** Model uzayındaki kutusu — kapı tespiti bunu ölçer (bkz. `findRoomDoor`). */
+  box: THREE.Box3;
+  /** Model uzayındaki ölçüsü. */
+  size: THREE.Vector3;
+  /** Model uzayındaki merkezi. */
+  center: THREE.Vector3;
 }
 
 /** Modelin yüzeyleri — kesit ve iç-hacim planı bunlardan türer. */
@@ -249,6 +255,9 @@ export function analyzeRoomSurfaces(scene: THREE.Object3D): RoomSurfaces | null 
       mesh: part.mesh,
       thin: part.thin,
       at: part.thin === "x" ? part.center.x : part.center.z,
+      box: part.box,
+      size: part.size,
+      center: part.center,
     });
   }
 
@@ -326,6 +335,118 @@ export function cutRoomForInterior(
   }
   if (surfaces.ceiling) surfaces.ceiling.visible = false;
   return { ceilingHidden: !!surfaces.ceiling, wallsHidden };
+}
+
+/* ─────────────────────────── KAPI (EŞİK) ───────────────────────────
+ * Karakter odaya KAPIDAN girer: evin kapısına basıp içeri geçen oyuncu,
+ * karakterini odanın eşiğinde bulur ve oradan yürümeye başlar.
+ *
+ * KAPI NEDEN GEOMETRİDEN BULUNUR: oda modelinin parçaları jenerik adlar taşır
+ * (`empty_office_space.glb` → "Plane.043"). Ada bakmak güvenilir değildir; kapı
+ * bir KANAT/PANELDİR ve ölçüsüyle ayırt edilir: duvar düzleminde durur, odanın
+ * açıklığından KÜÇÜKTÜR, zeminden başlar ve insan boyunu aşar. Duvar (odanın
+ * tamamı kadar) bu ölçülerin dışında kalır, süpürgelik (0,2 yüksek) de öyle.
+ *
+ * Kapı önce KESİTTE GÖRÜNEN tarafta aranır: kamera tarafındaki duvarlar
+ * gizlendiği için (`cutRoomForInterior`) oradaki kapı da görünmez olurdu —
+ * karakter görünmeyen bir kapıdan doğmamalı.
+ */
+
+/** Kapı olma ihtimali yüksek adlar (model adlandırmışsa ölçümden önce gelir). */
+const DOOR_NAME = /door|kap[ıi]|portal|entrance|giri[sş]/i;
+/** Kapı panelinin en büyük genişliği — odanın açıklığına ORANI. */
+const DOOR_MAX_SPAN = 0.5;
+/** Kapının en küçük yüksekliği (birim) — insan boyunda bir açıklık. */
+const DOOR_MIN_HEIGHT = 1.2;
+/** Kapı yüksekliğinin oda yüksekliğine oranı: bundan yükseği duvardır. */
+const DOOR_MAX_HEIGHT_RATIO = 0.85;
+/** Kapının zemine oturmuş sayılması için bırakılan yükseklik payı (birim). */
+const DOOR_FLOOR_SLACK = 0.45;
+
+/** Kapı noktası (MODEL uzayı) — `roomEntryPoint` bunu odanın yereline çevirir. */
+export interface RoomDoor {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Odanın KAPISINI bulur (model uzayında); bulamazsa `null` döner ve çağıran
+ * taraf odayı kesitin açıldığı ön kenardan girer (oyuncu yine eşikte durur).
+ *
+ * @param cameraDir Odanın merkezinden kameraya bakan YATAY yön. Kesit bu
+ *   taraftaki duvarları gizlediği için kapı önce KARŞI tarafta aranır.
+ */
+export function findRoomDoor(
+  surfaces: RoomSurfaces | null,
+  cameraDir: { x: number; z: number },
+): RoomDoor | null {
+  if (!surfaces) return null;
+
+  const interior = roomInteriorBox(surfaces);
+  const floorY = interior.min.y;
+  const span = Math.max(
+    interior.max.x - interior.min.x,
+    interior.max.z - interior.min.z,
+  );
+  const height = Math.max(0.5, interior.max.y - interior.min.y);
+  const centerX = (interior.min.x + interior.max.x) / 2;
+  const centerZ = (interior.min.z + interior.max.z) / 2;
+
+  /** `cutRoomForInterior` ile AYNI kural: bu duvar kesitte gizlenir mi? */
+  const nearCamera = (wall: RoomWall) =>
+    wall.thin === "x"
+      ? cameraDir.x > 0
+        ? wall.at > centerX
+        : wall.at < centerX
+      : cameraDir.z > 0
+        ? wall.at > centerZ
+        : wall.at < centerZ;
+
+  const candidates = surfaces.walls.filter((wall) => {
+    const width = wall.thin === "x" ? wall.size.z : wall.size.x;
+    return (
+      width >= 0.5 &&
+      width <= span * DOOR_MAX_SPAN &&
+      wall.size.y >= DOOR_MIN_HEIGHT &&
+      wall.size.y <= height * DOOR_MAX_HEIGHT_RATIO &&
+      wall.box.min.y <= floorY + DOOR_FLOOR_SLACK
+    );
+  });
+  if (candidates.length === 0) return null;
+
+  /** Adı kapıyı söyleyen kazanır; sonra GÖRÜNEN taraf, sonra büyük kanat. */
+  const score = (wall: RoomWall) => {
+    const named = DOOR_NAME.test(wall.mesh.name ?? "") ? 1 : 0;
+    const visible = nearCamera(wall) ? 0 : 1;
+    const size =
+      wall.size.y + (wall.thin === "x" ? wall.size.z : wall.size.x);
+    return named * 1000 + visible * 100 + size;
+  };
+  const best = [...candidates].sort((a, b) => score(b) - score(a))[0];
+  return { x: best.center.x, y: floorY, z: best.center.z };
+}
+
+/**
+ * Kapıyı KARAKTERİN DOĞUŞ NOKTASINA çevirir: odanın YEREL uzayı (merkez = 0,
+ * y 0 = zemin) ve duvardan `standoff` kadar İÇERİ — karakter kapının içinde,
+ * duvara gömülü değil, eşikte durur.
+ *
+ * Kapı yoksa oda KESİTİN açıldığı ön kenardan girilir (kameranın baktığı
+ * kenar): oyuncu yine odanın eşiğinde başlar, ortasında değil.
+ */
+export function roomEntryPoint(
+  door: RoomDoor | null,
+  plan: IsoRoomPlan,
+  standoff: number,
+): { x: number; z: number } {
+  const local = door
+    ? {
+        x: door.x * plan.scale + plan.offset.x,
+        z: door.z * plan.scale + plan.offset.z,
+      }
+    : { x: 0, z: plan.half.z };
+  return clampToRoom(local, plan.half, standoff);
 }
 
 /* ────────────────────────────── YERLEŞİM ────────────────────────────── */
