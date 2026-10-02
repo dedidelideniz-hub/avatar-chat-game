@@ -8,7 +8,9 @@
  *     `roomModelPrep.ts`), sahne izometrik bakar; karakter zemine dokunarak
  *     yürür ve duvar sınırından dışarı çıkamaz,
  *   · oda SAHİBİNE eşya dizme (0,5 m ızgara + duvar sınırı) araçlarını verir;
- *     düzenleme yalnızca istemcidedir, oda kapanınca sıfırlanır,
+ *     eşyalar CADDEDEKİ STANTTAN Vaelos Parası ile alınır ve sahip olunanlar
+ *     evine dizilir — yerleşim SUNUCUDA tutulur (`convex/furniture.ts`), yani
+ *     oda kapanıp açılınca düzen yerinde kalır,
  *   · kodla çizilen YEDEK odayı (`ProceduralRoom`) YALNIZCA SON ÇARE tutar:
  *     3D oda hiç kurulamazsa (cihaz bağlam vermiyor / model bozuk) oyuncu boş
  *     ekranla kalmaz, oyun akışı (kapı → oda → çıkış) her durumda çalışır.
@@ -44,6 +46,7 @@ import { useState } from "react";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
 import { ChatBubbleBody } from "@/engine/ChatBubble3D";
 import { RoomStage } from "@/engine/RoomStage";
+import type { OwnedFurniture } from "@/engine/roomBuild";
 import { playSound } from "@/lib/sounds";
 
 /**
@@ -76,6 +79,19 @@ export interface HouseRoomProps {
   speechName?: string;
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
   speechColorId?: string;
+  /**
+   * Odada DURAN/oyuncunun sahip olduğu eşyalar (`furniture` tablosu).
+   *
+   * Kendi odanda "dolabın + yerleşimin", komşunun odasında ise ONUN düzeni
+   * gelir (dizme araçları yalnızca sahibinde açıktır).
+   */
+  furniture: readonly OwnedFurniture[];
+  /** Eşyayı odaya koy (oransal konum) — sunucuya yazılır. */
+  onPlaceItem: (rowId: string, fx: number, fz: number) => void;
+  /** Odadaki eşyayı kaldır (dolaba döner) — sunucuya yazılır. */
+  onLiftItem: (rowId: string) => void;
+  /** Mobilya standını aç (SP ile eşya alımı). */
+  onOpenStand: () => void;
   /** Caddede çevrimiçi diğer oyuncuların adları (komşu ziyareti). */
   neighbors: string[];
   /** Sahibi oda adını kaydeder. */
@@ -190,6 +206,10 @@ export function HouseRoom({
   view,
   equipped,
   neighbors,
+  furniture,
+  onPlaceItem,
+  onLiftItem,
+  onOpenStand,
   speech = null,
   speechName,
   speechColorId,
@@ -342,8 +362,15 @@ export function HouseRoom({
         <RoomStage
           equipped={equipped}
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını
-          // gezen oyuncu misafirdir, dekoru değiştirmez.
+          // gezen oyuncu misafirdir, dekoru değiştirmez (onun yerleşimi görünür
+          // ama dokunulamaz).
           canBuild={view.isMine}
+          // EŞYA: dolap + odadaki yerleşim (sunucu). Dizme/kaldırma sunucuya
+          // yazılır — oda kapanıp açılsa da düzen aynı kalır.
+          owned={furniture}
+          onPlaceItem={onPlaceItem}
+          onLiftItem={onLiftItem}
+          onOpenStand={onOpenStand}
           // Oda ne zaman gerçekten görünür oldu? (bkz. `stageReady` yorumu.)
           onReadyChange={setStageReady}
           // 💬 Sohbet baloncuğu caddeyle AYNI şekilde odaya geçer: evin içi

@@ -129,12 +129,37 @@ const schema = defineSchema(
       roomId: v.optional(v.string()),
       visits: v.number(), // odaya giriş sayısı (sahip + ziyaretçiler)
       visitors: v.array(v.string()), // son ziyaretçi adları (en yeni başta)
+      /**
+       * BAŞLANGIÇ TAKIMI VERİLDİ Mİ? Odaya ilk girişte hediye mobilya
+       * tohumlanır (`furniture.ts` → `seedStarter`). Bayrak olmadan, oyuncu
+       * bütün eşyalarını kaldırsa hediye her girişte geri gelirdi.
+       */
+      furnitureSeeded: v.optional(v.boolean()),
       createdAt: v.number(),
       updatedAt: v.number(),
     })
       .index("by_userId", ["userId"])
       .index("by_ownerName", ["ownerName"])
       .index("by_roomId", ["roomId"]),
+
+    // 🛋️ OYUNCU MOBİLYASI — stanttan Vaelos Parası ile alınan HER EŞYA BİR
+    // SATIRDIR (adet = satır sayısı). Bu tablo, "ne aldım" ile "ne dizdim"i
+    // birleştirir: `fx/fz` (odanın YARIM açıklığına göre oran, -1…1) doluysa
+    // eşya odada durur; boşsa oyuncunun DOLABINDA bekler (`lift` → alanlar
+    // temizlenir).
+    //
+    // NEDEN ORANSAL KONUM: oda modeli değişirse/başka bir GLB yüklenirse eşya
+    // duvarın dışında kalmasın — metre ile yazılan konum modelle birlikte
+    // anlamsızlaşırdı. Oransal konum, odanın ölçülen boyutuna göre HER ZAMAN
+    // içeride kalır (bkz. `roomBuild.placeFurniture`).
+    furniture: defineTable({
+      userId: v.id("users"),
+      itemId: v.string(), // katalog kimliği (fiyat SUNUCUDA doğrulanır)
+      fx: v.optional(v.number()),
+      fz: v.optional(v.number()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_userId", ["userId"]),
 
     profiles: defineTable({
       userId: v.id("users"),

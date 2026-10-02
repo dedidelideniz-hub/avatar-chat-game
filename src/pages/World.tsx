@@ -39,7 +39,9 @@ import {
   type HouseView,
 } from "@/engine/houseDoor";
 import { HouseRoom } from "@/components/world/HouseRoom";
+import { FurnitureStandSheet } from "@/components/world/FurnitureStandSheet";
 import { preloadRoomModel } from "@/engine/RoomStage";
+import { starterFurniture } from "@/engine/roomBuild";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -840,9 +842,12 @@ function ProfileSheet({
 function StallsSheet({
   onClose,
   onGo,
+  onOpenFurniture,
 }: {
   onClose: () => void;
   onGo: (x: number, y: number, label: string) => void;
+  /** Mobilya standını aç (eşya alımı — SP ile). */
+  onOpenFurniture: () => void;
 }) {
   return (
     <GameSheet
@@ -850,7 +855,23 @@ function StallsSheet({
       subtitle="Bir yer seç — karakterin oraya kadar yürür."
       onClose={onClose}
     >
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      {/* 🛋️ MOBİLYA STANTI — caddede yürümeye gerek yok: ev eşyaları buradan
+          alınır, dizme işi evin içinde ("Evi Düzenle"). */}
+      <button
+        type="button"
+        onClick={onOpenFurniture}
+        className="mt-4 flex w-full items-center gap-3 rounded-2xl border border-[#d9a53b]/60 bg-[#f0c987]/25 p-3 text-left transition-colors hover:bg-[#f0c987]/40"
+      >
+        <span className="text-2xl">🛋️</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-extrabold">Mobilya Stantı</p>
+          <p className="text-[11px] text-muted-foreground">
+            Ev eşyaları — Vaelos Parası ile al, evine diz
+          </p>
+        </div>
+        <span className="text-xs font-extrabold text-primary">Aç</span>
+      </button>
+      <div className="mt-3 grid grid-cols-2 gap-3">
         {VENDORS.map((v) => (
           <div
             key={v.id}
@@ -1037,6 +1058,13 @@ export default function World() {
   const enterHouse = useMutation(api.houses.enter);
   const renameHouse = useMutation(api.houses.rename);
   const visitHouse = useMutation(api.houses.visit);
+  // 🛋️ MOBİLYA EKONOMİSİ (bkz. `convex/furniture.ts`): oyuncu eşyaları
+  // CADDEDEKİ STANTTAN Vaelos Parası ile alır ve SAHİP OLDUKLARINI evine dizer.
+  // Yerleşim sunucuda tutulur: oda kapanıp açılsa da düzen yerinde kalır.
+  const myFurniture = useQuery(api.furniture.myFurniture);
+  const placeRoomItem = useMutation(api.furniture.place);
+  const liftRoomItem = useMutation(api.furniture.lift);
+  const seedRoomFurniture = useMutation(api.furniture.seedStarter);
   const sendChat = useMutation(api.chat.send);
   const createBattle = useMutation(api.battles.createBattle);
   const acceptBattle = useMutation(api.battles.acceptBattle);
@@ -1097,6 +1125,42 @@ export default function World() {
   // kendi odası (`room`). Arada TAM EKRAN yükleme ekranı YOKTUR: oda açılır,
   // 3D sahne kurulurken yedek oda görünür (bkz. `HouseRoom` başlığı).
   const [room, setRoom] = useState<{ view: HouseView } | null>(null);
+  // 🛒 MOBİLYA STANTI: caddeden ya da evin içinden (düzenleme tepsisindeki
+  // "Stant" düğmesi) açılan satın alma paneli.
+  const [standOpen, setStandOpen] = useState(false);
+  // Komşunun odasındayken ONUN eşyaları gösterilir (kendi dolabın değil).
+  const neighborFurniture = useQuery(
+    api.furniture.byOwnerName,
+    room && !room.view.isMine ? { ownerName: room.view.ownerName } : "skip",
+  );
+  const roomFurniture = room?.view.isMine
+    ? (myFurniture ?? [])
+    : (neighborFurniture ?? []);
+  /**
+   * 🎁 BAŞLANGIÇ TAKIMI — oda ilk kez açıldığında HEDİYE edilen eşyalar.
+   *
+   * NEDEN: oda modeli boş bir mekân; hiç eşya olmasa oyuncu çıplak bir kutu
+   * görürdü. Hediye, sunucuda GERÇEK satırlar olarak tohumlanır (`seedStarter`)
+   * ve yalnızca BİR KEZ verilir (`houses.furnitureSeeded`): oyuncu hepsini
+   * kaldırsa bile geri gelmez. Konumlar oransal olduğu için istemci gönderir
+   * (`starterFurniture`), doğrulama ve adet sınırı sunucudadır.
+   */
+  const seedTriedRef = useRef(false);
+  useEffect(() => {
+    if (!room?.view.isMine) return;
+    // Sorgu yüklenmediyse (`undefined`/`null`) ya da oyuncunun eşyası varsa
+    // dokunma: hediye, "eşya yok" cevabı GELDİKTEN sonra bir kez tohumlanır.
+    if (!myFurniture || myFurniture.length > 0) return;
+    if (seedTriedRef.current) return; // bu oturumda bir kez denendi
+    seedTriedRef.current = true;
+    void seedRoomFurniture({
+      items: starterFurniture().map((row) => ({
+        itemId: row.itemId,
+        fx: row.fx ?? 0,
+        fz: row.fz ?? 0,
+      })),
+    });
+  }, [room, myFurniture, seedRoomFurniture]);
   const [vipOpen, setVipOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [targetMarker, setTargetMarker] = useState<{
@@ -3626,6 +3690,24 @@ export default function World() {
                 speechName={username}
                 speechColorId={bubbleColorId}
                 neighbors={neighborNames}
+                // 🛋️ EŞYA: kendi odanda dolabın + yerleşimin, komşunun odasında
+                // ONUN düzeni gelir (yazma uçları yalnızca satır sahibine açık).
+                furniture={roomFurniture}
+                onPlaceItem={(rowId, fx, fz) => {
+                  void placeRoomItem({
+                    rowId: rowId as Id<"furniture">,
+                    fx,
+                    fz,
+                  });
+                }}
+                onLiftItem={(rowId) => {
+                  void liftRoomItem({ rowId: rowId as Id<"furniture"> });
+                }}
+                // 🛒 Stant: eşya alımı evin içinden de yapılabilir.
+                onOpenStand={() => {
+                  playSound("click");
+                  setStandOpen(true);
+                }}
                 onRename={(name) => void renameMyRoom(name)}
                 onVisit={(who) => void enterNeighborRoom(who)}
                 onExit={exitRoom}
@@ -3755,6 +3837,15 @@ export default function World() {
 
       {/* sheets live outside the touch-none game area so their lists scroll */}
       <AnimatePresence>
+        {/* 🛒 MOBİLYA STANTI — caddeden ya da evin içinden açılır; eşya SP ile
+            alınır ve dolaba girer, dizme "Evi Düzenle"de yapılır. */}
+        {standOpen && (
+          <FurnitureStandSheet
+            key="furniture-stand"
+            coins={coins}
+            onClose={() => setStandOpen(false)}
+          />
+        )}
         {shopVendor && (
           <ShopSheet
             key="shop"
@@ -3805,6 +3896,11 @@ export default function World() {
             key="stalls"
             onClose={() => setStallsOpen(false)}
             onGo={goTo}
+            onOpenFurniture={() => {
+              playSound("click");
+              setStallsOpen(false);
+              setStandOpen(true);
+            }}
           />
         )}
 

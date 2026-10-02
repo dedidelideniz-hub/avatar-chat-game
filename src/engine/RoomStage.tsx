@@ -65,7 +65,7 @@ import {
 } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { AnimatePresence, motion } from "framer-motion";
-import { Grid3x3, Hammer } from "lucide-react";
+import { Grid3x3, Hammer, ShoppingBag } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import * as THREE from "three";
 import { ROOM_ISO, ROOM_MODEL_URL } from "./constants";
@@ -85,10 +85,14 @@ import {
 } from "./roomModelPrep";
 import {
   FURNITURE,
-  defaultDecorFor,
+  countFree,
+  firstFree,
   furnitureById,
+  furnitureRatios,
   placeFurniture,
+  placedFurniture,
   type FurnitureDef,
+  type OwnedFurniture,
   type PlacedItem,
 } from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
@@ -995,6 +999,20 @@ export interface RoomStageProps {
    */
   canBuild?: boolean;
   /**
+   * Oyuncunun SAHİP olduğu eşyalar (sunucu: `furniture.myFurniture`).
+   *
+   * Düzenleme modunda yalnızca bunlar dizilebilir; sende olmayan eşya panelde
+   * KİLİTLİ görünür ve dokununca mobilya standı açılır (ekonomi: eşyalar SP ile
+   * stanttan alınır — bkz. `convex/furniture.ts`).
+   */
+  owned: readonly OwnedFurniture[];
+  /** Eşyayı odaya koy (oransal konum) — KALICI: sunucuya yazılır. */
+  onPlaceItem: (rowId: string, fx: number, fz: number) => void;
+  /** Odadaki eşyayı kaldır — dolaba döner (sunucuya yazılır). */
+  onLiftItem: (rowId: string) => void;
+  /** Mobilya standını aç (satın alma). */
+  onOpenStand: () => void;
+  /**
    * Baş üstü sohbet baloncuğu — CADDEYLE AYNI: oyuncu evin içinde de mesaj
    * yazar ve baloncuk karakterin tepesinde belirir. Odanın tek farkı eşya
    * dizmektir; sohbet/HUD/özellikler kısıtlanmaz (bkz. `HouseRoom` başlığı).
@@ -1031,15 +1049,21 @@ export interface RoomStageProps {
  * 3D oda hiç kurulamazsa/yüklenemezse sahne sökülür ve yedek oda (avatarıyla
  * birlikte) kalıcı olur.
  *
- * DÜZENLEME DURUMU (eşya listesi, seçili eşya) burada tutulur ve HİÇBİR YERE
- * YAZILMAZ: oda kapanınca (bileşen sökülünce) liste kendiliğinden sıfırlanır.
- * İstenen davranış bu: düzenleme istemci tarafı ve kalıcı değil.
+ * DÜZENLEME ARTIK KALICIDIR ve SAHİPLİĞE BAĞLIDIR: oyuncu eşyaları stanttan
+ * Vaelos Parası ile alır (`convex/furniture.ts`), sahip olduklarını odasına
+ * dizer. Dizme/kaldırma SUNUCUYA yazılır (`onPlaceItem`/`onLiftItem`) ve oda
+ * yeniden açıldığında aynı düzen gelir; burada yalnızca hangi eşyanın SEÇİLİ
+ * olduğu ve tepsinin açık/kapalı durumu (istemci) tutulur.
  */
 export function RoomStage({
   equipped,
   canBuild = false,
   fallback,
   onReadyChange,
+  owned,
+  onPlaceItem,
+  onLiftItem,
+  onOpenStand,
   speech = null,
   speechName,
   speechColorId,
@@ -1066,26 +1090,25 @@ export function RoomStage({
   const [isBuildMode, setBuildMode] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [buildItem, setBuildItem] = useState(FURNITURE[0].id);
-  const [placed, setPlaced] = useState<PlacedItem[]>([]);
-  // Açılış dekoru BİR KEZ serilir: model ölçülüp plan çıkınca (o zamana kadar
-  // odanın gerçek boyutu bilinmiyor — bkz. `defaultDecorFor`). Ref, StrictMode
-  // etkilerinin iki kez çalışmasına ve yeniden kurulumlara karşı kilit.
-  const decorSeeded = useRef(false);
+  // Odanın ÖLÇÜLEN planı (iç hacim). Sahne içinde hesaplanır ve buraya bir
+  // kez bildirilir: dizilen eşyaların oransal konumunu metreye çevirmek için
+  // gerekir (`placedFurniture`/`furnitureRatios`).
+  const [plan, setPlan] = useState<IsoRoomPlan | null>(null);
+  /** Odada DURAN eşyalar — kaynak sunucudur (`owned` satırlarının `fx/fz`si). */
+  const placed = useMemo(
+    () => (plan ? placedFurniture(owned, plan.half) : []),
+    [owned, plan],
+  );
 
   const handleReady = useCallback(() => setReady(true), []);
   /**
-   * Oda ölçüldü: AÇILIŞ DEKORUNU yerleştir.
+   * Oda ölçüldü: planı sakla.
    *
-   * Dekor, oyuncunun dizdiği eşya listesine NORMAL parçalar olarak eklenir:
-   * düzenleme modunda dokununca kalkar, "🧹 Temizle" hepsini birlikte süpürür,
-   * oda kapanınca liste sıfırlanır (kalıcı değil — düzenleme tamamen istemcide).
-   * Oyuncu odadan bir şey dizmişse (liste doluysa) dokunulmaz.
+   * Eşya listesi ARTIK BURADA ÜRETİLMEZ (eskiden olduğu gibi varsayılan dekor
+   * serpilmiyordu): oyuncunun SAHİP olduğu eşyalar sunucudan gelir ve yerleşimi
+   * oradan okunur. Plan yalnızca oransal konumu metreye çevirmek için saklanır.
    */
-  const handlePlan = useCallback((plan: IsoRoomPlan) => {
-    if (decorSeeded.current) return;
-    decorSeeded.current = true;
-    setPlaced((prev) => (prev.length > 0 ? prev : defaultDecorFor(plan.half)));
-  }, []);
+  const handlePlan = useCallback((next: IsoRoomPlan) => setPlan(next), []);
   /**
    * 3D oda çöktü (bağlam kurulamadı / model yüklenemedi): yedeğe düş.
    *
@@ -1108,18 +1131,28 @@ export function RoomStage({
     handleCreated();
   }, [handleCreated]);
 
+  /**
+   * Zemine dokunuldu: SEÇİLİ eşyanın DOLAPTAKİ ilk adedini o noktaya koy.
+   *
+   * Adet yoksa hiçbir şey yazılmaz (istemci uydurmaz): oyuncu ya stanttan
+   * alım yapar ya da odadaki bir eşyayı kaldırıp yerini değiştirir. Konum
+   * ORANSAL gönderilir — oda ölçüsü istemcide ölçüldüğü için sunucu metre
+   * kabul etmez (bkz. `furniture.ts` başlığı).
+   */
   const handlePlace = useCallback(
     (x: number, z: number) => {
-      setPlaced((prev) => [
-        ...prev,
-        { key: `f${prev.length}_${buildItem}`, id: buildItem, x, z },
-      ]);
+      if (!plan) return;
+      const free = firstFree(owned, buildItem);
+      if (!free) return;
+      const { fx, fz } = furnitureRatios(x, z, plan.half);
+      onPlaceItem(free.rowId, fx, fz);
     },
-    [buildItem],
+    [plan, owned, buildItem, onPlaceItem],
   );
+  /** Odadaki eşyayı kaldır: sunucuda dolaba döner (`lift`). */
   const handleRemove = useCallback(
-    (key: string) => setPlaced((prev) => prev.filter((item) => item.key !== key)),
-    [],
+    (rowId: string) => onLiftItem(rowId),
+    [onLiftItem],
   );
 
   // "Oda görünür mü?" sinyalini çağıran kabuğa bildir: oda alanı 3D sahne
@@ -1142,6 +1175,15 @@ export function RoomStage({
   }
 
   const selected = furnitureById(buildItem);
+  // EKONOMİ DURUMU: seçili eşyadan kaç adet var, kaçı dizilebilir?
+  const ownedCount = owned.filter((row) => row.itemId === buildItem).length;
+  const freeCount = countFree(owned, buildItem);
+  const buildHint =
+    freeCount > 0
+      ? `Zemine dokun → “${selected.label}” 0,5 m ızgaraya oturur · eşyaya dokun → dolaba kalkar`
+      : ownedCount > 0
+        ? `“${selected.label}” adedinin hepsi odada — odadaki bir eşyaya dokunup dolaba kaldır ya da stanttan yenisini al`
+        : `“${selected.label}” sende yok — 🛒 Stant'tan ${selected.price} SP ile al`;
 
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -1182,8 +1224,7 @@ export function RoomStage({
               className="absolute inset-x-0 bottom-0 z-30 space-y-1.5 px-2 pb-2"
             >
               <p className="rounded-full bg-black/50 px-3 py-1 text-center text-[10px] font-bold text-white/90 backdrop-blur-sm">
-                Zemine dokun → “{selected.label}” 0,5 m ızgaraya oturur ·
-                eşyaya dokun → kaldır
+                {buildHint}
               </p>
               <div className="rounded-2xl border border-white/10 bg-black/55 p-1.5 backdrop-blur">
                 <div className="flex items-center gap-1.5">
@@ -1216,36 +1257,77 @@ export function RoomStage({
                       type="button"
                       onClick={() => {
                         playSound("click");
-                        setPlaced([]);
+                        // Hepsi TEK TEK kaldırılır (her parça sunucuda bir satır).
+                        for (const item of placed) onLiftItem(item.rowId);
                       }}
                       className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-[11px] font-extrabold text-white/90 hover:bg-white/20"
                     >
-                      🧹 Temizle
+                      🧹 Hepsini kaldır
                     </button>
                   )}
+                  {/* STANT: eşya alımı evin içinden de yapılabilir — oyuncu
+                      "kilitli eşyaya dokundum, şimdi ne olacak?" sorusuyla
+                      kalmasın diye tek dokunuşluk kısayol. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSound("click");
+                      onOpenStand();
+                    }}
+                    className="ml-auto flex shrink-0 items-center gap-1 rounded-xl bg-[#f0c987] px-2.5 py-2 text-[11px] font-extrabold text-[#3d2f2a] transition-transform active:scale-95"
+                  >
+                    <ShoppingBag className="size-3.5" /> Stant
+                  </button>
                 </div>
                 {/* MOBİLYA KARUSELİ — seçili eşya vurgulu, yatay kaydırmalı. */}
                 <div className="mt-1.5 flex gap-1 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {FURNITURE.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      title={item.label}
-                      onClick={() => setBuildItem(item.id)}
-                      className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition-colors ${
-                        item.id === buildItem
-                          ? "bg-[#f0c987] text-[#3d2f2a]"
-                          : "bg-white/10 text-white/90 hover:bg-white/20"
-                      }`}
-                    >
-                      <span className="text-base leading-none">
-                        {item.emoji}
-                      </span>
-                      <span className="text-[9px] font-bold">
-                        {item.label}
-                      </span>
-                    </button>
-                  ))}
+                  {FURNITURE.map((item) => {
+                    const total = owned.filter(
+                      (row) => row.itemId === item.id,
+                    ).length;
+                    const free = countFree(owned, item.id);
+                    const locked = total === 0;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        title={
+                          locked
+                            ? `${item.label} — ${item.price} SP (stanttan al)`
+                            : item.label
+                        }
+                        onClick={() => {
+                          playSound("click");
+                          // Kilitli eşya SATIN ALINIR: kart, standın kısayoludur.
+                          if (locked) onOpenStand();
+                          else setBuildItem(item.id);
+                        }}
+                        className={`flex shrink-0 flex-col items-center gap-0.5 rounded-xl px-2.5 py-1.5 transition-colors ${
+                          item.id === buildItem && !locked
+                            ? "bg-[#f0c987] text-[#3d2f2a]"
+                            : locked
+                              ? "bg-white/5 text-white/50 hover:bg-white/10"
+                              : "bg-white/10 text-white/90 hover:bg-white/20"
+                        }`}
+                      >
+                        <span className="text-base leading-none">
+                          {locked ? "🔒" : item.emoji}
+                        </span>
+                        <span className="text-[9px] font-bold">
+                          {item.label}
+                        </span>
+                        {/* ADET/FİYAT: sende olan eşya kaç adet dizilebilir
+                            (dolapta), olmayan eşya stanttaki fiyatıyla görünür. */}
+                        <span className="text-[8px] font-extrabold opacity-80">
+                          {locked
+                            ? `${item.price} SP`
+                            : free > 0
+                              ? `×${free}`
+                              : "odada"}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>

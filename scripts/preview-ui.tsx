@@ -1973,6 +1973,8 @@ const scenarios: Scenario[] = [
       const stage = read("../src/engine/RoomStage.tsx");
       const house = read("../src/components/world/HouseRoom.tsx");
       const world = read("../src/pages/World.tsx");
+      const furniture = read("../src/convex/furniture.ts");
+      const stand = read("../src/components/world/FurnitureStandSheet.tsx");
 
       // ── 2) İZOLE YERLEŞİM: oda ana haritadan uzakta (X/Z 2000) durur. Formül
       //       tekrarı yerine dönüşüm GERÇEKTEN uygulanıp kutunun nereye
@@ -2343,14 +2345,61 @@ const scenarios: Scenario[] = [
             stage.includes("placeFurniture"),
         ),
         check(
-          "düzenleme KALICI DEĞİL (sunucuya yazılmıyor, oda kapanınca sıfırlanır)",
-          !stage.includes("useMutation") &&
-            !stage.includes("convex") &&
-            !read("../src/convex/houses.ts").includes("furniture"),
+          "EKONOMİ: eşya stanttan SP ile alınır (fiyat SUNUCUDA doğrulanır)",
+          furniture.includes("export const buy = mutation") &&
+            furniture.includes('import { FURNITURE } from "../engine/roomBuild"') &&
+            furniture.includes("if (coins < def.price)") &&
+            // Fiyat istemciden GELMEZ: yalnızca itemId taşınır.
+            !furniture.includes("args: { itemId: v.string(), price") &&
+            stand.includes("api.furniture.buy") &&
+            stand.includes("item.price"),
+        ),
+        check(
+          "YERLEŞİM KALICI: oda kapanıp açılsa da düzen aynı kalır (sunucu)",
+          furniture.includes("export const place = mutation") &&
+            furniture.includes("export const lift = mutation") &&
+            furniture.includes('query("furniture")') &&
+            stage.includes("placedFurniture(owned") &&
+            stage.includes("onPlaceItem") &&
+            stage.includes("onLiftItem") &&
+            house.includes("owned={furniture}") &&
+            world.includes("api.furniture.myFurniture") &&
+            world.includes("api.furniture.place"),
+        ),
+        check(
+          "DOLAP ↔ ODA: dizilmeyen eşya dolapta bekler (oransal konum, ızgara+sınır korunur)",
+          build.includes("export function countFree") &&
+            build.includes("export function firstFree") &&
+            build.includes("export function furnitureRatios") &&
+            build.includes("export function placedFurniture") &&
+            furniture.includes("fx: undefined,") &&
+            furniture.includes("fz: undefined,") &&
+            // Sunucu METRE kabul etmez: konum -1…1 ORANINA kırpılır.
+            furniture.includes("function clampRatio") &&
+            furniture.includes("Math.min(1, Math.max(-1, value))"),
         ),
         check(
           "eşya dizme yalnızca odanın SAHİBİNE açık (misafir dekoru değiştirmez)",
-          house.includes("canBuild={view.isMine}"),
+          house.includes("canBuild={view.isMine}") &&
+            furniture.includes("row.userId !== userId") &&
+            world.includes("api.furniture.byOwnerName") &&
+            world.includes("neighborFurniture"),
+        ),
+        check(
+          "düzenleyici YALNIZCA sahip olduğun eşyayı dizer (kilitli eşya → stant)",
+          stage.includes("const locked = total === 0") &&
+            stage.includes("firstFree(owned, buildItem)") &&
+            stage.includes("onOpenStand()") &&
+            stage.includes("countFree(owned, item.id)") &&
+            house.includes("onOpenStand={onOpenStand}"),
+        ),
+        check(
+          "stant hem caddeden hem evin içinden açılabiliyor (SP ile alım)",
+          world.includes("setStandOpen(true)") &&
+            world.includes("<FurnitureStandSheet") &&
+            world.includes("onOpenFurniture") &&
+            stand.includes("Mobilya Stantı") &&
+            stand.includes("furnitureOf(category)"),
         ),
         check(
           "izometrik bakışı kapatan tavan/çatı parçaları gizleniyor (dar desen)",
@@ -2691,11 +2740,15 @@ const scenarios: Scenario[] = [
       //    listede durur (kaldırılabilir, "Temizle" ile silinir).
       checks.push(
         check(
-          "oda AÇILIŞ DEKORUYLA geliyor (boş kutu değil)",
+          "oda AÇILIŞ DEKORUYLA geliyor (boş kutu değil, hediye GERÇEK sahiplik satırı)",
           build.includes("export const DEFAULT_DECOR") &&
+            build.includes("export function starterFurniture") &&
             build.includes("export function defaultDecorFor") &&
-            stage.includes("defaultDecorFor(plan.half)") &&
-            stage.includes("decorSeeded"),
+            world.includes("starterFurniture()") &&
+            world.includes("api.furniture.seedStarter") &&
+            // Hediye YALNIZCA bir kez verilir: hepsini kaldıran oyuncuya geri gelmez.
+            furniture.includes("house.furnitureSeeded") &&
+            furniture.includes("if (house.furnitureSeeded) return"),
         ),
       );
       (() => {
@@ -2731,7 +2784,7 @@ const scenarios: Scenario[] = [
             "dekor yerleşimi KARARLI (her açılışta aynı) + anahtarları oyuncununkiyle çakışmaz",
             JSON.stringify(again) === JSON.stringify(decor) &&
               decor.every((item) => item.key.startsWith("d")) &&
-              stage.includes("f${prev.length}_${buildItem}"),
+              build.includes('rowId: `d${i}_${decor.id}`'),
           ),
         );
         checks.push(
