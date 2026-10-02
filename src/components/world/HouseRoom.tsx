@@ -170,7 +170,7 @@ export function HouseRoom({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="fixed inset-0 z-[60] flex flex-col bg-[#2a1d17]"
+      className="fixed inset-0 z-[60] flex flex-col bg-[#4a3423]"
     >
       {/* ── ÜST ŞERİT: oda adı + çıkış ─────────────────────────── */}
       <div className="flex shrink-0 items-center gap-2 px-3 py-2 text-white">
@@ -213,9 +213,10 @@ export function HouseRoom({
           (ya da dosya eksikse) yedek oda gösterilir. Ortada sokaktaki
           karakterin ta kendisi durur. */}
       {/* Oda alanı SICAK bir çerçeveyle sarılır (Sanalika'daki kalın
-          sarı/turuncu kenar) ve arka plan sıcak bir gradyandır: 3D oda
-          şeffaf olduğu için kesitin dışı koyu düz renk yerine sıcak kalsın. */}
-      <div className="relative min-h-0 flex-1 overflow-hidden border-[6px] border-[#f2a93b] bg-[radial-gradient(circle_at_50%_32%,#5c4331,#2a1d17_78%)]">
+          sarı/turuncu kenar) ve arka plan, 3D odanın KENDİ gökyüzü rengidir
+          (`RoomStage` → `ROOM_ENV.sky`): oda canvas'ı hazır olana kadar görünen
+          bu zemin ile sahne birbirine karışsın, geçişte renk atlaması olmasın. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden border-[6px] border-[#f2a93b] bg-[radial-gradient(circle_at_50%_38%,#5b412d,#4a3423_80%)]">
         <RoomStage
           equipped={equipped}
           // Eşya dizme araçları YALNIZCA odanın sahibine: komşunun odasını

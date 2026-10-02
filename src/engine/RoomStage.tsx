@@ -70,9 +70,11 @@ import {
 } from "./roomModelPrep";
 import {
   FURNITURE,
+  defaultDecorFor,
   furnitureById,
   placeFurniture,
   type FurnitureDef,
+  type PlacedItem,
 } from "./roomBuild";
 import { GlbCharacterPortrait } from "./GlbAvatar3D";
 import { releaseCanvasContext, webglPowerPreference } from "./webglSupport";
@@ -87,14 +89,46 @@ import { releaseCanvasContext, webglPowerPreference } from "./webglSupport";
  */
 const CEILING_PARTS = /ceiling|roof|tavan|çatı|cati|plafon/i;
 
-/** Odada dizilmiş tek bir eşya (yalnızca istemci belleğinde). */
-interface PlacedItem {
-  key: string;
-  id: string;
-  /** Odanın merkezine göre YEREL konum (ızgaraya oturmuş). */
-  x: number;
-  z: number;
-}
+/* ════════════════════════════════════════════════════════════
+   ODA ORTAMI — oda EKRANI cadde ekranı kadar DOLU dursun
+
+   Sorun: oda tek bir kesit kutusuydu ve çevresi düz koyu kahve bir BOŞLUKTU
+   (ekranın yarısına yakını "hiçbir yer"). Cadde ise ekranı dolduruyor: zemin
+   ufka kadar uzanıyor, sis ufku gökyüzüne bağlıyor. Oda da AYNI desenle
+   kurulur:
+     · gökyüzü rengi sahnenin arka planı olur (canvas artık saydam değil),
+     · aynı renkte UZAKLIK SİSİ ufku yutar (düz renk bandı oluşmasın),
+     · odanın ÇEVRESİ zeminle döşenir (`RoomGround`): oda boşlukta yüzen bir
+       kutu değil, bir yerde duran bir mekân olur,
+     · kamera çerçeve payını azaltıp odaya biraz DAHA YAKLAŞIR
+       (`ROOM_FRAME_FILL`): oda ekranı doldurur, kenarlardan hafifçe taşar.
+
+   Renkler SICAK (alacakaranlık) seçildi: oda ışığı ve turuncu çerçeve sıcak;
+   mavi bir gökyüzü sıcak iç mekânı soğuk/kopuk gösteriyordu. Krem duvarlar
+   (WALL_WARM) bu zemin ve gökyüzü tonlarının üstünde net okunur.
+   ════════════════════════════════════════════════════════════ */
+const ROOM_ENV = {
+  /** Gökyüzü = arka plan = SİS RENGİ (üçü aynı olmalı, yoksa ufukta bant olur). */
+  sky: "#4a3423",
+  /** Odanın çevresini döşeyen zemin (gökyüzünden açık: ufuk okunur). */
+  ground: "#9a6f45",
+  /**
+   * Sis başlangıcı. ODA ASLA SİSLENMEZ: en uzak köşenin kameraya uzaklığı bu
+   * modelde ~28 birim — bu yüzden 40 seçildi (pay bırakır).
+   */
+  fogNear: 40,
+  /** Sis bitişi: bu mesafeden sonrası tümüyle gökyüzü rengi → zeminin ucu görünmez. */
+  fogFar: 130,
+  /** Zemin döşemesinin toplam açıklığı (sisin çok ötesinde biter). */
+  groundSpan: 260,
+  /**
+   * Zeminin parkeden alçaklığı (birim): iki yüzey AYNI yükseklikte olursa
+   * tam örtüştükleri yerde kırpışır (z-fighting). 1,5 cm ayırmak hem bunu hem
+   * de oda zemininin önde kalmasını sağlar (kırpma sınırının İÇİNDE kalır —
+   * bkz. `RoomInterior` → `gl.clippingPlanes`).
+   */
+  groundDrop: -0.015,
+} as const;
 
 /** Oda modelini indirmeye başla (kapı açılırken çağrılır — bkz. `World`). */
 export function preloadRoomModel(): void {
@@ -211,6 +245,17 @@ const warmedMaterials = new WeakSet<THREE.Material>();
 const WALL_HEIGHT_FACTOR = 1.35;
 
 /**
+ * ÇERÇEVE DOLDURMA — kamera odaya bu kadar DAHA YAKLAŞIR (1 = tam sığdırma).
+ *
+ * "Oda küçük görünmesin" geri bildirimi: oda, ekran oranına tam sığdırıldığında
+ * (izometrik eşkenar dörtgen, dikey ekranda) üstte/altta geniş boşluk kalıyordu.
+ * 1,08 → odanın sol/sağ köşeleri ekranın birkaç santim dışına taşar; cadde
+ * sahnesinde de dünya ekranın kenarlarından taşar. Taşan kısım yalnızca köşe
+ * uçlarıdır (zeminin ortası ve duvarlar tam görünür kalır).
+ */
+const ROOM_FRAME_FILL = 1.08;
+
+/**
  * Odanın kamerası — İZOMETRİK ve SABİT.
  *
  * Kamera `planIsoRoom`un hesapladığı noktaya bir kez konur ve hedefi odanın
@@ -265,8 +310,9 @@ function RoomCamera({ plan, topY }: { plan: IsoRoomPlan; topY: number }) {
         }
       }
     }
-    // Pay: kenarlar ekran kenarına yapışmasın.
-    distance *= 1.06;
+    // Pay: oda ekranı DOLDURSUN — köşeler kenara yapışsın, üstte/altta
+    // gereksiz boşluk kalmasın (bkz. `ROOM_FRAME_FILL`).
+    distance /= ROOM_FRAME_FILL;
 
     camera.position.copy(center).addScaledVector(dir, distance);
     if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
@@ -428,6 +474,55 @@ function FurniturePiece({
 }
 
 /**
+ * ODA ZEMİNİ (çevre) — odanın DIŞINI döşeyen zemin.
+ *
+ * Oda, duvarların dışında hiçbir şeyin olmadığı bir boşlukta duruyordu: kesit
+ * kutunun etrafı bomboş görünüyordu. Cadde sahnesinde zemin ufka kadar uzanır ve
+ * sis ufku gökyüzüne bağlar; oda da öyle olmalı.
+ *
+ * ZEMİN TEK DÜZLEM DEĞİL, ODANIN AYAK İZİNİ "ÇERÇEVE" GİBİ SARAN DÖRT
+ * PARÇADIR: tek büyük düzlem odanın zeminini (parkeyi) kaplar (ikisi aynı
+ * yükseklikte, üstteki alttakini gizler). Dört parça, odanın döşemesini açıkta
+ * bırakırken çevreyi kesintisiz döşer.
+ *
+ * KENARDA ÇİZGİ/BOŞLUK OLMASIN: parçalar odanın ayak izinin 5 cm ALTINA kadar
+ * sokulur (parkenin altına girer) ve zemin parkeden 1,5 cm AŞAĞIYA konur. Aksi
+ * hâlde tam bitişik iki yüzey aynı yükseklikte çakışıp kırpışır (z-fighting),
+ * ya da aralarında kalan santimlerden arka plan görünür.
+ */
+function RoomGround({ half }: { half: { x: number; z: number } }) {
+  /** Odanın döşemesiyle ARADA boşluk kalmaması için iç kenarın örtüşmesi. */
+  const tuck = 0.05;
+  const innerX = Math.max(0.5, half.x - tuck);
+  const innerZ = Math.max(0.5, half.z - tuck);
+  const reach = ROOM_ENV.groundSpan / 2;
+  const sideX = reach - innerX;
+  const sideZ = reach - innerZ;
+  // [genişlik, derinlik, x, z] — dördü odanın ayak izini ortada bırakır.
+  const patches: [number, number, number, number][] = [
+    [reach * 2, sideZ, 0, (innerZ + reach) / 2],
+    [reach * 2, sideZ, 0, -(innerZ + reach) / 2],
+    [sideX, innerZ * 2, (innerX + reach) / 2, 0],
+    [sideX, innerZ * 2, -(innerX + reach) / 2, 0],
+  ];
+  return (
+    <>
+      {patches.map(([w, d, x, z], i) => (
+        <mesh
+          key={i}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[x, ROOM_ENV.groundDrop, z]}
+          userData={{ roomGround: true }}
+        >
+          <planeGeometry args={[w, d]} />
+          <meshStandardMaterial color={ROOM_ENV.ground} roughness={1} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+/**
  * Odanın içi: izole bölge grubu + model + zemin + duvarlar + karakter + eşyalar.
  *
  * BÜTÜN ODA TEK BİR `origin` GRUBUNUN İÇİNDE durur: model, zemin, duvar
@@ -438,6 +533,7 @@ function FurniturePiece({
 function RoomInterior({
   equipped,
   onReady,
+  onPlan,
   isBuildMode,
   buildItem,
   placed,
@@ -446,6 +542,11 @@ function RoomInterior({
 }: {
   equipped: string[];
   onReady: () => void;
+  /**
+   * Ölçülen plan sahne DIŞINA bildirilir (bir kez): açılış dekoru odanın
+   * gerçek boyutuna göre YERLEŞTİRİLSİN diye (bkz. `RoomStage` → `handlePlan`).
+   */
+  onPlan: (plan: IsoRoomPlan) => void;
   isBuildMode: boolean;
   buildItem: string;
   placed: PlacedItem[];
@@ -475,9 +576,7 @@ function RoomInterior({
         scale: ROOM_ISO.scale,
         span: ROOM_ISO.span,
         fitBand: ROOM_ISO.fitBand,
-        // Sanalika/Habbo gibi oda EKRANI DOLDURSUN: kamera iç mekânda biraz
-        // daha yaklaşır (yön korunur).
-        camera: { ...ROOM_ISO.camera, distanceScale: 0.55 },
+        camera: ROOM_ISO.camera,
       });
     }
     const raw = measureRoomModel(scene as THREE.Object3D);
@@ -560,8 +659,10 @@ function RoomInterior({
     if (!plan) return;
     const floorY = plan.origin[1];
     const topY = plan.origin[1] + wallHeight;
+    // Alt sınır zeminin 1,5 cm altına iner (`ROOM_ENV.groundDrop` orada durur),
+    // üst sınır duvarların tepesinde biter.
     gl.clippingPlanes = [
-      new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY + 0.002),
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY + 0.02),
       new THREE.Plane(new THREE.Vector3(0, -1, 0), topY + 0.002),
     ];
     return () => {
@@ -570,8 +671,10 @@ function RoomInterior({
   }, [gl, plan, wallHeight]);
 
   useEffect(() => {
-    if (plan) onReady();
-  }, [plan, onReady]);
+    if (!plan) return;
+    onReady();
+    onPlan(plan);
+  }, [plan, onReady, onPlan]);
 
   /**
    * Zemine dokunuş: raycast sonuçları arasından `placementZone` işaretli ilk
@@ -616,6 +719,9 @@ function RoomInterior({
 
       {/* ── İZOLE ODA BÖLGESİ: tek grup, tek merkez (ROOM_ISO.origin) ── */}
       <group position={plan.origin}>
+        {/* ÇEVRE ZEMİNİ — oda boşlukta yüzmesin (bkz. `RoomGround`). */}
+        <RoomGround half={plan.half} />
+
         {/* Model: merkez X/Z'de, taban y 0'da — ölçülen kutuya göre. */}
         <group
           position={[plan.offset.x, plan.offset.y, plan.offset.z]}
@@ -742,8 +848,25 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
   const [isBuildMode, setBuildMode] = useState(false);
   const [buildItem, setBuildItem] = useState(FURNITURE[0].id);
   const [placed, setPlaced] = useState<PlacedItem[]>([]);
+  // Açılış dekoru BİR KEZ serilir: model ölçülüp plan çıkınca (o zamana kadar
+  // odanın gerçek boyutu bilinmiyor — bkz. `defaultDecorFor`). Ref, StrictMode
+  // etkilerinin iki kez çalışmasına ve yeniden kurulumlara karşı kilit.
+  const decorSeeded = useRef(false);
 
   const handleReady = useCallback(() => setReady(true), []);
+  /**
+   * Oda ölçüldü: AÇILIŞ DEKORUNU yerleştir.
+   *
+   * Dekor, oyuncunun dizdiği eşya listesine NORMAL parçalar olarak eklenir:
+   * düzenleme modunda dokununca kalkar, "🧹 Temizle" hepsini birlikte süpürür,
+   * oda kapanınca liste sıfırlanır (kalıcı değil — düzenleme tamamen istemcide).
+   * Oyuncu odadan bir şey dizmişse (liste doluysa) dokunulmaz.
+   */
+  const handlePlan = useCallback((plan: IsoRoomPlan) => {
+    if (decorSeeded.current) return;
+    decorSeeded.current = true;
+    setPlaced((prev) => (prev.length > 0 ? prev : defaultDecorFor(plan.half)));
+  }, []);
   /**
    * 3D oda çöktü (bağlam kurulamadı / model yüklenemedi): yedeğe düş.
    *
@@ -889,7 +1012,8 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
           shadows
           camera={{
             fov: ROOM_ISO.camera.fov,
-            // İzometrik açı: odanın merkezine göre (12, 15, 12).
+            // İzometrik açı: odanın merkezine göre `ROOM_ISO.camera.offset`
+            // (mesafe `RoomCamera` içinde oda ölçüsünden yeniden hesaplanır).
             position: [
               ROOM_ISO.origin[0] + ROOM_ISO.camera.offset[0],
               ROOM_ISO.origin[1] + ROOM_ISO.camera.offset[1],
@@ -916,6 +1040,14 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
         >
           {/* Bağlamı kayıt defterine yazar, sökülünce BIRAKIR ve sahnenin
               gerçekten kurulduğunu `useWebglRetry`ye bildirir. */}
+          {/* ORTAM — oda ekranı cadde gibi DOLSUN: gökyüzü + ufku yutan sis
+              (ikisi de aynı renk olmak zorunda, bkz. `ROOM_ENV`). */}
+          <color attach="background" args={[ROOM_ENV.sky]} />
+          <fog
+            attach="fog"
+            args={[ROOM_ENV.sky, ROOM_ENV.fogNear, ROOM_ENV.fogFar]}
+          />
+
           <WebglContextKeeper
             priority={50}
             onCreated={handleCanvasCreated}
@@ -925,6 +1057,7 @@ export function RoomStage({ equipped, canBuild = false, fallback }: RoomStagePro
               <RoomInterior
                 equipped={equipped}
                 onReady={handleReady}
+                onPlan={handlePlan}
                 isBuildMode={isBuildMode}
                 buildItem={buildItem}
                 placed={placed}

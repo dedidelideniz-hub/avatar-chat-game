@@ -419,11 +419,18 @@ export const ROOM_ISO = {
   span: 10,
   /**
    * İzometrik kamera: merkeze göre yön ve görüş açısı. Hedef HER ZAMAN
-   * `origin`. Yükseklik (10) Sanalika/Habbo tarzı yumuşak izometrik açı verir
-   * (~30°); 15 çok tepeden bakıyordu ve oda tepsi gibi görünüyordu.
+   * `origin`. Yükseklik (11,5) Sanalika/Habbo tarzı yumuşak izometrik açı verir
+   * (~34°); 15 çok tepeden bakıyordu ve oda tepsi gibi görünüyordu.
+   *
+   * AÇI NEDEN 30°'DEN 34°'YE ÇIKTI: oda kare bir hacim olduğu için izometrik
+   * izdüşümü ekranda bir EŞKENAR DÖRTGEN olur ve dikey (telefon) ekranda üstte/
+   * altta geniş boşluk bırakıyordu ("oda küçük görünüyor" geri bildirimi).
+   * Açı yükseldikçe o eşkenar dörtgen DİKLEŞİR (kareye yaklaşır) ve ekranı
+   * doldurur. Kamera mesafesi yine `engine/RoomStage.tsx` içinde ölçülerek
+   * bulunur; buradaki offset yalnızca YÖN verir.
    */
   camera: {
-    offset: [12, 10, 12] as [number, number, number],
+    offset: [12, 11.5, 12] as [number, number, number],
     fov: 45,
   },
   /** Kamera düzlemleri — oda izole bölgede olduğu için menzil rahat seçilir. */

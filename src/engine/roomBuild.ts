@@ -52,6 +52,71 @@ export function furnitureById(id: string): FurnitureDef {
   return FURNITURE.find((f) => f.id === id) ?? FURNITURE[0];
 }
 
+/** Odaya dizilmiş tek bir eşya (ızgara konumu odanın merkezine GÖRE). */
+export interface PlacedItem {
+  key: string;
+  id: string;
+  /** Odanın merkezine göre YEREL konum (ızgaraya oturmuş). */
+  x: number;
+  z: number;
+}
+
+/**
+ * AÇILIŞ DEKORU — odanın hazır geldiği eşya (oransal konum).
+ *
+ * NEDEN VAR: oda modeli BOŞ bir mekân (`empty_office_space`); hiçbir şey
+ * dizilmediğinde oyuncu ilk girdiğinde çıplak bir kutu görüyor ve oda "eksik"
+ * okunuyor. Oda bu yüzden az sayıda eşyayla AÇILIR — oyuncu düzenleme modunda
+ * bunları da kaldırıp kendi düzenini kurabilir (aynı araçlar, aynı davranış).
+ *
+ * KONUM ORANSALDIR (`fx`/`fz`: odanın YARIM açıklığına göre -1…1): odanın
+ * ölçüsü modelden ÖLÇÜLEREK bulunduğu için sabit metre yazılamaz — oransal
+ * konum her modelde duvarların içinde kalır. Gerçek yerleşimi `defaultDecorFor`
+ * yapar: oransal noktayı metreye çevirir, 0,5 m ızgaraya oturtur ve duvar
+ * sınırına kırpar (tek doğruluk kaynağı: `placeFurniture`).
+ *
+ * KAPI ÖNÜ BOŞ BIRAKILIR: çıkış kapısı arka (kameradan UZAK) duvarın TAM
+ * ORTASINDA — dekor o duvarın yalnızca İKİ YANINA dizilir (kapı kapanmasın).
+ * Sol/sağ duvarlar değil, ARKA duvar tercih edildi: eşyalar zaten dikey
+ * eksende derinlikleriyle (d) arka duvara yaslanacak şekilde çiziliyor.
+ */
+export const DEFAULT_DECOR: readonly DefaultDecorDef[] = [
+  { id: "rug", fx: 0, fz: 0.15 },
+  { id: "shelf", fx: -0.62, fz: -0.9 },
+  { id: "sofa", fx: 0.62, fz: -0.86 },
+  { id: "lamp", fx: -0.8, fz: -0.05 },
+  { id: "table", fx: 0.3, fz: 0.42 },
+  { id: "chair", fx: 0.12, fz: 0.62 },
+  { id: "plant", fx: -0.85, fz: 0.55 },
+];
+
+/** Açılış dekorunun tek parçası — oransal (yarım açıklığa göre) konum. */
+export interface DefaultDecorDef {
+  id: string;
+  /** X oranı (-1…1): -1 sol duvar, +1 sağ duvar. */
+  fx: number;
+  /** Z oranı (-1…1): -1 arka duvar, +1 ön (kameraya yakın) duvar. */
+  fz: number;
+}
+
+/**
+ * Açılış dekorunu odanın ÖLÇÜLEN yarı açıklığına yerleştirir.
+ *
+ * Anahtarlar `d{i}_` ile başlar: oyuncunun dizdiği eşyaların (`f{n}_`) yanında
+ * karışmaz, ama davranışları AYNIDIR — düzenleme modunda dokununca kalkar.
+ */
+export function defaultDecorFor(half: { x: number; z: number }): PlacedItem[] {
+  return DEFAULT_DECOR.map((decor, i) => {
+    const def = furnitureById(decor.id);
+    const spot = placeFurniture(
+      { x: decor.fx * half.x, z: decor.fz * half.z },
+      def,
+      half,
+    );
+    return { key: `d${i}_${def.id}`, id: def.id, x: spot.x, z: spot.z };
+  });
+}
+
 /** Bir değeri ızgaraya yuvarlar (en yakın çizgi). */
 export function snapToGrid(value: number, step: number = ROOM_ISO.grid): number {
   if (!(step > 0)) return value;

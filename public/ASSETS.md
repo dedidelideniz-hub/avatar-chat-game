@@ -96,11 +96,38 @@ ham açıklık `fitBand` (2,5–60 birim) dışındaysa oda `span`a (10 birim) o
 (`roomInteriorBox`: zeminin ayak izi + tavan yüksekliği), böylece merkez X/Z
 origin'e, **taban y 0'a** oturur ve karakter zemine basar.
 
-Kamera **İZOMETRİKTİR**: `origin + (12, 10, 12)` yönünden odanın merkezine
-bakar (`camera.lookAt(2000, 0, 2000)`). Yükseklik 10 (~30°) Sanalika/Habbo
-tarzı yumuşak izometrik açı verir. Kamera mesafesi SABİT DEĞİLDİR: `RoomCamera`
-odayı canlı ekran oranına göre (yatay + dikey FOV) tam çerçeveler — telefonda
-taşmaz, masaüstünde boşluk kalmaz (zemin ekranı doldurur). Yön asla değişmez.
+Kamera **İZOMETRİKTİR**: `origin + (12, 11,5, 12)` yönünden odanın merkezine
+bakar (`camera.lookAt(2000, 0, 2000)`). Yükseklik 11,5 (~34°) Sanalika/Habbo
+tarzı yumuşak izometrik açı verir; 15 tepeden bakıp odayı tepsi gibi
+gösteriyordu, 10 ise dikey (telefon) ekranda üstte/altta geniş boşluk
+bırakıyordu. Kamera mesafesi SABİT DEĞİLDİR: `RoomCamera` odayı canlı ekran
+oranına göre (yatay + dikey FOV) ölçüp yerleşir ve `ROOM_FRAME_FILL` (1,08)
+kadar odaya DAHA YAKLAŞIR — oda kadrajı doldurur, yalnızca sol/sağ köşe uçları
+ekranın birkaç santim dışına taşar. Yön asla değişmez.
+
+**ODA ORTAMI (oda ekranı cadde kadar dolu dursun)**: oda tek başına bir kesit
+kutusuydu ve çevresi düz koyu kahve bir BOŞLUKTU; cadde sahnesi ise ekranı
+doldurur (zemin ufka kadar uzanır, sis ufku gökyüzüne bağlar). Oda da aynı
+desenle kurulur (`RoomStage` → `ROOM_ENV`):
+
+* gökyüzü rengi sahnenin ARKA PLANIDIR (`<color attach="background">`),
+* aynı renkte UZAKLIK SİSİ ufku yutar (`<fog>`; arka plan rengiyle BİREBİR aynı
+  olmak zorundadır — yoksa ufukta renk bandı oluşur; cadde tarafındaki kuralın
+  aynısı). Sis `40 → 130` birim: oda (en uzak köşesi ~28 birim) SİSLENMEZ,
+* odanın çevresi `RoomGround` ile döşenir: odanın ayak izini ortada bırakan
+  DÖRT düzlem (tek büyük düzlem parkeyi kaplardı). Zemin gökyüzünden açık tonda
+  seçildi ki ufuk okunsun,
+* renkler SICAK (alacakaranlık): mavi gökyüzü sıcak iç mekânı kopuk gösteriyordu;
+  krem duvarlar (`WALL_WARM`) bu tonların üstünde net okunur.
+
+**AÇILIŞ DEKORU**: model BOŞ bir mekândır (`empty_office_space`); hiçbir şey
+dizilmezse oyuncu ilk girdiğinde çıplak bir kutu görüyordu. Oda bu yüzden az
+sayıda eşyayla açılır (`roomBuild.DEFAULT_DECOR` + `defaultDecorFor`). Konumlar
+ORANSALDIR (odanın yarı açıklığına göre) — oda ölçüsü modelden geldiği için
+sabit metre yazılamaz; `defaultDecorFor` bunları 0,5 m ızgaraya oturtur ve duvar
+sınırına kırpar. Dekor, oyuncunun dizdiği eşyalarla AYNI listede durur:
+düzenleme modunda dokununca kalkar, "🧹 Temizle" hepsini siler. Çıkış kapısı
+arka duvarın tam ortasındadır, dekor o duvarın yalnızca iki yanına dizilir.
 
 **DUVAR YÜKSEKLİĞİ** karakterin `1,35` katına indirilir (`WALL_HEIGHT_FACTOR`) —
 modelin tavan yüksekliği (3,4 birim) tavan tavan durup odayı "kutu" gibi

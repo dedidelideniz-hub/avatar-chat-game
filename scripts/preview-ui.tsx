@@ -1908,9 +1908,13 @@ const scenarios: Scenario[] = [
         roomInteriorBox,
         cutRoomForInterior,
       } = await import("../src/engine/roomModelPrep");
-      const { FURNITURE, placeFurniture, snapToGrid } = await import(
-        "../src/engine/roomBuild"
-      );
+      const {
+        FURNITURE,
+        placeFurniture,
+        snapToGrid,
+        furnitureById,
+        defaultDecorFor,
+      } = await import("../src/engine/roomBuild");
 
       const checks: Check[] = [];
 
@@ -2405,11 +2409,128 @@ const scenarios: Scenario[] = [
               "RoomStage kesiti + dikey kırpmayı gerçekten uyguluyor (içeri bakış)",
               stage.includes("cutRoomForInterior") &&
                 stage.includes("roomInteriorBox") &&
-                stage.includes("gl.clippingPlanes") &&
-                stage.includes("distanceScale"),
+                stage.includes("gl.clippingPlanes"),
             ),
           );
         })();
+
+      // ── ODA ORTAMI: oda ekranı ANA CADDE gibi DOLSUN.
+      //    Sorun: oda tek bir kesit kutusuydu ve çevresi (ekranın yarısına
+      //    yakını) düz koyu kahve bir BOŞLUKTU — oda "küçük ve değersiz"
+      //    okunuyordu. Cadde sahnesinin deseni odaya da uygulanır: gökyüzü
+      //    rengi + ufku yutan SİS + odanın çevresini döşeyen ZEMİN + odaya
+      //    biraz daha yaklaşan kamera.
+      checks.push(
+        check(
+          "oda ekranı da CADDE gibi dolu: gökyüzü + sis + çevre zemin",
+          /<color attach="background"/.test(stage) &&
+            /<fog[\s\S]{0,40}attach="fog"/.test(stage) &&
+            stage.includes("RoomGround") &&
+            stage.includes("roomGround"),
+        ),
+        check(
+          "sis rengi arka planla AYNI (ufukta renk bandı oluşmaz — cadde kuralı)",
+          stage.includes('sky: "#4a3423"') &&
+            /args=\{\[ROOM_ENV\.sky, ROOM_ENV\.fogNear, ROOM_ENV\.fogFar\]\}/.test(
+              stage,
+            ),
+        ),
+        (() => {
+          const ground = stage.slice(
+            stage.indexOf("function RoomGround"),
+            stage.indexOf("function RoomInterior"),
+          );
+          return check(
+            "çevre zemin odanın ayak izini ORTADA bırakır (parke kaplanmaz)",
+            ground.includes("half.x - tuck") &&
+              ground.includes("half.z - tuck") &&
+              ground.includes("ROOM_ENV.groundSpan") &&
+              ground.includes("ROOM_ENV.groundDrop") &&
+              (ground.match(/<mesh\b/g) ?? []).length === 1 &&
+              ground.includes("patches.map"),
+            `${(ground.match(/<mesh\b/g) ?? []).length} parça (dört kenar) + ${ground.includes("planeGeometry")}`,
+          );
+        })(),
+        check(
+          "kamera odaya biraz DAHA YAKLAŞIR (odayı çerçeveye sığdırmakla kalmıyor)",
+          /const ROOM_FRAME_FILL = 1\.0[1-9]/.test(stage) &&
+            stage.includes("distance /= ROOM_FRAME_FILL"),
+        ),
+        check(
+          "canvasta boşluk yok: RoomGround sahnenin İÇİNDE çiziliyor",
+          stage.includes("<RoomGround half={plan.half} />"),
+        ),
+      );
+
+      // ── AÇILIŞ DEKORU: oda modeli BOŞ geliyor; dekor olmadan oyuncu çıplak
+      //    bir kutu görüyordu. Dekor, oyuncunun dizdiği eşyalarla AYNI
+      //    listede durur (kaldırılabilir, "Temizle" ile silinir).
+      checks.push(
+        check(
+          "oda AÇILIŞ DEKORUYLA geliyor (boş kutu değil)",
+          build.includes("export const DEFAULT_DECOR") &&
+            build.includes("export function defaultDecorFor") &&
+            stage.includes("defaultDecorFor(plan.half)") &&
+            stage.includes("decorSeeded"),
+        ),
+      );
+      (() => {
+        const half = { x: 4, z: 4 };
+        const decor = defaultDecorFor(half);
+        const onGrid = (v: number) =>
+          Math.abs(v / K.ROOM_ISO.grid - Math.round(v / K.ROOM_ISO.grid)) < 1e-9;
+        const inside = decor.every((item) => {
+          const def = furnitureById(item.id);
+          return (
+            onGrid(item.x) &&
+            onGrid(item.z) &&
+            Math.abs(item.x) + def.w / 2 <= half.x + 1e-9 &&
+            Math.abs(item.z) + def.d / 2 <= half.z + 1e-9
+          );
+        });
+        // Çıkış kapısı ARKA duvarın tam ortasında: o duvarın ortası boş kalmalı.
+        const doorClear = decor.every((item) => {
+          const def = furnitureById(item.id);
+          const atBackWall = item.z + def.d / 2 < -half.z * 0.6;
+          return !atBackWall || Math.abs(item.x) - def.w / 2 > 1.1;
+        });
+        checks.push(
+          check(
+            "açılış dekoru odanın İÇİNDE, ızgarada ve kapı önünü kapatmıyor",
+            decor.length >= 5 && inside && doorClear,
+            `${decor.length} eşya · sınır/ızgara ${inside} · kapı önü ${doorClear}`,
+          ),
+        );
+        const again = defaultDecorFor(half);
+        checks.push(
+          check(
+            "dekor yerleşimi KARARLI (her açılışta aynı) + anahtarları oyuncununkiyle çakışmaz",
+            JSON.stringify(again) === JSON.stringify(decor) &&
+              decor.every((item) => item.key.startsWith("d")) &&
+              stage.includes("f${prev.length}_${buildItem}"),
+          ),
+        );
+        checks.push(
+          check(
+            "oda büyüse/küçülse de dekor DUVARLARIN İÇİNDE kalır (oransal konum)",
+            (() => {
+              for (const scale of [0.5, 2]) {
+                const h = { x: half.x * scale, z: half.z * scale };
+                for (const item of defaultDecorFor(h)) {
+                  const def = furnitureById(item.id);
+                  if (
+                    Math.abs(item.x) + def.w / 2 > h.x + 1e-9 ||
+                    Math.abs(item.z) + def.d / 2 > h.z + 1e-9
+                  ) {
+                    return false;
+                  }
+                }
+              }
+              return true;
+            })(),
+          ),
+        );
+      })();
 
       checks.push(
         check(
