@@ -57,11 +57,14 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { ROOM_ISO, ROOM_MODEL_URL } from "./constants";
 import {
+  analyzeRoomSurfaces,
   clampToRoom,
+  cutRoomForInterior,
   findFloorMesh,
   markPlacementZone,
   measureRoomModel,
   planIsoRoom,
+  roomInteriorBox,
   toRoomLocal,
   type IsoRoomPlan,
 } from "./roomModelPrep";
@@ -319,12 +322,34 @@ function RoomInterior({
   onRemove: (key: string) => void;
 }) {
   const { scene } = useGLTF(ROOM_MODEL_URL);
+  const { gl } = useThree();
   const moveTarget = useRef({ x: 0, z: 0 });
 
+  // Yüzeyler geometriden okunur (zemin/tavan/duvarlar) — isim varsayımı YOK.
+  const surfaces = useMemo(
+    () => analyzeRoomSurfaces(scene as THREE.Object3D),
+    [scene],
+  );
+
+  // Plan İÇ hacimden kurulur: zeminin ayak izi + tavan yüksekliği. DIŞ ölçü
+  // kullanılırsa 8 birimlik bina gövdesi odayı yutar, karakter zemine basmaz
+  // (taban, duvarların altına düşer). Kamera dış mekâna göre biraz yaklaşır
+  // (`distanceScale`) ki oda ekranı doldursun.
   const plan = useMemo(() => {
-    const box = measureRoomModel(scene as THREE.Object3D);
-    return box ? planIsoRoom(box) : null;
-  }, [scene]);
+    if (surfaces) {
+      const interior = roomInteriorBox(surfaces);
+      const box = interior.isEmpty() ? surfaces.box : interior;
+      return planIsoRoom(box, {
+        origin: ROOM_ISO.origin,
+        scale: ROOM_ISO.scale,
+        span: ROOM_ISO.span,
+        fitBand: ROOM_ISO.fitBand,
+        camera: { ...ROOM_ISO.camera, distanceScale: 0.7 },
+      });
+    }
+    const raw = measureRoomModel(scene as THREE.Object3D);
+    return raw ? planIsoRoom(raw) : null;
+  }, [scene, surfaces]);
 
   // ZEMİN: adından/seklinden bulunur ve `placementZone` işaretlenir. Hiçbir
   // parça zemin sayılamıyorsa (tek mesh'e sıkışmış model) ölçülen kutudan
@@ -340,14 +365,19 @@ function RoomInterior({
   // Gölge bayrakları: oda iç mekân olduğu için yalnızca ALIR (dışarıdan güneş
   // gelmez); karakter ve eşyalar gölge düşürür.
   //
-  // TAVAN/ÇATI GİZLEME: kamera odayı DIŞARIDAN, üstten (izometrik) görür.
-  // Modelde tavan/çatı parçası varsa oyuncu odanın içini değil ÇATIYI görür.
-  // Bu yüzden yalnızca ADI bunu açıkça söyleyen parçalar gizlenir — bir tahmin
-  // değil, modele sorulmuş bir bilgidir (bina tarafındaki `IGNORED_PARTS` ile
-  // aynı desen). Adında geçmiyorsa hiçbir şeye dokunulmaz.
+  // İÇ MEKÂN KESİTİ (Sanalika/Habbo): model KAPALI bir kutudur — zemin, tavan
+  // ve dört duvar (duvarlar binanın tüm gövdesi kadar yüksek olabilir). Kesit
+  // alınmazsa oyuncu odanın içini değil kutunun DIŞINI görür. Bu yüzden
+  // GEOMETRİDEN tavan ve kameraya BAKAN duvarlar gizlenir
+  // (`roomModelPrep.cutRoomForInterior`). ADI tavanı söyleyen parçalar da ek
+  // güvence olarak gizlenir.
   useEffect(() => {
     const root = scene as THREE.Object3D;
     if (!root?.isObject3D) return;
+    cutRoomForInterior(root, {
+      x: ROOM_ISO.camera.offset[0],
+      z: ROOM_ISO.camera.offset[2],
+    });
     root.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -355,10 +385,28 @@ function RoomInterior({
         mesh.visible = false;
         return;
       }
+      if (!mesh.visible) return; // kesitte gizlenen parçalara dokunma
       mesh.castShadow = false;
       mesh.receiveShadow = true;
     });
   }, [scene]);
+
+  // DİKEY KIRPMA: duvarların oda dışına taşan gövdesi (bina yüksekliği) odanın
+  // yüksekliğinde KESİLİR. Dünya uzayında y ∈ [zemin, zemin + oda yüksekliği]
+  // tutulur. Bu canvas'ta başka sahne yok; karakter ve eşyalar da zaten bu
+  // aralıkta olduğu için global kırpma güvenlidir.
+  useLayoutEffect(() => {
+    if (!plan) return;
+    const floorY = plan.origin[1];
+    const topY = plan.origin[1] + plan.size.y;
+    gl.clippingPlanes = [
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY + 0.002),
+      new THREE.Plane(new THREE.Vector3(0, -1, 0), topY + 0.002),
+    ];
+    return () => {
+      gl.clippingPlanes = [];
+    };
+  }, [gl, plan]);
 
   useEffect(() => {
     if (plan) onReady();

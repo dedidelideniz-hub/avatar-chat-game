@@ -1904,6 +1904,9 @@ const scenarios: Scenario[] = [
         planIsoRoom,
         clampToRoom,
         markPlacementZone,
+        analyzeRoomSurfaces,
+        roomInteriorBox,
+        cutRoomForInterior,
       } = await import("../src/engine/roomModelPrep");
       const { FURNITURE, placeFurniture, snapToGrid } = await import(
         "../src/engine/roomBuild"
@@ -2286,6 +2289,98 @@ const scenarios: Scenario[] = [
           stage.includes("const CEILING_PARTS") &&
             /ceiling\|roof\|tavan/.test(stage),
         ),
+      );
+
+      // ── İÇ MEKÂN KESİTİ (Sanalika/Habbo): model KAPALI bir kutudur;
+        //    dışarıdan bakınca oyuncu odanın içini değil kutunun dışını görür.
+        //    Kesit tavanı + kameraya bakan duvarları gizler, duvarlar oda
+        //    yüksekliğine kırpılır. Model adları jenerik olsa da GEOMETRİDEN.
+        (() => {
+          const mk = (
+            w: number,
+            h: number,
+            d: number,
+            x: number,
+            y: number,
+            z: number,
+          ) => {
+            const m = new THREE.Mesh(
+              new THREE.BoxGeometry(w, h, d),
+              new THREE.MeshBasicMaterial(),
+            );
+            m.position.set(x, y, z);
+            return m;
+          };
+          const roomBox = new THREE.Group();
+          const floor = mk(8, 0.1, 8, 0, 0, 0);
+          const ceil = mk(8, 0.1, 8, 0, 3.2, 0);
+          const nearZ = mk(8, 8, 0.1, 0, 0, 4); // +Z duvarı (kameraya BAKAN)
+          const farZ = mk(8, 8, 0.1, 0, 0, -4);
+          const nearX = mk(0.1, 8, 8, 4, 0, 0); // +X duvarı (kameraya BAKAN)
+          const farX = mk(0.1, 8, 8, -4, 0, 0);
+          roomBox.add(floor, ceil, nearZ, farZ, nearX, farX);
+
+          const surfaces = analyzeRoomSurfaces(roomBox);
+          checks.push(
+            check(
+              "kapalı kutu modelde zemin ve tavan GEOMETRİDEN bulunuyor (isim yok)",
+              !!surfaces &&
+                surfaces.floor === floor &&
+                surfaces.ceiling === ceil &&
+                surfaces.walls.length === 4,
+              surfaces
+                ? `zemin ${surfaces.floor === floor} · tavan ${surfaces.ceiling === ceil} · duvar ${surfaces.walls.length}`
+                : "yüzey yok",
+            ),
+          );
+          const interior = surfaces ? roomInteriorBox(surfaces) : null;
+          const interiorPlan = interior ? planIsoRoom(interior) : null;
+          checks.push(
+            check(
+              "oda İÇ hacminden planlanıyor: yükseklik ≈ tavan (bina gövdesi değil)",
+              !!interiorPlan && Math.abs(interiorPlan.size.y - 3.1) < 0.25,
+              interiorPlan
+                ? `yükseklik ${interiorPlan.size.y.toFixed(2)} (kutu 8)`
+                : "plan yok",
+            ),
+          );
+          cutRoomForInterior(roomBox, { x: 1, z: 1 });
+          checks.push(
+            check(
+              "kesit: tavan + kameraya BAKAN iki duvar gizlenir, UZAK duvarlar kalır",
+              !ceil.visible &&
+                !nearZ.visible &&
+                !nearX.visible &&
+                farZ.visible &&
+                farX.visible &&
+                floor.visible,
+              `tavan ${ceil.visible} · yakın ${nearZ.visible}/${nearX.visible} · uzak ${farZ.visible}/${farX.visible}`,
+            ),
+          );
+          // İkinci kesit: önceki gizlemeler SIFIRLANIP yeniden uygulanmalı
+          // (model `useGLTF` ile önbellekte paylaşılır).
+          farZ.visible = false;
+          ceil.visible = false;
+          cutRoomForInterior(roomBox, { x: 1, z: 1 });
+          checks.push(
+            check(
+              "kesit idempotent: her kurulumda gizlemeler baştan uygulanıyor",
+              farZ.visible && !nearZ.visible && !ceil.visible,
+              `uzak ${farZ.visible} · yakın ${nearZ.visible} · tavan ${ceil.visible}`,
+            ),
+          );
+          checks.push(
+            check(
+              "RoomStage kesiti + dikey kırpmayı gerçekten uyguluyor (içeri bakış)",
+              stage.includes("cutRoomForInterior") &&
+                stage.includes("roomInteriorBox") &&
+                stage.includes("gl.clippingPlanes") &&
+                stage.includes("distanceScale"),
+            ),
+          );
+        })();
+
+      checks.push(
         check(
           "model hazır olana kadar YEDEK oda gösteriliyor (boş ekran yok)",
           house.includes("<RoomStage") &&

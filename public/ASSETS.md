@@ -76,19 +76,33 @@ dosyada bu olmaz.
 (`ROOM_ISO.origin`); ana harita ±24 birimde bittiği için orada hiçbir şey
 yoktur — cadde/çim/ağaçla çakışmaz.
 
+**İÇ MEKÂN KESİTİ (Sanalika/Habbo)**: model kapalı bir kutudur (zemin + tavan +
+dört duvar; duvarlar binanın TÜM gövdesi kadar yüksek olabilir). Kamera
+dışarıda kalırsa oyuncu odanın içini değil kutunun DIŞINI görür. Bu yüzden
+yüzeyler GEOMETRİDEN sınıflandırılır (isim varsayımı yok — adlar jenerik
+`Plane.041`): en geniş yatay parça = ZEMİN, ondan belirgin yükseklikteki en üst
+yatay parça = TAVAN, dikey/düzlemsi parçalar = DUVARLAR (`analyzeRoomSurfaces`).
+Kesit tavanı + **kameraya bakan** iki duvarı gizler (`cutRoomForInterior`),
+duvarların oda dışına taşan gövdesi dikey KIRPMA ile oda yüksekliğine indirilir
+(`RoomStage` → `gl.clippingPlanes`). Ölçüm MODEL UZAYINDA yapılır (yerel
+matrisler); sahne R3F grubuna bağlıyken `setFromObject` kullanılırsa 2000'lik
+origin ölçüme sızar ve oda yanlış yere oturur.
+
 Ölçek/konum SABİT DEĞİLDİR: model `Box3` ile ölçülür
 (`src/engine/roomModelPrep.ts`). Ham açıklık dünya birimindeyse `scale: 1`
 aynen kullanılır;
 ham açıklık `fitBand` (2,5–60 birim) dışındaysa oda `span`a (10 birim) otomatik
-ölçeklenir — 312 birimlik bir diorama odayı yutmaz. Merkez X/Z origin'e,
-taban y 0'a oturur.
+ölçeklenir — 312 birimlik bir diorama odayı yutmaz. Plan İÇ hacimden kurulur
+(`roomInteriorBox`: zeminin ayak izi + tavan yüksekliği), böylece merkez X/Z
+origin'e, **taban y 0'a** oturur ve karakter zemine basar.
 
-Kamera **İZOMETRİKTİR**: `origin + (12, 15, 12)` noktasından odanın merkezine
-bakar (`camera.lookAt(2000, 0, 2000)`). Oda büyükse mesafe odayı çerçeveleyecek
-kadar AÇILIR; yön asla değişmez. Oyuncu odanın TAM merkezine doğar
-(`player.position = (2000, 0, 2000)`), zemine dokunarak yürür ve **duvar
-sınırından** (ölçülen ayak izi) dışarı çıkamaz (`clampToRoom` + `WallColliders`)
-— odanın dışında zemin yoktur.
+Kamera **İZOMETRİKTİR**: `origin + (12, 15, 12)` yönünden odanın merkezine
+bakar (`camera.lookAt(2000, 0, 2000)`). İç mekânda kamera biraz yaklaşır
+(`camera.distanceScale = 0,7`) ki oda ekranı doldursun; oda büyükse mesafe oda
+yine çerçevede kalacak kadar AÇILIR, yön asla değişmez. Oyuncu odanın TAM
+merkezine doğar (`player.position = (2000, 0, 2000)`), zemine dokunarak yürür ve
+**duvar sınırından** (ölçülen ayak izi) dışarı çıkamaz (`clampToRoom` +
+`WallColliders`) — odanın dışında zemin yoktur.
 
 **DÜZENLEME (build mode)**: modelin zemin mesh'i (adında `floor`/`zemin`/`taban`/
 `ground` geçen en geniş parça; yoksa en geniş + en ince parça) `placementZone`

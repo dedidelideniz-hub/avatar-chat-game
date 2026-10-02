@@ -116,6 +116,218 @@ export function markPlacementZone(mesh: THREE.Mesh | null): THREE.Mesh | null {
   return mesh;
 }
 
+/* ──────────────── İÇ MEKÂN KESİTİ (Sanalika/Habbo tarzı) ────────────────
+ * Oda modelleri çoğu zaman KAPALI bir kutudur: zemin + tavan + dört duvar
+ * (ve duvarlar binanın TÜM gövdesi kadar yüksek olabilir). Kamera dışarıda
+ * kalırsa oyuncu odanın içini değil, binanın DIŞINI görür — kutunun üstü,
+ * dış duvarlar, pencere. "Evine gir" ekranı bir İÇ MEKÂN olmalıdır; bu yüzden
+ * model geometriden okunup bir KESİT alınır:
+ *   · TAVAN gizlenir (kamera içeri bakar),
+ *   · kameraya BAKAN iki duvar gizlenir (Habbo/Sanalika'daki kesit görünümü),
+ *   · duvarların oda dışına taşan gövdesi dikey KIRPMA ile odanın yüksekliğine
+ *     indirilir (bkz. `RoomStage`).
+ * Hiçbir isim varsayılmaz: parçalar geometriden sınıflandırılır (bir düzlemin
+ * en ince ekseni yüzey normalidir). Adlar jenerik olsa da ("Plane.041") çalışır.
+ */
+
+/** Modeldeki her mesh'in dünya kutusu + "ince" (normal) ekseni. */
+interface RoomPart {
+  mesh: THREE.Mesh;
+  box: THREE.Box3;
+  size: THREE.Vector3;
+  center: THREE.Vector3;
+  /** En küçük ölçü ekseni = yüzey normali (düzlemsi parçalar için). */
+  thin: "x" | "y" | "z";
+}
+
+/** Bir parçanın DUVAR sayılması için düzlemsilik sınırı (ince / en büyük). */
+const FLAT_MAX_RATIO = 0.25;
+
+/**
+ * Parçaları MODEL UZAYINDA ölçer (sahnenin bağlı olduğu ebeveynden bağımsız).
+ *
+ * NEDEN `setFromObject` DEĞİL: sahne R3F grubuna bağlandığında dünya
+ * matrisleri odanın origin'ini (X/Z 2000) içerir; o zaman ölçüm de 2000 kayar
+ * ve plan yanlış yere oturur. Burada yerel matrisler kökten aşağı çarpılır:
+ * sonuç, `<primitive>`in grubunun YEREL uzayıdır — `plan.offset`in uygulandığı
+ * uzayın ta kendisi.
+ */
+function collectRoomParts(root: THREE.Object3D): RoomPart[] {
+  const parts: RoomPart[] = [];
+  const walk = (obj: THREE.Object3D, parent: THREE.Matrix4) => {
+    obj.updateMatrix();
+    const local = new THREE.Matrix4().multiplyMatrices(parent, obj.matrix);
+    const mesh = obj as THREE.Mesh;
+    const geometry = mesh.geometry as THREE.BufferGeometry | undefined;
+    if (mesh.isMesh && geometry) {
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      const bounds = geometry.boundingBox;
+      if (bounds) {
+        const box = bounds.clone().applyMatrix4(local);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        let thin: "x" | "y" | "z" = "y";
+        let best = size.y;
+        (["x", "z"] as const).forEach((axis) => {
+          if (size[axis] < best) {
+            best = size[axis];
+            thin = axis;
+          }
+        });
+        parts.push({ mesh, box, size, center, thin });
+      }
+    }
+    for (const child of obj.children) walk(child, local);
+  };
+  walk(root, new THREE.Matrix4());
+  return parts;
+}
+
+/** Kameraya bakan kesitte gizlenecek bir duvar (ve üstündeki süpürgelik/kapı). */
+export interface RoomWall {
+  mesh: THREE.Mesh;
+  /** Duvar normalinin ekseni (ince eksen). */
+  thin: "x" | "z";
+  /** Duvarın ince eksendeki konumu (duvar düzlemi). */
+  at: number;
+}
+
+/** Modelin yüzeyleri — kesit ve iç-hacim planı bunlardan türer. */
+export interface RoomSurfaces {
+  /** Modelin TAMAMI (tavan/duvarlar dahil). */
+  box: THREE.Box3;
+  /** En geniş yatay parça = ZEMİN. */
+  floor: THREE.Mesh | null;
+  floorBox: THREE.Box3 | null;
+  /** Zeminden belirgin yükseklikteki en üst yatay parça = TAVAN. */
+  ceiling: THREE.Mesh | null;
+  ceilingBox: THREE.Box3 | null;
+  /** Dikey, düzlemsi parçalar = DUVARLAR ve üstündeki detaylar. */
+  walls: RoomWall[];
+}
+
+/**
+ * Modeli zemin/tavan/duvar olarak sınıflandırır (isim varsayımı YOK).
+ *
+ * ZEMİN: en geniş YATAY parça. TAVAN: zeminden belirgin yükseklikteki en üst
+ * yatay parça. DUVARLAR: dikey ve düzlemsi (ince) parçalar — süpürgelik, kapı
+ * ve pencere panelleri de duvara bağlı sayılsın diye ölçü sınırı gevşektir.
+ */
+export function analyzeRoomSurfaces(scene: THREE.Object3D): RoomSurfaces | null {
+  if (!(scene as THREE.Object3D)?.isObject3D) return null;
+  const parts = collectRoomParts(scene);
+  if (parts.length === 0) return null;
+
+  const box = new THREE.Box3();
+  for (const part of parts) box.union(part.box);
+
+  const horizontals = parts.filter((part) => part.thin === "y");
+  // ZEMİN: en geniş yatay parça. Eşitlikte (zemin ve tavan aynı ayak izine
+  // sahip olabilir) en ALTTAKİ seçilir — yoksa tavan zemin sanılırdı.
+  const floorPart =
+    [...horizontals].sort(
+      (a, b) =>
+        footprint(b.box) - footprint(a.box) || a.center.y - b.center.y,
+    )[0] ?? null;
+
+  const ceilingFloorY = floorPart?.box.max.y ?? box.min.y;
+  const ceilingThreshold =
+    ceilingFloorY + Math.max(0.5, (box.max.y - box.min.y) * 0.15);
+  const ceilingPart =
+    horizontals
+      .filter((part) => part.center.y >= ceilingThreshold)
+      .sort((a, b) => b.center.y - a.center.y)[0] ?? null;
+
+  const walls: RoomWall[] = [];
+  for (const part of parts) {
+    if (part.thin === "y") continue;
+    const flat =
+      Math.min(part.size.x, part.size.y, part.size.z) /
+      Math.max(part.size.x, part.size.y, part.size.z, 1e-6);
+    if (flat > FLAT_MAX_RATIO) continue;
+    walls.push({
+      mesh: part.mesh,
+      thin: part.thin,
+      at: part.thin === "x" ? part.center.x : part.center.z,
+    });
+  }
+
+  return {
+    box,
+    floor: floorPart?.mesh ?? null,
+    floorBox: floorPart?.box ?? null,
+    ceiling: ceilingPart?.mesh ?? null,
+    ceilingBox: ceilingPart?.box ?? null,
+    walls,
+  };
+}
+
+/**
+ * Odanın İÇ hacmi: zeminin ayak izi + zemin ile tavan arası.
+ *
+ * `planIsoRoom`a bu kutu verilir; böylece taban y 0'a oturur (karakter zemine
+ * basar) ve oda yüksekliği TAVAN yüksekliği olur — binanın 8 birimlik gövdesi
+ * değil. Tavan yoksa `fallbackHeight` kadar bir iç hacim varsayılır.
+ */
+export function roomInteriorBox(
+  surfaces: RoomSurfaces,
+  fallbackHeight = 3,
+): THREE.Box3 {
+  const ref = surfaces.floorBox ?? surfaces.box;
+  const floorY = surfaces.floorBox ? surfaces.floorBox.max.y : surfaces.box.min.y;
+  const ceilingY = surfaces.ceilingBox
+    ? Math.max(surfaces.ceilingBox.min.y, floorY + 0.5)
+    : Math.min(surfaces.box.max.y, floorY + fallbackHeight);
+  return new THREE.Box3(
+    new THREE.Vector3(ref.min.x, floorY, ref.min.z),
+    new THREE.Vector3(ref.max.x, ceilingY, ref.max.z),
+  );
+}
+
+/**
+ * İÇ MEKÂN KESİTİ — tavanı ve kameraya BAKAN duvarları gizler.
+ *
+ * `cameraDir`, odanın merkezinden kameraya bakan YATAY yöndür
+ * (`ROOM_ISO.camera.offset`). Kamera +X+Z'deyse o taraftaki duvarlar gizlenir;
+ * oyuncu kesik köşeden içeri bakar (Habbo/Sanalika).
+ *
+ * Önce BÜTÜN parçalar görünür yapılır: model `useGLTF` ile önbellekte
+ * paylaşıldığı için önceki gizlemeler kalıcı olabilir; kesit her kurulumda
+ * baştan uygulanır.
+ */
+export function cutRoomForInterior(
+  scene: THREE.Object3D,
+  cameraDir: { x: number; z: number },
+): { ceilingHidden: boolean; wallsHidden: number } {
+  const surfaces = analyzeRoomSurfaces(scene);
+  if (!surfaces) return { ceilingHidden: false, wallsHidden: 0 };
+
+  scene.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh) mesh.visible = true;
+  });
+
+  const centerX = (surfaces.box.min.x + surfaces.box.max.x) / 2;
+  const centerZ = (surfaces.box.min.z + surfaces.box.max.z) / 2;
+  let wallsHidden = 0;
+  for (const wall of surfaces.walls) {
+    const near =
+      wall.thin === "x"
+        ? cameraDir.x > 0
+          ? wall.at > centerX
+          : wall.at < centerX
+        : cameraDir.z > 0
+          ? wall.at > centerZ
+          : wall.at < centerZ;
+    if (near) {
+      wall.mesh.visible = false;
+      wallsHidden += 1;
+    }
+  }
+  if (surfaces.ceiling) surfaces.ceiling.visible = false;
+  return { ceilingHidden: !!surfaces.ceiling, wallsHidden };
+}
+
 /* ────────────────────────────── YERLEŞİM ────────────────────────────── */
 
 /** `planIsoRoom`a geçirilebilen ayarlar (varsayılan: `constants.ROOM_ISO`). */
@@ -127,6 +339,12 @@ export interface IsoRoomOptions {
   camera: {
     readonly offset: readonly [number, number, number];
     readonly fov: number;
+    /**
+     * Mesafe çarpanı (varsayılan 1). İç mekân kesitinde kamera odaya biraz
+     * yaklaşsın diye 1'den KÜÇÜK verilir; spec mesafesi alt sınır kalır ve
+     * `fitDistance` odayı yine çerçevede tutar.
+     */
+    readonly distanceScale?: number;
   };
 }
 
@@ -201,7 +419,10 @@ export function planIsoRoom(
     scaled.y * 1.6,
     specDistance * 0.5,
   );
-  const distance = Math.max(specDistance, fitDistance);
+  const distance = Math.max(
+    specDistance * (opts.camera.distanceScale ?? 1),
+    fitDistance,
+  );
   dir.normalize().multiplyScalar(distance);
 
   return {
