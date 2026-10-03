@@ -3024,6 +3024,31 @@ const scenarios: Scenario[] = [
             );
           })(),
         ),
+        // ── KAPININ CANLI ÖLÇÜMÜ (kök neden: önbelleklenmiş izin) ──
+        //    `useCanvasGate` "bağlam açılabiliyor mu?" sorusunu ÖNBELLEKLİ
+        //    `webglPowerPreference()` ile soruyordu; önbellek ilk sahne
+        //    kurulunca dolduğu için yuva dolu olsa bile kapı "hazır" diyordu ve
+        //    `configure()` `Error creating WebGL context` ile sayfayı düşürüyordu.
+        check(
+          "kapı CANLI ölçüm yapıyor: önbellek değil, gerçek bağlam denemesi",
+          (() => {
+            const canvas = read("../src/engine/WebglCanvas.tsx");
+            const support = read("../src/engine/webglSupport.ts");
+            const gateStart = canvas.indexOf("export function useCanvasGate");
+            const gateEnd = canvas.indexOf("class CanvasErrorBoundary");
+            const gate = canvas.slice(gateStart, gateEnd);
+            return (
+              support.includes("export function probeWebglContext") &&
+              // Kapı, canlı ölçümü kullanır ve önbellekli fonksiyonu ÇAĞIRMAZ.
+              gate.includes("probeWebglContext()") &&
+              !gate.includes("const power = webglPowerPreference()") &&
+              // Canlı ölçüm başarısızsa feda edilebilir bağlam bırakıp dener.
+              support
+                .slice(support.indexOf("export function probeWebglContext"))
+                .includes("releaseExpendableContext()")
+            );
+          })(),
+        ),
         check(
           "sahne kurulum hatası da yakalanıyor (CanvasGuard + RoomBoundary)",
           /export function CanvasGuard/.test(

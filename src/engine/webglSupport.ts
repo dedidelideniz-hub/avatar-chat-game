@@ -258,12 +258,52 @@ let cached: WebglPowerPreference | null = null;
  * bağlamı `high-performance` tuttuğu için bazı mobil GPU'larda ikinci bir
  * `high-performance` bağlam reddedilir), olmazsa `high-performance` denenir.
  * İkisi de olmazsa feda edilebilir bir bağlam bırakılıp YENİDEN denenir.
+ *
+ * ⚠️ ÖNBELLEKLİDİR: yalnızca `<Canvas>`ın `gl` ayarını beslemek için kullanılır
+ * (kapı geçildikten SONRA çalışır). Kapının "şu an bağlam açılabiliyor mu?"
+ * sorusunu bununla sormak YETMEZ — önbellek, ilk sahne kurulduktan sonra hep
+ * dolu kalır ve yuva dolu olsa bile yeni canvas'ı kurmaya izin verir
+ * (bkz. `probeWebglContext`).
  */
 export function webglPowerPreference(): WebglPowerPreference | null {
   if (cached) return cached;
   if (typeof document === "undefined" || !document.createElement) return null;
   if (probe("default")) return (cached = "default");
   if (probe("high-performance")) return (cached = "high-performance");
+  if (releaseExpendableContext()) {
+    if (probe("default")) return (cached = "default");
+    if (probe("high-performance")) return (cached = "high-performance");
+  }
+  return null;
+}
+
+/**
+ * KAPININ CANLI ÖLÇÜMÜ — önbelleği KULLANMAZ.
+ *
+ * NEDEN GEREKLİ: `useCanvasGate` yeni bir `<Canvas>` kurmadan önce "bağlam
+ * açılabiliyor mu?" diye sorar. Bu soruyu önbellekli `webglPowerPreference()`
+ * ile sormak SESSİZ bir delik bırakıyordu: önbellek bir kez dolduğunda
+ * (ilk 3D sahne kurulduğunda) kapı hep "hazır" der, oysa o anda yuva dolu
+ * olabilir. Örnek: oyuncu caddeyi gezip eve girerken oda canvas'ı istenir;
+ * cadde bağlamı + oda bağlamı + yedek odanın avatar bağlamı cihazın sınırını
+ * aşarsa `configure()` `THREE.WebGLRenderer: Error creating WebGL context.`
+ * fırlatır. R3F bu reddi yakalamaz (`.catch` yok) → "unhandled rejection"
+ * olur ve önizleme "Build Error" olarak düşer.
+ *
+ * Bu fonksiyon HER ÇAĞRIDA gerçek bir deneme bağlamı açar ve hemen bırakır;
+ * açılamıyorsa feda edilebilir bir bağlamı bırakıp BİR KEZ daha dener. `null`
+ * dönerse çağıran taraf (`useCanvasGate`) yedeğe düşer ve `configure()` HİÇ
+ * çalıştırılmaz — yani hata hiç doğmaz.
+ */
+export function probeWebglContext(): WebglPowerPreference | null {
+  if (typeof document === "undefined" || !document.createElement) return null;
+  // Önbelleği tazele: sahne sayısı değiştiği için eski cevap bayat olabilir.
+  cached = null;
+  if (probe("default")) return (cached = "default");
+  if (probe("high-performance")) return (cached = "high-performance");
+  // Yuva dolu olabilir: en ucuz (korunmayan) sahneyi feda edip yeniden dene.
+  // Cadde `PROTECTED_PRIORITY` olduğu için oyuncunun yürüdüğü sahne ASLA
+  // düşürülmez; feda edilen bağlam kendini yeniden kurar (`useWebglRetry`).
   if (releaseExpendableContext()) {
     if (probe("default")) return (cached = "default");
     if (probe("high-performance")) return (cached = "high-performance");

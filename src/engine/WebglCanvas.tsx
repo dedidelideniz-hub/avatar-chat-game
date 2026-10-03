@@ -38,6 +38,7 @@ import { useThree } from "@react-three/fiber";
 import {
   CONTEXT_SETTLE_MS,
   cancelScheduledRelease,
+  probeWebglContext,
   registerCanvasContext,
   releaseExpendableContext,
   reserveContextSlot,
@@ -133,7 +134,12 @@ export function useCanvasGate(maxRounds = 4): CanvasGateState {
     let cancelled = false;
 
     const open = (round: number) => {
-      const power = webglPowerPreference();
+      // CANLI ÖLÇÜM (önbelleksiz): her canvas kurulmadan ÖNCE gerçek bir
+      // bağlam açılabiliyor mu? Önbellekli `webglPowerPreference()` burada
+      // KULLANILAMAZ — ilk sahne kurulunca önbellek dolar ve kapı, yuva dolu
+      // olsa bile "hazır" der; ardından `configure()`
+      // `Error creating WebGL context` ile sayfayı düşürürdü.
+      const power = probeWebglContext();
       if (!power) {
         if (round < maxRounds) {
           // Yuva DOLU olabilir: az önce bir canvas bırakıldı ve `loseContext`
