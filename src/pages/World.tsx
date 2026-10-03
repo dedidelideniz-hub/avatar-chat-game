@@ -52,6 +52,14 @@ import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
 import BattleScene from "@/components/world/BattleScene";
 import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
+import {
+  WagerAnnouncement,
+  WagerChallengeSheet,
+  WagerInvitePopup,
+  WagerWaitingBanner,
+  describeWager,
+  type IncomingWager,
+} from "@/components/world/WagerSheet";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -550,7 +558,7 @@ function BarBtn({
   icon: LucideIcon;
   label: string;
   badge?: number;
-  tone: "sky" | "purple";
+  tone: "sky" | "purple" | "rose";
   onClick: () => void;
 }) {
   return (
@@ -562,7 +570,9 @@ function BarBtn({
       className={`relative flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-white text-[#2b3a4a] shadow-md transition-transform active:scale-90 sm:size-11 ${
         tone === "sky"
           ? "bg-gradient-to-br from-sky-200 to-sky-400"
-          : "bg-gradient-to-br from-fuchsia-200 to-purple-400"
+          : tone === "rose"
+            ? "bg-gradient-to-br from-amber-200 to-rose-400"
+            : "bg-gradient-to-br from-fuchsia-200 to-purple-400"
       }`}
     >
       <Icon className="size-4 sm:size-5" />
@@ -1072,6 +1082,11 @@ export default function World() {
   const declineBattle = useMutation(api.battles.declineBattle);
   const finishBattle = useMutation(api.battles.finishBattle);
   const cancelBattle = useMutation(api.battles.cancelBattle);
+  // ⚔️ BAHİSLİ DÜELLO: altın/ev ortaya koyan yüksek riskli düellolar.
+  const acceptWager = useMutation(api.wagers.accept);
+  const declineWager = useMutation(api.wagers.decline);
+  const cancelWager = useMutation(api.wagers.cancel);
+  const finishWager = useMutation(api.wagers.finish);
 
   // Visual Debug toggle — Ctrl+Shift+D
   useEffect(() => {
@@ -1289,7 +1304,39 @@ export default function World() {
   const [pvpBattle, setPvpBattle] = useState<{
     battleId: string;
     role: "challenger" | "opponent";
+    /** Bahisli düello ise özet — arena duyurusu için (yüksek bahis HUD'i). */
+    highStakes?: { summary: string; houseName?: string };
   } | null>(null);
+  // ⚔️ Bahis sözleşmesi durumları: forma açık mı, bekleyen davetim, bana gelen
+  // davet ve aktif bahis (dövüş sonunda ödeme için).
+  const [wagerChallenge, setWagerChallenge] = useState<{
+    name: string;
+  } | null>(null);
+  const [wagerPending, setWagerPending] = useState<{
+    wagerId: string;
+    name: string;
+    summary: string;
+  } | null>(null);
+  const [wagerInvite, setWagerInvite] = useState<IncomingWager | null>(null);
+  const [wagerBusy, setWagerBusy] = useState(false);
+  const [activeWager, setActiveWager] = useState<{
+    wagerId: string;
+    summary: string;
+    houseName?: string;
+  } | null>(null);
+  const activeWagerRef = useRef(activeWager);
+  activeWagerRef.current = activeWager;
+  // Arena başında birkaç saniye görünen "yüksek bahis" duyurusu.
+  const [wagerAnnounce, setWagerAnnounce] = useState(false);
+  useEffect(() => {
+    if (!pvpBattle?.highStakes) {
+      setWagerAnnounce(false);
+      return;
+    }
+    setWagerAnnounce(true);
+    const id = window.setTimeout(() => setWagerAnnounce(false), 4500);
+    return () => window.clearTimeout(id);
+  }, [pvpBattle?.highStakes]);
   const pvpBattleRef = useRef(pvpBattle);
   pvpBattleRef.current = pvpBattle;
 
@@ -1551,6 +1598,55 @@ export default function World() {
     if (pvpBattle || battle || pvpChallenge) return;
     setPvpInvite(invites[0]);
   }, [invites, pvpBattle, battle, pvpChallenge]);
+
+  // ⚔️ Bana gelen BAHİSLİ düello davetleri — düz davetten önce gösterilir.
+  const wagerInvites = useQuery(api.wagers.listInvites);
+  useEffect(() => {
+    if (!wagerInvites || wagerInvites.length === 0) {
+      setWagerInvite(null);
+      return;
+    }
+    if (pvpBattle || battle || pvpChallenge) return;
+    setWagerInvite(wagerInvites[0]);
+  }, [wagerInvites, pvpBattle, battle, pvpChallenge]);
+
+  // Gönderdiğim bahsin canlı durumu: `active` olunca (rakip kabul etti) iki
+  // taraf da bahsin açtığı `battles` satırıyla arenaya girer.
+  const pendingWagerDoc = useQuery(
+    api.wagers.getWager,
+    wagerPending
+      ? { wagerId: wagerPending.wagerId as Id<"wagerMatches"> }
+      : "skip",
+  );
+  useEffect(() => {
+    if (!wagerPending || !pendingWagerDoc) return;
+    if (pendingWagerDoc.status === "active" && pendingWagerDoc.battleId) {
+      playSound("vs");
+      setActiveWager({
+        wagerId: wagerPending.wagerId,
+        summary: wagerPending.summary,
+      });
+      setPvpBattle({
+        battleId: pendingWagerDoc.battleId as string,
+        role: "challenger",
+        highStakes: { summary: wagerPending.summary },
+      });
+      setWagerPending(null);
+      setViewing(null);
+    } else if (pendingWagerDoc.status === "completed") {
+      toast.info("Bahis daveti reddedildi 😔");
+      setWagerPending(null);
+    }
+  }, [pendingWagerDoc, wagerPending]);
+
+  // Bekleyen bahsim zaman aşımına uğrarsa (getWager null) şeridi kapat.
+  useEffect(() => {
+    if (!wagerPending) return;
+    if (pendingWagerDoc === null) {
+      toast.info("Bahis davetinin süresi doldu.");
+      setWagerPending(null);
+    }
+  }, [pendingWagerDoc, wagerPending]);
 
   // Challenger side: watch the fight document — it flips to "fighting" when
   // the opponent accepts, or "done" if they decline / the invite expires.
@@ -2867,6 +2963,126 @@ export default function World() {
     ],
   );
 
+  /** ⚔️ Bahis sözleşmesi formunu aç (bir oyuncuya meydan okuma). */
+  const openWagerChallenge = useCallback(
+    (name: string) => {
+      if (pvpBattle || pvpChallenge || battle || wagerPending) return;
+      playSound("click");
+      setWagerChallenge({ name });
+      setViewing(null);
+    },
+    [pvpBattle, pvpChallenge, battle, wagerPending],
+  );
+
+  /**
+   * ⚔️ ARENA "Meydan Oku": caddede en yakın gerçek oyuncuya bahisli düello
+   * sözleşmesi aç. Yakında kimse yoksa uyarır (rakip seçmek için profiline
+   * dokunmak da aynı formu açar).
+   */
+  const handleArenaChallenge = useCallback(() => {
+    if (pvpBattle || pvpChallenge || battle || wagerPending) return;
+    const me = posRef.current;
+    let best: { name: string; dist: number } | null = null;
+    for (const o of othersRef.current) {
+      const d = o.data;
+      if (!d || !d.name) continue;
+      const dist = Math.hypot(d.x - me.x, d.y - me.y);
+      if (!best || dist < best.dist) best = { name: d.name, dist };
+    }
+    if (!best) {
+      playSound("error");
+      toast.info(
+        "Yakında gerçek bir oyuncu yok — birinin profiline dokunup meydan okuyabilirsin.",
+      );
+      return;
+    }
+    openWagerChallenge(best.name);
+  }, [pvpBattle, pvpChallenge, battle, wagerPending, openWagerChallenge]);
+
+  /** Bahis daveti gönderildi — bekleyiş şeridini kur. */
+  const handleWagerSent = useCallback(
+    (info: {
+      wagerId: string;
+      opponentName: string;
+      goldAmount: number;
+      houseName?: string;
+    }) => {
+      const summary = describeWager(info.goldAmount, info.houseName);
+      setWagerChallenge(null);
+      setWagerPending({
+        wagerId: info.wagerId,
+        name: info.opponentName,
+        summary,
+      });
+      toast.success(
+        `${info.opponentName} oyuncusuna bahisli meydan okuma gönderildi! [${summary}]`,
+      );
+    },
+    [],
+  );
+
+  /** Bana gelen bahisli meydan okumayı kabul et — doğrulama + rehin sunucuda. */
+  const handleAcceptWager = useCallback(async () => {
+    const inv = wagerInvite;
+    if (!inv) return;
+    setWagerBusy(true);
+    try {
+      const res = await acceptWager({
+        wagerId: inv.wagerId as Id<"wagerMatches">,
+        me: { name: username, config, equipped, ability: equippedAbility },
+      });
+      const summary = describeWager(inv.goldAmount, inv.wageredHouseName);
+      playSound("vs");
+      setActiveWager({ wagerId: inv.wagerId, summary, houseName: inv.wageredHouseName });
+      setPvpBattle({
+        battleId: res.battleId as string,
+        role: "opponent",
+        highStakes: { summary, houseName: inv.wageredHouseName },
+      });
+      setWagerInvite(null);
+      setViewing(null);
+    } catch (error) {
+      console.error("Bahis kabul hatası:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Bahis kabul edilemedi.",
+      );
+    } finally {
+      setWagerBusy(false);
+    }
+  }, [
+    wagerInvite,
+    acceptWager,
+    username,
+    config,
+    equipped,
+    equippedAbility,
+  ]);
+
+  /** Gelen bahis davetini reddet — rehin çözülür. */
+  const handleDeclineWager = useCallback(async () => {
+    const inv = wagerInvite;
+    if (!inv) return;
+    try {
+      await declineWager({ wagerId: inv.wagerId as Id<"wagerMatches"> });
+    } catch (error) {
+      console.error("Bahis reddetme hatası:", error);
+    }
+    playSound("decline");
+    setWagerInvite(null);
+  }, [wagerInvite, declineWager]);
+
+  /** Gönderdiğim bahsi iptal et. */
+  const handleCancelWager = useCallback(async () => {
+    const cur = wagerPending;
+    if (!cur) return;
+    try {
+      await cancelWager({ wagerId: cur.wagerId as Id<"wagerMatches"> });
+    } catch (error) {
+      console.error("Bahis iptal hatası:", error);
+    }
+    setWagerPending(null);
+  }, [wagerPending, cancelWager]);
+
   /** Answer an incoming duel invite — both phones enter the arena. */
   const handleAcceptInvite = useCallback(async () => {
     const inv = pvpInvite;
@@ -2944,6 +3160,32 @@ export default function World() {
       } else {
         toast.info("Savaş alanından ayrıldın.");
       }
+      // ⚔️ Bahisli düelloyu KAPAT: kazanan tüm altını alır, iddiaya konan ev
+      // mülkiyet olarak devredilir. Sunucu idempotenttir; berabere/iptalde
+      // rehin çözülür (iki taraf da kendi bahsini geri alır).
+      const wager = activeWagerRef.current;
+      if (wager) {
+        // Sunucuya KAZANAN ROLÜ bildirilir (kimlik değil): berabere/iptal
+        // dışında kaybeden taraf bahsini kaybeder — bağlantı koparan (forfeit)
+        // da kaybetmiş sayılır, yoksa kaçarak bahisten sıyrılırdı.
+        const myRole = cur.role === "challenger" ? "challenger" : "target";
+        const otherRole = myRole === "challenger" ? "target" : "challenger";
+        const winnerRole =
+          reason === "draw"
+            ? undefined
+            : victory
+              ? myRole
+              : otherRole;
+        try {
+          await finishWager({
+            wagerId: wager.wagerId as Id<"wagerMatches">,
+            winnerRole,
+          });
+        } catch (error) {
+          console.error("Bahis ödeme hatası:", error);
+        }
+        setActiveWager(null);
+      }
       try {
         const winner = victory
           ? cur.role
@@ -2958,7 +3200,7 @@ export default function World() {
       }
       setPvpBattle(null);
     },
-    [battleVictory, finishBattle],
+    [battleVictory, finishBattle, finishWager],
   );
 
   const handleBuyAbility = useCallback(
@@ -3501,17 +3743,52 @@ export default function World() {
                     </span>
                   }
                   action={
-                    <Button
-                      size="sm"
-                      className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
-                      onClick={() => handleChallengeRemote(viewedRemote)}
-                    >
-                      <Swords className="size-4" /> Savaşa Davet Et
-                    </Button>
+                    <div className="flex w-full flex-col gap-2">
+                      <Button
+                        size="sm"
+                        className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
+                        onClick={() => handleChallengeRemote(viewedRemote)}
+                      >
+                        <Swords className="size-4" /> Savaşa Davet Et
+                      </Button>
+                      {/* ⚔️ Yüksek riskli bahisli düello — SP ve/veya ev ortaya. */}
+                      <Button
+                        size="sm"
+                        className="w-full rounded-full bg-gradient-to-r from-red-600 to-amber-500 font-black text-white shadow hover:from-red-500 hover:to-amber-400"
+                        onClick={() =>
+                          openWagerChallenge(viewedRemote.data?.name ?? "Oyuncu")
+                        }
+                      >
+                        💰 Bahisli Meydan Oku
+                      </Button>
+                    </div>
                   }
                   onClose={() => setViewing(null)}
                 />
               ) : null)}
+          </AnimatePresence>
+
+          {/* ⚔️ BAHİSLİ DÜELLO: gelen meydan okuma (altın/ev bahsi bildirimi). */}
+          <AnimatePresence>
+            {wagerInvite && !battle && !pvpBattle && !pvpChallenge && (
+              <WagerInvitePopup
+                invite={wagerInvite}
+                busy={wagerBusy}
+                onAccept={handleAcceptWager}
+                onDecline={handleDeclineWager}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* ⚔️ Bahis daveti gönderildi — rakip cevap veriyor. */}
+          <AnimatePresence>
+            {wagerPending && !pvpBattle && (
+              <WagerWaitingBanner
+                name={wagerPending.name}
+                summary={wagerPending.summary}
+                onCancel={handleCancelWager}
+              />
+            )}
           </AnimatePresence>
 
           {/* PvP duel invite — another player challenges you to a live fight */}
@@ -3675,6 +3952,10 @@ export default function World() {
               />
             )}
 
+          {/* 🎺 YÜKSEK BAHİSLİ DÜELLO DUYURUSU — bahisli maç başlarken ekrana
+              devasa kırmızı/altın duyuru düşer. */}
+          <WagerAnnouncement show={wagerAnnounce} />
+
           {/* 🏠 ODA — "Evine gir" sonrası açılan iç mekân. Sahibi adını
               değiştirebilir, komşuların odasına geçilebilir; sokaktaki
               karakter aynı modelle odada durur. */}
@@ -3801,6 +4082,13 @@ export default function World() {
                   setAbilitiesOpen(true);
                 }}
               />
+              {/* ⚔️ Arena: yakındaki oyuncuya BAHİSLİ meydan okuma (SP/ev). */}
+              <BarBtn
+                tone="rose"
+                icon={Swords}
+                label="Meydan Oku"
+                onClick={handleArenaChallenge}
+              />
               <BarBtn
                 tone="purple"
                 icon={Flower2}
@@ -3918,6 +4206,22 @@ export default function World() {
             isVip={isVip}
             vipUntil={vipUntil}
             onClose={() => setVipOpen(false)}
+          />
+        )}
+        {wagerChallenge && (
+          <WagerChallengeSheet
+            key="wager-challenge"
+            opponentName={wagerChallenge.name}
+            myCoins={coins}
+            mySessionId={sessionId}
+            me={{
+              name: username,
+              config,
+              equipped,
+              ability: equippedAbility,
+            }}
+            onClose={() => setWagerChallenge(null)}
+            onSent={handleWagerSent}
           />
         )}
         {abilitiesOpen && (

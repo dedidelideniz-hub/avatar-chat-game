@@ -162,7 +162,8 @@ async function houseOf(ctx: QueryCtx | MutationCtx, userId: Id<"users">) {
  */
 export const create = mutation({
   args: {
-    opponentUserId: v.id("users"),
+    /** Rakibin görünen adı — kullanıcı adları BENZERSİZDİR, sunucu çözer. */
+    opponentName: v.string(),
     goldAmount: v.number(),
     wageredHouseId: v.optional(v.id("houses")),
     mySessionId: v.string(),
@@ -170,14 +171,18 @@ export const create = mutation({
   },
   handler: async (
     ctx,
-    { opponentUserId, goldAmount, wageredHouseId, mySessionId, me },
+    { opponentName, goldAmount, wageredHouseId, mySessionId, me },
   ) => {
     const { userId, profile } = await requireProfile(ctx);
+    const target = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", opponentName.trim()))
+      .first();
+    if (target === null) throw new Error("Bu oyuncu bulunamadı.");
+    const opponentUserId = target.userId;
     if (opponentUserId === userId) {
       throw new Error("Kendine meydan okuyamazsın.");
     }
-    const target = await ctx.db.get(opponentUserId);
-    if (target === null) throw new Error("Bu oyuncu bulunamadı.");
 
     const gold = normalizeGold(goldAmount);
     if (gold > 0 && gold < MIN_GOLD) {
@@ -200,7 +205,7 @@ export const create = mutation({
       if (house.wageredIn) {
         throw new Error("Bu ev zaten süren bir bahiste rehin.");
       }
-      const targetHouse = await houseOf(ctx, opponentUserId);
+      const targetHouse = await houseOf(ctx, target.userId);
       if (targetHouse === null) {
         throw new Error(
           "Rakibin henüz bir evi yok — ev bahsi için iki taraf da ev sahibi olmalı.",
@@ -229,7 +234,7 @@ export const create = mutation({
       return { wagerId: pending._id, reuse: true };
     }
 
-    const targetName = target.name ?? "Oyuncu";
+    const targetName = target.username;
     const wagerId = await ctx.db.insert("wagerMatches", {
       challengerId: userId,
       targetId: opponentUserId,
@@ -254,12 +259,16 @@ export const create = mutation({
  * evi var mı (ev bahsi ancak iki taraf da ev sahibiyse anlamlı).
  */
 export const challengeInfo = query({
-  args: { opponentUserId: v.id("users") },
-  handler: async (ctx, { opponentUserId }) => {
+  args: { opponentName: v.string() },
+  handler: async (ctx, { opponentName }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) return null;
     const myHouse = await houseOf(ctx, userId);
-    const oppHouse = await houseOf(ctx, opponentUserId);
+    const opp = await ctx.db
+      .query("profiles")
+      .withIndex("by_username", (q) => q.eq("username", opponentName.trim()))
+      .first();
+    const oppHouse = opp ? await houseOf(ctx, opp.userId) : null;
     return {
       myHouse:
         myHouse === null
@@ -441,16 +450,30 @@ export const cancel = mutation({
 export const finish = mutation({
   args: {
     wagerId: v.id("wagerMatches"),
-    winnerId: v.optional(v.id("users")),
+    /**
+     * Kazanan TARAF (istemci kendi userId'sini değil ROLÜNÜ bildirir — sunucu
+     * rolü gerçek userId'ye çevirir, böylece kimse kendi kimliğini uydurup
+     * kazanamaz). `undefined` = berabere/iptal → iki taraf da kendi bahsini
+     * geri alır.
+     */
+    winnerRole: v.optional(
+      v.union(v.literal("challenger"), v.literal("target")),
+    ),
   },
-  handler: async (ctx, { wagerId, winnerId }) => {
+  handler: async (ctx, { wagerId, winnerRole }) => {
     const wager = await ctx.db.get(wagerId);
     if (!wager || wager.status !== "active") return null;
 
     const gold = wager.goldAmount;
+    const winnerId =
+      winnerRole === "challenger"
+        ? wager.challengerId
+        : winnerRole === "target"
+          ? wager.targetId
+          : undefined;
     const isChallengerWinner = winnerId === wager.challengerId;
     const isTargetWinner = winnerId === wager.targetId;
-    const decisive = isChallengerWinner || isTargetWinner;
+    const decisive = winnerRole !== undefined && (isChallengerWinner || isTargetWinner);
 
     // 1) ALTIN: kazanan hepsini alır; berabere ise herkese kendi bahsi geri.
     if (gold > 0 && wager.goldEscrowed) {

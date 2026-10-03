@@ -1021,6 +1021,137 @@ const scenarios: Scenario[] = [
     },
   },
   {
+    id: "bahisli-duello",
+    title:
+      "⚔️ BAHİSLİ DÜELLO · SP/ev rehini, meydan okuma bildirimi, arena duyurusu",
+    handles:
+      "convex/schema.ts + convex/wagers.ts + components/world/WagerSheet.tsx + World.tsx",
+    run: async () => {
+      const { readFileSync } = await import("node:fs");
+      const read = (path: string) =>
+        readFileSync(new URL(path, import.meta.url), "utf8");
+      const schema = read("../src/convex/schema.ts");
+      const wagers = read("../src/convex/wagers.ts");
+      const sheet = read("../src/components/world/WagerSheet.tsx");
+      const world = read("../src/pages/World.tsx");
+      const house = read("../src/components/world/HouseRoom.tsx");
+      return [
+        check(
+          "wagerMatches tablosu istenen alanları taşıyor",
+          /wagerMatches: defineTable\(/.test(schema) &&
+            schema.includes("challengerId") &&
+            schema.includes("targetId") &&
+            schema.includes("goldAmount") &&
+            schema.includes("wageredHouseId") &&
+            schema.includes("winnerId") &&
+            /v\.literal\("pending"\)/.test(schema) &&
+            /v\.literal\("active"\)/.test(schema) &&
+            /v\.literal\("completed"\)/.test(schema),
+        ),
+        check(
+          "ev rehni (escrow): houses.wageredIn kilidi var",
+          /wageredIn: v\.optional\(v\.string\(\)\)/.test(schema) &&
+            /wageredIn: wagerId/.test(wagers),
+        ),
+        check(
+          "altın bahsi REHİN alınıyor (kabulde kasalardan düşülür)",
+          /export const MIN_GOLD = 100/.test(wagers) &&
+            /debitGold\(ctx, wager\.challengerId, gold\)/.test(wagers) &&
+            /debitGold\(ctx, userId, gold\)/.test(wagers) &&
+            /goldEscrowed: gold > 0/.test(wagers),
+        ),
+        check(
+          "kazanan tüm altını alır (2× ödeme)",
+          /creditGold\(ctx, winnerId, gold \* 2\)/.test(wagers),
+        ),
+        check(
+          "kaybedenin evi kazanana DEVREDİLİR (mülkiyet)",
+          /house\.userId !== winnerId/.test(wagers) &&
+            /userId: winnerId/.test(wagers) &&
+            /ownerName: newOwnerName/.test(wagers),
+        ),
+        check(
+          "kabulde DOĞRULAMA: bakiye + ev sahipliği yeniden kontrol edilir",
+          /Rakibin kasası bu bahsi artık karşılamıyor/.test(wagers) &&
+            /İddiaya konan ev artık rakibin elinde değil/.test(wagers) &&
+            /export const accept = mutation/.test(wagers),
+        ),
+        check(
+          "reddedince/iptalde rehin ÇÖZÜLÜR (kazanan yok, para iade)",
+          /creditGold\(ctx, wager\.challengerId, gold\)[\s\S]{0,120}creditGold\(ctx, wager\.targetId, gold\)/.test(
+            wagers,
+          ) &&
+            /export const decline = mutation/.test(wagers) &&
+            /export const cancel = mutation/.test(wagers),
+        ),
+        check(
+          "ödeme İDEMPOTENT (yalnız active→completed, ikinci çağrı boş)",
+          /if \(!wager \|\| wager\.status !== "active"\) return null;/.test(
+            wagers,
+          ) &&
+            // Anti-cheat: istemci kimlik değil ROL bildirir.
+            /winnerRole: v\.optional\(/.test(wagers) &&
+            /winnerRole === "challenger"/.test(wagers),
+        ),
+        check(
+          "maç bitince GLOBAL feed'e duyuru düşer",
+          /arena düellosunda yenerek evini kazandı/.test(wagers) &&
+            /function postFeed/.test(wagers),
+        ),
+        check(
+          "meydan okuma formu: min 100 SP kaydırıcı + ev onay kutusu",
+          /export const WAGER_MIN_GOLD = 100/.test(sheet) &&
+            /type="range"/.test(sheet) &&
+            /type="checkbox"/.test(sheet) &&
+            /Evini İddiaya Koy/.test(sheet),
+        ),
+        check(
+          "ev bahsi İKİ TARAF DA ev sahibiyse açılır (sözleşme şartı)",
+          /canWagerHouse =/.test(sheet) &&
+            /opponentHasHouse/.test(sheet) &&
+            /export const challengeInfo = query/.test(wagers),
+        ),
+        check(
+          "gelen davet şık pop-up: 'seninle düello yapmak istiyor' + bahis etiketleri",
+          /seninle düello yapmak istiyor/.test(sheet) &&
+            /export function WagerInvitePopup/.test(sheet) &&
+            /Kazanan hepsini alır/.test(sheet),
+        ),
+        check(
+          "arena HUD duyurusu: kırmızı/altın 'KAZANAN HEPSİNİ ALIR'",
+          /YÜKSEK BAHİSLİ DÜELLO: KAZANAN HEPSİNİ ALIR!/.test(sheet) &&
+            /export function WagerAnnouncement/.test(sheet),
+        ),
+        check(
+          "World kablolaması: form, davet, bekleyiş, duyuru + arena 'Meydan Oku'",
+          /openWagerChallenge/.test(world) &&
+            /handleArenaChallenge/.test(world) &&
+            /<WagerInvitePopup/.test(world) &&
+            /<WagerAnnouncement/.test(world) &&
+            /<WagerWaitingBanner/.test(world) &&
+            /Bahisli Meydan Oku/.test(world),
+        ),
+        check(
+          "dövüş, mevcut canlı PvP köprüsüyle başlar (battles satırı)",
+          /await ctx\.db\.insert\("battles"/.test(wagers) &&
+            /battleId,/.test(wagers) &&
+            /battle:/.test(read("../src/components/world/PvpBattleScene.tsx")),
+        ),
+        check(
+          "bahisli maç biterken ödeme rol üzerinden çağrılır (kaçan kaybeder)",
+          /finishWager\(\{/.test(world) &&
+            /winnerRole,/.test(world) &&
+            /reason === "draw"/.test(world),
+        ),
+        // Ev kenar çerçevesi bağımsız olarak sakinleştirildi (önceki istek).
+        check(
+          "oda kenarı mat (parlak sarı çerçeve kaldırıldı)",
+          !/#f2a93b/.test(house) && /border-\[#6b4a2f\]/.test(house),
+        ),
+      ];
+    },
+  },
+  {
     id: "sayfa-entry-ilk-secim",
     title: "SAYFA: /entry · ilk kez giren oyuncu (renk hakkı açık)",
     handles: "src/pages/Entry.tsx (Convex + router + 3D taklit)",
