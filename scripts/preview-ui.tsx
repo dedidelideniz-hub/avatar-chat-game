@@ -2307,8 +2307,8 @@ const scenarios: Scenario[] = [
             stage.includes("hFov"),
         ),
         check(
-          "ışık SICAK ve parlak (sıcak AmbientLight + DirectionalLight)",
-          stage.includes("<ambientLight intensity={1.35}") &&
+          "ışık SICAK ve DENGELİ (yumuşak ambient + sıcak DirectionalLight)",
+          /<ambientLight intensity=\{0\.9[0-9]*\}/.test(stage) &&
             /color="#ffe3ad"/.test(stage),
         ),
         check(
@@ -2318,12 +2318,22 @@ const scenarios: Scenario[] = [
             /color\.lerp\(WALL_WARM/.test(stage),
         ),
         check(
-          "duvarlar ALÇAK (tavan tavan değil) + turuncu çerçeve",
+          "duvarlar ALÇAK (tavan tavan değil) + İNCE, IŞIMAYAN süpürgelik",
           stage.includes("WALL_HEIGHT_FACTOR") &&
             stage.includes("ROOM_ISO.characterHeight * WALL_HEIGHT_FACTOR") &&
             stage.includes("RoomFrame") &&
-            /#f2a93b/.test(stage) &&
-            house.includes("border-[#f2a93b]"),
+            // Parlak sarı çerçeve GİTTİ: sahne artık emissive sarı/turuncu
+            // renk içermez ve ev kenarı mat kahvedir ("sarı şeritler" geri
+            // bildirimi).
+            !/#f2a93b/.test(stage) &&
+            !/#e09a32/.test(stage) &&
+            !/emissiveIntensity/.test(
+              stage.slice(
+                stage.indexOf("function RoomFrame"),
+                stage.indexOf("function RoomFrame") + 1200,
+              ),
+            ) &&
+            house.includes("border-[#6b4a2f]"),
         ),
         check(
           "duvar çarpışması ölçülen sınırlardan geliyor (clampToRoom + WallColliders)",
@@ -2763,7 +2773,7 @@ const scenarios: Scenario[] = [
           // Satır içi CSS: Tailwind'in `_` kısaltması DEĞİL gerçek boşluk
           // beklenir — yoksa gradyan sessizce geçersiz olur.
           stage.includes("ROOM_VIGNETTE") &&
-            /radial-gradient\(circle at 50% 45%, transparent 34%/.test(stage) &&
+            /radial-gradient\(circle at 50% 45%, transparent 40%/.test(stage) &&
             !/circle_at_50%/.test(stage) &&
             stage.includes("pointer-events-none absolute inset-0 z-10"),
         ),

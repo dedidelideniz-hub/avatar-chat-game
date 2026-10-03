@@ -350,8 +350,8 @@ export function HouseRoom({
           İç mekân gerçek GLB modeliyle kurulur; model hazır olana kadar
           (ya da dosya eksikse) yedek oda gösterilir. Ortada sokaktaki
           karakterin ta kendisi durur. */}
-      {/* Oda alanı SICAK bir çerçeveyle sarılır (Sanalika'daki kalın
-          sarı/turuncu kenar) ve arka plan, 3D odanın KENDİ gökyüzü rengidir
+      {/* Oda alanı İNCE, mat bir çerçeveyle sarılır (eskiden kalın parlak
+          sarı/turuncu kenardı — "sarı şeritler" geri bildirimi) ve arka plan, 3D odanın KENDİ gökyüzü rengidir
           (`RoomStage` → `ROOM_ENV.sky`): oda canvas'ı hazır olana kadar görünen
           bu zemin ile sahne birbirine karışsın, geçişte renk atlaması olmasın.
 
@@ -360,11 +360,11 @@ export function HouseRoom({
           kalmaz; kamera payı (`RoomStage` → `buildReserve`) da düzenleme
           tepsisi için ayrıca yer bırakır. */}
       <div
-        className={`relative min-h-0 flex-1 overflow-hidden border-x-[5px] border-[#f2a93b] ${
+        className={`relative min-h-0 flex-1 overflow-hidden border-x-[3px] border-[#6b4a2f] ${
           // Hazır olana kadar şeffaf (cadde görünür); 3D oda açılınca sıcak
           // zemin geri gelir ve oda kendi gökyüzünü çizer.
           stageReady
-            ? "bg-[radial-gradient(circle_at_50%_38%,#5b412d,#4a3423_80%)]"
+            ? "bg-[radial-gradient(circle_at_50%_38%,#4f3826,#3d2c1d_80%)]"
             : "bg-transparent"
         }`}
       >

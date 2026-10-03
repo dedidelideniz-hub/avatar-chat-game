@@ -132,8 +132,13 @@ const CEILING_PARTS = /ceiling|roof|tavan|çatı|cati|plafon/i;
 const ROOM_ENV = {
   /** Gökyüzü = arka plan = SİS RENGİ (üçü aynı olmalı, yoksa ufukta bant olur). */
   sky: "#4a3423",
-  /** Odanın çevresini döşeyen zemin (gökyüzünden açık: ufuk okunur). */
-  ground: "#9a6f45",
+  /**
+   * Odanın çevresini döşeyen zemin (gökyüzünden açık: ufuk okunur).
+   * YUMUŞAK TOPRAK TONU: eskiden doygun hardal/turuncuydu (`#9a6f45`) ve oda
+   * "vasat" okunuyordu; artık nötr, az doygun bir kahve — vinyetle birlikte
+   * gözü yormaz, odayı öne çıkarır.
+   */
+  ground: "#7c6248",
   /**
    * Sis başlangıcı. ODA ASLA SİSLENMEZ: en uzak köşenin kameraya uzaklığı bu
    * modelde ~28 birim — bu yüzden 40 seçildi (pay bırakır).
@@ -174,22 +179,26 @@ function RoomLights({ plan }: { plan: IsoRoomPlan }) {
       {/* ORTAM IŞIĞI — Sanalika gibi CIVIL CIVIL, parlak ve SICAK: yüksek
           ambient + sıcak sarı yönlü ışık (spec: “sıcak sarı/beyaz
           DirectionalLight + AmbientLight”). Gölgede kalan yüz kalmıyor. */}
-      <ambientLight intensity={1.35} color="#fff1d6" />
-      <hemisphereLight args={["#fff5e2", "#8a6644", 0.95]} />
+      {/* DENGE: yüksek ambient + sıcak yönlü ışık daha önce odayı "yıkanmış",
+          düz ve soluk gösteriyordu. Şimdi ambient biraz kısıldı, ana ışık
+          korundu: duvar dokusu ve mobilya gölgeleriyle oda DERİNLİK kazandı,
+          sıcaklık ise hâlâ hissedilir. */}
+      <ambientLight intensity={0.95} color="#fff1d6" />
+      <hemisphereLight args={["#fff5e2", "#8a6644", 0.7]} />
       <directionalLight
         position={[6, height + 6, 6]}
-        intensity={1.85}
+        intensity={1.45}
         color="#ffe3ad"
       />
       {/* Dolgu ışığı: kesitte kalan uzak duvarlar gölgede siyaha düşmesin. */}
       <directionalLight
         position={[-5, height + 3, -5]}
-        intensity={0.65}
+        intensity={0.5}
         color="#d7e6ff"
       />
       <pointLight
         position={[0, height * 0.8, 0]}
-        intensity={7}
+        intensity={4}
         distance={reach}
         decay={2}
         color="#ffd99a"
@@ -199,31 +208,27 @@ function RoomLights({ plan }: { plan: IsoRoomPlan }) {
 }
 
 /**
- * Odanın çevresindeki SICAK ÇERÇEVE (Sanalika'daki sarı/turuncu kalın kenar).
+ * Odanın çevresindeki İNCE SÜPÜRGELİK (eskiden kalın, kendi kendine ışıyan
+ * sarı/turuncu "şeritlerdi" — geri bildirim: "oda görüntüsü çok vasat, sarı
+ * şeritler filan").
  *
- * Dört duvarın üstüne oturan çubuklar + köşe direkleri: izometrik bakışta oda,
- * kendi renginde bir çerçeveyle sarılmış görünür — iç mekân "kutunun içinde
- * kaybolmuş" değil, çerçevelenmiş bir SAHNE olur.
+ * Dört duvarın DİBİNDE (taban) duran tek sıra ince, mat, ışımayan (emissive
+ * YOK) ahşap süpürgelik: duvarı zeminden ayırır, odaya "ev" hissi verir ama
+ * artık ekranın en parlak öğesi değildir. Köşe direkleri ve duvar tepesindeki
+ * çubuklar tamamen KALDIRILDI — izometrik bakışta odayı "kutunun içinde"
+ * gösteren parlak çerçeve buydu.
  */
 function RoomFrame({ half, y }: { half: { x: number; z: number }; y: number }) {
-  // ÇERÇEVE İNCELTİLDİ: eskiden 0,22 kalınlığında ve 0,16 yüksekliğinde,
-  // kendi kendine ışıyan (emissive) parlak turuncu çubuklardı ve oda, içinden
-  // "sarı şeritler" geçen bir kutu gibi görünüşte `emissiveIntensity` ile göz alıyordu.
-  // Artık ince, ışımayan (emissive YOK) mat pirinç bir süpürgelik: odayı
-  // çerçeveler ama ekranın en parlak öğesi olmaz.
-  const t = 0.1; // çerçeve kalınlığı
-  const h = 0.08; // çerçeve yüksekliği
+  const t = 0.09; // süpürgelik kalınlığı
+  const h = 0.14; // süpürgelik yüksekliği
+  const base = y * 0.06; // taban yüksekliği: yere oturur, duvar tepesine çıkmaz
+  // Süpürgelik duvarın İÇ yüzünde durur (`- t / 2`): kesitli bakışta duvar
+  // dibinde okunur, duvarın arkasında kalmaz.
   const bars: [number, number, number, number, number, number][] = [
-    [0, y, half.z + t / 2, half.x * 2 + t * 2, h, t],
-    [0, y, -half.z - t / 2, half.x * 2 + t * 2, h, t],
-    [half.x + t / 2, y, 0, t, h, half.z * 2 + t * 2],
-    [-half.x - t / 2, y, 0, t, h, half.z * 2 + t * 2],
-  ];
-  const posts: [number, number][] = [
-    [half.x + t / 2, half.z + t / 2],
-    [half.x + t / 2, -half.z - t / 2],
-    [-half.x - t / 2, half.z + t / 2],
-    [-half.x - t / 2, -half.z - t / 2],
+    [0, base, half.z - t / 2, half.x * 2, h, t],
+    [0, base, -half.z + t / 2, half.x * 2, h, t],
+    [half.x - t / 2, base, 0, t, h, half.z * 2],
+    [-half.x + t / 2, base, 0, t, h, half.z * 2],
   ];
   return (
     <>
@@ -231,25 +236,9 @@ function RoomFrame({ half, y }: { half: { x: number; z: number }; y: number }) {
         <mesh key={`bar-${i}`} position={[bar[0], bar[1], bar[2]]}>
           <boxGeometry args={[bar[3], bar[4], bar[5]]} />
           <meshStandardMaterial
-            color="#8a6136"
-            emissive="#241505"
-            emissiveIntensity={0.12}
-            roughness={0.6}
-            metalness={0.25}
-          />
-        </mesh>
-      ))}
-      {posts.map((post, i) => (
-        <mesh
-          key={`post-${i}`}
-          position={[post[0], y / 2, post[1]]}
-        >
-          <boxGeometry args={[t, y, t]} />
-          <meshStandardMaterial
-            color="#e09a32"
-            emissive="#6b3f10"
-            emissiveIntensity={0.3}
-            roughness={0.55}
+            color="#4b3625"
+            roughness={0.85}
+            metalness={0.05}
           />
         </mesh>
       ))}
@@ -317,7 +306,7 @@ sahnesindeki uzaklık sisinin yaptığı işin oda tarafındaki karşılığı).
 // ⚠️ Bu, Tailwind sınıfı DEĞİL satır içi CSS: ayraç olarak GERÇEK BOŞLUK
 // kullanılmalı (Tailwind'in `_` kısaltması düz CSS'te geçersizdir).
 const ROOM_VIGNETTE =
-  "radial-gradient(circle at 50% 45%, transparent 34%, rgba(30,20,13,0.5) 100%)";
+  "radial-gradient(circle at 50% 45%, transparent 40%, rgba(26,18,12,0.52) 100%)";
 
 /**
  * Odanın kamerası — İZOMETRİK ve SABİT.
