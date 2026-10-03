@@ -91,6 +91,67 @@ const schema = defineSchema(
       .index("by_opponentSession", ["opponentSession"])
       .index("by_challengerSession", ["challengerSession"]),
 
+    // ⚔️ BAHİSLİ DÜELLO SÖZLEŞMESİ (yüksek riskli PvP).
+    //
+    // Bir oyuncu diğerine meydan okurken ALTIN ve/veya EV ortaya koyar. Kabul
+    // edilince iki tarafın bahsi REHİN (escrow) tutulur: altın oyuncunun
+    // kasasından düşülür, ev `houses.wageredIn` ile kilitlenir. Maç bitince
+    // kazanan tüm altını alır ve iddiaya konan evin `userId`si kazanana
+    // yazılır (mülkiyet devri). Reddedilirse/iptal edilirse hiçbir şey el
+    // değiştirmez (rehin çözülür).
+    //
+    // `challengerName`/`targetName` ve `wageredHouse*` alanları, sözleşme
+    // imzalandığı andaki görünür bilgiyi TAŞIR: davet bildiriminde ve global
+    // duyuruda profil değişse bile doğru metin yazılır.
+    wagerMatches: defineTable({
+      challengerId: v.id("users"),
+      targetId: v.id("users"),
+      challengerName: v.string(),
+      targetName: v.string(),
+      /**
+       * DÖVÜŞ KÖPRÜSÜ: bahis kabul edilince bu iki taraf için bir `battles`
+       * satırı açılır ve kimliği `battleId`ye yazılır. İki telefon da arena
+       * odasına (`battle:<battleId>`) bu satır üzerinden katılır — böylece
+       * mevcut canlı PvP altyapısı (presence) hiç değişmeden çalışır.
+       */
+      challengerSession: v.string(),
+      opponentSession: v.optional(v.string()),
+      challenger: v.object({
+        name: v.string(),
+        config: v.object({
+          skin: v.string(),
+          hair: v.string(),
+          hairColor: v.string(),
+          shirt: v.string(),
+          pants: v.string(),
+          shoes: v.string(),
+        }),
+        equipped: v.array(v.string()),
+        ability: v.string(),
+      }),
+      battleId: v.optional(v.id("battles")),
+      /** Her iki tarafın ortaya koyduğu altın (SP). 0 = altın bahsi yok. */
+      goldAmount: v.number(),
+      /** İddiaya konan evin satır kimliği (`houses._id`). Yoksa ev bahsi yok. */
+      wageredHouseId: v.optional(v.id("houses")),
+      /** Evin iddia anındaki adı (ör. "Sokak No:4 Ev") — duyuruda yazar. */
+      wageredHouseName: v.optional(v.string()),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("active"),
+        v.literal("completed"),
+      ),
+      /** Kazanan oyuncu (tamamlanınca). Berabere/iptalde boş kalır. */
+      winnerId: v.optional(v.id("users")),
+      /** Altın bahsi şu an rehinde mi? (kabul → true, bitiş → false) */
+      goldEscrowed: v.boolean(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_targetId", ["targetId"])
+      .index("by_challengerId", ["challengerId"])
+      .index("by_status", ["status"]),
+
     // Public street chat — every message is broadcast to everyone in the
     // same room ("world" for the main street). Kept separate from `presence`
     // because presence rows are replaced on every publish; chat is append-only.
@@ -135,6 +196,14 @@ const schema = defineSchema(
        * bütün eşyalarını kaldırsa hediye her girişte geri gelirdi.
        */
       furnitureSeeded: v.optional(v.boolean()),
+      /**
+       * ⚔️ EV RİSKE: bu ev bir bahisli düelloda REHİN (escrow) tutuluyorsa
+       * hangi `wagerMatches` satırında olduğunu yazar. Dolu ise ev "kilitli"dir:
+       * bahis sürerken sahibi evi başka bir bahse koyamaz, kaybedilirse
+       * mülkiyet kazanana devredilir (`wagers.finish`). Bahis bitince
+       * temizlenir.
+       */
+      wageredIn: v.optional(v.string()),
       createdAt: v.number(),
       updatedAt: v.number(),
     })
