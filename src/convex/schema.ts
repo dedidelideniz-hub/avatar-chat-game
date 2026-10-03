@@ -159,17 +159,34 @@ const schema = defineSchema(
     // `wagerMatches`e girmez: tek taraflı bir sözleşmedir — oyuncu SP'sini
     // ortaya koyar, bot eşit miktarı "varsayılan" olarak karşılar. Kabul
     // anında SP rehine alınır (`startBotWager`), maç bitince kazanan 2× alır
-    // (`finishBotWager`). Ev bahsi botlara karşı YOKTUR: devredilecek gerçek
-    // bir sahip olmadığı için (tek ev kuralı da bunu gerektirir).
+    // (`finishBotWager`). EV BAHİSİ de mümkündür: karşı tarafın ortaya koyduğu
+    // şey DEĞERSİZ, EŞYASIZ bir evdir (NPC'nin gerçek `houses` satırı yok).
+    // Kazanırsan sana yeni, BOŞ bir ev açılır; TEK EV kuralı gereği zaten bir
+    // evin varsa boş ev yerine SP karşılığı ödenir.
     botWagers: defineTable({
       userId: v.id("users"), // bahsi koyan oyuncu
       botId: v.string(), // cadde botu kimliği (ör. "bot-ada")
       botName: v.string(), // botun görünen adı (anlık görüntü)
       /** Her iki tarafın ortaya koyduğu SP (bot eşitini varsayılan karşılar). */
       goldAmount: v.number(),
+      /**
+       * Karşı taraf (NPC) da bir EV ortaya koydu mu? Yalnızca süren bahiste
+       * anlamlıdır: kaybedersen `lockedHouseId`deki evin gider, kazanırsan
+       * BOŞ bir ev (ya da TEK EV kuralı elvermiyorsa SP karşılığı) alırsın.
+       */
+      wageredHouse: v.optional(v.boolean()),
+      /**
+       * OYUNCUNUN ortaya koyduğu evin satır kimliği. Bahis sürerken kilitli
+       * tutulur (`houses.wageredIn`), bahis bitince kilit çözülür.
+       */
+      lockedHouseId: v.optional(v.id("houses")),
       status: v.union(v.literal("active"), v.literal("completed")),
       /** Maç sonucu (kazandı mı). Berabere/sonuçsuzda boş kalır. */
       won: v.optional(v.boolean()),
+      /** Maç bitince oyuncuya BOŞ EV verildi mi (tek ev kuralı elverdiğinde). */
+      houseAwarded: v.optional(v.boolean()),
+      /** Boş ev verilemediyse yerine ödenen SP (nakde çevrilen ev). */
+      houseGoldValue: v.optional(v.number()),
       createdAt: v.number(),
       updatedAt: v.number(),
     }).index("by_userId", ["userId"]),

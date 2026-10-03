@@ -9,6 +9,11 @@
  *     "X seninle düello yapmak istiyor! Bahis: [500 SP] + [Ev adı]".
  *   · `WagerWaitingBanner` — davet gönderildi, cevap bekleniyor (iptal edilebilir).
  *   · `WagerAnnouncement` — arena başında geçen devasa kırmızı/altın duyuru.
+ *
+ * ⚠️ RAKİP TÜRÜ GÖRÜNMEZ: cadde sakinlerinin bir kısmı istemcide yaşayan
+ * NPC'lerdir, ama form İKİ DURUMDA DA BİREBİR AYNIDIR — başlık, rozet, metin ve
+ * ev bahsi seçeneği aynıdır. Ayrım yalnızca `local` prop'unda (hangi akışın
+ * çağrılacağı) kalır; arayüzde "NPC/bot" diye bir iz yoktur.
  */
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
@@ -50,20 +55,21 @@ export function WagerChallengeSheet({
   myCoins,
   me,
   mySessionId,
-  bot,
+  local,
   onClose,
   onSent,
-  onBotSent,
+  onLocalSent,
 }: {
   opponentName: string;
   myCoins: number;
   me: FighterInfo;
   mySessionId: string;
   /**
-   * BOT RAKİBİ: cadde botları gerçek `users/profiles/houses` satırı değildir —
-   * SP-only ve yerel kabul akışı (`onBotSent`). Verilmezse gerçek oyuncu akışı.
+   * Rakibin `profiles` satırı YOK (cadde sakini) → davet yerel akışla yürür
+   * (`onLocalSent`). ArayüzDE HİÇBİR FARK YOKTUR: yalnızca hangi akışın
+   * çağrılacağını belirler.
    */
-  bot?: { id: string; name: string };
+  local?: boolean;
   onClose: () => void;
   onSent: (info: {
     wagerId: string;
@@ -71,13 +77,20 @@ export function WagerChallengeSheet({
     goldAmount: number;
     houseName?: string;
   }) => void;
-  /** Bot bahsi gönderildi (sunucu çağrısı World'de yapılır). */
-  onBotSent?: (info: { opponentName: string; goldAmount: number }) => void;
+  /** Yerel rakip için bahis gönderildi (sunucu çağrısı World'de yapılır). */
+  onLocalSent?: (info: {
+    opponentName: string;
+    goldAmount: number;
+    houseId?: string;
+    houseName?: string;
+  }) => void;
 }) {
-  // Bot rakibin profil satırı yok: challengeInfo sorgusu atlanır.
+  // Yerel rakibin profil satırı yok; ev bahsi bilgisi de sunucudan gelmez —
+  // `challengeInfo` yalnızca `opponentName`siz çağrılır ve bu durumda karşı
+  // taraf her zaman BOŞ EV sahibi sayılır (bkz. `wagers.challengeInfo`).
   const info = useQuery(
     api.wagers.challengeInfo,
-    bot ? "skip" : { opponentName },
+    local ? {} : { opponentName },
   );
   const createWager = useMutation(api.wagers.create);
   const [gold, setGold] = useState(() =>
@@ -89,32 +102,30 @@ export function WagerChallengeSheet({
   const maxGold = Math.max(0, Math.floor(myCoins));
   const canWagerGold = maxGold >= WAGER_MIN_GOLD;
   // EV BAHİSİ: kaybedilirse ev RAKİBE geçer ve bir karakter iki eve sahip
-  // olamaz (TEK EV kuralı) — bu yüzden rakip EVSİZ olmalı. Botlara karşı ev
-  // bahsi hiç yoktur (devredilecek gerçek sahip yok).
-  const myHouse = bot ? null : (info?.myHouse ?? null);
+  // olamaz (TEK EV kuralı) — bu yüzden rakip EVSİZ olmalı.
+  const myHouse = info?.myHouse ?? null;
   const canWagerHouse =
-    !bot &&
     myHouse !== null &&
     !myHouse.locked &&
     Boolean(info?.opponentCanReceiveHouse);
 
   const handleSend = async () => {
     if (sending) return;
-    const amount = houseOn && !canWagerGold ? 0 : gold;
+    const amount = houseOn ? (canWagerGold ? gold : 0) : gold;
     if (amount <= 0 && !houseOn) {
       toast.error("En az bir bahis (SP veya ev) seçmelisin.");
       return;
     }
     setSending(true);
     try {
-      if (bot) {
-        // Bot bahsi: sunucuda yalnızca SP rehini var; kabul/red World'de.
-        if (amount < WAGER_MIN_GOLD) {
-          toast.error(`En az ${WAGER_MIN_GOLD} SP bahis koyabilirsin.`);
-          return;
-        }
+      if (local) {
         playSound("invite");
-        onBotSent?.({ opponentName: bot.name, goldAmount: amount });
+        onLocalSent?.({
+          opponentName,
+          goldAmount: amount,
+          houseId: houseOn && myHouse ? myHouse.id : undefined,
+          houseName: houseOn && myHouse ? myHouse.name : undefined,
+        });
         return;
       }
       const res = await createWager({
@@ -164,14 +175,9 @@ export function WagerChallengeSheet({
           <div className="min-w-0 flex-1">
             <h2 className="flex items-center gap-2 text-base font-black tracking-wide">
               DÜELLO SÖZLEŞMESİ
-              {bot && (
-                <span className="rounded-full bg-black/30 px-2 py-0.5 text-[9px] font-black tracking-widest text-amber-200">
-                  BOT
-                </span>
-              )}
             </h2>
             <p className="truncate text-[11px] font-semibold text-amber-100/80">
-              {opponentName} {bot ? "botuna" : "oyuncusuna"} meydan okuyorsun
+              {opponentName} oyuncusuna meydan okuyorsun
             </p>
           </div>
           <button
@@ -223,16 +229,7 @@ export function WagerChallengeSheet({
             )}
           </section>
 
-          {/* ── b) EV BAHİSİ (yalnızca gerçek oyuncular) ── */}
-          {bot ? (
-            <section className="rounded-2xl border border-amber-400/20 bg-black/25 p-3.5">
-              <p className="flex items-start gap-2 text-[11px] font-bold text-amber-200/80">
-                <Home className="mt-0.5 size-4 shrink-0 text-amber-300/70" />
-                Botların evleri genelde BOŞ EV'dir ve devredilecek gerçek bir
-                sahibi yoktur — botlara karşı yalnızca SP bahsi konur.
-              </p>
-            </section>
-          ) : (
+          {/* ── b) EV BAHİSİ (iki taraf da ev sahibi olacaksa aktif) ── */}
           <section className="rounded-2xl border border-amber-400/25 bg-black/25 p-3.5">
             <label className="flex cursor-pointer items-start gap-3">
               <input
@@ -266,7 +263,6 @@ export function WagerChallengeSheet({
               </p>
             )}
           </section>
-          )}
 
           {/* Özet */}
           <div className="flex items-center gap-2 rounded-xl bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100">

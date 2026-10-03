@@ -271,18 +271,23 @@ export const create = mutation({
 
 /**
  * Meydan okuma formu için bilgi: benim iddiaya koyabileceğim ev + rakibin
- * evi var mı (ev bahsi ancak iki taraf da ev sahibiyse anlamlı).
+ * evi var mı (ev bahsi ancak iki taraf da ev sahibi olacaksa anlamlı).
+ *
+ * `opponentName` verilmezse rakip bir `profiles` satırı olmayan cadde
+ * sakini sayılır: karşı taraf her zaman BOŞ EV sahibi kabul edilir.
  */
 export const challengeInfo = query({
-  args: { opponentName: v.string() },
+  args: { opponentName: v.optional(v.string()) },
   handler: async (ctx, { opponentName }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) return null;
     const myHouse = await houseOf(ctx, userId);
-    const opp = await ctx.db
-      .query("profiles")
-      .withIndex("by_username", (q) => q.eq("username", opponentName.trim()))
-      .first();
+    const opp = opponentName
+      ? await ctx.db
+          .query("profiles")
+          .withIndex("by_username", (q) => q.eq("username", opponentName.trim()))
+          .first()
+      : null;
     const oppHouse = opp ? await houseOf(ctx, opp.userId) : null;
     return {
       myHouse:
@@ -295,7 +300,8 @@ export const challengeInfo = query({
             },
       /**
        * Rakip EVSİZ mi? Ev bahsi yalnızca o zaman konabilir: kazanan evi alır
-       * ve bir karakter iki eve sahip olamaz (TEK EV kuralı).
+       * ve bir karakter iki eve sahip olamaz (TEK EV kuralı). Ad verilmeyen
+       * (cadde sakini) rakip her zaman evsiz sayılır.
        */
       opponentCanReceiveHouse: oppHouse === null,
     };
@@ -584,16 +590,27 @@ export const finish = mutation({
 /* ─────────────────────────────────────────────────────────────
    BOTLARA KARŞI BAHİSLİ DÜELLO (yerel NPC — tek taraflı sözleşme)
 
-   Cadde botları gerçek birer `users/profiles/houses` satırı DEĞİLDİR; yalnızca
-   istemcide yaşayan NPC'lerdir. Bu yüzden davet/kabul/karşı-rehin akışı yok:
-   oyuncu SP'sini rehine koyar (`startBotWager`), bot eşit miktarı "varsayılan"
-   olarak karşılar. Maç bitince kazanan 2× alır (`finishBotWager`). Botlara
-   karşı EV bahsi YOKTUR — devredilecek gerçek bir sahip olmadığı gibi TEK EV
-   kuralı da bunu gerektirir.
+   Cadde sakini NPC'ler gerçek birer `users/profiles/houses` satırı DEĞİLDİR;
+   yalnızca istemcide yaşarlar. Bu yüzden davet/kabul/karşı-rehin akışı yok:
+   oyuncu SP'sini (ve isterse evini) rehine koyar (`startBotWager`), karşı taraf
+   eşit miktarı "varsayılan" olarak karşılar. Maç bitince kazanan 2× alır
+   (`finishBotWager`).
+
+   EV BAHİSİ (BOŞ EV): rakip de bir ev ortaya koyabilir. Gerçek bir `houses`
+   satırı olmadığı için iddia edilen şey DEĞERSİZ, EŞYASIZ bir evdir — kazanınca
+   oyuncuya yeni, BOŞ bir ev açılır. TEK EV kuralı gereği oyuncunun zaten bir
+   evi varsa ikinci ev verilemez; boş ev nakde çevrilip SP olarak ödenir.
    ───────────────────────────────────────────────────────────── */
 
-/** Botun adı kayda en fazla bu uzunlukta yazılır. */
+/** Sakine adı kayda en fazla bu uzunlukta yazılır. */
 const BOT_NAME_MAX = 24;
+/**
+ * KARŞI TARAFIN ORTAYA KOYDUĞU BOŞ EVİN SP KARŞILIĞI.
+ *
+ * Rakibin gerçek `houses` satırı yoktur; kazanan oyuncunun TEK EV kuralı
+ * gereği zaten bir evi varsa boş ev verilemez ve bu tutar SP olarak ödenir.
+ */
+export const BOT_HOUSE_VALUE = 1000;
 
 /**
  * BOT BAHİS SÖZLEŞMESİNİ AÇ — SP'yi rehine al ve `active` satır aç.
@@ -607,11 +624,18 @@ export const startBotWager = mutation({
     botId: v.string(),
     botName: v.string(),
     goldAmount: v.number(),
+    /** Ortaya konan evin satır kimliği (isteğe bağlı). */
+    wageredHouseId: v.optional(v.id("houses")),
   },
-  handler: async (ctx, { botId, botName, goldAmount }) => {
+  handler: async (ctx, { botId, botName, goldAmount, wageredHouseId }) => {
     const { userId, profile } = await requireProfile(ctx);
     const gold = normalizeGold(goldAmount);
-    if (gold < MIN_GOLD) {
+    const house =
+      wageredHouseId === undefined ? null : await ctx.db.get(wageredHouseId);
+    if (house !== null && (house.userId !== userId || house.wageredIn)) {
+      throw new Error("Bu evi iddiaya koyamazsın.");
+    }
+    if (gold < MIN_GOLD && house === null) {
       throw new Error(`En az ${MIN_GOLD} SP bahis koyabilirsin.`);
     }
     const coins = profile.coins ?? STARTING_COINS;
@@ -629,31 +653,54 @@ export const startBotWager = mutation({
     for (const row of mine) {
       if (row.status !== "active") continue;
       await creditGold(ctx, userId, row.goldAmount);
+      // Eski bahiste rehin tutulan evin kilidini de çöz.
+      if (row.lockedHouseId !== undefined) {
+        const locked = await ctx.db.get(row.lockedHouseId);
+        if (locked !== null && locked.wageredIn) {
+          await ctx.db.patch(locked._id, {
+            wageredIn: undefined,
+            updatedAt: Date.now(),
+          });
+        }
+      }
       await ctx.db.patch(row._id, {
         status: "completed",
         won: undefined,
+        lockedHouseId: undefined,
         updatedAt: Date.now(),
       });
     }
 
-    await debitGold(ctx, userId, gold);
+    if (gold > 0) await debitGold(ctx, userId, gold);
+    if (house !== null) {
+      await ctx.db.patch(house._id, {
+        wageredIn: "bot-wager",
+        updatedAt: Date.now(),
+      });
+    }
     const now = Date.now();
     const botWagerId = await ctx.db.insert("botWagers", {
       userId,
       botId: botId.slice(0, 40),
-      botName: botName.trim().slice(0, BOT_NAME_MAX) || "Bot",
+      botName: botName.trim().slice(0, BOT_NAME_MAX) || "Rakip",
       goldAmount: gold,
+      // Karşı taraf her zaman BOŞ (değersiz) bir ev ortaya koyar.
+      wageredHouse: true,
+      lockedHouseId: house?._id,
       status: "active",
       createdAt: now,
       updatedAt: now,
     });
-    return { botWagerId };
+    return { botWagerId, wageredHouse: true, lockedHouseId: house?._id };
   },
 });
 
 /**
- * BOT BAHİSİNİ KAPAT — kazandıysan 2× ödeme, kaybettiysen rehin gider.
- * İdempotent: yalnızca `active` → `completed` geçer; ikinci çağrı boş döner.
+ * BOT BAHİSİNİ KAPAT — kazandıysan 2× ödeme + BOŞ EV, kaybettiysen rehin gider.
+ *
+ * TEK EV KURALI: kazananın zaten bir evi varsa ikinci bir eve sahip olamaz;
+ * bu durumda boş ev yerine SP karşılığı (`BOT_HOUSE_VALUE`) ödenir. İdempotent:
+ * yalnızca `active` → `completed` geçer; ikinci çağrı boş döner.
  */
 export const finishBotWager = mutation({
   args: { botWagerId: v.id("botWagers"), won: v.boolean() },
@@ -661,14 +708,78 @@ export const finishBotWager = mutation({
     const { userId } = await requireProfile(ctx);
     const row = await ctx.db.get(botWagerId);
     if (!row || row.userId !== userId || row.status !== "active") return null;
+
+    // 1) Rehin alınan evin kilidini çöz (kazan da kaybet de — her hâlükârda).
+    if (row.lockedHouseId !== undefined) {
+      const locked = await ctx.db.get(row.lockedHouseId);
+      if (locked !== null && locked.wageredIn) {
+        await ctx.db.patch(locked._id, {
+          wageredIn: undefined,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    // 2) SP ÖDEMESİ: kazanan 2× alır.
     const payout = won ? row.goldAmount * 2 : 0;
-    if (won) await creditGold(ctx, userId, payout);
+    if (payout > 0) await creditGold(ctx, userId, payout);
+
+    // 3) BOŞ EV: kaybedersen evini kaybedersin (satır silinir; eşyalar `userId`
+    //    ile tutulduğu için dolabın durur), kazanırsan boş bir ev açılır.
+    let houseAwarded = false;
+    let houseGoldValue = 0;
+    if (!won && row.lockedHouseId !== undefined) {
+      const locked = await ctx.db.get(row.lockedHouseId);
+      if (locked !== null && locked.userId === userId) {
+        await ctx.db.delete(locked._id);
+      }
+    } else if (won && row.wageredHouse) {
+      const owned = await ctx.db
+        .query("houses")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .collect();
+      if (owned.length === 0) {
+        const ownerName =
+          (
+            await ctx.db
+              .query("profiles")
+              .withIndex("by_userId", (q) => q.eq("userId", userId))
+              .first()
+          )?.username ?? "Oyuncu";
+        const now = Date.now();
+        const rowId = await ctx.db.insert("houses", {
+          userId,
+          ownerName,
+          name: `${ownerName} Odası`,
+          visits: 1,
+          visitors: [],
+          createdAt: now,
+          updatedAt: now,
+        });
+        await ctx.db.patch(rowId, { roomId: `room_${rowId}` });
+        houseAwarded = true;
+      } else {
+        // TEK EV kuralı: ikinci ev verilemez → boş ev SP'ye çevrilir.
+        houseGoldValue = BOT_HOUSE_VALUE;
+        await creditGold(ctx, userId, houseGoldValue);
+      }
+    }
+
     await ctx.db.patch(botWagerId, {
       status: "completed",
       won,
+      lockedHouseId: undefined,
+      houseAwarded,
+      houseGoldValue: houseGoldValue > 0 ? houseGoldValue : undefined,
       updatedAt: Date.now(),
     });
-    return { won, payout, stake: row.goldAmount };
+    return {
+      won,
+      payout,
+      stake: row.goldAmount,
+      houseAwarded,
+      houseGoldValue,
+    };
   },
 });
 
@@ -691,8 +802,19 @@ export const refundBotWagers = mutation({
     for (const row of rows) {
       if (row.status !== "active") continue;
       await creditGold(ctx, userId, row.goldAmount);
+      // Rehin tutulan evin kilidini de çöz (askıda kilit kalmasın).
+      if (row.lockedHouseId !== undefined) {
+        const locked = await ctx.db.get(row.lockedHouseId);
+        if (locked !== null && locked.wageredIn) {
+          await ctx.db.patch(locked._id, {
+            wageredIn: undefined,
+            updatedAt: Date.now(),
+          });
+        }
+      }
       await ctx.db.patch(row._id, {
         status: "completed",
+        lockedHouseId: undefined,
         updatedAt: Date.now(),
       });
       refunded += 1;
