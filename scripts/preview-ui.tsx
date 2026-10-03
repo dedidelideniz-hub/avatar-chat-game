@@ -1023,9 +1023,9 @@ const scenarios: Scenario[] = [
   {
     id: "bahisli-duello",
     title:
-      "⚔️ BAHİSLİ DÜELLO · SP/ev rehini, meydan okuma bildirimi, arena duyurusu",
+      "⚔️ BAHİSLİ DÜELLO · SP/ev rehini, bot bahsi, tek ev kuralı, arena duyurusu",
     handles:
-      "convex/schema.ts + convex/wagers.ts + components/world/WagerSheet.tsx + World.tsx",
+      "convex/schema.ts + convex/{wagers,houses}.ts + components/world/WagerSheet.tsx + World.tsx",
     run: async () => {
       const { readFileSync } = await import("node:fs");
       const read = (path: string) =>
@@ -1106,10 +1106,48 @@ const scenarios: Scenario[] = [
             /Evini İddiaya Koy/.test(sheet),
         ),
         check(
-          "ev bahsi İKİ TARAF DA ev sahibiyse açılır (sözleşme şartı)",
+          "ev bahsi yalnızca EVSİZ rakibe konur (create/accept/finish doğrular)",
           /canWagerHouse =/.test(sheet) &&
-            /opponentHasHouse/.test(sheet) &&
-            /export const challengeInfo = query/.test(wagers),
+            /opponentCanReceiveHouse/.test(sheet) &&
+            /export const challengeInfo = query/.test(wagers) &&
+            /Zaten bir evin var/.test(wagers),
+        ),
+        check(
+          "TEK EV kuralı: karakter en fazla bir eve sahip olabilir",
+          /MAX_HOUSES_PER_USER = 1/.test(read("../src/convex/houses.ts")) &&
+            /winnerHouse === null \|\| winnerHouse\._id === house\._id/.test(
+              wagers,
+            ) &&
+            /Rakibin zaten bir evi var/.test(wagers),
+        ),
+        check(
+          "botlar için bahis backend'i: rehin + 2× ödeme + iade",
+          /botWagers: defineTable\(/.test(schema) &&
+            /export const startBotWager = mutation/.test(wagers) &&
+            /export const finishBotWager = mutation/.test(wagers) &&
+            /row\.goldAmount \* 2/.test(wagers) &&
+            /export const refundBotWagers = mutation/.test(wagers),
+        ),
+        check(
+          "bot meydan okuma formu: BOT rozeti + 'BOŞ EV' notu + SP-only",
+          /bot\?: \{ id: string; name: string \}/.test(sheet) &&
+            /onBotSent\?:/.test(sheet) &&
+            /BOŞ EV/.test(sheet) &&
+            />\s*BOT\s*</.test(sheet),
+        ),
+        check(
+          "World: 'Meydan Oku' gerçek oyuncu yoksa EN YAKIN BOTA düşer",
+          /handleBotWagerSent/.test(world) &&
+            /openBotWagerChallenge/.test(world) &&
+            /startBotWager\(/.test(world) &&
+            /finishBotWager\(/.test(world) &&
+            /botBest/.test(world) &&
+            /refundBotWagers/.test(world),
+        ),
+        check(
+          "bot profil kartında 'Bahisli Meydan Oku' + '🏚️ Boş Ev' rozeti",
+          /openBotWagerChallenge\(viewedBot\)/.test(world) &&
+            /🏚️ Boş Ev/.test(world),
         ),
         check(
           "gelen davet şık pop-up: 'seninle düello yapmak istiyor' + bahis etiketleri",

@@ -1087,6 +1087,11 @@ export default function World() {
   const declineWager = useMutation(api.wagers.decline);
   const cancelWager = useMutation(api.wagers.cancel);
   const finishWager = useMutation(api.wagers.finish);
+  // ⚔️ BOT BAHİSİ: cadde botları gerçek profil satırı olmadığı için SP-only,
+  // yerel kabul akışı + sunucuda rehin/ödeme (bkz. `convex/wagers.ts`).
+  const startBotWager = useMutation(api.wagers.startBotWager);
+  const finishBotWager = useMutation(api.wagers.finishBotWager);
+  const refundBotWagers = useMutation(api.wagers.refundBotWagers);
 
   // Visual Debug toggle — Ctrl+Shift+D
   useEffect(() => {
@@ -1289,6 +1294,8 @@ export default function World() {
     opponentLevel: number;
     playerAbility: string;
     opponentAbility: string;
+    /** Bahisli bot düellosu ise özet — arena duyurusunu tetikler. */
+    highStakes?: { summary: string };
   } | null>(null);
   const battleRef = useRef(battle);
   battleRef.current = battle;
@@ -1329,14 +1336,29 @@ export default function World() {
   // Arena başında birkaç saniye görünen "yüksek bahis" duyurusu.
   const [wagerAnnounce, setWagerAnnounce] = useState(false);
   useEffect(() => {
-    if (!pvpBattle?.highStakes) {
+    if (!pvpBattle?.highStakes && !battle?.highStakes) {
       setWagerAnnounce(false);
       return;
     }
     setWagerAnnounce(true);
     const id = window.setTimeout(() => setWagerAnnounce(false), 4500);
     return () => window.clearTimeout(id);
-  }, [pvpBattle?.highStakes]);
+  }, [pvpBattle?.highStakes, battle?.highStakes]);
+  // ⚔️ BOT BAHİSİ: form, botun cevap bekleyişi ve aktif bahis (ödeme için).
+  const [botWagerChallenge, setBotWagerChallenge] = useState<{
+    bot: BotDef;
+  } | null>(null);
+  const [botWagerPending, setBotWagerPending] = useState<{
+    botId: string;
+    botName: string;
+    summary: string;
+  } | null>(null);
+  const [activeBotWager, setActiveBotWager] = useState<{
+    botWagerId: string;
+    summary: string;
+  } | null>(null);
+  const activeBotWagerRef = useRef(activeBotWager);
+  activeBotWagerRef.current = activeBotWager;
   const pvpBattleRef = useRef(pvpBattle);
   pvpBattleRef.current = pvpBattle;
 
@@ -1647,6 +1669,16 @@ export default function World() {
       setWagerPending(null);
     }
   }, [pendingWagerDoc, wagerPending]);
+
+  // ⚔️ Sayfa yenilenince yarıda kalan bot bahsi rehini iade edilir
+  // (idempotent — aktif bahis yoksa hiçbir şey yapmaz). Yalnızca BİR kez:
+  // süren maçın rehini yeniden bağlanma yüzünden iade edilmesin.
+  const botWagerRefundedRef = useRef(false);
+  useEffect(() => {
+    if (botWagerRefundedRef.current) return;
+    botWagerRefundedRef.current = true;
+    void refundBotWagers().catch(() => {});
+  }, [refundBotWagers]);
 
   // Challenger side: watch the fight document — it flips to "fighting" when
   // the opponent accepts, or "done" if they decline / the invite expires.
@@ -2891,7 +2923,27 @@ export default function World() {
   /** Close the arena and (on victory) credit the SP reward. */
   const endBattle = useCallback(
     async (victory: boolean) => {
-      if (victory) {
+      // ⚔️ Bahisli BOT düellosu: ödül standart +150 yerine BAHİSTEN gelir —
+      // kazanırsan 2× SP, kaybedersen ortaya koyduğun SP gider.
+      const wager = activeBotWagerRef.current;
+      if (wager) {
+        try {
+          const res = await finishBotWager({
+            botWagerId: wager.botWagerId as Id<"botWagers">,
+            won: victory,
+          });
+          if (victory) {
+            toast.success(
+              `🏆 Dev kazanç! +${formatCoins(res?.payout ?? 0)} SP — bahis: ${wager.summary}`,
+            );
+          } else {
+            toast.info(`Bahsi kaybettin — ${wager.summary} gitti. 😬`);
+          }
+        } catch (error) {
+          console.error("Bot bahsi ödeme hatası:", error);
+        }
+        setActiveBotWager(null);
+      } else if (victory) {
         try {
           const newCoins = await battleVictory();
           toast.success(
@@ -2908,7 +2960,7 @@ export default function World() {
       }
       setBattle(null);
     },
-    [battleVictory],
+    [battleVictory, finishBotWager],
   );
 
   /** Challenge a real player (from their street profile card) to a PvP duel. */
@@ -2974,13 +3026,90 @@ export default function World() {
     [pvpBattle, pvpChallenge, battle, wagerPending],
   );
 
+  /** ⚔️ Bahis sözleşmesi formunu BOT için aç (yakında gerçek oyuncu yoksa). */
+  const openBotWagerChallenge = useCallback(
+    (bot: BotDef) => {
+      if (pvpBattle || pvpChallenge || battle || wagerPending || botWagerPending)
+        return;
+      playSound("click");
+      setBotWagerChallenge({ bot });
+      setViewing(null);
+    },
+    [pvpBattle, pvpChallenge, battle, wagerPending, botWagerPending],
+  );
+
+  /**
+   * ⚔️ BOT BAHİS AKIŞI: bot bir an "düşünür", sonra kabul/red eder. Kabulde
+   * SP rehine alınır (`startBotWager`) ve bahisli bot arenası açılır. Botların
+   * gerçek bir evi/sahibi olmadığı için yalnızca SP bahsi oynanır.
+   */
+  const handleBotWagerSent = useCallback(
+    (info: { opponentName: string; goldAmount: number }) => {
+      const bot = botWagerChallenge?.bot;
+      setBotWagerChallenge(null);
+      if (!bot) return;
+      const summary = describeWager(info.goldAmount);
+      setBotWagerPending({ botId: bot.id, botName: bot.name, summary });
+      window.setTimeout(() => {
+        setBotWagerPending(null);
+        if (Math.random() < 0.25) {
+          playSound("decline");
+          appendMessage({
+            id: `local-${nextIdRef.current++}`,
+            from: bot.name,
+            text: "Bu bahsi almıyorum, kusura bakma! 😅",
+            color: bot.color,
+          });
+          toast.info(`${bot.name} bahisli düelloyu reddetti.`);
+          return;
+        }
+        void (async () => {
+          try {
+            const res = await startBotWager({
+              botId: bot.id,
+              botName: bot.name,
+              goldAmount: info.goldAmount,
+            });
+            playSound("vs");
+            setActiveBotWager({
+              botWagerId: res.botWagerId as string,
+              summary,
+            });
+            appendMessage({
+              id: `local-${nextIdRef.current++}`,
+              from: bot.name,
+              text: `Bahis kabul! ${summary} ortada — kazanan hepsini alır! ⚔️💰`,
+              color: bot.color,
+            });
+            setBattle({
+              opponent: bot,
+              opponentLevel: bot.level,
+              playerAbility: equippedAbility,
+              opponentAbility: bot.ability,
+              highStakes: { summary },
+            });
+            setViewing(null);
+            setAbilitiesOpen(false);
+          } catch (error) {
+            console.error("Bot bahsi hatası:", error);
+            toast.error(
+              error instanceof Error ? error.message : "Bahis başlatılamadı.",
+            );
+          }
+        })();
+      }, 1400 + Math.random() * 1200);
+    },
+    [botWagerChallenge, startBotWager, equippedAbility, appendMessage],
+  );
+
   /**
    * ⚔️ ARENA "Meydan Oku": caddede en yakın gerçek oyuncuya bahisli düello
    * sözleşmesi aç. Yakında kimse yoksa uyarır (rakip seçmek için profiline
    * dokunmak da aynı formu açar).
    */
   const handleArenaChallenge = useCallback(() => {
-    if (pvpBattle || pvpChallenge || battle || wagerPending) return;
+    if (pvpBattle || pvpChallenge || battle || wagerPending || botWagerPending)
+      return;
     const me = posRef.current;
     let best: { name: string; dist: number } | null = null;
     for (const o of othersRef.current) {
@@ -2989,15 +3118,36 @@ export default function World() {
       const dist = Math.hypot(d.x - me.x, d.y - me.y);
       if (!best || dist < best.dist) best = { name: d.name, dist };
     }
-    if (!best) {
-      playSound("error");
-      toast.info(
-        "Yakında gerçek bir oyuncu yok — birinin profiline dokunup meydan okuyabilirsin.",
-      );
+    if (best) {
+      openWagerChallenge(best.name);
       return;
     }
-    openWagerChallenge(best.name);
-  }, [pvpBattle, pvpChallenge, battle, wagerPending, openWagerChallenge]);
+    // Yakında GERÇEK oyuncu yok → caddenin bot sakinleri de bahse girebilir:
+    // en yakın (satıcı olmayan) botla bahisli düello formu açılır.
+    let botBest: { bot: BotDef; dist: number } | null = null;
+    for (const b of botsRef.current) {
+      const def = b.def;
+      // Satıcı NPC'ler (level'sız) bahse girmez; tip daraltması da burada.
+      if (def.isVendor || !("level" in def)) continue;
+      const dist = Math.hypot(b.pos.x - me.x, b.pos.y - me.y);
+      if (!botBest || dist < botBest.dist) botBest = { bot: def, dist };
+    }
+    if (!botBest) {
+      playSound("error");
+      toast.info("Etrafta meydan okuyacak kimse yok.");
+      return;
+    }
+    toast.info(`${botBest.bot.name} ile bahisli düelloya hazırlan! 💰`);
+    openBotWagerChallenge(botBest.bot);
+  }, [
+    pvpBattle,
+    pvpChallenge,
+    battle,
+    wagerPending,
+    botWagerPending,
+    openWagerChallenge,
+    openBotWagerChallenge,
+  ]);
 
   /** Bahis daveti gönderildi — bekleyiş şeridini kur. */
   const handleWagerSent = useCallback(
@@ -3683,6 +3833,10 @@ export default function World() {
                         {abilityOf(viewedBot.ability).emoji}{" "}
                         {abilityOf(viewedBot.ability).name}
                       </span>
+                      {/* Botların evleri genelde BOŞ EV'dir (eşyalı değil). */}
+                      <span className="rounded-full bg-stone-500/15 px-2.5 py-1 text-xs font-extrabold text-stone-600">
+                        🏚️ Boş Ev
+                      </span>
                     </>
                   }
                   action={
@@ -3701,13 +3855,24 @@ export default function World() {
                         Savaşı reddetti 😔
                       </p>
                     ) : (
-                      <Button
-                        size="sm"
-                        className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
-                        onClick={() => handleInvite(viewedBot)}
-                      >
-                        <Swords className="size-4" /> Savaşa Davet Et
-                      </Button>
+                      <div className="flex w-full flex-col gap-2">
+                        <Button
+                          size="sm"
+                          className="w-full rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow hover:from-orange-400 hover:to-rose-400"
+                          onClick={() => handleInvite(viewedBot)}
+                        >
+                          <Swords className="size-4" /> Savaşa Davet Et
+                        </Button>
+                        {/* ⚔️ Botlara karşı bahis: yakında gerçek oyuncu yokken
+                            de SP'yi ortaya koyabilirsin. */}
+                        <Button
+                          size="sm"
+                          className="w-full rounded-full bg-gradient-to-r from-red-600 to-amber-500 font-black text-white shadow hover:from-red-500 hover:to-amber-400"
+                          onClick={() => openBotWagerChallenge(viewedBot)}
+                        >
+                          💰 Bahisli Meydan Oku
+                        </Button>
+                      </div>
                     )
                   }
                   onClose={() => setViewing(null)}
@@ -3787,6 +3952,17 @@ export default function World() {
                 name={wagerPending.name}
                 summary={wagerPending.summary}
                 onCancel={handleCancelWager}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* ⚔️ BOT bahsi: bot cevap veriyor (henüz rehin yok). */}
+          <AnimatePresence>
+            {botWagerPending && !battle && (
+              <WagerWaitingBanner
+                name={botWagerPending.botName}
+                summary={botWagerPending.summary}
+                onCancel={() => setBotWagerPending(null)}
               />
             )}
           </AnimatePresence>
@@ -4222,6 +4398,27 @@ export default function World() {
             }}
             onClose={() => setWagerChallenge(null)}
             onSent={handleWagerSent}
+          />
+        )}
+        {botWagerChallenge && (
+          <WagerChallengeSheet
+            key="bot-wager-challenge"
+            opponentName={botWagerChallenge.bot.name}
+            myCoins={coins}
+            mySessionId={sessionId}
+            me={{
+              name: username,
+              config,
+              equipped,
+              ability: equippedAbility,
+            }}
+            bot={{
+              id: botWagerChallenge.bot.id,
+              name: botWagerChallenge.bot.name,
+            }}
+            onClose={() => setBotWagerChallenge(null)}
+            onSent={() => {}}
+            onBotSent={handleBotWagerSent}
           />
         )}
         {abilitiesOpen && (

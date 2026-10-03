@@ -152,6 +152,28 @@ const schema = defineSchema(
       .index("by_challengerId", ["challengerId"])
       .index("by_status", ["status"]),
 
+    // ⚔️ BOT BAHİSLİ DÜELLOSU (yerel NPC'lere karşı yüksek risk).
+    //
+    // Cadde botları GERÇEK birer oyuncu satırı değildir (profiles/houses yok,
+    // yalnızca istemcide yaşayan NPC'ler). Bu yüzden botlara karşı bahis
+    // `wagerMatches`e girmez: tek taraflı bir sözleşmedir — oyuncu SP'sini
+    // ortaya koyar, bot eşit miktarı "varsayılan" olarak karşılar. Kabul
+    // anında SP rehine alınır (`startBotWager`), maç bitince kazanan 2× alır
+    // (`finishBotWager`). Ev bahsi botlara karşı YOKTUR: devredilecek gerçek
+    // bir sahip olmadığı için (tek ev kuralı da bunu gerektirir).
+    botWagers: defineTable({
+      userId: v.id("users"), // bahsi koyan oyuncu
+      botId: v.string(), // cadde botu kimliği (ör. "bot-ada")
+      botName: v.string(), // botun görünen adı (anlık görüntü)
+      /** Her iki tarafın ortaya koyduğu SP (bot eşitini varsayılan karşılar). */
+      goldAmount: v.number(),
+      status: v.union(v.literal("active"), v.literal("completed")),
+      /** Maç sonucu (kazandı mı). Berabere/sonuçsuzda boş kalır. */
+      won: v.optional(v.boolean()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_userId", ["userId"]),
+
     // Public street chat — every message is broadcast to everyone in the
     // same room ("world" for the main street). Kept separate from `presence`
     // because presence rows are replaced on every publish; chat is append-only.

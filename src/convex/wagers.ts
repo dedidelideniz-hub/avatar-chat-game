@@ -14,10 +14,21 @@
  *      evin `userId`si kazanana yazılır (MÜLKİYET DEVRİ). Global feed'e duyuru
  *      düşülür.
  *
+ * BOTLARA KARŞI BAHİS: cadde botları gerçek oyuncu satırı DEĞİLDİR (profiles/
+ * houses yok). Bu yüzden bot düellosu tek taraflı bir sözleşmedir:
+ * `startBotWager` oyuncunun SP'sini rehine alır, `finishBotWager` kazanınca
+ * 2× öder. Botlara karşı EV bahsi yoktur — devredilecek gerçek bir sahip
+ * olmadığı gibi TEK EV kuralı da bunu gerektirir.
+ *
  * SUNUCU HER ŞEYİ DOĞRULAR (istemciye güvenilmez): tutarlar tamsayı ve
  * `MIN_GOLD`…kasa aralığında; ev gerçekten bahsi koyanın; kabul anında bakiye
  * ve sahiplik yeniden kontrol edilir; `finish` idempotenttir (iki telefon da
  * çağırsa tek sefer ödenir).
+ *
+ * TEK EV KURALI: bir karakter en fazla BİR eve sahip olabilir. Ev bahsi
+ * kaybedildiğinde mülkiyet kazanana geçer; bunun ikinci bir ev yaratmaması için
+ * iddiayı kabul eden taraf EVSİZ olmalıdır (create + accept + finish üçünde de
+ * doğrulanır).
  */
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
@@ -205,10 +216,14 @@ export const create = mutation({
       if (house.wageredIn) {
         throw new Error("Bu ev zaten süren bir bahiste rehin.");
       }
+      // TEK EV KURALI: ev bahsi kaybedilirse iddiaya konan ev KAZANANA geçer.
+      // Bir karakter iki eve sahip olamayacağı için rakip henüz EVSİZ olmalı —
+      // yoksa kazanınca elinde iki ev olurdu. (UI de onay kutusunu yalnızca
+      // rakip evsizken açar; bkz. `challengeInfo`.)
       const targetHouse = await houseOf(ctx, target.userId);
-      if (targetHouse === null) {
+      if (targetHouse !== null) {
         throw new Error(
-          "Rakibin henüz bir evi yok — ev bahsi için iki taraf da ev sahibi olmalı.",
+          "Rakibin zaten bir evi var — bir karakter en fazla BİR eve sahip olabilir, ev bahsi yalnızca evsiz bir rakibe konabilir.",
         );
       }
       wageredHouse = house;
@@ -278,7 +293,11 @@ export const challengeInfo = query({
               name: myHouse.name,
               locked: Boolean(myHouse.wageredIn),
             },
-      opponentHasHouse: oppHouse !== null,
+      /**
+       * Rakip EVSİZ mi? Ev bahsi yalnızca o zaman konabilir: kazanan evi alır
+       * ve bir karakter iki eve sahip olamaz (TEK EV kuralı).
+       */
+      opponentCanReceiveHouse: oppHouse === null,
     };
   },
 });
@@ -370,8 +389,15 @@ export const accept = mutation({
       }
     }
 
-    // 2) EV DOĞRULAMASI: ev hâlâ bahsi koyanın elinde ve kilitsiz mi?
+    // 2) EV DOĞRULAMASI: kabul eden EVSİZ olmalı (kazanırsa ev ona geçecek) ve
+    //    iddiaya konan ev hâlâ bahsi koyanın elinde, kilitsiz olmalı.
     if (wager.wageredHouseId !== undefined) {
+      const myHouse = await houseOf(ctx, userId);
+      if (myHouse !== null) {
+        throw new Error(
+          "Zaten bir evin var — kazansan bile ikinci bir eve sahip olamazsın.",
+        );
+      }
       const house = await ctx.db.get(wager.wageredHouseId);
       if (house === null || house.userId !== wager.challengerId) {
         throw new Error("İddiaya konan ev artık rakibin elinde değil.");
@@ -489,7 +515,18 @@ export const finish = mutation({
     if (wager.wageredHouseId !== undefined) {
       const house = await ctx.db.get(wager.wageredHouseId);
       if (house !== null) {
-        if (decisive && winnerId && house.userId !== winnerId) {
+        // TEK EV: kazananın elinde zaten BAŞKA bir ev varsa devir yapılmaz —
+        // bir karakter iki eve sahip olamaz. (Normalde kabul anında rakip
+        // evsiz doğrulanır; bu yalnızca maç sırasında ev edinen uç durumu
+        // kapatır.) Ev eski sahibinde kalır, yalnızca kilit açılır.
+        const winnerHouse =
+          decisive && winnerId ? await houseOf(ctx, winnerId) : null;
+        const canTransfer =
+          decisive &&
+          winnerId &&
+          house.userId !== winnerId &&
+          (winnerHouse === null || winnerHouse._id === house._id);
+        if (canTransfer && winnerId) {
           const newOwnerName = await ctx.db
             .query("profiles")
             .withIndex("by_userId", (q) => q.eq("userId", winnerId))
@@ -541,5 +578,125 @@ export const finish = mutation({
       }
     }
     return { ok: true };
+  },
+});
+
+/* ─────────────────────────────────────────────────────────────
+   BOTLARA KARŞI BAHİSLİ DÜELLO (yerel NPC — tek taraflı sözleşme)
+
+   Cadde botları gerçek birer `users/profiles/houses` satırı DEĞİLDİR; yalnızca
+   istemcide yaşayan NPC'lerdir. Bu yüzden davet/kabul/karşı-rehin akışı yok:
+   oyuncu SP'sini rehine koyar (`startBotWager`), bot eşit miktarı "varsayılan"
+   olarak karşılar. Maç bitince kazanan 2× alır (`finishBotWager`). Botlara
+   karşı EV bahsi YOKTUR — devredilecek gerçek bir sahip olmadığı gibi TEK EV
+   kuralı da bunu gerektirir.
+   ───────────────────────────────────────────────────────────── */
+
+/** Botun adı kayda en fazla bu uzunlukta yazılır. */
+const BOT_NAME_MAX = 24;
+
+/**
+ * BOT BAHİS SÖZLEŞMESİNİ AÇ — SP'yi rehine al ve `active` satır aç.
+ *
+ * Aynı oyuncunun önceki `active` bahsi varsa (ör. sayfa yenilendi, maç yarıda
+ * kaldı) önce o iade edilir; sonra yeni bahis rehine alınır. Böylece aynı anda
+ * TEK aktif bot bahsi olur ve rehin asla askıda kalmaz.
+ */
+export const startBotWager = mutation({
+  args: {
+    botId: v.string(),
+    botName: v.string(),
+    goldAmount: v.number(),
+  },
+  handler: async (ctx, { botId, botName, goldAmount }) => {
+    const { userId, profile } = await requireProfile(ctx);
+    const gold = normalizeGold(goldAmount);
+    if (gold < MIN_GOLD) {
+      throw new Error(`En az ${MIN_GOLD} SP bahis koyabilirsin.`);
+    }
+    const coins = profile.coins ?? STARTING_COINS;
+    if (gold > coins) {
+      throw new Error(
+        `Kasanda ${coins} SP var — ${gold} SP bahis koyamazsın.`,
+      );
+    }
+
+    // Askıda kalan eski aktif bahisleri iade et (idempotent).
+    const mine = await ctx.db
+      .query("botWagers")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    for (const row of mine) {
+      if (row.status !== "active") continue;
+      await creditGold(ctx, userId, row.goldAmount);
+      await ctx.db.patch(row._id, {
+        status: "completed",
+        won: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+
+    await debitGold(ctx, userId, gold);
+    const now = Date.now();
+    const botWagerId = await ctx.db.insert("botWagers", {
+      userId,
+      botId: botId.slice(0, 40),
+      botName: botName.trim().slice(0, BOT_NAME_MAX) || "Bot",
+      goldAmount: gold,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { botWagerId };
+  },
+});
+
+/**
+ * BOT BAHİSİNİ KAPAT — kazandıysan 2× ödeme, kaybettiysen rehin gider.
+ * İdempotent: yalnızca `active` → `completed` geçer; ikinci çağrı boş döner.
+ */
+export const finishBotWager = mutation({
+  args: { botWagerId: v.id("botWagers"), won: v.boolean() },
+  handler: async (ctx, { botWagerId, won }) => {
+    const { userId } = await requireProfile(ctx);
+    const row = await ctx.db.get(botWagerId);
+    if (!row || row.userId !== userId || row.status !== "active") return null;
+    const payout = won ? row.goldAmount * 2 : 0;
+    if (won) await creditGold(ctx, userId, payout);
+    await ctx.db.patch(botWagerId, {
+      status: "completed",
+      won,
+      updatedAt: Date.now(),
+    });
+    return { won, payout, stake: row.goldAmount };
+  },
+});
+
+/**
+ * ASKIDA KALAN BOT BAHİSLERİNİ İADE ET — istemci yüklenirken bir kez çağrılır.
+ *
+ * Maç sırasında sayfa yenilenirse `active` satır öksüz kalırdı; bu mutation
+ * onları iade edip kapatır. Hiç aktif bahis yoksa hiçbir şey yapmaz (güvenli).
+ */
+export const refundBotWagers = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return 0;
+    const rows = await ctx.db
+      .query("botWagers")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    let refunded = 0;
+    for (const row of rows) {
+      if (row.status !== "active") continue;
+      await creditGold(ctx, userId, row.goldAmount);
+      await ctx.db.patch(row._id, {
+        status: "completed",
+        updatedAt: Date.now(),
+      });
+      refunded += 1;
+    }
+    return refunded;
   },
 });

@@ -28,6 +28,15 @@ import type { Doc, Id } from "./_generated/dataModel";
 
 /** Defterde tutulan son ziyaretçi sayısı. */
 export const MAX_VISITORS = 8;
+/**
+ * BİR KARAKTER EN FAZLA BU KADAR EVE SAHİP OLABİLİR.
+ *
+ * Oda zaten ilk girişte otomatik açılır ve `houseOfUser` tek satır (`first`)
+ * okur; asıl kural ihlali riski bahisli düellodaki EV DEVRİYDİ. Sunucu artık
+ * bunu hem `wagers.finish` (kazananın başka evi varsa devretmez) hem de burada
+ * (fazladan satır kalırsa temizler) zorlar.
+ */
+export const MAX_HOUSES_PER_USER = 1;
 /** Oda adı en fazla bu kadar karakter. */
 export const NAME_MAX = 24;
 
@@ -150,7 +159,23 @@ export const enter = mutation({
     if (userId === null) throw new Error("Oturum açman gerekiyor.");
     const ownerName = await usernameOf(ctx, userId);
     const now = Date.now();
-    const existing = await houseOfUser(ctx, userId);
+
+    // TEK EV KURALI (istemciye güvenilmez): bir karakter en fazla BİR eve sahip
+    // olabilir. Normalde `houseOfUser` tek satır okur; yine de eski/bozuk veride
+    // birden çok satır kalırsa EN ESKİSİ tutulur, fazlalıklar silinir (mobilya
+    // satırları `userId`yle tutulduğu için kaybolmaz).
+    const owned = await ctx.db
+      .query("houses")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect();
+    let existing = owned[0] ?? null;
+    if (owned.length > MAX_HOUSES_PER_USER) {
+      const sorted = [...owned].sort((a, b) => a.createdAt - b.createdAt);
+      existing = sorted[0];
+      for (const extra of sorted.slice(MAX_HOUSES_PER_USER)) {
+        await ctx.db.delete(extra._id);
+      }
+    }
 
     if (existing === null) {
       // 1) Satır açılır, 2) kimlik satır `_id`inden türetilip yazılır: oda
