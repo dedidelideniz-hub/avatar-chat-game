@@ -206,8 +206,13 @@ function RoomLights({ plan }: { plan: IsoRoomPlan }) {
  * kaybolmuş" değil, çerçevelenmiş bir SAHNE olur.
  */
 function RoomFrame({ half, y }: { half: { x: number; z: number }; y: number }) {
-  const t = 0.22; // çerçeve kalınlığı
-  const h = 0.16; // çerçeve yüksekliği
+  // ÇERÇEVE İNCELTİLDİ: eskiden 0,22 kalınlığında ve 0,16 yüksekliğinde,
+  // kendi kendine ışıyan (emissive) parlak turuncu çubuklardı ve oda, içinden
+  // "sarı şeritler" geçen bir kutu gibi görünüşte `emissiveIntensity` ile göz alıyordu.
+  // Artık ince, ışımayan (emissive YOK) mat pirinç bir süpürgelik: odayı
+  // çerçeveler ama ekranın en parlak öğesi olmaz.
+  const t = 0.1; // çerçeve kalınlığı
+  const h = 0.08; // çerçeve yüksekliği
   const bars: [number, number, number, number, number, number][] = [
     [0, y, half.z + t / 2, half.x * 2 + t * 2, h, t],
     [0, y, -half.z - t / 2, half.x * 2 + t * 2, h, t],
@@ -226,10 +231,11 @@ function RoomFrame({ half, y }: { half: { x: number; z: number }; y: number }) {
         <mesh key={`bar-${i}`} position={[bar[0], bar[1], bar[2]]}>
           <boxGeometry args={[bar[3], bar[4], bar[5]]} />
           <meshStandardMaterial
-            color="#f2a93b"
-            emissive="#7a4a12"
-            emissiveIntensity={0.3}
-            roughness={0.5}
+            color="#8a6136"
+            emissive="#241505"
+            emissiveIntensity={0.12}
+            roughness={0.6}
+            metalness={0.25}
           />
         </mesh>
       ))}
