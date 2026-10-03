@@ -592,6 +592,11 @@ function RoomCharacter({
  * Dizilmiş bir eşya — basit prizmalarla çizilir (harici varlık yok).
  *
  * `rotation`: eşyanın kendi eksenindeki dönüşü (radyan).
+ * `selected`: eşya SEÇİLİ mi? Seçili eşyanın altında parlak bir halka belirir
+ * ve ok işareti vurgulanır → oyuncu "hangi eşyayı döndüreceğim?" sorusunu
+ * görsel olarak yanıtlar.
+ * `onTap`: eşyaya dokunuldu (yalnızca düzenleme modunda): ilk dokunuş seçer,
+ * seçili eşyaya tekrar dokunmak onu 45° döndürür (bkz. `RoomStage`).
  * `ghost`: YARI SAYDAM önizleme — sürükleme sırasında eşyanın nereye
  * oturacağını gösterir. Hayalet DOKUNUŞA KAPALIDIR (`raycast` ve olay yok):
  * zemine/hayalete basmak yerleştirmeyi bozmaz.
@@ -601,16 +606,19 @@ function FurniturePiece({
   position,
   rotation = 0,
   canRemove = false,
-  onRemove,
+  selected = false,
+  onTap,
   ghost = false,
 }: {
   def: FurnitureDef;
   position: [number, number, number];
   rotation?: number;
   canRemove?: boolean;
-  onRemove?: () => void;
+  selected?: boolean;
+  onTap?: () => void;
   ghost?: boolean;
 }) {
+  const markerRadius = Math.max(def.w, def.d) * 0.5 + 0.12;
   return (
     <group
       position={position}
@@ -619,14 +627,32 @@ function FurniturePiece({
         ghost
           ? undefined
           : (event) => {
-              // Yalnızca düzenleme modunda: eşyaya dokunmak onu KALDIRIR.
+              // Yalnızca düzenleme modunda: eşyaya dokunmak onu SEÇER, seçili
+              // eşyaya tekrar dokunmak DÖNDÜRÜR (bkz. `RoomStage` → `handlePieceTap`).
               // Normal modda eşya sadece dekor.
               if (!canRemove) return;
               event.stopPropagation();
-              onRemove?.();
+              onTap?.();
             }
       }
     >
+      {/* SEÇİM HALKASI: seçili eşyanın altında altın bir halka — hangi eşyanın
+          döndürüleceği ve okun yönü böylece net okunur. */}
+      {selected && !ghost && (
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.03, 0]}
+          raycast={() => undefined}
+        >
+          <ringGeometry args={[markerRadius, markerRadius + 0.06, 32]} />
+          <meshBasicMaterial
+            color="#ffd166"
+            transparent
+            opacity={0.9}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
       <mesh
         position={[0, def.h / 2, 0]}
         receiveShadow={!ghost}
@@ -766,7 +792,8 @@ function RoomInterior({
   canPlace,
   placed,
   onPlace,
-  onRemove,
+  selectedRowId,
+  onTapPiece,
   speech,
   speechName,
   speechColorId,
@@ -795,7 +822,10 @@ function RoomInterior({
   placed: PlacedItem[];
   /** Eşyayı bırak: konum + dönüş (oransala çevirme çağıranda yapılır). */
   onPlace: (x: number, z: number, rot: number) => void;
-  onRemove: (key: string) => void;
+  /** Seçili eşyanın sunucu satırı (yoksa `null`) — seçim halkası buna göre çizilir. */
+  selectedRowId: string | null;
+  /** Odadaki bir eşyaya dokunuldu (seç → tekrar dokun → döndür). */
+  onTapPiece: (rowId: string) => void;
 }) {
   const { scene } = useGLTF(ROOM_MODEL_URL);
   const { gl } = useThree();
@@ -1116,7 +1146,8 @@ function RoomInterior({
             position={[item.x, 0, item.z]}
             rotation={item.rot}
             canRemove={isBuildMode}
-            onRemove={() => onRemove(item.key)}
+            selected={item.rowId === selectedRowId}
+            onTap={() => onTapPiece(item.rowId)}
           />
         ))}
 
@@ -1282,9 +1313,12 @@ export function RoomStage({
   const [isBuildMode, setBuildMode] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [buildItem, setBuildItem] = useState(FURNITURE[0].id);
-  // Seçili eşyanın dönüşü (radyan). Tepsideki "↻ Döndür" düğmesi 45° ekler;
+  // YENİ eşyanın dönüşü (radyan). Tepsideki "↻ Döndür" düğmesi 45° ekler;
   // hayalet ve bırakılan eşya bu açıyla dizilir (tam tur = 8 dokunuş).
   const [rotation, setRotation] = useState(0);
+  // Odada DURAN bir eşyanın seçimi: ilk dokunuş seçer, seçili eşyaya tekrar
+  // dokunmak onu yerinde 45° döndürür. Seçim kapanınca temizlenir.
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   // Odanın ÖLÇÜLEN planı (iç hacim). Sahne içinde hesaplanır ve buraya bir
   // kez bildirilir: dizilen eşyaların oransal konumunu metreye çevirmek için
   // gerekir (`placedFurniture`/`furnitureRatios`).
@@ -1345,11 +1379,50 @@ export function RoomStage({
     },
     [plan, owned, buildItem, onPlaceItem],
   );
-  /** Odadaki eşyayı kaldır: sunucuda dolaba döner (`lift`). */
-  const handleRemove = useCallback(
-    (rowId: string) => onLiftItem(rowId),
-    [onLiftItem],
+  /**
+   * Odadaki bir eşyaya DOKUNMA (yalnızca sahip + düzenleme modunda).
+   *
+   * İki aşamalı: ilk dokunuş eşyayı SEÇER (altında altın halka belirir, tepside
+   * "Döndür" düğmesi de onu hedefler). Aynı eşyaya TEKRAR dokunmak onu YERİNDE
+   * 45° döndürür — oyuncu eşyayı kaldırıp yeniden koymak zorunda kalmadan
+   * yönünü değiştirir. Dönüş SUNUCUYA yazılır (`onPlaceItem`, aynı konumla) ve
+   * kalıcıdır.
+   */
+  const handlePieceTap = useCallback(
+    (rowId: string) => {
+      const item = placed.find((p) => p.rowId === rowId);
+      if (!item) return;
+      playSound("click");
+      if (selectedRowId !== rowId) {
+        setSelectedRowId(rowId);
+        // Yeni seçimde bir sonraki eşya, bu eşyanın açısından dönsün.
+        setRotation(item.rot);
+        return;
+      }
+      const next = normalizeAngle(item.rot + ROTATION_STEP);
+      setRotation(next);
+      const { fx, fz } = furnitureRatios(item.x, item.z, plan?.half ?? { x: 1, z: 1 });
+      onPlaceItem(rowId, fx, fz, next);
+    },
+    [placed, selectedRowId, plan, onPlaceItem],
   );
+
+  /** Seçili eşyayı (odada duran) yerinde 45° döndür — tepsideki düğme. */
+  const rotateSelected = useCallback(() => {
+    if (!selectedRowId) return;
+    const item = placed.find((p) => p.rowId === selectedRowId);
+    if (!item) return;
+    playSound("click");
+    const next = normalizeAngle(item.rot + ROTATION_STEP);
+    setRotation(next);
+    const { fx, fz } = furnitureRatios(item.x, item.z, plan?.half ?? { x: 1, z: 1 });
+    onPlaceItem(selectedRowId, fx, fz, next);
+  }, [selectedRowId, placed, plan, onPlaceItem]);
+
+  // Düzenleme kapanınca seçim temizlenir (normal gezinmede eşya seçimi yok).
+  useEffect(() => {
+    if (!isBuildMode) setSelectedRowId(null);
+  }, [isBuildMode]);
 
   // "Oda görünür mü?" sinyalini çağıran kabuğa bildir: oda alanı 3D sahne
   // hazır olana kadar şeffaf kalır (girişte ara katman/uyudurma oda yok).
@@ -1375,11 +1448,16 @@ export function RoomStage({
   const ownedCount = owned.filter((row) => row.itemId === buildItem).length;
   const freeCount = countFree(owned, buildItem);
   const canPlace = freeCount > 0;
-  const buildHint =
-    freeCount > 0
-      ? `Zemine dokun → “${selected.label}” 0,5 m ızgaraya oturur · eşyaya dokun → dolaba kalkar`
+  // Seçili (odadaki) eşya var mı? Varsa tepside onu döndüren düğme öne çıkar.
+  const selectedPlaced = selectedRowId
+    ? placed.find((p) => p.rowId === selectedRowId) ?? null
+    : null;
+  const buildHint = selectedPlaced
+    ? `“${furnitureById(selectedPlaced.id).label}” seçili — ↻ Döndür ile yönünü değiştir (altın halka hangi eşyanın seçili olduğunu gösterir)`
+    : freeCount > 0
+      ? `Zemine dokun → “${selected.label}” 0,5 m ızgaraya oturur · odadaki eşyaya dokun → seç, tekrar dokun → 45° döner`
       : ownedCount > 0
-        ? `“${selected.label}” adedinin hepsi odada — odadaki bir eşyaya dokunup dolaba kaldır ya da stanttan yenisini al`
+        ? `“${selected.label}” adedinin hepsi odada — odadaki bir eşyaya dokunup ↻ döndür ya da ➖ ile dolaba kaldır`
         : `“${selected.label}” sende yok — 🛒 Stant'tan ${selected.price} SP ile al`;
 
   return (
@@ -1449,15 +1527,24 @@ export function RoomStage({
                   >
                     <Grid3x3 className="size-3.5" /> Izgara
                   </button>
-                  {/* DÖNDÜR: her dokunuşta 45° ekler, eşya tam tur dönebilir.
-                      Hayalet de aynı açıyla çizilir — bırakmadan önce görünür. */}
+                  {/* DÖNDÜR: odada bir eşya SEÇİLİYSE onu YERİNDE döndürür;
+                      seçim yoksa henüz dizilmemiş eşyanın hayalet açısını
+                      çevirir (bırakmadan önce yön görünür). Her dokunuş 45°. */}
                   <button
                     type="button"
-                    onClick={() => {
-                      playSound("click");
-                      setRotation((r) => normalizeAngle(r + ROTATION_STEP));
-                    }}
-                    className="flex shrink-0 items-center gap-1 rounded-xl bg-white/15 px-2.5 py-2 text-[11px] font-extrabold text-white transition-transform active:scale-95"
+                    onClick={
+                      selectedPlaced
+                        ? rotateSelected
+                        : () => {
+                            playSound("click");
+                            setRotation((r) => normalizeAngle(r + ROTATION_STEP));
+                          }
+                    }
+                    className={`flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-2 text-[11px] font-extrabold text-white transition-transform active:scale-95 ${
+                      selectedPlaced
+                        ? "bg-[#ffd166] text-[#3d2f2a]"
+                        : "bg-white/15"
+                    }`}
                   >
                     <RotateCw className="size-3.5" /> Döndür
                   </button>
@@ -1646,7 +1733,8 @@ export function RoomStage({
                 canPlace={canPlace}
                 placed={placed}
                 onPlace={handlePlace}
-                onRemove={handleRemove}
+                selectedRowId={selectedRowId}
+                onTapPiece={handlePieceTap}
                 speech={speech}
                 speechName={speechName}
                 speechColorId={speechColorId}

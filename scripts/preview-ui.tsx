@@ -2450,6 +2450,18 @@ const scenarios: Scenario[] = [
             stage.includes("rotation={[Math.PI / 2, 0, 0]}"),
         ),
         check(
+          "EŞYAYA BASIP DÖNDÜRME: odadaki eşya seçilir (altın halka), tekrar basınca yerinde 45° döner ve KALICI olur",
+          stage.includes("handlePieceTap") &&
+            stage.includes("selectedRowId") &&
+            stage.includes("onTap={() => onTapPiece(item.rowId)}") &&
+            stage.includes("selected={item.rowId === selectedRowId}") &&
+            stage.includes("rotateSelected") &&
+            stage.includes("ringGeometry") &&
+            // Aynı konumla yeni açı sunucuya yazılır (kalıcı dönüş).
+            stage.includes("onPlaceItem(rowId, fx, fz, next)") &&
+            stage.includes("onPlaceItem(selectedRowId, fx, fz, next)"),
+        ),
+        check(
           "TEKLİ KALDIRMA: seçili eşyadan 1 adet dolaba döner (Hepsini kaldır da durur)",
           stage.includes("placedSelected") &&
             stage.includes("1 adet kaldır") &&
