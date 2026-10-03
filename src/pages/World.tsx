@@ -288,6 +288,158 @@ const BOT_DEFS: BotDef[] = [
     equipped: ["oyuncak-top"],
     ability: "ates",
   },
+  {
+    id: "bot-zeynep",
+    level: 5,
+    name: "Zeynep",
+    color: "#f43f5e",
+    speed: 80,
+    x: 900, // X -6.0 · Z -2.4
+    y: 380,
+    config: {
+      skin: "#f7c8a0",
+      hair: "long",
+      hairColor: "#7c2d12",
+      shirt: "#e11d48",
+      pants: "#1f2937",
+      shoes: "#0f172a",
+    },
+    equipped: ["moda-atki"],
+    ability: "ates",
+  },
+  {
+    id: "bot-selin",
+    level: 6,
+    name: "Selin",
+    color: "#06b6d4",
+    speed: 80,
+    x: 1250, // X +1.0 · Z -1.4 (caddenin ortası)
+    y: 620,
+    config: {
+      skin: "#ffd9b8",
+      hair: "curly",
+      hairColor: "#3f2a1f",
+      shirt: "#0891b2",
+      pants: "#334155",
+      shoes: "#e2e8f0",
+    },
+    equipped: ["moda-canta"],
+    ability: "simsek",
+  },
+  {
+    id: "bot-baris",
+    level: 3,
+    name: "Barış",
+    color: "#22c55e",
+    speed: 80,
+    x: 760, // X -8.8 · Z -0.8 (güney kaldırım hattı)
+    y: 560,
+    config: {
+      skin: "#d9a273",
+      hair: "spiky",
+      hairColor: "#422006",
+      shirt: "#16a34a",
+      pants: "#1e293b",
+      shoes: "#f8fafc",
+    },
+    equipped: ["moda-eldiven"],
+    ability: "sifa",
+  },
+  {
+    id: "bot-naz",
+    level: 7,
+    name: "Naz",
+    color: "#8b5cf6",
+    speed: 80,
+    x: 1750, // X +11.0 · Z -0.6 (doğu-güney)
+    y: 620,
+    config: {
+      skin: "#f2c6a0",
+      hair: "long",
+      hairColor: "#4c1d95",
+      shirt: "#7c3aed",
+      pants: "#0f172a",
+      shoes: "#a78bfa",
+    },
+    equipped: ["moda-zirh"],
+    ability: "isik",
+  },
+  {
+    id: "bot-tolga",
+    level: 8,
+    name: "Tolga",
+    color: "#ef4444",
+    speed: 80,
+    x: 340, // X -17.2 · Z -4.4 (batı ucu)
+    y: 300,
+    config: {
+      skin: "#a9703f",
+      hair: "short",
+      hairColor: "#0c0a09",
+      shirt: "#dc2626",
+      pants: "#111827",
+      shoes: "#450a0a",
+    },
+    equipped: ["moda-kalkan"],
+    ability: "ates",
+  },
+  {
+    id: "bot-deniz",
+    level: 2,
+    name: "Deniz",
+    color: "#0ea5e9",
+    speed: 80,
+    x: 2280, // X +21.6 · Z -1.0 (doğu kapısı)
+    y: 520,
+    config: {
+      skin: "#ffd1a3",
+      hair: "curly",
+      hairColor: "#0369a1",
+      shirt: "#0284c7",
+      pants: "#1e3a8a",
+      shoes: "#f1f5f9",
+    },
+    equipped: ["moda-gozluk"],
+    ability: "temel",
+  },
+  {
+    id: "bot-umut",
+    level: 9,
+    name: "Umut",
+    color: "#eab308",
+    speed: 80,
+    x: 1500, // X +6.0 · Z -0.6
+    y: 620,
+    config: {
+      skin: "#e8b98a",
+      hair: "short",
+      hairColor: "#292524",
+      shirt: "#ca8a04",
+      pants: "#1c1917",
+      shoes: "#78350f",
+    },
+    equipped: ["moda-kilic"],
+    ability: "simsek",
+  },
+  {
+    id: "bot-ceren",
+    level: 1,
+    name: "Ceren",
+    color: "#ec4899",
+    speed: 80,
+    x: 420, // X -15.6 · Z -5.0 (kuzey-batı)
+    y: 250,
+    config: {
+      skin: "#ffe0c2",
+      hair: "long",
+      hairColor: "#9a3412",
+      shirt: "#db2777",
+      pants: "#312e81",
+      shoes: "#fbcfe8",
+    },
+    equipped: ["moda-sapka"],
+    ability: "temel",
+  },
 ];
 
 /** Live presence payload — what other players see about you on the street. */
@@ -3026,8 +3178,13 @@ export default function World() {
     [pvpBattle, pvpChallenge, battle, wagerPending],
   );
 
-  /** ⚔️ Bahis sözleşmesi formunu BOT için aç (yakında gerçek oyuncu yoksa). */
-  const openBotWagerChallenge = useCallback(
+  /**
+   * ⚔️ Bahis sözleşmesi formunu YEREL bir cadde sakini için aç.
+   *
+   * ArayüzDE hiçbir fark yoktur (`WagerChallengeSheet` aynı başlık, aynı
+   * seçenekler, aynı ev bahsi); yalnızca gönderim yerel akışa düşer.
+   */
+  const openLocalWagerChallenge = useCallback(
     (bot: BotDef) => {
       if (pvpBattle || pvpChallenge || battle || wagerPending || botWagerPending)
         return;
@@ -3039,16 +3196,23 @@ export default function World() {
   );
 
   /**
-   * ⚔️ BOT BAHİS AKIŞI: bot bir an "düşünür", sonra kabul/red eder. Kabulde
-   * SP rehine alınır (`startBotWager`) ve bahisli bot arenası açılır. Botların
-   * gerçek bir evi/sahibi olmadığı için yalnızca SP bahsi oynanır.
+   * ⚔️ YEREL BAHİS AKIŞI: rakip bir an "düşünür", sonra kabul/red eder.
+   *
+   * Kabulde SP (ve ortaya konduysa ev) rehine alınır (`startBotWager`) ve
+   * bahisli arena açılır. Karşı tarafın evi her zaman BOŞ EV'dir (değersiz):
+   * kazanırsan sana yeni, eşyasız bir ev açılır.
    */
   const handleBotWagerSent = useCallback(
-    (info: { opponentName: string; goldAmount: number }) => {
+    (info: {
+      opponentName: string;
+      goldAmount: number;
+      houseId?: string;
+      houseName?: string;
+    }) => {
       const bot = botWagerChallenge?.bot;
       setBotWagerChallenge(null);
       if (!bot) return;
-      const summary = describeWager(info.goldAmount);
+      const summary = describeWager(info.goldAmount, info.houseName);
       setBotWagerPending({ botId: bot.id, botName: bot.name, summary });
       window.setTimeout(() => {
         setBotWagerPending(null);
@@ -3069,6 +3233,9 @@ export default function World() {
               botId: bot.id,
               botName: bot.name,
               goldAmount: info.goldAmount,
+              wageredHouseId: info.houseId
+                ? (info.houseId as Id<"houses">)
+                : undefined,
             });
             playSound("vs");
             setActiveBotWager({
@@ -3137,8 +3304,7 @@ export default function World() {
       toast.info("Etrafta meydan okuyacak kimse yok.");
       return;
     }
-    toast.info(`${botBest.bot.name} ile bahisli düelloya hazırlan! 💰`);
-    openBotWagerChallenge(botBest.bot);
+    openLocalWagerChallenge(botBest.bot);
   }, [
     pvpBattle,
     pvpChallenge,
@@ -3146,7 +3312,7 @@ export default function World() {
     wagerPending,
     botWagerPending,
     openWagerChallenge,
-    openBotWagerChallenge,
+    openLocalWagerChallenge,
   ]);
 
   /** Bahis daveti gönderildi — bekleyiş şeridini kur. */
@@ -3833,10 +3999,6 @@ export default function World() {
                         {abilityOf(viewedBot.ability).emoji}{" "}
                         {abilityOf(viewedBot.ability).name}
                       </span>
-                      {/* Botların evleri genelde BOŞ EV'dir (eşyalı değil). */}
-                      <span className="rounded-full bg-stone-500/15 px-2.5 py-1 text-xs font-extrabold text-stone-600">
-                        🏚️ Boş Ev
-                      </span>
                     </>
                   }
                   action={
@@ -3868,7 +4030,7 @@ export default function World() {
                         <Button
                           size="sm"
                           className="w-full rounded-full bg-gradient-to-r from-red-600 to-amber-500 font-black text-white shadow hover:from-red-500 hover:to-amber-400"
-                          onClick={() => openBotWagerChallenge(viewedBot)}
+                          onClick={() => openLocalWagerChallenge(viewedBot)}
                         >
                           💰 Bahisli Meydan Oku
                         </Button>
@@ -4412,13 +4574,10 @@ export default function World() {
               equipped,
               ability: equippedAbility,
             }}
-            bot={{
-              id: botWagerChallenge.bot.id,
-              name: botWagerChallenge.bot.name,
-            }}
+            local
             onClose={() => setBotWagerChallenge(null)}
             onSent={() => {}}
-            onBotSent={handleBotWagerSent}
+            onLocalSent={handleBotWagerSent}
           />
         )}
         {abilitiesOpen && (

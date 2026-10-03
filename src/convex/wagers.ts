@@ -607,10 +607,12 @@ const BOT_NAME_MAX = 24;
 /**
  * KARŞI TARAFIN ORTAYA KOYDUĞU BOŞ EVİN SP KARŞILIĞI.
  *
- * Rakibin gerçek `houses` satırı yoktur; kazanan oyuncunun TEK EV kuralı
- * gereği zaten bir evi varsa boş ev verilemez ve bu tutar SP olarak ödenir.
+ * Boş ev DEĞERSİZDİR (eşyasız, satılık bir değeri yok); bu yüzden yalnızca
+ * teselli niteliğinde küçük bir tutardır. Rakibin gerçek `houses` satırı
+ * olmadığı için kazanan oyuncunun TEK EV kuralı gereği zaten bir evi varsa
+ * boş ev verilemez ve bunun yerine bu tutar SP olarak ödenir.
  */
-export const BOT_HOUSE_VALUE = 1000;
+export const BOT_HOUSE_VALUE = 250;
 
 /**
  * BOT BAHİS SÖZLEŞMESİNİ AÇ — SP'yi rehine al ve `active` satır aç.

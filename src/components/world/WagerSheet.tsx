@@ -87,7 +87,7 @@ export function WagerChallengeSheet({
 }) {
   // Yerel rakibin profil satırı yok; ev bahsi bilgisi de sunucudan gelmez —
   // `challengeInfo` yalnızca `opponentName`siz çağrılır ve bu durumda karşı
-  // taraf her zaman BOŞ EV sahibi sayılır (bkz. `wagers.challengeInfo`).
+  // taraf her zaman eşyasız bir evin sahibi sayılır (bkz. `wagers.challengeInfo`).
   const info = useQuery(
     api.wagers.challengeInfo,
     local ? {} : { opponentName },
