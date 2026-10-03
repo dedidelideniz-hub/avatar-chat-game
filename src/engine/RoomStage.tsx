@@ -595,8 +595,8 @@ function RoomCharacter({
  * `selected`: eşya SEÇİLİ mi? Seçili eşyanın altında parlak bir halka belirir
  * ve ok işareti vurgulanır → oyuncu "hangi eşyayı döndüreceğim?" sorusunu
  * görsel olarak yanıtlar.
- * `onTap`: eşyaya dokunuldu (yalnızca düzenleme modunda): ilk dokunuş seçer,
- * seçili eşyaya tekrar dokunmak onu 45° döndürür (bkz. `RoomStage`).
+ * `onTap`: eşyaya dokunuldu (yalnızca düzenleme modunda): TEK dokunuş eşyayı
+ * 45° DÖNDÜRÜR ve seçer (bkz. `RoomStage` → `handlePieceTap`).
  * `ghost`: YARI SAYDAM önizleme — sürükleme sırasında eşyanın nereye
  * oturacağını gösterir. Hayalet DOKUNUŞA KAPALIDIR (`raycast` ve olay yok):
  * zemine/hayalete basmak yerleştirmeyi bozmaz.
@@ -627,8 +627,8 @@ function FurniturePiece({
         ghost
           ? undefined
           : (event) => {
-              // Yalnızca düzenleme modunda: eşyaya dokunmak onu SEÇER, seçili
-              // eşyaya tekrar dokunmak DÖNDÜRÜR (bkz. `RoomStage` → `handlePieceTap`).
+              // Yalnızca düzenleme modunda: eşyaya TEK dokunuş onu yerinde
+              // 45° DÖNDÜRÜR ve seçer (bkz. `RoomStage` → `handlePieceTap`).
               // Normal modda eşya sadece dekor.
               if (!canRemove) return;
               event.stopPropagation();
@@ -636,6 +636,23 @@ function FurniturePiece({
             }
       }
     >
+      {/* DOKUNMA HEDEFİ (GÖRÜNMEZ): eşyanın dokunulabilir alanını büyütür.
+          Kutu zaten ince olabiliyor (ör. kilim) ve eğik izometrik bakışta
+          dokunuş kenara kaçabiliyordu; bir tık büyük, renk yazmayan
+          (`colorWrite=false`) ve derinlik yazmayan bu kutu, parmağın eşyayı
+          "ıskalamasını" engeller — döndürme bu yüzden çalışmıyor gibi
+          görünüyordu. Hayalete EKLENMEZ. */}
+      {!ghost && (
+        <mesh position={[0, def.h / 2, 0]} raycast={ghost ? () => undefined : undefined}>
+          <boxGeometry args={[def.w + 0.28, Math.max(0.3, def.h + 0.14), def.d + 0.28]} />
+          <meshBasicMaterial
+            transparent
+            opacity={0}
+            depthWrite={false}
+            colorWrite={false}
+          />
+        </mesh>
+      )}
       {/* SEÇİM HALKASI: seçili eşyanın altında altın bir halka — hangi eşyanın
           döndürüleceği ve okun yönü böylece net okunur. */}
       {selected && !ghost && (
@@ -1376,35 +1393,39 @@ export function RoomStage({
       if (!free) return;
       const { fx, fz } = furnitureRatios(x, z, plan.half);
       onPlaceItem(free.rowId, fx, fz, normalizeAngle(rot));
+      // Bırakılan eşya HEMEN SEÇİLİ olur: oyuncu eşyayı koyar koymaz üstüne
+      // dokunup (ya da tepsideki ↻ ile) döndürebilsin. "Koydum ama nasıl
+      // döndüreceğim?" adımı ortadan kalkar.
+      setSelectedRowId(free.rowId);
     },
     [plan, owned, buildItem, onPlaceItem],
   );
   /**
    * Odadaki bir eşyaya DOKUNMA (yalnızca sahip + düzenleme modunda).
    *
-   * İki aşamalı: ilk dokunuş eşyayı SEÇER (altında altın halka belirir, tepside
-   * "Döndür" düğmesi de onu hedefler). Aynı eşyaya TEKRAR dokunmak onu YERİNDE
-   * 45° döndürür — oyuncu eşyayı kaldırıp yeniden koymak zorunda kalmadan
-   * yönünü değiştirir. Dönüş SUNUCUYA yazılır (`onPlaceItem`, aynı konumla) ve
-   * kalıcıdır.
+   * TEK DOKUNUŞ YETERLİDİR: eşya hem SEÇİLİR (altında altın halka belirir,
+   * tepsideki "Döndür" düğmesi de onu hedefler) hem de YERİNDE 45° DÖNER.
+   * Eskiden ilk dokunuş yalnızca seçiyor, döndürmek için ikinci dokunuş
+   * gerekiyordu; oyuncu bu yüzden "dokunuyorum ama dönmüyor" görüyordu.
+   * Dönüş SUNUCUYA yazılır (`onPlaceItem`, aynı konumla) ve kalıcıdır.
    */
   const handlePieceTap = useCallback(
     (rowId: string) => {
       const item = placed.find((p) => p.rowId === rowId);
       if (!item) return;
       playSound("click");
-      if (selectedRowId !== rowId) {
-        setSelectedRowId(rowId);
-        // Yeni seçimde bir sonraki eşya, bu eşyanın açısından dönsün.
-        setRotation(item.rot);
-        return;
-      }
+      setSelectedRowId(rowId);
+      // Açı, eşyanın ŞU ANKİ açısından döner (ekranda görünen yönden).
       const next = normalizeAngle(item.rot + ROTATION_STEP);
       setRotation(next);
-      const { fx, fz } = furnitureRatios(item.x, item.z, plan?.half ?? { x: 1, z: 1 });
+      const { fx, fz } = furnitureRatios(
+        item.x,
+        item.z,
+        plan?.half ?? { x: 1, z: 1 },
+      );
       onPlaceItem(rowId, fx, fz, next);
     },
-    [placed, selectedRowId, plan, onPlaceItem],
+    [placed, plan, onPlaceItem],
   );
 
   /** Seçili eşyayı (odada duran) yerinde 45° döndür — tepsideki düğme. */
@@ -1455,7 +1476,7 @@ export function RoomStage({
   const buildHint = selectedPlaced
     ? `“${furnitureById(selectedPlaced.id).label}” seçili — ↻ Döndür ile yönünü değiştir (altın halka hangi eşyanın seçili olduğunu gösterir)`
     : freeCount > 0
-      ? `Zemine dokun → “${selected.label}” 0,5 m ızgaraya oturur · odadaki eşyaya dokun → seç, tekrar dokun → 45° döner`
+      ? `Zemine dokun → “${selected.label}” 0,5 m ızgaraya oturur · odadaki eşyaya dokun → 45° döner`
       : ownedCount > 0
         ? `“${selected.label}” adedinin hepsi odada — odadaki bir eşyaya dokunup ↻ döndür ya da ➖ ile dolaba kaldır`
         : `“${selected.label}” sende yok — 🛒 Stant'tan ${selected.price} SP ile al`;

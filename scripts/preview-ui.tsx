@@ -2450,16 +2450,27 @@ const scenarios: Scenario[] = [
             stage.includes("rotation={[Math.PI / 2, 0, 0]}"),
         ),
         check(
-          "EŞYAYA BASIP DÖNDÜRME: odadaki eşya seçilir (altın halka), tekrar basınca yerinde 45° döner ve KALICI olur",
+          "EŞYAYA TEK DOKUNUŞ: odadaki eşya yerinde 45° döner, seçilir (altın halka) ve KALICI olur",
           stage.includes("handlePieceTap") &&
             stage.includes("selectedRowId") &&
             stage.includes("onTap={() => onTapPiece(item.rowId)}") &&
             stage.includes("selected={item.rowId === selectedRowId}") &&
             stage.includes("rotateSelected") &&
             stage.includes("ringGeometry") &&
+            // TEK dokunuş döndürür: ilk dokunuşta "yalnızca seç ve çık" YOK.
+            !stage.includes("if (selectedRowId !== rowId) {") &&
             // Aynı konumla yeni açı sunucuya yazılır (kalıcı dönüş).
             stage.includes("onPlaceItem(rowId, fx, fz, next)") &&
-            stage.includes("onPlaceItem(selectedRowId, fx, fz, next)"),
+            stage.includes("onPlaceItem(selectedRowId, fx, fz, next)") &&
+            // Bırakılan eşya hemen seçilir (koy → dokun → döndür akışı kopmaz).
+            stage.includes("setSelectedRowId(free.rowId)"),
+        ),
+        check(
+          "EŞYA DOKUNMA HEDEFİ büyütüldü (ince eşyayı ıskalamadan döndürme)",
+          stage.includes("colorWrite={false}") &&
+            stage.includes("def.w + 0.28") &&
+            stage.includes("def.d + 0.28") &&
+            stage.includes("depthWrite={false}"),
         ),
         check(
           "TEKLİ KALDIRMA: seçili eşyadan 1 adet dolaba döner (Hepsini kaldır da durur)",
