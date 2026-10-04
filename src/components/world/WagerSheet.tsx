@@ -1,32 +1,32 @@
 /**
- * ⚔️ BAHİSLİ DÜELLO SÖZLEŞMESİ (yüksek riskli PvP) — arayüz katmanı.
+ * ⚔️ BAHİSLİ DÜELLO & 🏠 TAKAS — arayüz katmanı.
  *
- * ÜÇ PARÇA:
- *   · `WagerChallengeSheet` — meydan okuyanın "Bahis Kurma / Düello
- *     Sözleşmesi" penceresi: SP kaydırıcısı (min 100) + "Evini iddiaya koy"
- *     onay kutusu (yalnızca iki taraf da ev sahibiyse aktif).
- *   · `WagerInvitePopup` — karşı tarafa düşen şık meydan okuma bildirimi:
- *     "X seninle düello yapmak istiyor! Bahis: [500 SP] + [Ev adı]".
- *   · `WagerWaitingBanner` — davet gönderildi, cevap bekleniyor (iptal edilebilir).
- *   · `WagerAnnouncement` — arena başında geçen devasa kırmızı/altın duyuru.
+ * PARÇALAR:
+ *   · `WagerChallengeSheet` — "Düello Sözleşmesi": YALNIZCA SP (altın) bahsi.
+ *     Ev bahsi buradan KALDIRILDI; ev/servet alışverişi artık ayrı TAKAS
+ *     sayfasında yapılır (bkz. `TradeSheet`).
+ *   · `TradeSheet` — TAKAS: iki karakter ortaya EV ve/veya PARA koyar;
+ *     "Takası Onayla" → "Savaşa hazır ol" → takas maçı arenaya geçer.
+ *   · `HousePreview` — bir karakterin evini izometrik (3B görünümlü) çizer;
+ *     profil kartında evin adı/boyutu görünür.
+ *   · `WagerInvitePopup` / `WagerWaitingBanner` / `WagerAnnouncement` —
+ *     gelen meydan okuma, bekleyiş şeridi ve arena duyurusu.
  *
  * ⚠️ RAKİP TÜRÜ GÖRÜNMEZ: cadde sakinlerinin bir kısmı istemcide yaşayan
- * NPC'lerdir, ama form İKİ DURUMDA DA BİREBİR AYNIDIR — başlık, rozet, metin ve
- * ev bahsi seçeneği aynıdır. Ayrım yalnızca `local` prop'unda (hangi akışın
- * çağrılacağı) kalır; arayüzde "NPC/bot" diye bir iz yoktur.
+ * NPC'lerdir, ama form İKİ DURUMDA DA BİREBİR AYNIDIR; ayrım yalnızca `local`
+ * prop'unda (hangi akışın çağrılacağı) kalır. Arayüzde "NPC/bot" izi yoktur.
  */
 import { AvatarPreview } from "@/components/avatar/AvatarPreview";
 import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { Button } from "@/components/ui/button";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
 import { CURRENCY_EMOJI, formatCoins } from "@/lib/shop";
 import { playSound } from "@/lib/sounds";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Home, Lock, ShieldAlert, Swords, X } from "lucide-react";
-import { useState } from "react";
+import { ArrowRightLeft, Lock, Swords, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 /** Sunucudaki alt sınırla aynı olmalı (`wagers.MIN_GOLD`). */
@@ -39,7 +39,7 @@ interface FighterInfo {
   ability: string;
 }
 
-/** Bahis özetini insan okunur metne çevirir: "500 SP + Sokak No:4 Ev". */
+/** Bahis özetini insan okunur metne çevirir: "500 SP". */
 export function describeWager(goldAmount: number, houseName?: string): string {
   const parts: string[] = [];
   if (goldAmount > 0) parts.push(`${formatCoins(goldAmount)} SP`);
@@ -48,7 +48,68 @@ export function describeWager(goldAmount: number, houseName?: string): string {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   1) MEYDAN OKUMA FORMU (challenger)
+   🏠 EV ÖNİZLEMESİ — izometrik (3B görünümlü) ev
+   ───────────────────────────────────────────────────────────── */
+export function HousePreview({
+  name,
+  tone = "#c98a5a",
+  sizeLabel = "3B · 1 oda",
+  className,
+}: {
+  /** Evin adı (levhada yazar). Yoksa "Ev yok". */
+  name?: string;
+  /** Çatı/duvar tonu — sahibinin rengine göre değişebilir. */
+  tone?: string;
+  /** Boyut etiketi (ör. "3B · 1 oda"). */
+  sizeLabel?: string;
+  className?: string;
+}) {
+  const hasHouse = Boolean(name);
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border border-[#3d2f2a]/15 bg-gradient-to-b from-sky-100 to-emerald-100 p-2 ${className ?? ""}`}
+    >
+      <svg viewBox="0 0 120 104" className="block h-auto w-full">
+        {/* zemin */}
+        <ellipse cx="60" cy="86" rx="46" ry="12" fill="#7dd37d" opacity="0.6" />
+        {/* gövde (izometrik kutu) */}
+        <polygon points="60,34 96,52 60,70 24,52" fill={tone} />
+        <polygon points="24,52 60,70 60,92 24,74" fill="#8a5a34" />
+        <polygon points="96,52 60,70 60,92 96,74" fill="#a9703f" />
+        {/* çatı */}
+        <polygon points="60,18 100,40 60,36 20,40" fill="#7f1d1d" />
+        <polygon points="60,18 100,40 60,50 20,40" fill="#b45309" />
+        {/* kapı */}
+        <polygon points="60,62 68,66 60,70 52,66" fill="#3d2f2a" />
+        {/* pencere */}
+        <rect
+          x="72"
+          y="58"
+          width="8"
+          height="10"
+          transform="skewY(26)"
+          fill="#fde68a"
+        />
+      </svg>
+      {!hasHouse && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/60 text-[11px] font-extrabold text-[#3d2f2a]/70">
+          Ev yok
+        </div>
+      )}
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="truncate text-[11px] font-extrabold text-[#2b2320]">
+          {name ?? "Henüz ev yok"}
+        </p>
+        <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-bold text-[#3d2f2a]/70">
+          {sizeLabel}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   1) MEYDAN OKUMA FORMU (challenger) — YALNIZ SP
    ───────────────────────────────────────────────────────────── */
 export function WagerChallengeSheet({
   opponentName,
@@ -66,8 +127,7 @@ export function WagerChallengeSheet({
   mySessionId: string;
   /**
    * Rakibin `profiles` satırı YOK (cadde sakini) → davet yerel akışla yürür
-   * (`onLocalSent`). ArayüzDE HİÇBİR FARK YOKTUR: yalnızca hangi akışın
-   * çağrılacağını belirler.
+   * (`onLocalSent`). ArayüzDE HİÇBİR FARK YOKTUR.
    */
   local?: boolean;
   onClose: () => void;
@@ -85,54 +145,31 @@ export function WagerChallengeSheet({
     houseName?: string;
   }) => void;
 }) {
-  // Yerel rakibin profil satırı yok; ev bahsi bilgisi de sunucudan gelmez —
-  // `challengeInfo` yalnızca `opponentName`siz çağrılır ve bu durumda karşı
-  // taraf her zaman eşyasız bir evin sahibi sayılır (bkz. `wagers.challengeInfo`).
-  const info = useQuery(
-    api.wagers.challengeInfo,
-    local ? {} : { opponentName },
-  );
   const createWager = useMutation(api.wagers.create);
   const [gold, setGold] = useState(() =>
     Math.min(myCoins, Math.max(WAGER_MIN_GOLD, 500)),
   );
-  const [houseOn, setHouseOn] = useState(false);
   const [sending, setSending] = useState(false);
 
   const maxGold = Math.max(0, Math.floor(myCoins));
   const canWagerGold = maxGold >= WAGER_MIN_GOLD;
-  // EV BAHİSİ: kaybedilirse ev RAKİBE geçer ve bir karakter iki eve sahip
-  // olamaz (TEK EV kuralı) — bu yüzden rakip EVSİZ olmalı.
-  const myHouse = info?.myHouse ?? null;
-  const canWagerHouse =
-    myHouse !== null &&
-    !myHouse.locked &&
-    Boolean(info?.opponentCanReceiveHouse);
 
   const handleSend = async () => {
     if (sending) return;
-    const amount = houseOn ? (canWagerGold ? gold : 0) : gold;
-    if (amount <= 0 && !houseOn) {
-      toast.error("En az bir bahis (SP veya ev) seçmelisin.");
+    if (gold <= 0) {
+      toast.error("En az bir bahis (SP) seçmelisin.");
       return;
     }
     setSending(true);
     try {
       if (local) {
         playSound("invite");
-        onLocalSent?.({
-          opponentName,
-          goldAmount: amount,
-          houseId: houseOn && myHouse ? myHouse.id : undefined,
-          houseName: houseOn && myHouse ? myHouse.name : undefined,
-        });
+        onLocalSent?.({ opponentName, goldAmount: gold });
         return;
       }
       const res = await createWager({
         opponentName,
-        goldAmount: amount,
-        wageredHouseId:
-          houseOn && myHouse ? (myHouse.id as Id<"houses">) : undefined,
+        goldAmount: gold,
         mySessionId,
         me,
       });
@@ -140,8 +177,7 @@ export function WagerChallengeSheet({
       onSent({
         wagerId: res.wagerId,
         opponentName,
-        goldAmount: amount,
-        houseName: houseOn && myHouse ? myHouse.name : undefined,
+        goldAmount: gold,
       });
     } catch (error) {
       console.error("Bahis daveti hatası:", error);
@@ -191,7 +227,7 @@ export function WagerChallengeSheet({
         </div>
 
         <div className="space-y-5 px-5 py-5">
-          {/* ── a) ALTIN BAHİSİ ── */}
+          {/* ── ALTIN BAHİSİ ── */}
           <section>
             <div className="flex items-center justify-between">
               <label
@@ -229,51 +265,22 @@ export function WagerChallengeSheet({
             )}
           </section>
 
-          {/* ── b) EV BAHİSİ (iki taraf da ev sahibi olacaksa aktif) ── */}
-          <section className="rounded-2xl border border-amber-400/25 bg-black/25 p-3.5">
-            <label className="flex cursor-pointer items-start gap-3">
-              <input
-                type="checkbox"
-                checked={houseOn}
-                disabled={!canWagerHouse}
-                onChange={(e) => setHouseOn(e.target.checked)}
-                className="mt-0.5 size-4 accent-rose-500"
-              />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5 text-sm font-extrabold text-amber-100">
-                  <Home className="size-4 text-rose-300" /> Evini İddiaya Koy
-                </span>
-                <span className="mt-0.5 block text-[11px] font-semibold text-amber-200/70">
-                  {canWagerHouse
-                    ? `${myHouse?.name} — kaybedersen mülkiyeti rakibe geçer!`
-                    : !info
-                      ? "Yükleniyor…"
-                      : myHouse === null
-                        ? "Önce bir evin olmalı (evine gir)."
-                        : myHouse.locked
-                          ? "Evin şu an süren bir bahiste rehin."
-                          : "Rakibin zaten bir evi var — bir karakter en fazla BİR eve sahip olabilir."}
-                </span>
-              </span>
-            </label>
-            {houseOn && (
-              <p className="mt-2.5 flex items-center gap-1.5 rounded-lg bg-rose-500/15 px-2.5 py-1.5 text-[11px] font-bold text-rose-200">
-                <ShieldAlert className="size-3.5 shrink-0" />
-                Kaybedersen evin rakibe devredilir. Bu geri alınamaz.
-              </p>
-            )}
-          </section>
+          {/* Ev / servet alışverişi ayrı TAKAS sayfasında yapılır. */}
+          <p className="flex items-center gap-1.5 rounded-xl bg-amber-400/10 px-3 py-2 text-[11px] font-semibold text-amber-100/80">
+            <ArrowRightLeft className="size-3.5 shrink-0 text-amber-300" />
+            Evinizi ortaya koymak için profilinden <b>Takas Et</b>'i kullan.
+          </p>
 
           {/* Özet */}
           <div className="flex items-center gap-2 rounded-xl bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100">
             <Lock className="size-3.5 shrink-0 text-amber-300" />
-            Bahis: {describeWager(gold, houseOn ? myHouse?.name : undefined)}
+            Bahis: {describeWager(gold)}
           </div>
 
           <div className="flex gap-3">
             <Button
               size="lg"
-              disabled={sending || (!canWagerGold && !canWagerHouse)}
+              disabled={sending || !canWagerGold}
               className="flex-1 rounded-full bg-gradient-to-r from-red-600 to-amber-500 font-black text-white shadow-lg hover:from-red-500 hover:to-amber-400"
               onClick={handleSend}
             >
@@ -289,6 +296,232 @@ export function WagerChallengeSheet({
             </Button>
           </div>
         </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   1b) 🏠 TAKAS SAYFASI — iki karakter ev ve/veya para koyar
+   ───────────────────────────────────────────────────────────── */
+export const TRADE_MIN_GOLD = 100;
+
+export function TradeSheet({
+  opponentName,
+  myCoins,
+  myHouse,
+  opponentHouseName,
+  onClose,
+  onConfirm,
+}: {
+  opponentName: string;
+  myCoins: number;
+  /** Benim evim (yoksa ev koyamam). */
+  myHouse: { id: string; name: string } | null;
+  /** Rakibin ortaya koyacağı evin adı (yerel rakipte değersiz/boş ev). */
+  opponentHouseName?: string;
+  onClose: () => void;
+  onConfirm: (info: {
+    goldAmount: number;
+    houseId?: string;
+    houseName?: string;
+    houseStaked: boolean;
+    opponentGoldAmount: number;
+  }) => void;
+}) {
+  const [houseOn, setHouseOn] = useState(false);
+  const [goldOn, setGoldOn] = useState(true);
+  const [gold, setGold] = useState(() =>
+    Math.min(myCoins, Math.max(TRADE_MIN_GOLD, 500)),
+  );
+  const [ready, setReady] = useState(false);
+
+  const maxGold = Math.max(0, Math.floor(myCoins));
+  const canWagerGold = maxGold >= TRADE_MIN_GOLD;
+  const houseStaked = houseOn && myHouse !== null;
+  const goldAmount = goldOn && canWagerGold ? Math.min(gold, maxGold) : 0;
+  const valid = houseStaked || goldAmount > 0;
+
+  // Rakip ortaya eşit değerde bir servet koyar (yerel rakipte boş ev + eşit SP).
+  const opponentGoldAmount = goldAmount;
+
+  // "Takası onayla" → kısa bir "savaşa hazır ol" perdesi → arena.
+  useEffect(() => {
+    if (!ready) return;
+    const id = window.setTimeout(() => {
+      onConfirm({
+        goldAmount,
+        houseId: houseStaked ? myHouse?.id : undefined,
+        houseName: houseStaked ? myHouse?.name : undefined,
+        houseStaked,
+        opponentGoldAmount,
+      });
+    }, 900);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 80, opacity: 0, scale: 0.97 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        exit={{ y: 80, opacity: 0, scale: 0.97 }}
+        transition={{ type: "spring", stiffness: 360, damping: 27 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md overflow-hidden rounded-t-3xl border-2 border-emerald-400/50 bg-gradient-to-b from-[#12241a] to-[#0a160f] text-emerald-50 shadow-2xl sm:rounded-3xl"
+      >
+        {/* Başlık şeridi */}
+        <div className="relative flex items-center gap-3 border-b border-emerald-400/25 bg-[linear-gradient(90deg,#064e3b,#0f766e)] px-5 py-4">
+          <ArrowRightLeft className="size-6 shrink-0 text-emerald-200" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-black tracking-wide">TAKAS</h2>
+            <p className="truncate text-[11px] font-semibold text-emerald-100/80">
+              {opponentName} ile ev/para takası — kazanan hepsini alır
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Kapat"
+            className="flex size-8 items-center justify-center rounded-full bg-black/25 text-emerald-100 transition-colors hover:bg-black/40"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-5">
+          {/* İki sütun: SEN / RAKİP */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-emerald-400/25 bg-black/25 p-3">
+              <p className="text-[10px] font-black tracking-widest text-emerald-300">
+                SEN
+              </p>
+              <p className="mt-1 flex items-center gap-1.5 text-xs font-extrabold">
+                {houseStaked ? "🏠 " + (myHouse?.name ?? "Ev") : "🏠 Ev yok"}
+              </p>
+              <p className="mt-0.5 text-xs font-extrabold text-amber-200">
+                {CURRENCY_EMOJI} {formatCoins(goldAmount)} SP
+              </p>
+            </div>
+            <div className="rounded-2xl border border-emerald-400/25 bg-black/25 p-3">
+              <p className="text-[10px] font-black tracking-widest text-emerald-300">
+                {opponentName.toUpperCase()}
+              </p>
+              <p className="mt-1 flex items-center gap-1.5 text-xs font-extrabold">
+                🏠 {opponentHouseName ?? "Boş Ev"}
+              </p>
+              <p className="mt-0.5 text-xs font-extrabold text-amber-200">
+                {CURRENCY_EMOJI} {formatCoins(opponentGoldAmount)} SP
+              </p>
+            </div>
+          </div>
+
+          {/* Ev koy */}
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-emerald-400/20 bg-black/20 p-3">
+            <input
+              type="checkbox"
+              checked={houseOn}
+              disabled={myHouse === null}
+              onChange={(e) => setHouseOn(e.target.checked)}
+              className="mt-0.5 size-4 accent-emerald-500"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5 text-sm font-extrabold">
+                🏠 Evini Takasa Koy
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold text-emerald-200/70">
+                {myHouse === null
+                  ? "Önce bir evin olmalı (evine gir)."
+                  : houseOn
+                    ? "Kaybedersen evin rakibe geçer!"
+                    : "Evin: " + myHouse.name}
+              </span>
+            </span>
+          </label>
+
+          {/* Para koy */}
+          <section className="rounded-2xl border border-emerald-400/20 bg-black/20 p-3">
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={goldOn}
+                disabled={!canWagerGold}
+                onChange={(e) => setGoldOn(e.target.checked)}
+                className="size-4 accent-emerald-500"
+              />
+              <span className="text-sm font-extrabold">
+                {CURRENCY_EMOJI} Para Ekle
+              </span>
+              <span className="ml-auto rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-black text-amber-200">
+                {formatCoins(goldAmount)} SP
+              </span>
+            </label>
+            {goldOn && canWagerGold && (
+              <>
+                <input
+                  type="range"
+                  min={TRADE_MIN_GOLD}
+                  max={maxGold}
+                  step={50}
+                  value={Math.min(gold, maxGold)}
+                  onChange={(e) => setGold(Number(e.target.value))}
+                  className="mt-3 w-full accent-emerald-400"
+                />
+                <div className="mt-1 flex justify-between text-[10px] font-bold text-emerald-200/60">
+                  <span>min {TRADE_MIN_GOLD} SP</span>
+                  <span>kasan: {formatCoins(maxGold)} SP</span>
+                </div>
+              </>
+            )}
+          </section>
+
+          <div className="flex items-center gap-2 rounded-xl bg-emerald-400/10 px-3 py-2 text-xs font-bold">
+            <Lock className="size-3.5 shrink-0 text-emerald-300" />
+            Takas: {describeWager(goldAmount, houseStaked ? myHouse?.name : undefined)}
+          </div>
+
+          <Button
+            size="lg"
+            disabled={!valid || ready}
+            className="w-full rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 font-black text-white shadow-lg hover:from-emerald-500 hover:to-teal-400"
+            onClick={() => {
+              playSound("invite");
+              setReady(true);
+            }}
+          >
+            <ArrowRightLeft className="size-4" /> Takası Onayla
+          </Button>
+          <p className="text-center text-[11px] font-bold text-emerald-200/70">
+            Savaşa hazır ol ⚔️ — 3 raunt
+          </p>
+        </div>
+
+        {/* Savaşa hazır ol perdesi */}
+        <AnimatePresence>
+          {ready && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-10 flex items-center justify-center bg-black/80"
+            >
+              <motion.p
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1 }}
+                className="text-center text-xl font-black tracking-widest text-emerald-200"
+              >
+                ⚔️ SAVAŞA HAZIR OL
+              </motion.p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   );
@@ -418,7 +651,8 @@ export function WagerWaitingBanner({
       <div className="pointer-events-auto flex items-center gap-3 rounded-2xl border-2 border-amber-400/50 bg-[#241a12] px-4 py-2.5 shadow-xl">
         <span className="size-3 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
         <p className="text-xs font-extrabold text-amber-100">
-          {name} cevap veriyor… <span className="text-amber-300">[{summary}]</span>
+          {name} cevap veriyor…{" "}
+          <span className="text-amber-300">[{summary}]</span>
         </p>
         <button
           type="button"

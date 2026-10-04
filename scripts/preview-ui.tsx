@@ -1099,18 +1099,39 @@ const scenarios: Scenario[] = [
             /function postFeed/.test(wagers),
         ),
         check(
-          "meydan okuma formu: min 100 SP kaydırıcı + ev onay kutusu",
+          "düello sözleşmesi YALNIZ SP (min 100 kaydırıcı) — ev buradan KALDIRILDI",
           /export const WAGER_MIN_GOLD = 100/.test(sheet) &&
             /type="range"/.test(sheet) &&
-            /type="checkbox"/.test(sheet) &&
-            /Evini İddiaya Koy/.test(sheet),
+            !/Evini İddiaya Koy/.test(sheet) &&
+            /DÜELLO SÖZLEŞMESİ/.test(sheet),
         ),
         check(
-          "ev bahsi yalnızca EVSİZ rakibe konur (create/accept/finish doğrular)",
-          /canWagerHouse =/.test(sheet) &&
-            /opponentCanReceiveHouse/.test(sheet) &&
+          "ev/servet TAKAS sayfasına taşındı (ev + para → savaşa hazır ol)",
+          /export function TradeSheet/.test(sheet) &&
+            /Evini Takasa Koy/.test(sheet) &&
+            /Savaşa hazır ol/.test(sheet) &&
+            /export function HousePreview/.test(sheet) &&
             /export const challengeInfo = query/.test(wagers) &&
             /Zaten bir evin var/.test(wagers),
+        ),
+        check(
+          "PROFİL: karakterin evi izometrik önizlenir + 'Takas Et' düğmesi",
+          /<HousePreview/.test(world) &&
+            /house={\s*\n?\s*<HousePreview/.test(world) &&
+            /Takas Et/.test(world) &&
+            /<TradeSheet/.test(world),
+        ),
+        check(
+          "📱 TAKAS maçları 3 RAUNT (best-of-3) oynanır",
+          /rounds\?: number/.test(
+            read("../src/components/world/BattleScene.tsx"),
+          ) &&
+            /winsNeeded/.test(
+              read("../src/components/world/BattleScene.tsx"),
+            ) &&
+            /rounds: 3/.test(world) &&
+            /rounds={battle\.rounds}/.test(world) &&
+            /openTrade/.test(world),
         ),
         check(
           "TEK EV kuralı: karakter en fazla bir eve sahip olabilir",

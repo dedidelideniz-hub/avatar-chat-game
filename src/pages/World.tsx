@@ -53,6 +53,8 @@ import BattleScene from "@/components/world/BattleScene";
 import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import {
+  HousePreview,
+  TradeSheet,
   WagerAnnouncement,
   WagerChallengeSheet,
   WagerInvitePopup,
@@ -893,6 +895,7 @@ function CharacterCard({
   subtitle,
   badge,
   stats,
+  house,
   action,
   onClose,
 }: {
@@ -901,6 +904,8 @@ function CharacterCard({
   subtitle: string;
   badge?: React.ReactNode;
   stats: React.ReactNode;
+  /** 🏠 Karakterin evi — izometrik önizleme (ad/boyut). */
+  house?: React.ReactNode;
   action?: React.ReactNode;
   onClose: () => void;
 }) {
@@ -937,6 +942,7 @@ function CharacterCard({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">{stats}</div>
+      {house && <div className="mt-3">{house}</div>}
       {action && <div className="mt-3">{action}</div>}
     </motion.div>
   );
@@ -1221,6 +1227,8 @@ export default function World() {
   const enterHouse = useMutation(api.houses.enter);
   const renameHouse = useMutation(api.houses.rename);
   const visitHouse = useMutation(api.houses.visit);
+  // 🏠 Profil kartındaki ev önizlemesi (yalnız görüntü — ad).
+  const myHouseView = useQuery(api.houses.mine);
   // 🛋️ MOBİLYA EKONOMİSİ (bkz. `convex/furniture.ts`): oyuncu eşyaları
   // CADDEDEKİ STANTTAN Vaelos Parası ile alır ve SAHİP OLDUKLARINI evine dizer.
   // Yerleşim sunucuda tutulur: oda kapanıp açılsa da düzen yerinde kalır.
@@ -1244,6 +1252,9 @@ export default function World() {
   const startBotWager = useMutation(api.wagers.startBotWager);
   const finishBotWager = useMutation(api.wagers.finishBotWager);
   const refundBotWagers = useMutation(api.wagers.refundBotWagers);
+  // 🏠 TAKAS: gerçek oyuncuya ev/para takas daveti (mevcut
+  // `wagers.create` akışıyla ev + SP rehine alınır).
+  const createWager = useMutation(api.wagers.create);
 
   // Visual Debug toggle — Ctrl+Shift+D
   useEffect(() => {
@@ -1448,6 +1459,8 @@ export default function World() {
     opponentAbility: string;
     /** Bahisli bot düellosu ise özet — arena duyurusunu tetikler. */
     highStakes?: { summary: string };
+    /** ⚔️ RAUND SAYISI: takas maçları 3 raunt (en iyi 3'ün) oynanır. */
+    rounds?: number;
   } | null>(null);
   const battleRef = useRef(battle);
   battleRef.current = battle;
@@ -1511,6 +1524,11 @@ export default function World() {
   } | null>(null);
   const activeBotWagerRef = useRef(activeBotWager);
   activeBotWagerRef.current = activeBotWager;
+  // 🏠 TAKAS sayfası hedefi: cadde sakini (`bot`) ya da gerçek oyuncu (ad).
+  const [tradeChallenge, setTradeChallenge] = useState<{
+    opponentName: string;
+    bot?: BotDef;
+  } | null>(null);
   const pvpBattleRef = useRef(pvpBattle);
   pvpBattleRef.current = pvpBattle;
 
@@ -1721,6 +1739,21 @@ export default function World() {
           (o) => o.sessionId === viewing.slice("remote:".length),
         ) ?? null)
       : null;
+  // 🏠 Takas/profil: karşı oyuncunun evi (varsa adı gösterilir).
+  const viewedRemoteHouse = useQuery(
+    api.houses.view,
+    viewedRemote?.data?.name ? { ownerName: viewedRemote.data.name } : "skip",
+  );
+  // 🏠 Takas sayfası bilgisi: kendi evim (satır kimliğiyle) + evsiz rakip
+  // kuralı. Cadde sakini için ad verilmez (her zaman evsiz sayılır).
+  const tradeInfo = useQuery(
+    api.wagers.challengeInfo,
+    tradeChallenge
+      ? tradeChallenge.bot
+        ? {}
+        : { opponentName: tradeChallenge.opponentName }
+      : "skip",
+  );
 
   // When the profile loads, announce yourself so others see you in the street.
   useEffect(() => {
@@ -3270,6 +3303,142 @@ export default function World() {
   );
 
   /**
+   * 🏠 TAKAS sayfasını aç (bir karakterin profilinden). Rakip cadde sakiniyse
+   * yerel 3 rauntluk takas maçı, gerçek oyuncuysa ev/SP bahisli düello daveti.
+   */
+  const openTrade = useCallback(
+    (args: { opponentName: string; bot?: BotDef }) => {
+      if (
+        pvpBattle ||
+        pvpChallenge ||
+        battle ||
+        wagerPending ||
+        botWagerPending ||
+        tradeChallenge
+      )
+        return;
+      playSound("click");
+      setTradeChallenge(args);
+      setViewing(null);
+    },
+    [
+      pvpBattle,
+      pvpChallenge,
+      battle,
+      wagerPending,
+      botWagerPending,
+      tradeChallenge,
+    ],
+  );
+
+  /**
+   * 🏠 TAKAS ONAYI: "Takası onayla → savaşa hazır ol" sonrası.
+   * Cadde sakiniyle 3 RAUNTluk (`BattleScene rounds=3`) takas maçı başlar ve ev/SP
+   * sunucuda rehine alınır; gerçek oyuncuda mevcut ev/SP düello daveti açılır.
+   */
+  const handleTradeConfirm = useCallback(
+    (info: {
+      goldAmount: number;
+      houseId?: string;
+      houseName?: string;
+      houseStaked: boolean;
+      opponentGoldAmount: number;
+    }) => {
+      const target = tradeChallenge;
+      setTradeChallenge(null);
+      if (!target) return;
+      const summary = describeWager(info.goldAmount, info.houseName);
+
+      // ── Cadde sakini: yerel 3 rauntluk maç + sunucuda rehin ──
+      if (target.bot) {
+        const bot = target.bot;
+        setBotWagerPending({ botId: bot.id, botName: bot.name, summary });
+        window.setTimeout(() => {
+          setBotWagerPending(null);
+          void (async () => {
+            try {
+              const res = await startBotWager({
+                botId: bot.id,
+                botName: bot.name,
+                goldAmount: info.goldAmount,
+                wageredHouseId: info.houseId
+                  ? (info.houseId as Id<"houses">)
+                  : undefined,
+              });
+              playSound("vs");
+              setActiveBotWager({
+                botWagerId: res.botWagerId as string,
+                summary,
+              });
+              appendMessage({
+                id: `local-${nextIdRef.current++}`,
+                from: bot.name,
+                text: `Takas kabul! ${summary} ortada — 3 raunt, kazanan hepsini alır! 🏠⚔️`,
+                color: bot.color,
+              });
+              setBattle({
+                opponent: bot,
+                opponentLevel: bot.level,
+                playerAbility: equippedAbility,
+                opponentAbility: bot.ability,
+                highStakes: { summary },
+                rounds: 3,
+              });
+              setViewing(null);
+              setAbilitiesOpen(false);
+            } catch (error) {
+              console.error("Takas hatası:", error);
+              toast.error(
+                error instanceof Error ? error.message : "Takas başlatılamadı.",
+              );
+            }
+          })();
+        }, 1200 + Math.random() * 900);
+        return;
+      }
+
+      // ── Gerçek oyuncu: ev/SP bahisli düello daveti (mevcut akış) ──
+      void (async () => {
+        try {
+          const res = await createWager({
+            opponentName: target.opponentName,
+            goldAmount: info.goldAmount,
+            wageredHouseId: info.houseId
+              ? (info.houseId as Id<"houses">)
+              : undefined,
+            mySessionId: sessionId,
+            me: { name: username, config, equipped, ability: equippedAbility },
+          });
+          playSound("invite");
+          setWagerPending({
+            wagerId: res.wagerId,
+            name: target.opponentName,
+            summary,
+          });
+        } catch (error) {
+          console.error("Takas daveti hatası:", error);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Takas daveti gönderilemedi.",
+          );
+        }
+      })();
+    },
+    [
+      tradeChallenge,
+      startBotWager,
+      createWager,
+      equippedAbility,
+      appendMessage,
+      sessionId,
+      username,
+      config,
+      equipped,
+    ],
+  );
+
+  /**
    * ⚔️ ARENA "Meydan Oku": caddede en yakın gerçek oyuncuya bahisli düello
    * sözleşmesi aç. Yakında kimse yoksa uyarır (rakip seçmek için profiline
    * dokunmak da aynı formu açar).
@@ -3963,6 +4132,12 @@ export default function World() {
                       </span>
                     </>
                   }
+                  house={
+                    <HousePreview
+                      name={myHouseView?.name ?? `${username} Odası`}
+                      tone={config.shirt}
+                    />
+                  }
                   action={
                     <Button
                       size="sm"
@@ -4001,6 +4176,12 @@ export default function World() {
                       </span>
                     </>
                   }
+                  house={
+                    <HousePreview
+                      name={`${viewedBot.name} Odası`}
+                      tone={viewedBot.color}
+                    />
+                  }
                   action={
                     invite?.botId === viewedBot.id &&
                     invite.status === "waiting" ? (
@@ -4033,6 +4214,16 @@ export default function World() {
                           onClick={() => openLocalWagerChallenge(viewedBot)}
                         >
                           💰 Bahisli Meydan Oku
+                        </Button>
+                        {/* 🏠 TAKAS: ev ve/veya para ortaya — 3 rauntluk maç. */}
+                        <Button
+                          size="sm"
+                          className="w-full rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 font-black text-white shadow hover:from-emerald-500 hover:to-teal-400"
+                          onClick={() =>
+                            openTrade({ opponentName: viewedBot.name, bot: viewedBot })
+                          }
+                        >
+                          🏠 Takas Et
                         </Button>
                       </div>
                     )
@@ -4069,6 +4260,14 @@ export default function World() {
                       }
                     </span>
                   }
+                  house={
+                    <HousePreview
+                      name={
+                        viewedRemoteHouse?.name ??
+                        `${viewedRemote.data?.name ?? "Oyuncu"} Odası`
+                      }
+                    />
+                  }
                   action={
                     <div className="flex w-full flex-col gap-2">
                       <Button
@@ -4087,6 +4286,18 @@ export default function World() {
                         }
                       >
                         💰 Bahisli Meydan Oku
+                      </Button>
+                      {/* 🏠 TAKAS: ev ve/veya para ortaya — 3 rauntluk maç. */}
+                      <Button
+                        size="sm"
+                        className="w-full rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 font-black text-white shadow hover:from-emerald-500 hover:to-teal-400"
+                        onClick={() =>
+                          openTrade({
+                            opponentName: viewedRemote.data?.name ?? "Oyuncu",
+                          })
+                        }
+                      >
+                        🏠 Takas Et
                       </Button>
                     </div>
                   }
@@ -4235,6 +4446,7 @@ export default function World() {
               opponentEquipped={battle.opponent.equipped}
               opponentAbility={battle.opponentAbility}
               opponentLevel={battle.opponentLevel}
+              rounds={battle.rounds}
               onExit={endBattle}
             />
           )}
@@ -4578,6 +4790,28 @@ export default function World() {
             onClose={() => setBotWagerChallenge(null)}
             onSent={() => {}}
             onLocalSent={handleBotWagerSent}
+          />
+        )}
+        {tradeChallenge && (
+          <TradeSheet
+            key="trade"
+            opponentName={tradeChallenge.opponentName}
+            myCoins={coins}
+            myHouse={
+              tradeInfo?.myHouse
+                ? {
+                    id: String(tradeInfo.myHouse.id),
+                    name: tradeInfo.myHouse.name,
+                  }
+                : null
+            }
+            opponentHouseName={
+              tradeChallenge.bot
+                ? "Boş Ev"
+                : (viewedRemoteHouse?.name ?? "Boş Ev")
+            }
+            onClose={() => setTradeChallenge(null)}
+            onConfirm={handleTradeConfirm}
           />
         )}
         {abilitiesOpen && (

@@ -404,6 +404,7 @@ export default function BattleScene({
   opponentLevel,
   gold,
   sandbox,
+  rounds,
   onExit,
 }: {
   playerName: string;
@@ -422,6 +423,11 @@ export default function BattleScene({
    * sahnede simüle edilir (misafir oyuncu ve test sahası için).
    */
   sandbox?: boolean;
+  /**
+   * ⚔️ RAUND SAYISI: 1 = tek raunt (varsayılan). Takas maçları 3 raunt oynanır
+   * (en iyi 3'ün): ilk 2 raundu alan maçı kazanır.
+   */
+  rounds?: number;
   onExit: (victory: boolean) => void;
 }) {
   const arenaRef = useRef<HTMLElement>(null);
@@ -477,6 +483,19 @@ export default function BattleScene({
   // (`aimState` ile aynı desen). Sahne sökülünce bağ çözülür.
   useEffect(() => bindBombTraps(traps.current), []);
   const resultRef = useRef<"win" | "lose" | null>(null);
+  // ⚔️ RAUND SİSTEMİ (takas maçları): 1 = tek raunt, 3 = en iyi 3'ün.
+  const totalRounds = Math.min(5, Math.max(1, Math.round(rounds ?? 1)));
+  const winsNeeded = Math.floor(totalRounds / 2) + 1;
+  const roundRef = useRef(1);
+  const winsRef = useRef({ p: 0, o: 0 });
+  // Raund arası "RAUND N" perdesi: simülasyon bu süre boyunca donar, süre
+  // bitince iki dövüşçü de taze başlar (bkz. `resetForNextRound`, main loop).
+  const pendingRoundRef = useRef(false);
+  const roundPauseUntilRef = useRef(0);
+  const [roundBanner, setRoundBanner] = useState<string | null>(null);
+  const [roundLabel, setRoundLabel] = useState(
+    totalRounds > 1 ? `RAUND 1 / ${totalRounds}` : "",
+  );
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
 
@@ -856,7 +875,8 @@ export default function BattleScene({
     if (target.hp <= 0) {
       burstFx(target.x, target.y - 40, 120, "#ffffff", 0.5);
       smokeFx(target.x, target.y - 40, 9, 150);
-      endBattle(attacker === player.current ? "win" : "lose");
+      // Takas maçlarında yere serilmek maçı bitirmez: raunt skoru işlenir.
+      handleKo(attacker === player.current);
     }
   };
 
@@ -1008,6 +1028,78 @@ export default function BattleScene({
     playSound(win === "win" ? "win" : "lose");
   };
 
+  /**
+   * ⚔️ RAUND ARASI SIFIRLAMA: iki dövüşçü de başlangıç durumuna döner (can,
+   * konum, bekleme süreleri, şarjlar, bombalar). Nesneler YERİNDE sıfırlanır
+   * (Object.assign): kule/MOBA köprüleri aynı ref nesnelerini tutuyor.
+   */
+  const resetForNextRound = () => {
+    projs.current.length = 0;
+    traps.current.length = 0;
+    Object.assign(
+      player.current,
+      newFighter(
+        playerName,
+        playerConfig,
+        playerEquipped,
+        playerAbility,
+        400,
+        100,
+        1,
+        1,
+      ),
+    );
+    Object.assign(
+      bot.current,
+      newFighter(
+        opponentName,
+        withOwnColor(
+          opponentConfig,
+          `${opponentName}:${opponentLevel}`,
+          playerConfig.shirt,
+        ),
+        opponentEquipped,
+        opponentAbility,
+        1300,
+        1000,
+        -1,
+        opponentLevel,
+      ),
+    );
+    player.current.moveVX = 0;
+    player.current.moveVY = 0;
+    bot.current.moveVX = 0;
+    bot.current.moveVY = 0;
+    bot.current.atkCd = 0.4;
+    spawnResolvedRef.current = false;
+  };
+
+  /**
+   * ⚔️ RAUND SONU: bir dövüşçü yere serildi. Tek rauntluk maçlarda anında
+   * biter; takas maçlarında raunt skoru artar ve `winsNeeded`e ulaşılınca maç
+   * biter (en iyi 3'ün → ilk 2 raunt). Arasıra kısa bir perde gösterilir.
+   */
+  const handleKo = (playerWon: boolean) => {
+    if (resultRef.current || pendingRoundRef.current) return;
+    if (playerWon) winsRef.current.p += 1;
+    else winsRef.current.o += 1;
+    if (winsRef.current.p >= winsNeeded) {
+      endBattle("win");
+      return;
+    }
+    if (winsRef.current.o >= winsNeeded) {
+      endBattle("lose");
+      return;
+    }
+    roundRef.current += 1;
+    setRoundLabel(
+      totalRounds > 1 ? `RAUND ${roundRef.current} / ${totalRounds}` : "",
+    );
+    setRoundBanner(`RAUND ${roundRef.current} / ${totalRounds}`);
+    pendingRoundRef.current = true;
+    roundPauseUntilRef.current = performance.now() + 1900;
+  };
+
   // ---- main loop ----
   useEffect(() => {
     // Yatay mod yönergesi açıksa ambiyans hiç başlamaz (yukarıdaki geçiş
@@ -1093,6 +1185,15 @@ export default function BattleScene({
       const b = bot.current;
       // freeze the simulation until the loading sequence finishes
       if (!startedRef.current || resultRef.current) return;
+
+      // ⚔️ RAUND ARASI PERDE: "RAUND N" görünürken simülasyon donar; süre
+      // bitince iki dövüşçü de taze başlar ve perde kalkar.
+      if (pendingRoundRef.current) {
+        if (performance.now() < roundPauseUntilRef.current) return;
+        pendingRoundRef.current = false;
+        resetForNextRound();
+        setRoundBanner(null);
+      }
 
       if (!spawnResolvedRef.current) {
         // false → GLB çarpışma ızgarası henüz hazır değil; gelecek karede
@@ -1987,6 +2088,34 @@ export default function BattleScene({
             </span>
           </div>
         </main>
+
+        {/* ⚔️ RAUND GÖSTERGESİ + RAUND ARASI PERDE (takas maçları) */}
+        {totalRounds > 1 && (
+          <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center">
+            <span className="rounded-full border-2 border-amber-300/60 bg-black/60 px-4 py-1 text-xs font-black tracking-widest text-amber-200 shadow-lg">
+              ⚔️ {roundLabel} · {winsRef.current.p}–{winsRef.current.o}
+            </span>
+          </div>
+        )}
+        <AnimatePresence>
+          {roundBanner && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center"
+            >
+              <div className="rounded-2xl border-4 border-amber-300/70 bg-black/70 px-8 py-4 text-center">
+                <p className="text-3xl font-black tracking-widest text-amber-200">
+                  {roundBanner}
+                </p>
+                <p className="mt-1 text-xs font-extrabold tracking-wider text-white/70">
+                  HAZIR OL ⚔️
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* result screen */}
         <AnimatePresence>
