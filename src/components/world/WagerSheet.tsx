@@ -54,6 +54,7 @@ export function HousePreview({
   name,
   tone = "#c98a5a",
   sizeLabel = "3B · 1 oda",
+  image,
   className,
 }: {
   /** Evin adı (levhada yazar). Yoksa "Ev yok". */
@@ -62,6 +63,11 @@ export function HousePreview({
   tone?: string;
   /** Boyut etiketi (ör. "3B · 1 oda"). */
   sizeLabel?: string;
+  /**
+   * 📸 GERÇEK EV FOTOĞRAFI (data-URL) — oda canvas'ından yakalanır ve odanın
+   * İÇİNDEKİ EŞYALARA KADAR birebir görünür. Yoksa izometrik çizim gösterilir.
+   */
+  image?: string | null;
   className?: string;
 }) {
   const hasHouse = Boolean(name);
@@ -69,7 +75,15 @@ export function HousePreview({
     <div
       className={`relative overflow-hidden rounded-2xl border border-[#3d2f2a]/15 bg-gradient-to-b from-sky-100 to-emerald-100 p-2 ${className ?? ""}`}
     >
-      <svg viewBox="0 0 120 104" className="block h-auto w-full">
+      <div className="relative aspect-[6/5] w-full overflow-hidden rounded-xl bg-gradient-to-b from-sky-100 to-emerald-100">
+        {image ? (
+          <img
+            src={image}
+            alt={name ?? "Ev"}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <svg viewBox="0 0 120 104" className="absolute inset-0 h-full w-full">
         {/* zemin */}
         <ellipse cx="60" cy="86" rx="46" ry="12" fill="#7dd37d" opacity="0.6" />
         {/* gövde (izometrik kutu) */}
@@ -90,12 +104,14 @@ export function HousePreview({
           transform="skewY(26)"
           fill="#fde68a"
         />
-      </svg>
-      {!hasHouse && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/60 text-[11px] font-extrabold text-[#3d2f2a]/70">
-          Ev yok
-        </div>
-      )}
+          </svg>
+        )}
+        {!hasHouse && !image && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/60 text-[11px] font-extrabold text-[#3d2f2a]/70">
+            Ev yok
+          </div>
+        )}
+      </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <p className="truncate text-[11px] font-extrabold text-[#2b2320]">
           {name ?? "Henüz ev yok"}

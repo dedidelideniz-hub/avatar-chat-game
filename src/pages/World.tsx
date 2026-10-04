@@ -41,6 +41,7 @@ import {
 import { HouseRoom } from "@/components/world/HouseRoom";
 import { FurnitureStandSheet } from "@/components/world/FurnitureStandSheet";
 import { preloadRoomModel } from "@/engine/RoomStage";
+import { useLatestRoomShot, useRoomShot } from "@/engine/roomShot";
 import { hasCharacterSkin } from "@/engine/EquipmentRegistry";
 import { starterFurniture } from "@/engine/roomBuild";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1229,6 +1230,8 @@ export default function World() {
   const visitHouse = useMutation(api.houses.visit);
   // 🏠 Profil kartındaki ev önizlemesi (yalnız görüntü — ad).
   const myHouseView = useQuery(api.houses.mine);
+  // 📸 Kendi evimin gerçek fotoğrafı (odaya girdiğimde yakalanır).
+  const myRoomShot = useRoomShot(myHouseView?.roomId);
   // 🛋️ MOBİLYA EKONOMİSİ (bkz. `convex/furniture.ts`): oyuncu eşyaları
   // CADDEDEKİ STANTTAN Vaelos Parası ile alır ve SAHİP OLDUKLARINI evine dizer.
   // Yerleşim sunucuda tutulur: oda kapanıp açılsa da düzen yerinde kalır.
@@ -1744,6 +1747,10 @@ export default function World() {
     api.houses.view,
     viewedRemote?.data?.name ? { ownerName: viewedRemote.data.name } : "skip",
   );
+  // 📸 Karşı oyuncunun oda fotoğrafı (odayı ziyaret ettiysem) + en son
+  // yakalanan oda fotoğrafı (oda kimliği olmayan evler için temsilî görüntü).
+  const remoteRoomShot = useRoomShot(viewedRemoteHouse?.roomId);
+  const latestRoomShot = useLatestRoomShot();
   // 🏠 Takas sayfası bilgisi: kendi evim (satır kimliğiyle) + evsiz rakip
   // kuralı. Cadde sakini için ad verilmez (her zaman evsiz sayılır).
   const tradeInfo = useQuery(
@@ -4136,6 +4143,7 @@ export default function World() {
                     <HousePreview
                       name={myHouseView?.name ?? `${username} Odası`}
                       tone={config.shirt}
+                      image={myRoomShot ?? latestRoomShot}
                     />
                   }
                   action={
@@ -4180,6 +4188,7 @@ export default function World() {
                     <HousePreview
                       name={`${viewedBot.name} Odası`}
                       tone={viewedBot.color}
+                      image={latestRoomShot}
                     />
                   }
                   action={
@@ -4266,6 +4275,7 @@ export default function World() {
                         viewedRemoteHouse?.name ??
                         `${viewedRemote.data?.name ?? "Oyuncu"} Odası`
                       }
+                      image={remoteRoomShot ?? latestRoomShot}
                     />
                   }
                   action={

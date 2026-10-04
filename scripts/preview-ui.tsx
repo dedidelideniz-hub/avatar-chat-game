@@ -1134,6 +1134,25 @@ const scenarios: Scenario[] = [
             /openTrade/.test(world),
         ),
         check(
+          "ev resmi = GERÇEK ODA FOTOĞRAFI (canvas yakalanır, eşyalara kadar)",
+          /preserveDrawingBuffer: true/.test(
+            read("../src/engine/RoomStage.tsx"),
+          ) &&
+            /toDataURL\("image\/jpeg"/.test(
+              read("../src/engine/RoomStage.tsx"),
+            ) &&
+            /onShot\?\: \(dataUrl: string\) => void/.test(
+              read("../src/engine/RoomStage.tsx"),
+            ) &&
+            /setRoomShot/.test(read("../src/components/world/HouseRoom.tsx")) &&
+            /export function useRoomShot/.test(
+              read("../src/engine/roomShot.ts"),
+            ) &&
+            /image\?: string \| null/.test(sheet) &&
+            /<img/.test(sheet) &&
+            /image={latestRoomShot}/.test(world),
+        ),
+        check(
           "TEK EV kuralı: karakter en fazla bir eve sahip olabilir",
           /MAX_HOUSES_PER_USER = 1/.test(read("../src/convex/houses.ts")) &&
             /winnerHouse === null \|\| winnerHouse\._id === house\._id/.test(

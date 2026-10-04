@@ -42,10 +42,11 @@ import { Button } from "@/components/ui/button";
 import type { HouseView } from "@/engine/houseDoor";
 import { AnimatePresence, motion } from "framer-motion";
 import { DoorOpen, Home, Pencil, Users } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { GlbProfileAvatar } from "@/engine/GlbAvatar3D";
 import { ChatBubbleBody } from "@/engine/ChatBubble3D";
 import { RoomStage } from "@/engine/RoomStage";
+import { setRoomShot } from "@/engine/roomShot";
 import type { OwnedFurniture } from "@/engine/roomBuild";
 import { playSound } from "@/lib/sounds";
 
@@ -234,6 +235,15 @@ export function HouseRoom({
   // yumuşakça açılır.
   const [stageReady, setStageReady] = useState(false);
 
+  /**
+   * 📸 Oda fotoğrafı: 3D sahne çizildikçe yakalanan görüntüyü oda kimliğiyle
+   * sakla. Profil kartındaki "ev resmi" bu fotoğraftır (eşyalar dahil).
+   */
+  const handleShot = useCallback(
+    (dataUrl: string) => setRoomShot(view.roomId, dataUrl),
+    [view.roomId],
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -385,6 +395,9 @@ export function HouseRoom({
           onOpenStand={onOpenStand}
           // Oda ne zaman gerçekten görünür oldu? (bkz. `stageReady` yorumu.)
           onReadyChange={setStageReady}
+          // 📸 Oda gerçekten çizilince fotoğraf yakalanır (profil kartındaki
+          // ev resmi = odanın ta kendisi, eşyalara kadar).
+          onShot={handleShot}
           // 💬 Sohbet baloncuğu caddeyle AYNI şekilde odaya geçer: evin içi
           // ayrı bir ekran değil, tek fark eşya dizmek.
           speech={speech}

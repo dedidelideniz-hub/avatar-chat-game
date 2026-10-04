@@ -1276,6 +1276,12 @@ export interface RoomStageProps {
    * görünür kalır ve 3D oda hazır olunca açılır.
    */
   onReadyChange?: (ready: boolean) => void;
+  /**
+   * 📸 Oda GERÇEKTEN çizildikten sonra canvas bir kez fotoğraflanır ve küçük
+   * bir JPEG data-URL'i buraya verilir (profil kartındaki gerçek ev görüntüsü).
+   * Eşyalar değiştikçe yeniden çağrılır — profil her zaman güncel odayı gösterir.
+   */
+  onShot?: (dataUrl: string) => void;
 }
 
 /**
@@ -1295,6 +1301,7 @@ export function RoomStage({
   canBuild = false,
   fallback,
   onReadyChange,
+  onShot,
   owned,
   onPlaceItem,
   onLiftItem,
@@ -1445,6 +1452,44 @@ export function RoomStage({
   useEffect(() => {
     onReadyChange?.(ready);
   }, [ready, onReadyChange]);
+
+  /**
+   * 📸 ODA FOTOĞRAFI: oda (GLB modeli + eşyalar) çizildikten sonra canvas
+   * küçük bir JPEG'e indirilip `onShot`e bildirilir. Profil kartındaki ev
+   * resmi bu fotoğraftır — odanın ta kendisi, İÇİNDEKİ EŞYALARA KADAR.
+   *
+   * Kısa bir gecikme (model/doku/materyallerin oturması için) ve
+   * `preserveDrawingBuffer` (aşağıda, Canvas gl) gerekir: yoksa okunan tampon
+   * boş çıkar. Eşya yerleşimi değiştikçe (`owned`) yeniden çekilir.
+   */
+  useEffect(() => {
+    if (!ready || !onShot) return;
+    const id = window.setTimeout(() => {
+      const gl = roomGl.current;
+      if (!gl) return;
+      const src = gl.domElement;
+      const sw = src.width;
+      const sh = src.height;
+      if (!sw || !sh) return;
+      const w = 480;
+      const h = Math.max(1, Math.round((w * sh) / sw));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(src, 0, 0, w, h);
+      let url = "";
+      try {
+        url = canvas.toDataURL("image/jpeg", 0.72);
+      } catch {
+        return;
+      }
+      if (url) onShot(url);
+    }, 1100);
+    return () => window.clearTimeout(id);
+    // `owned` değişince (eşya dizildi/kaldırıldı) fotoğraf tazelenir.
+  }, [ready, onShot, owned]);
 
   // BAĞLAM YUVASI YOK: 3D oda HİÇ kurulmadı (deneme başarısız). Yedek odanın
   // avatar canvas'ı da AÇILMAZ: ikinci bir bağlam isteği de reddedilir ve
@@ -1710,6 +1755,9 @@ export function RoomStage({
             // bir deneme bağlamı açılmaz (`webglSupport.webglPowerPreference`).
             powerPreference: webglPowerPreference() ?? "default",
             failIfMajorPerformanceCaveat: false,
+            // 📸 Oda fotoğrafı için: çizilen kare okunabilsin (toDataURL /
+            // drawImage). Yalnız odada; cadde sahnesi bundan etkilenmez.
+            preserveDrawingBuffer: true,
           }}
           onCreated={({ gl }) => {
             // Renderer'ı tut: sahne çökerse `handleFail` bağlamı hemen bırakır.
