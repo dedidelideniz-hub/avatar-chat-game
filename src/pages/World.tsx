@@ -4141,9 +4141,13 @@ export default function World() {
                   }
                   house={
                     <HousePreview
-                      name={myHouseView?.name ?? `${username} Odası`}
+                      // 🏠 Ev yoksa "Ev yok" göster (uydurma ad yazma): kaybedilen
+                      // ev geri gelmez, kart da durumu dürüstçe yansıtır.
+                      name={myHouseView?.name}
                       tone={config.shirt}
-                      image={myRoomShot ?? latestRoomShot}
+                      image={
+                        myHouseView ? (myRoomShot ?? latestRoomShot) : null
+                      }
                     />
                   }
                   action={

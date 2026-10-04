@@ -177,6 +177,21 @@ export const enter = mutation({
       }
     }
 
+    // 🏠 EV KAYBI KALICI: evini bir bahisli düelloda kaybeden oyuncuya
+    // tekrar girişte BEDAVA ev açılmaz (aksi halde kayıp anlamsız olurdu).
+    // Yeni oyuncuda `houseLost` boştur → ilk girişte ev yine otomatik açılır.
+    if (existing === null) {
+      const profile = await ctx.db
+        .query("profiles")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+      if (profile?.houseLost) {
+        throw new Error(
+          "Evin yok — bir düello ya da takas kazanarak yeni ev edinebilirsin.",
+        );
+      }
+    }
+
     if (existing === null) {
       // 1) Satır açılır, 2) kimlik satır `_id`inden türetilip yazılır: oda
       //    böylece DB'de KİMLİKLİ bir ÖRNEK olur (`room_…`).

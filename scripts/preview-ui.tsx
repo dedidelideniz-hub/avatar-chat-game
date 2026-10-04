@@ -1153,6 +1153,14 @@ const scenarios: Scenario[] = [
             /image={latestRoomShot}/.test(world),
         ),
         check(
+          "🏠 EV KAYBI KALICI: kaybedince tekrar girişte BEDAVA ev açılmaz",
+          /houseLost: v\.optional\(v\.boolean\(\)\)/.test(schema) &&
+            /profile\?\.houseLost/.test(read("../src/convex/houses.ts")) &&
+            /async function markHouseLost/.test(wagers) &&
+            /markHouseLost\(ctx, userId, true\)/.test(wagers) &&
+            /markHouseLost\(ctx, loserId, true\)/.test(wagers),
+        ),
+        check(
           "TEK EV kuralı: karakter en fazla bir eve sahip olabilir",
           /MAX_HOUSES_PER_USER = 1/.test(read("../src/convex/houses.ts")) &&
             /winnerHouse === null \|\| winnerHouse\._id === house\._id/.test(

@@ -165,6 +165,26 @@ async function houseOf(ctx: QueryCtx | MutationCtx, userId: Id<"users">) {
 }
 
 /**
+ * 🏠 EV KAYBI DAMGASI — oyuncunun profilindeki `houseLost` bayrağını yazar.
+ *
+ * NEDEN: evini bir düelloda kaybeden oyuncuya `houses.enter` tekrar girişte
+ * BEDAVA ev açıyordu; bu da bahsi anlamsız kılıyordu. Kaybedince damga
+ * konur (artık otomatik ev yok), ev kazanan oyuncuda damga temizlenir.
+ */
+async function markHouseLost(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  lost: boolean,
+): Promise<void> {
+  const profile = await ctx.db
+    .query("profiles")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  if (!profile) return;
+  await ctx.db.patch(profile._id, { houseLost: lost, updatedAt: Date.now() });
+}
+
+/**
  * Meydan oku — altın ve/veya ev ortaya koyarak bir bahis sözleşmesi aç.
  *
  * `wageredHouseId` verilirse: ev GERÇEKTEN benim olmalı ve başka bir bahiste
@@ -543,6 +563,15 @@ export const finish = mutation({
             wageredIn: undefined,
             updatedAt: Date.now(),
           });
+          // 🏠 EV KAYBI: ev gerçekten el değiştirdiyse kaybedene "ev yok"
+          // damgası konur (bir daha otomatik ev açılmasın), kazananın damgası
+          // temizlenir.
+          const loserId =
+            winnerId === wager.challengerId
+              ? wager.targetId
+              : wager.challengerId;
+          await markHouseLost(ctx, loserId, true);
+          await markHouseLost(ctx, winnerId, false);
         } else {
           await ctx.db.patch(house._id, {
             wageredIn: undefined,
@@ -734,6 +763,9 @@ export const finishBotWager = mutation({
       const locked = await ctx.db.get(row.lockedHouseId);
       if (locked !== null && locked.userId === userId) {
         await ctx.db.delete(locked._id);
+        // 🏠 EV KAYBI KALICI: kaybedilen ev geri gelmesin — oyuncuya "ev
+        // yok" damgası konur, `houses.enter` artık ona bedava ev açmaz.
+        await markHouseLost(ctx, userId, true);
       }
     } else if (won && row.wageredHouse) {
       const owned = await ctx.db
@@ -760,6 +792,8 @@ export const finishBotWager = mutation({
         });
         await ctx.db.patch(rowId, { roomId: `room_${rowId}` });
         houseAwarded = true;
+        // Yeni ev kazanıldı → "ev yok" damgası temizlenir.
+        await markHouseLost(ctx, userId, false);
       } else {
         // TEK EV kuralı: ikinci ev verilemez → boş ev SP'ye çevrilir.
         houseGoldValue = BOT_HOUSE_VALUE;

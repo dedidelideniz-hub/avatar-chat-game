@@ -302,6 +302,14 @@ const schema = defineSchema(
       abilities: v.optional(v.array(v.string())), // owned battle supers
       equippedAbility: v.optional(v.string()), // equipped super id
       battleWins: v.optional(v.number()), // completed battle victories
+      /**
+       * 🏠 EV KAYBI (kalıcı): oyuncu evini bir bahisli düelloda KAYBETTİYSE
+       * true olur. Bu durumda `houses.enter` ona tekrar girişte BEDAVA ev
+       * AÇMAZ — kaybedilen ev geri gelmez; oyuncu ancak bir düello/takas
+       * KAZANARAK yeni bir ev edinir. Yeni oyuncuda boştur (undefined) → ilk
+       * girişte ev yine otomatik açılır.
+       */
+      houseLost: v.optional(v.boolean()),
       createdAt: v.number(),
       updatedAt: v.number(),
     })
