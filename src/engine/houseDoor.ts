@@ -22,6 +22,15 @@
 /** Kapıda beliren düğmenin yazısı (tek hâl: kapı hep aynı). */
 export const HOUSE_ENTER_LABEL = { emoji: "🏠", label: "Evine gir" } as const;
 
+/**
+ * EVİNİ KAYBETMİŞ oyuncunun kapıda gördüğü düğme.
+ *
+ * Ev kaybı KALICIDIR (bkz. `houses.ts` → `profiles.houseLost`): oyuncu bir
+ * düelloda/takasta evini kaybettiyse kapı artık yeni bir bedava ev açmaz.
+ * Ham sunucu hatası göstermek yerine kapı, durumu söyleyen bir düğmeye döner.
+ */
+export const HOUSE_LOST_LABEL = { emoji: "🏚️", label: "Ev yok" } as const;
+
 /** Odanın arayüze giden özeti (`convex/houses.ts` → `enter`/`visit` döner). */
 export interface HouseView {
   /**
@@ -48,6 +57,15 @@ export interface HouseView {
 
 let near = false;
 let enterRequested = false;
+/**
+ * Oyuncunun ŞU AN bir eve hakkı var mı? Oyun döngüsü (px katmanı) profilden
+ * türetip yazar; 3D düğme okur. `false` ise düğme "Evin yok" olur ve
+ * oyuncuya ham hata yerine yol gösterilir.
+ *
+ * VARSAYILAN `true`: profil sorgusu yüklenene kadar düğme yanlışlıkla
+ * "Ev yok" görünmesin (evi olan oyuncuda titreme olmaz).
+ */
+let owned = true;
 
 /** Oyun döngüsü her değişimde çağırır: oyuncu evin kapı menzilinde mi? */
 export function setHouseNear(isNear: boolean): void {
@@ -57,6 +75,16 @@ export function setHouseNear(isNear: boolean): void {
 /** Kapı menzilinde miyiz? (3D düğme bunu kullanır.) */
 export function getHouseNear(): boolean {
   return near;
+}
+
+/** Oyun döngüsü yazar: oyuncu şu an bir eve hak sahibi mi (kaybetmedi mi)? */
+export function setHouseOwned(value: boolean): void {
+  owned = value;
+}
+
+/** 3D düğme okur: oyuncu şu an eve girebilir mi? */
+export function getHouseOwned(): boolean {
+  return owned;
 }
 
 /** 3D düğmeden gelen "evine gir" isteği (px katmanı bir sonraki karede tüketir). */

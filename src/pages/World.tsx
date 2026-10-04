@@ -36,6 +36,7 @@ import {
 import {
   consumeHouseEnterRequest,
   setHouseNear,
+  setHouseOwned,
   type HouseView,
 } from "@/engine/houseDoor";
 import { HouseRoom } from "@/components/world/HouseRoom";
@@ -1230,6 +1231,16 @@ export default function World() {
   const visitHouse = useMutation(api.houses.visit);
   // 🏠 Profil kartındaki ev önizlemesi (yalnız görüntü — ad).
   const myHouseView = useQuery(api.houses.mine);
+  // 🏚️ EV KAYBI (bkz. `convex/houses.ts`): profil `houseLost` bayrağını taşır.
+  // Evini düelloda/takasta kaybeden oyuncuya girişte BEDAVA ev açılmaz; bu
+  // bayrak hem kapı düğmesini hem giriş denemesini dürüstçe yönlendirir.
+  const houseLost = profile?.houseLost === true;
+  // Kapı düğmesi (3D) "eve girilebilir mi" bilgisini buradan okur.
+  useEffect(() => {
+    // Sorgular yüklenene kadar yazma (düğme yanlışlıkla "Ev yok" görünmesin).
+    if (profile === undefined || myHouseView === undefined) return;
+    setHouseOwned(!(houseLost && myHouseView === null));
+  }, [profile, myHouseView, houseLost]);
   // 📸 Kendi evimin gerçek fotoğrafı (odaya girdiğimde yakalanır).
   const myRoomShot = useRoomShot(myHouseView?.roomId);
   // 🛋️ MOBİLYA EKONOMİSİ (bkz. `convex/furniture.ts`): oyuncu eşyaları
@@ -1971,6 +1982,15 @@ export default function World() {
    */
   const enterMyRoom = useCallback(async () => {
     if (roomBusyRef.current || roomOpenRef.current) return;
+    // 🏚️ EVİ YOK: evini kaybeden oyuncuya girişte BEDAVA ev açılmaz (bkz.
+    // `houses.enter`). Ham Convex hatası göstermek yerine ne yapacağını söyle.
+    if (houseLost && myHouseView === null) {
+      playSound("error");
+      toast.info(
+        "🏚️ Evin yok — bir düello ya da takas kazanarak yeni ev edinebilirsin.",
+      );
+      return;
+    }
     roomBusyRef.current = true;
     playSound("click");
     // Oda modeli ağır olabilir: indirme oda açılırken başlar, oyuncu odaya
@@ -1990,13 +2010,18 @@ export default function World() {
       }
     } catch (error) {
       console.error("Eve giriş hatası:", error);
+      // Sunucu mesajı Convex tarafından sarılabilir ([CONVEX M(...)]); "Evin
+      // yok" durumunu yakalayıp ham metni değil, anlaşılır yönlendirmeyi göster.
+      const message = error instanceof Error ? error.message : "";
       toast.error(
-        error instanceof Error ? error.message : "Eve girilemedi. Tekrar dene.",
+        message.includes("Evin yok")
+          ? "🏚️ Evin yok — bir düello ya da takas kazanarak yeni ev edinebilirsin."
+          : message || "Eve girilemedi. Tekrar dene.",
       );
     } finally {
       roomBusyRef.current = false;
     }
-  }, [enterHouse, closeOverlays]);
+  }, [enterHouse, closeOverlays, houseLost, myHouseView]);
 
   /**
    * Komşunun odasına geç — adın onun ziyaretçi defterine yazılır (online).

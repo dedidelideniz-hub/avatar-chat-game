@@ -84,26 +84,49 @@ export function HousePreview({
           />
         ) : (
           <svg viewBox="0 0 120 104" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id="hpSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#dbeeff" />
+            <stop offset="100%" stopColor="#effbe9" />
+          </linearGradient>
+          <linearGradient id="hpRoof" x1="0" y1="0" x2="0.4" y2="1">
+            <stop offset="0%" stopColor="#c2620f" />
+            <stop offset="100%" stopColor="#7c2d12" />
+          </linearGradient>
+          <radialGradient id="hpGlow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0%" stopColor="#fff7d6" />
+            <stop offset="100%" stopColor="#fde68a" />
+          </radialGradient>
+        </defs>
+        {/* gökyüzü + güneş + bulutlar */}
+        <rect width="120" height="104" fill="url(#hpSky)" />
+        <circle cx="100" cy="20" r="12" fill="#fde68a" opacity="0.3" />
+        <circle cx="100" cy="20" r="8" fill="#fde68a" opacity="0.9" />
+        <ellipse cx="27" cy="23" rx="11" ry="4" fill="#ffffff" opacity="0.8" />
+        <ellipse cx="36" cy="26" rx="7" ry="3" fill="#ffffff" opacity="0.7" />
         {/* zemin */}
-        <ellipse cx="60" cy="86" rx="46" ry="12" fill="#7dd37d" opacity="0.6" />
+        <ellipse cx="60" cy="88" rx="50" ry="14" fill="#8fdd83" />
+        <ellipse cx="60" cy="90" rx="38" ry="9" fill="#6dc763" opacity="0.55" />
+        {/* kapı yolu */}
+        <polygon points="60,72 70,77 60,83 50,78" fill="#e7d6b8" opacity="0.9" />
         {/* gövde (izometrik kutu) */}
         <polygon points="60,34 96,52 60,70 24,52" fill={tone} />
         <polygon points="24,52 60,70 60,92 24,74" fill="#8a5a34" />
         <polygon points="96,52 60,70 60,92 96,74" fill="#a9703f" />
         {/* çatı */}
         <polygon points="60,18 100,40 60,36 20,40" fill="#7f1d1d" />
-        <polygon points="60,18 100,40 60,50 20,40" fill="#b45309" />
+        <polygon points="60,18 100,40 60,50 20,40" fill="url(#hpRoof)" />
         {/* kapı */}
-        <polygon points="60,62 68,66 60,70 52,66" fill="#3d2f2a" />
-        {/* pencere */}
-        <rect
-          x="72"
-          y="58"
-          width="8"
-          height="10"
-          transform="skewY(26)"
-          fill="#fde68a"
-        />
+        <polygon points="60,62 69,66.5 60,71 51,66.5" fill="#3d2f2a" />
+        <polygon points="66,65.8 66,71 62,72.7 62,67" fill="#5a453c" opacity="0.85" />
+        {/* pencereler (sıcak ışıklı) — duvar yüzeylerine oturan eğik dörtgenler */}
+        <polygon points="87,62 74.4,68.3 74.4,78.2 87,71.9" fill="url(#hpGlow)" />
+        <polygon points="33,62 45.6,68.3 45.6,78.2 33,71.9" fill="url(#hpGlow)" />
+        {/* ağaç */}
+        <rect x="13" y="72" width="3" height="12" fill="#8b5a3c" />
+        <circle cx="14.5" cy="66" r="10" fill="#4ea152" />
+        <circle cx="9" cy="70" r="6" fill="#57b45c" />
+        <circle cx="16" cy="72" r="5" fill="#3f8f46" opacity="0.7" />
           </svg>
         )}
         {!hasHouse && !image && (

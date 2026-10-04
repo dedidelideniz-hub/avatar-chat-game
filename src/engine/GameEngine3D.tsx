@@ -82,7 +82,9 @@ import { StreetGrassClumps, StreetTrees } from "./VegetationModels";
 import { GlbBuilding } from "./GlbBuilding";
 import {
   HOUSE_ENTER_LABEL,
+  HOUSE_LOST_LABEL,
   getHouseNear,
+  getHouseOwned,
   requestHouseEnter,
 } from "./houseDoor";
 // Cadı dükkânının görünen kapı yolu (yürünebilir şeritle aynı sınırlar).
@@ -702,16 +704,26 @@ function BenchSitButton() {
  */
 function HouseEnterButton() {
   const [near, setNear] = useState(false);
-  const shownRef = useRef(false);
+  const [owned, setOwned] = useState(true);
+  const shownNear = useRef(false);
+  const shownOwned = useRef(true);
 
   useFrame(() => {
     const value = getHouseNear();
-    if (value === shownRef.current) return;
-    shownRef.current = value;
+    const canEnter = getHouseOwned();
+    if (value === shownNear.current && canEnter === shownOwned.current) return;
+    shownNear.current = value;
+    shownOwned.current = canEnter;
     setNear(value);
+    setOwned(canEnter);
   });
 
   if (!near) return null;
+
+  // 🏚️ EV YOK: evini kaybeden oyuncuda kapı yeşil "Evine gir" DEMEZ — aksi
+  // halde sunucu reddeder ve ham hata görünürdü. Düğme soluk/kilitli durur ve
+  // tıklama aynı isteği bırakır; oyun döngüsü nazikçe yol gösterir.
+  const label = owned ? HOUSE_ENTER_LABEL : HOUSE_LOST_LABEL;
 
   return (
     <Html
@@ -729,9 +741,13 @@ function HouseEnterButton() {
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => requestHouseEnter()}
         style={{ pointerEvents: "auto" }}
-        className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-gradient-to-r from-emerald-500 to-teal-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-lg transition-transform active:scale-95"
+        className={
+          owned
+            ? "flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-gradient-to-r from-emerald-500 to-teal-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-lg transition-transform active:scale-95"
+            : "flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-white bg-gradient-to-r from-slate-500 to-slate-700 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-lg transition-transform active:scale-95"
+        }
       >
-        {HOUSE_ENTER_LABEL.emoji} {HOUSE_ENTER_LABEL.label}
+        {label.emoji} {owned ? label.label : "Ev yok · düello kazan"}
       </button>
     </Html>
   );

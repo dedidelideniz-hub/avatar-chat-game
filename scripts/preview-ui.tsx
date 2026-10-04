@@ -1161,6 +1161,18 @@ const scenarios: Scenario[] = [
             /markHouseLost\(ctx, loserId, true\)/.test(wagers),
         ),
         check(
+          "🏚️ EV YOK: kapı düğmesi \"Ev yok\"a döner, giriş HAM CONVEX HATASI vermez",
+          // İstemci `profiles.houseLost`ı okur; kapı düğmesi sahipliği 3D katmana
+          // yazar ve giriş denemesi sunucuya gitmeden nazikçe yönlendirir.
+          /houseLost = profile\?\.houseLost === true/.test(world) &&
+            /setHouseOwned/.test(world) &&
+            /houseLost && myHouseView === null/.test(world) &&
+            /HOUSE_LOST_LABEL/.test(read("../src/engine/houseDoor.ts")) &&
+            /getHouseOwned/.test(read("../src/engine/houseDoor.ts")) &&
+            /HOUSE_LOST_LABEL/.test(read("../src/engine/GameEngine3D.tsx")) &&
+            /getHouseOwned/.test(read("../src/engine/GameEngine3D.tsx")),
+        ),
+        check(
           "TEK EV kuralı: karakter en fazla bir eve sahip olabilir",
           /MAX_HOUSES_PER_USER = 1/.test(read("../src/convex/houses.ts")) &&
             /winnerHouse === null \|\| winnerHouse\._id === house\._id/.test(
