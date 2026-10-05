@@ -2087,6 +2087,18 @@ const scenarios: Scenario[] = [
             requireAuth.includes("if (!isLoading) settled.current = true") &&
             /if \(isLoading && !settled\.current\)/.test(requireAuth),
         ),
+        check(
+          "cadde kapısı ilerlemesi üçüncü parti yükleme sayacına BAĞLI DEĞİL (APK'da 0'da kalıyordu)",
+          !world.includes("= useProgress()") &&
+            !/from "@react-three\/drei"/.test(world),
+        ),
+        check(
+          "cadde kapısı yüzdesi ZAMANLA akar (donmuş çubuk yok)",
+          world.includes("const [gateTarget, setGateTarget] = useState(14)") &&
+            world.includes(
+              "t >= 92 ? 92 : Math.min(92, t + (t < 60 ? 2 : 0.8))",
+            ),
+        ),
       );
 
       // ── 7) Saydamlaştırma yalnızca bir binayı hedefleyebilir: çekirdek tek

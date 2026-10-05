@@ -135,7 +135,6 @@ import {
   STREET_BUILDING_MODELS,
   STREET_TIPS,
 } from "@/engine/streetPreload";
-import { useProgress } from "@react-three/drei";
 
 // Harita px katmanı: 1 dünya birimi = `S` px (bkz. `engine/constants`).
 // Boyutlar artık elle yazılmıyor — dünya büyüyünce kendiliğinden ölçeklenir.
@@ -1604,7 +1603,6 @@ export default function World() {
      `useGLTF` önbelleğiyle bekler, ilk kareleri çizer ve `onSceneReady` ile
      haber verir. Kapı bu iki sinyali beklediği için oyuncu caddeyi ilk kez
      donarak/eksik görmez — eskiden "girdikten sonra render oluyordu". */
-  const { progress: assetProgress } = useProgress();
   const [gateSceneReady, setGateSceneReady] = useState(false);
   const [gateForced, setGateForced] = useState(false);
   const [gatePct, setGatePct] = useState(0);
@@ -1649,18 +1647,29 @@ export default function World() {
     preloadStreetModels(gateModelUrls);
   }, [gateModelUrls]);
 
-  // İlerleme hedefi.
+  // İlerleme hedefi — ZAMANA bağlı (model sayacına DEĞİL).
   //
-  // TEK gerçek "hazır" sinyali `gateSceneReady`dir: `GameEngine3D` caddenin
-  // temel modellerini `useGLTF` önbelleğiyle bekler ve ilk kareler ÇİZİLDİKTEN
-  // sonra haber verir. İndirme yüzdesi (`useProgress`) yalnızca çubuğun
-  // akmasını sağlar; %92'de DURUR ki oyuncuya asla hak etmediği bir %100
-  // gösterilmesin. Sahne gerçekten hazır olduğunda hedef %100 olur ve kapı açılır.
-  const gateTarget = useMemo(() => {
-    if (gateForced || gateSceneReady) return 100;
-    const assets = Math.min(0.9, Math.max(0, assetProgress) / 100);
-    return 14 + assets * 78;
-  }, [assetProgress, gateForced, gateSceneReady]);
+  // Eskiden hedef `useProgress()` (drei'nin yükleme yöneticisi) ile
+  // hesaplanıyordu. Ama bu sayaç güvenilir DEĞİL: Android WebView'de modeller
+  // inmese de 0'da kalıyor ve ekran tam olarak "%14 · Kimlik doğrulanıyor"da
+  // DONUYORDU (kimi zaman animasyon ortasında "%4" görünüyordu). Şimdi hedef,
+  // gerçek sahne sinyali (`gateSceneReady`) gelene kadar ZAMANLA yükselir ve
+  // %92'de bekler; sahne hazır olunca (ya da emniyet supabı devreye girince)
+  // %100 olur. Böylece çubuk her zaman akar, ekran asla donmuş görünmez ve
+  // yükleme hiçbir zaman üçüncü parti bir sayaçın keyfine bağlı kalmaz.
+  const [gateTarget, setGateTarget] = useState(14);
+  useEffect(() => {
+    if (gateForced || gateSceneReady) {
+      setGateTarget(100);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setGateTarget((t) =>
+        t >= 92 ? 92 : Math.min(92, t + (t < 60 ? 2 : 0.8)),
+      );
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [gateForced, gateSceneReady]);
 
   useEffect(() => {
     if (gateOpen) return;
