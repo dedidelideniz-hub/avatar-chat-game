@@ -1974,6 +1974,36 @@ const scenarios: Scenario[] = [
         ),
       );
 
+      // ── 6a) DEPLOY BOYUTU: `public/` barındırma sınırının (60 MB) altında
+      //        kalmalı. Modeller webp dokular + meshopt geometri ile
+      //        sıkıştırılıp ASCII gömülü JSON'a çevrilir
+      //        (`npx @gltf-transform/cli optimize` → `glb-to-embedded-json.mjs`).
+      //        Sıkıştırma çalışmazsa deploy limiti aşar ve yayın düşer.
+      const { readdirSync, statSync } = await import("node:fs");
+      checks.push(
+        (() => {
+          const walk = (url: URL): number => {
+            let sum = 0;
+            for (const entry of readdirSync(url, { withFileTypes: true })) {
+              // Dizin URL'leri SONDA `/` ile bitmeli: aksi hâlde bir sonraki
+              // `new URL(girdi, dizin)` son segmenti düşürür.
+              const child = new URL(
+                entry.isDirectory() ? `${entry.name}/` : entry.name,
+                url,
+              );
+              sum += entry.isDirectory() ? walk(child) : statSync(child).size;
+            }
+            return sum;
+          };
+          const total = walk(new URL("../public/", import.meta.url));
+          return check(
+            "deploy boyutu barındırma sınırının ALTINDA (public/ < 60 MB)",
+            total < 60 * 1024 * 1024,
+            `public/ ${(total / 1048576).toFixed(1)}MiB`,
+          );
+        })(),
+      );
+
       // ── 6b) MODEL ÖN YÜKLEME + YÜKLEME KAPISI: bina modeli ağır olduğu için
       //        cadde açıldıktan SONRA inmeye başlarsa oyuncu boş arsaya bakar.
       //        İndirme giriş ekranında başlamalı ve kapı onu beklemeli.
