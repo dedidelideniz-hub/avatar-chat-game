@@ -3266,6 +3266,34 @@ const scenarios: Scenario[] = [
             `deneme sırası: default → high-performance`,
           );
         })(),
+        check(
+          "TÜM sahne canvas'ları kapının DOĞRULADIĞI bağlam ayarıyla açılır (varsayılan `high-performance` DEĞİL)",
+          // Kök neden: kapı `default` ile geçerken R3F `high-performance`
+          // istiyordu → cihaz reddediyor → `Error creating WebGL context`.
+          // Denemeyle doğrulanan ayar (`verifiedPowerPreference`) her canvas'a
+          // verilmeli.
+          /export function verifiedPowerPreference/.test(
+            read("../src/engine/webglSupport.ts"),
+          ) &&
+            /if \(context\) verifiedPower = powerPreference/.test(
+              read("../src/engine/webglSupport.ts"),
+            ) &&
+            read("../src/engine/GameEngine3D.tsx").includes(
+              "powerPreference: verifiedPowerPreference()",
+            ) &&
+            read("../src/engine/GlbAvatar3D.tsx").includes(
+              "powerPreference: verifiedPowerPreference()",
+            ) &&
+            read("../src/components/entry/EntryCharacterStage.tsx").includes(
+              "powerPreference: verifiedPowerPreference()",
+            ) &&
+            read("../src/components/world/Arena3D.tsx").includes(
+              "powerPreference: verifiedPowerPreference()",
+            ) &&
+            read("../src/components/world/ShopSheets.tsx").includes(
+              "powerPreference: verifiedPowerPreference()",
+            ),
+        ),
         // ── DENEME ↔ CANVAS YARIŞI (kök neden: "Error creating WebGL context") ──
         //    `webglPowerPreference()` bir deneme bağlamı açar ve HEMEN bırakır;
         //    ama `WEBGL_lose_context` ASENKRONdur — yuva bir süre daha dolu kalır.

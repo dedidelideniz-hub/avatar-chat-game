@@ -33,6 +33,23 @@ export type WebglPowerPreference = "high-performance" | "default";
 /** Bu öncelik ve üstü bağlamlar (`releaseExpendableContext`) ASLA bırakılmaz. */
 export const PROTECTED_PRIORITY = 100;
 
+/**
+ * GERÇEK SAHNENİN KULLANACAĞI `powerPreference` — en son BAŞARILI denemeden.
+ *
+ * NEDEN GEREKLİ: kapı (`useCanvasGate`) `default` ile deneyip BAŞARILI olunca
+ * "hazır" der; ama `@react-three/fiberı`in `<Canvas>`ı varsayılan olarak
+ * `high-performance` ister. `default` açılabilirken `high-performance`
+ * reddedilen cihazlarda (yazılımsal/headless GPU) kapı geçilir, sonra R3F
+ * `configure()` reddeder → "Error creating WebGL context". Bu değer denemenin
+ * DOĞRULADIĞI ayarı tüm sahnelerin `<Canvas gl={{ powerPreference }}`ına verir.
+ */
+let verifiedPower: WebglPowerPreference = "default";
+
+/** Denemeyle DOĞRULANMIŞ bağlam ayarı (kapı geçildikten sonra günceldir). */
+export function verifiedPowerPreference(): WebglPowerPreference {
+  return verifiedPower;
+}
+
 /* ─────────────────────────── 1) DENEME (probe) ───────────────────────────
  * Bu ayarla bir bağlam açılabiliyor mu? Deneme bağlamı HEMEN bırakılır
  * (`WEBGL_lose_context`) — boşuna bağlam tutup sınırı zorlamayalım.
@@ -48,6 +65,7 @@ export function probe(powerPreference: WebglPowerPreference): boolean {
       | { loseContext?: () => void }
       | null
       | undefined;
+    if (context) verifiedPower = powerPreference;
     lose?.loseContext?.();
     // Boyutları SIFIRLA: `loseContext` bağlamı kayıp işaretler ama çizim
     // tamponu (GPU belleği + bağlam yuvası) hemen boşalmayabilir. `releaseCanvasContext` ile

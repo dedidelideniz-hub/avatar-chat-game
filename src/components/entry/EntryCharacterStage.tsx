@@ -5,6 +5,7 @@ import {
   WebglContextKeeper,
   useWebglRetry,
 } from "@/engine/WebglCanvas";
+import { verifiedPowerPreference } from "@/engine/webglSupport";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -175,7 +176,11 @@ export function EntryCharacterStage({
         key={attempt}
         dpr={[1, 1.75]}
         camera={{ position: [0, 1.05, 4.3], fov: 38 }}
-        gl={{ alpha: true, antialias: true }}
+        gl={{
+          alpha: true,
+          antialias: true,
+          powerPreference: verifiedPowerPreference(),
+        }}
         style={{ background: "transparent" }}
         onCreated={({ gl }) => {
           // Bu sahne oyun dünyasının canvas'ıyla aynı sayfada yaşamaz ama

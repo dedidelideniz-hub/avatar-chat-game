@@ -25,7 +25,7 @@ import {
   WebglContextKeeper,
   useWebglRetry,
 } from "./WebglCanvas";
-import { PROTECTED_PRIORITY } from "./webglSupport";
+import { PROTECTED_PRIORITY, verifiedPowerPreference } from "./webglSupport";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -1459,6 +1459,10 @@ export function GameEngine3D({
         dpr={[1, isMobile ? 1.5 : 2]}
         shadows={!isMobile ? "soft" : false}
         frameloop={paused ? "never" : "always"}
+        // R3F varsayılanı `high-performance`: kapı `default` ile geçtiyse
+        // `high-performance` reddedilebilir ve `configure()` düşer. Denemenin
+        // doğruladığı ayarı kullan.
+        gl={{ powerPreference: verifiedPowerPreference() }}
         camera={{
           position: [sX(SPAWN_SVG.x), initCamY, sZ(SPAWN_SVG.y) + initCamZ],
           fov: 70,

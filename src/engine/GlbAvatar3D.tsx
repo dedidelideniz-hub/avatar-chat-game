@@ -40,6 +40,7 @@ import { useSamuraiBomb } from "./SamuraiBomb";
 import { VendorBadge, VendorSparkle } from "./VendorSparkle";
 import { ChatBubble } from "./ChatBubble3D";
 import { CanvasGuard, useWebglRetry, WebglContextKeeper } from "./WebglCanvas";
+import { verifiedPowerPreference } from "./webglSupport";
 import { VENDOR_COLOR, isVipCharacterColor } from "@/lib/avatar";
 
 // Re-export for backward compatibility
@@ -1539,7 +1540,11 @@ export function GlbProfileAvatar({
       key={attempt}
       dpr={[1, 1.5]}
       camera={{ position: [0, 0, height * 1.7], fov: 35 }}
-      gl={{ alpha: true, antialias: true }}
+      gl={{
+        alpha: true,
+        antialias: true,
+        powerPreference: verifiedPowerPreference(),
+      }}
       style={{ background: "transparent" }}
       onCreated={({ gl }) => {
         // This second canvas can cause the browser to evict the main game
