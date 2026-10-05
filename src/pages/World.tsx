@@ -1214,6 +1214,27 @@ const STREET_LOAD_STEPS = [
   "Ana cadde çiziliyor",
 ];
 
+/**
+ * 🚪 CADDE KAPISI — OTURUM HAFIZASI (modül düzeyi).
+ *
+ * `World` sayfası yeniden monte edilebilir: React `StrictMode` (geliştirme)
+ * ya da hesap sorgusunun Convex yeniden bağlanırken bir an `undefined`'a
+ * düşmesi (mobilde dalgalı ağda çok sık olur — bkz. `RequireAuth`). Kapı
+ * durumu bileşenin İÇİNDE tutulsaydı her yeniden montajda sıfırlanırdı:
+ * yüzde yeniden %14'e, emniyet supabının sayacı da baştan başlar ve ekran
+ * KALICI olarak "%14 · Kimlik doğrulanıyor"da takılı kalırdı — Android APK'da
+ * tam olarak bu görülüyordu. Bu yüzden kapı durumu modül düzeyinde tutulur:
+ *   · kapı BİR KEZ açıldıktan sonra oturum boyunca açık kalır (yeniden
+ *     montajda kullanıcıya ikinci kez yükleme ekranı gösterilmez),
+ *   · emniyet supabı SABİT bir zaman damgasına bağlıdır; yeniden montaj onu
+ *     baştan başlatamaz.
+ */
+const GATE_VALVE_MS = 8000;
+const gateSession: { startMs: number | null; opened: boolean } = {
+  startMs: null,
+  opened: false,
+};
+
 export default function World() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -1587,7 +1608,8 @@ export default function World() {
   const [gateSceneReady, setGateSceneReady] = useState(false);
   const [gateForced, setGateForced] = useState(false);
   const [gatePct, setGatePct] = useState(0);
-  const [gateOpen, setGateOpen] = useState(false);
+  // Kapı oturum boyunca bir kez açılır; yeniden montajda tekrar gösterilmez.
+  const [gateOpen, setGateOpen] = useState(gateSession.opened);
   const [gateTipIndex, setGateTipIndex] = useState(0);
 
   const handleSceneReady = useCallback(() => setGateSceneReady(true), []);
@@ -1651,11 +1673,33 @@ export default function World() {
     return () => window.clearInterval(id);
   }, [gateOpen, gateTarget]);
 
-  // Emniyet supabı: ağ takılırsa yükleme ekranı sonsuza kadar kalmasın.
+  // Emniyet supabı: ağ takılırsa (ya da modeller bu cihazda hiç inmezse)
+  // yükleme ekranı SONSUZA kadar kalmasın.
+  //
+  // Bir kerelik `setTimeout` yerine ZAMAN DAMGASINA bağlı yoklama: sayaç
+  // yeniden montajda baştan başlamaz ve arka planda kısılan/sıkışan
+  // zamanlayıcılar bile sonraki tikte yakalar.
   useEffect(() => {
-    const id = window.setTimeout(() => setGateForced(true), 12000);
-    return () => window.clearTimeout(id);
+    if (gateSession.startMs === null) gateSession.startMs = Date.now();
+    const deadline = gateSession.startMs + GATE_VALVE_MS;
+    const expired = () => Date.now() >= deadline;
+    if (expired()) {
+      setGateForced(true);
+      return;
+    }
+    const id = window.setInterval(() => {
+      if (expired()) {
+        window.clearInterval(id);
+        setGateForced(true);
+      }
+    }, 250);
+    return () => window.clearInterval(id);
   }, []);
+
+  // Supap devreye girdiğinde çubuğu hemen %100'e tamamla (donmuş görünmesin).
+  useEffect(() => {
+    if (gateForced) setGatePct((p) => (p < 100 ? 100 : p));
+  }, [gateForced]);
 
   useEffect(() => {
     if (gateOpen) return;
@@ -1666,11 +1710,24 @@ export default function World() {
     return () => window.clearInterval(id);
   }, [gateOpen]);
 
+  // Kapı, sahne hazır olduğunda (gateSceneReady) YA DA emniyet supabı devreye
+  // girdiğinde (gateForced) açılır. Supap devredeyse yüzdenin %100'e ulaşması
+  // BEKLENMEZ: aksi halde kısılan ilerleme aralığı kapıyı yine takılı
+  // bırakabilirdi.
   useEffect(() => {
-    if (gateOpen || gatePct < 99.5) return;
-    const id = window.setTimeout(() => setGateOpen(true), 420);
+    if (gateOpen) return;
+    if (!gateForced && gatePct < 99.5) return;
+    const id = window.setTimeout(
+      () => setGateOpen(true),
+      gateForced && gatePct < 99.5 ? 360 : 420,
+    );
     return () => window.clearTimeout(id);
-  }, [gateOpen, gatePct]);
+  }, [gateOpen, gateForced, gatePct]);
+
+  // Kapı bir kez açıldı: oturum boyunca açık kalır (yeniden montaj koruması).
+  useEffect(() => {
+    if (gateOpen) gateSession.opened = true;
+  }, [gateOpen]);
 
   // Kapı yalnızca hesap hazır olduğunda çizilir: profil yoksa/banlıysa zaten
   // kendi bilgi katmanı görünür (aşağıdaki `profile === null` blokları).

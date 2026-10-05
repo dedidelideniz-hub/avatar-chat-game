@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2, Swords } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
 
 /**
@@ -16,7 +16,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  if (isLoading) {
+  // ⚠️ Korunmuş sayfa BİR KEZ çözüldükten sonra, hesap sorgusu kısa süreliğine
+  // `undefined`'a dönse bile (Convex yeniden bağlanırken veya WebView arka
+  // plandan dönerken OLUR) yükleme ekranına DÜŞME. Aksi halde altındaki sayfa
+  // (ör. `World`) sökülüp yeniden monte edilir ve kendi yükleme durumu —
+  // "cadde kapısı" — baştan başlar. Mobilde dalgalı ağda bu döngü caddeyi
+  // kalıcı olarak "%14 · Kimlik doğrulanıyor"da bırakabiliyordu.
+  const settled = useRef(false);
+  if (!isLoading) settled.current = true;
+
+  if (isLoading && !settled.current) {
     return (
       <main className="relative flex min-h-[100dvh] flex-col items-center justify-center gap-4 overflow-hidden bg-[#05070f] text-white">
         <div className="entry-grid pointer-events-none absolute inset-0 opacity-60" />

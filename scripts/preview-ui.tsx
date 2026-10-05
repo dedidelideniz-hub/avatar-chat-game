@@ -2048,6 +2048,47 @@ const scenarios: Scenario[] = [
         ),
       );
 
+      // ── 6c) CADDE KAPISI TAKILMAZ (Android APK'da "%14'te kalma" hatası).
+      //        Kapı durumu BİLEŞEN İÇİNDE tutulursa `World` yeniden monte
+      //        olduğunda (StrictMode ya da hesap sorgusunun Convex yeniden
+      //        bağlanırken bir an `undefined`'a düşmesi) sıfırlanır ve emniyet
+      //        supabının sayacı hiçbir zaman tamamlanmaz → ekran KALICI olarak
+      //        "%14 · Kimlik doğrulanıyor"da takılır. Kapı durumu MODÜL
+      //        düzeyinde ve supap SABİT zaman damgasına bağlı olmalı; ayrıca
+      //        `RequireAuth` kısa süreli `undefined`'da sayfayı sökmemeli.
+      const requireAuth = read("../src/components/RequireAuth.tsx");
+      checks.push(
+        check(
+          "cadde kapısı durumu MODÜL düzeyinde (yeniden montajda sıfırlanmaz)",
+          world.includes("const gateSession") &&
+            world.includes(
+              "gateSession: { startMs: number | null; opened: boolean }",
+            ),
+        ),
+        check(
+          "cadde kapısı emniyet supabı SABİT zaman damgasına bağlı (montaj başına sayaç DEĞİL)",
+          world.includes("const GATE_VALVE_MS") &&
+            world.includes("gateSession.startMs === null") &&
+            !/setTimeout\(\(\) => setGateForced\(true\), 12000\)/.test(world),
+        ),
+        check(
+          "supap devreye girince kapı yüzdeyi BEKLEMEDEN açılır (donmuş %14 kalmaz)",
+          /if \(!gateForced && gatePct < 99\.5\) return;/.test(world) &&
+            world.includes("gateForced && gatePct < 99.5 ? 360 : 420"),
+        ),
+        check(
+          "cadde kapısı oturum boyunca BİR KEZ açılır (yeniden montajda ikinci kez gösterilmez)",
+          world.includes("gateSession.opened = true") &&
+            world.includes("useState(gateSession.opened)"),
+        ),
+        check(
+          "RequireAuth kısa süreli `undefined` sorgusunda sayfayı SÖKMÜYOR (yeniden montaj döngüsü yok)",
+          requireAuth.includes("const settled = useRef(false)") &&
+            requireAuth.includes("if (!isLoading) settled.current = true") &&
+            /if \(isLoading && !settled\.current\)/.test(requireAuth),
+        ),
+      );
+
       // ── 7) Saydamlaştırma yalnızca bir binayı hedefleyebilir: çekirdek tek
       //       binadan occluder kurabiliyor. HİÇBİR bina `fade` İSTEMEZ artık:
       //       evlere yürünerek girilmediği için görüşü kesen saydamlaşan bina
