@@ -44,9 +44,17 @@ import { PLAYER_3D_HEIGHT, WORLD_Z_MAX, WORLD_WIDTH, S } from "./constants";
 const TEST_MODEL_URL =
   "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb";
 
-// Warm the loader cache as soon as this module is imported (dev-only
-// import — tree-shaken out of the critical path until mounted).
-useGLTF.preload(TEST_MODEL_URL);
+// ⚠️ Bu modül `GameEngine3D` tarafından STATİK olarak içe aktarılır; yani
+// "kullanılana kadar ağa çıkmaz" DEĞİLDİR. Uzak modeli modül yüklenirken
+// ön yüklemek, kısıtlı/çevrimdışı ortamda `TypeError: Failed to fetch`
+// (three.js FileLoader) üretip tüm oyunu düşürüyordu. Test modu (`?glbtest=1`)
+// kapalıyken artık ağa HİÇ çıkılmaz.
+if (
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("glbtest")
+) {
+  useGLTF.preload(TEST_MODEL_URL);
+}
 
 /** Fixed test spot: west of spawn, on the road. SVG coords → world. */
 const TEST_SPAWN_SVG = { x: 950, y: 460 };

@@ -68,14 +68,16 @@ import "./EquipmentBuilders";
  * Character asset resolution:
  *   1. ?glb=<url> query param (instant testing with any GLB)
  *   2. /models/character.glb (drop a custom character here)
- *   3. RobotExpressive fallback (proven rigged test model)
+ *   3. YEREL yedek: /models/skin-savasci.glb — rigli/animasyonlu ve paket
+ *      içinde. Eskiden `threejs.org`'daki uzak modele düşüyordu; kısıtlı ya
+ *      da çevrimdışı ortamda o istek `TypeError: Failed to fetch` (three.js
+ *      FileLoader) verip sayfayı düşürüyordu.
  *
  * Debug: add ?svg=1 to the URL to restore the old SVG avatars.
  * ═══════════════════════════════════════════════════════════════ */
 
 export const CHARACTER_MODEL_URL = "/models/character.glb";
-export const FALLBACK_MODEL_URL =
-  "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb";
+export const FALLBACK_MODEL_URL = "/models/skin-savasci.glb";
 
 /** ?svg=1 restores the legacy SVG avatars for debugging. */
 export const SVG_DEBUG_MODE =

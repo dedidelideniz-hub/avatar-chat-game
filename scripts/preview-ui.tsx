@@ -959,6 +959,24 @@ const scenarios: Scenario[] = [
             /@keyframes vaelos-bubble-sheen/.test(css),
         ),
         check(
+          "AĞ DIŞI GÜVENLİ: yedek karakter modeli YEREL (uzak `threejs.org` değil)",
+          // Uzak bir yedek model, kısıtlı/çevrimdışı ortamda `TypeError: Failed
+          // to fetch` (three.js FileLoader) verip tüm oyunu düşürüyordu.
+          /FALLBACK_MODEL_URL = "\/models\//.test(avatar),
+        ),
+        check(
+          "uzak GLB test modeli YALNIZCA `?glbtest=1` iken ön yüklenir",
+          (() => {
+            const test = read("../src/engine/GlbAvatarTest.tsx");
+            return (
+              test.includes("useGLTF.preload(TEST_MODEL_URL)") &&
+              /has\("glbtest"\)[\s\S]{0,120}useGLTF\.preload\(TEST_MODEL_URL\)/.test(
+                test,
+              )
+            );
+          })(),
+        ),
+        check(
           "animasyonlar azaltılmış hareket tercihinde kapanır",
           /prefers-reduced-motion: reduce[\s\S]{0,400}animation-duration: 0\.01ms !important/.test(
             css,
