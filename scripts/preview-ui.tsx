@@ -2101,6 +2101,51 @@ const scenarios: Scenario[] = [
         ),
       );
 
+      // ── 6d) PARÇA (CHUNK) İNDİRME HATASI: "Failed to fetch dynamically
+      //        imported module …/assets/Entry-XXXX.js". Dağıtımdan sonra
+      //        tarayıcıda ESKİ `index.html` kalırsa yeni parça adları
+      //        sunucuda bulunamaz; aynı adresi tekrar denemek asla işe yaramaz.
+      //        Tek çare sayfayı tazeleyip güncel HTML'i çekmektir, ayrıca bu
+      //        onarım sonsuz yenileme döngüsüne girmemeli.
+      const main = read("../src/main.tsx");
+      checks.push(
+        check(
+          "parça indirme hatası SAYFAYI TAZELER (aynı adresi boşuna denemez)",
+          main.includes("function reloadOnceForChunkError") &&
+            main.includes("window.location.reload()"),
+        ),
+        check(
+          "Vite `vite:preloadError` olayı yakalanıyor (çökme ekranı düşmez)",
+          main.includes('addEventListener("vite:preloadError"') &&
+            /vite:preloadError[\s\S]{0,200}event\.preventDefault\(\)/.test(
+              main,
+            ),
+        ),
+        check(
+          "onarım kalkanlı: kısa pencerede YALNIZCA BİR kez yenilenir (sonsuz döngü yok)",
+          main.includes("const RELOAD_GUARD_KEY") &&
+            main.includes("const RELOAD_GUARD_MS") &&
+            /if \(Number\.isFinite\(last\) && Date\.now\(\) - last < RELOAD_GUARD_MS\)\s*\{\s*return false;/.test(
+              main,
+            ),
+        ),
+        check(
+          "parça hatası yalnızca DIŞA ÇIKARKEN onarılıyor (geçici hatalarda gereksiz yenileme yok)",
+          /if \(isChunkLoadError\(lastErr\)\)\s*\{\s*reloadOnceForChunkError\(\);\s*\}\s*throw lastErr;/.test(
+            main,
+          ) &&
+            /function isChunkLoadError/.test(main) &&
+            main.includes("dynamically imported module"),
+        ),
+        check(
+          "eşleştirici yalnızca MODÜL hatalarını alıyor (ağ hatası yenileme döngüsü yapmaz)",
+          /function isChunkLoadError[\s\S]{0,400}?dynamically imported module/.test(
+            main,
+          ) &&
+            !/isChunkLoadError[\s\S]{0,400}?\|Failed to fetch\/i/.test(main),
+        ),
+      );
+
       // ── 7) Saydamlaştırma yalnızca bir binayı hedefleyebilir: çekirdek tek
       //       binadan occluder kurabiliyor. HİÇBİR bina `fade` İSTEMEZ artık:
       //       evlere yürünerek girilmediği için görüşü kesen saydamlaşan bina

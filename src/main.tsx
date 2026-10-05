@@ -12,10 +12,46 @@ import "./index.css";
 
 // Lazy load route components for better code splitting
 
+/** Bir rota parça (chunk) isteği indirilemediğinde tarayıcının ürettiği
+ *  mesajlar. Bu durumda aynı adresi tekrar denemek asla işe yaramaz: dosya
+ *  sunucuda artık yok. Tek çare güncel `index.html`'i yeniden çekmektir. */
+function isChunkLoadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  // Yalnızca MODÜL indirme hatalarını eşle (çıplak "Failed to fetch" ağ
+  // hatalarına da uyar; onları yenilemek sonsuz yenileme döngüsü yapar).
+  return /dynamically imported module|Importing a module script failed|Unable to preload CSS/i.test(
+    msg,
+  );
+}
+
+// Yeniden yükleme kalkanı: bozuk bir dağıtımda sonsuz döngüye girmemek için
+// kısa bir pencere içinde yalnızca BİR kez otomatik yenilenir.
+const RELOAD_GUARD_KEY = "vaelos:chunk-reload-at";
+const RELOAD_GUARD_MS = 10_000;
+
+/** Eski bir `index.html` yeni bir dağıtımdaki parçaları isteyip 404 aldığında
+ *  ("Failed to fetch dynamically imported module …/assets/Entry-XXXX.js")
+ *  sayfayı bir kez tazeleyerek kendi kendini onarır. */
+function reloadOnceForChunkError(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) ?? "0");
+    if (Number.isFinite(last) && Date.now() - last < RELOAD_GUARD_MS) {
+      return false;
+    }
+    sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now()));
+  } catch {
+    /* özel mod / kilitli depolama — tek seferlik en iyi çaba olarak devam et */
+  }
+  window.location.reload();
+  return true;
+}
+
 /** Lazy-load a route chunk with retry. Vite's dev server can briefly fail a
  *  module request while it recompiles after a batch of edits, which browsers
  *  surface as "Failed to fetch dynamically imported module" and blank the
- *  preview. Retrying turns that into a momentary pause instead. */
+ *  preview. Retrying turns that into a momentary pause instead. When the
+ *  failure is a *missing hashed chunk* (stale HTML after a redeploy), retries
+ *  cannot help, so we refresh the page once instead of crashing. */
 function lazyRetry<T extends React.ComponentType<any>>(
   loader: () => Promise<{ default: T }>,
   retries = 5,
@@ -31,6 +67,9 @@ function lazyRetry<T extends React.ComponentType<any>>(
           await new Promise((r) => setTimeout(r, 700 * attempt));
         }
       }
+    }
+    if (isChunkLoadError(lastErr)) {
+      reloadOnceForChunkError();
     }
     throw lastErr;
   });
@@ -90,6 +129,11 @@ class RootErrorBoundary extends React.Component<
   }
   componentDidCatch(err: Error) {
     console.error("[WebContainer preview] Root crash:", err);
+    // Parça indirme hatası kök sınırına kadar sızdıysa (ör. olay dinleyicisi
+    // kaçırdıysa) yine de kendi kendini onarmayı dene.
+    if (isChunkLoadError(err)) {
+      reloadOnceForChunkError();
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -125,6 +169,15 @@ document.documentElement.setAttribute("translate", "no");
 // context") React hata sınırına UĞRAMAZ; açılışta kurulan bu dinleyici onu
 // yakalar ve sayfaya düşmesini engeller (sahne kendi kendini yeniden dener).
 ensureWebglFailureGuard();
+
+// 🧩 Eski HTML ve yeni dağıtım uyuşmazlığı: Vite, bir dinamik import'un parçası
+// (veya modulepreload bağlantısı) indirilemediğinde bu olayı yayar. Sayfayı bir
+// kez tazeleyip güncel `index.html`'i çekerek "Failed to fetch dynamically
+// imported module" ekranının kullanıcıya düşmesini engeller.
+window.addEventListener("vite:preloadError", (event: Event) => {
+  event.preventDefault();
+  reloadOnceForChunkError();
+});
 
 function RouteSyncer() {
   const location = useLocation();
