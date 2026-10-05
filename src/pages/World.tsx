@@ -4170,6 +4170,7 @@ export default function World() {
                       // ev geri gelmez, kart da durumu dürüstçe yansıtır.
                       name={myHouseView?.name}
                       tone={config.shirt}
+                      hint="🏠 Evini göster"
                       image={
                         myHouseView ? (myRoomShot ?? latestRoomShot) : null
                       }
@@ -4215,9 +4216,11 @@ export default function World() {
                   }
                   house={
                     <HousePreview
+                      // 🪑 Botların evi her zaman BOŞ ODA: gerçek bir oda fotoğrafı
+                      // yoktur (hepsi aynı görünmesin diye zemin tonu karaktere özel).
                       name={`${viewedBot.name} Odası`}
                       tone={viewedBot.color}
-                      image={latestRoomShot}
+                      empty
                     />
                   }
                   action={
@@ -4304,7 +4307,10 @@ export default function World() {
                         viewedRemoteHouse?.name ??
                         `${viewedRemote.data?.name ?? "Oyuncu"} Odası`
                       }
-                      image={remoteRoomShot ?? latestRoomShot}
+                      // Her oyuncunun evi kendi görünümünde olsun: kendi oda
+                      // fotoğrafı varsa o, yoksa karakterin gömlek tonuyla çizim.
+                      tone={viewedRemote.data?.config?.shirt}
+                      image={remoteRoomShot}
                     />
                   }
                   action={

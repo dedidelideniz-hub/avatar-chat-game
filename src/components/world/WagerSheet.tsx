@@ -48,13 +48,60 @@ export function describeWager(goldAmount: number, houseName?: string): string {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   🏠 EV ÖNİZLEMESİ — izometrik (3B görünümlü) ev
+   🏠 EV ÖNİZLEMESİ — izometrik (3B görünümlü) ev / 🪑 boş oda
    ───────────────────────────────────────────────────────────── */
+
+/**
+ * 🪑 BOŞ ODA — cadde sakinlerinin (NPC) evi: mobilyasız, sade bir oda.
+ * `tone` zemin rengini belirler; böylece her karakterin odası farklı görünür.
+ */
+function EmptyRoom({ tone }: { tone: string }) {
+  return (
+    <svg viewBox="0 0 120 104" className="absolute inset-0 h-full w-full">
+      <defs>
+        <linearGradient id="hpWallL" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#f5ecda" />
+          <stop offset="100%" stopColor="#e6d5b6" />
+        </linearGradient>
+        <linearGradient id="hpFloor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#e7d3ad" />
+          <stop offset="100%" stopColor="#c9ac7d" />
+        </linearGradient>
+        <radialGradient id="hpWin" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#bae6fd" />
+        </radialGradient>
+      </defs>
+      {/* tavan + arka duvarlar */}
+      <rect width="120" height="104" fill="#f8f0e1" />
+      <polygon points="12,52 60,28 60,50 12,74" fill="url(#hpWallL)" />
+      <polygon points="108,52 60,28 60,50 108,74" fill="#dcc8a4" />
+      {/* zemin (izometrik elmas) — karaktere göre tonlanır */}
+      <polygon points="60,50 108,74 60,98 12,74" fill="url(#hpFloor)" />
+      <polygon points="60,50 108,74 60,98 12,74" fill={tone} opacity="0.22" />
+      {/* parke çizgisi + eteklik */}
+      <polygon points="60,62 84,74 60,86 36,74" fill="none" stroke="#00000018" strokeWidth="0.8" />
+      <polyline points="12,74 60,50 108,74" fill="none" stroke="#00000022" strokeWidth="1" />
+      {/* arka duvarda boş kapı */}
+      <polygon points="26.4,44.8 36,40 36,62 26.4,66.8" fill="#3d2f2a" />
+      <polygon points="28,46 34,42.2 34,60 28,63.8" fill="#5a453c" />
+      {/* pencereden gün ışığı */}
+      <polygon points="81.6,38.8 91.2,43.6 91.2,65.6 81.6,60.8" fill="url(#hpWin)" />
+      <polyline points="81.6,38.8 91.2,43.6 91.2,65.6 81.6,60.8" fill="none" stroke="#ffffff" strokeWidth="1" opacity="0.8" />
+      {/* tavan lambası */}
+      <circle cx="60" cy="31" r="3" fill="#fff4cf" />
+      <circle cx="60" cy="31" r="6" fill="#fff4cf" opacity="0.3" />
+    </svg>
+  );
+}
+
 export function HousePreview({
   name,
   tone = "#c98a5a",
   sizeLabel = "3B · 1 oda",
   image,
+  empty,
+  hint = "🏠 Karakterin evini göster",
   className,
 }: {
   /** Evin adı (levhada yazar). Yoksa "Ev yok". */
@@ -68,13 +115,41 @@ export function HousePreview({
    * İÇİNDEKİ EŞYALARA KADAR birebir görünür. Yoksa izometrik çizim gösterilir.
    */
   image?: string | null;
+  /** 🪑 Cadde sakinleri (NPC): mobilyasız BOŞ ODA çiz (gerçek fotoğraf yok). */
+  empty?: boolean;
+  /** Kapalı hâldeki "göster" düğmesinin yazısı. */
+  hint?: string;
   className?: string;
 }) {
   const hasHouse = Boolean(name);
+  // 🏠 Ev PROFİLDE DOĞRUDAN görünmez: yalnızca "Karakterin evini göster"
+  // yazısına dokununca açılır.
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`flex w-full items-center justify-center gap-1.5 rounded-2xl border border-[#3d2f2a]/15 bg-gradient-to-b from-[#fdf6e3] to-[#f0e4cb] px-3 py-2.5 text-[11px] font-extrabold text-[#3d2f2a] shadow-sm transition-colors hover:from-[#faf0da] hover:to-[#e9d9ba] ${className ?? ""}`}
+      >
+        {hint}
+      </button>
+    );
+  }
+
   return (
     <div
       className={`relative overflow-hidden rounded-2xl border border-[#3d2f2a]/15 bg-gradient-to-b from-sky-100 to-emerald-100 p-2 ${className ?? ""}`}
     >
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        aria-label="Evi gizle"
+        className="absolute right-3 top-3 z-10 flex size-6 items-center justify-center rounded-full bg-black/30 text-white transition-colors hover:bg-black/50"
+      >
+        <X className="size-3.5" />
+      </button>
       <div className="relative aspect-[6/5] w-full overflow-hidden rounded-xl bg-gradient-to-b from-sky-100 to-emerald-100">
         {image ? (
           <img
@@ -82,6 +157,8 @@ export function HousePreview({
             alt={name ?? "Ev"}
             className="absolute inset-0 h-full w-full object-cover"
           />
+        ) : empty ? (
+          <EmptyRoom tone={tone} />
         ) : (
           <svg viewBox="0 0 120 104" className="absolute inset-0 h-full w-full">
         <defs>

@@ -1150,7 +1150,23 @@ const scenarios: Scenario[] = [
             ) &&
             /image\?: string \| null/.test(sheet) &&
             /<img/.test(sheet) &&
-            /image={latestRoomShot}/.test(world),
+            /myRoomShot \?\? latestRoomShot/.test(world),
+        ),
+        check(
+          "🏠 PROFİLDE ev DOĞRUDAN görünmez — 'Karakterin evini göster' ile açılır",
+          // Ev önizlemesi kapalı başlar: yalnızca düğmeye dokununca açılır.
+          /Karakterin evini göster/.test(sheet) &&
+            /const \[open, setOpen\] = useState\(false\)/.test(sheet) &&
+            /setOpen\(true\)/.test(sheet) &&
+            /Evi gizle/.test(sheet) &&
+            /hint="🏠 Evini göster"/.test(world),
+        ),
+        check(
+          "🪑 BOTLARIN EVİ BOŞ ODA: herkesinki aynı görünmez, zemin tonu karaktere özel",
+          /function EmptyRoom/.test(sheet) &&
+            /name=\{`\$\{viewedBot\.name\} Odası`\}/.test(world) &&
+            /tone=\{viewedBot\.color\}[\s\S]{0,40}empty/.test(world) &&
+            !/image=\{latestRoomShot\}/.test(world),
         ),
         check(
           "🏠 EV KAYBI KALICI: kaybedince tekrar girişte BEDAVA ev açılmaz",
