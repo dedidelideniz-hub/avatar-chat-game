@@ -44,6 +44,7 @@ import {
   type BuildingOccluder,
 } from "./buildingOcclusion";
 import { measureBuildingModel, planBuildingPlacement } from "./buildingModelPrep";
+import { shrinkModelTextures } from "./textureBudget";
 
 /**
  * Oyuncu binanın merkezinden bu kadar (dünya birimi) uzaktayken ışın testi
@@ -62,8 +63,29 @@ function GlbBuildingModel({
   fade: boolean;
 }) {
   const url = def.modelUrl as string;
-  const { scene } = useGLTF(url);
+  const loaded = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
+
+  /**
+   * 📱 DOKU BELLEK BÜTÇESİ — "Hay aksi!" çökmesinin kök nedeni.
+   *
+   * Bina modelleri meshopt ile sıkıştırılmış ve dokuları WebP; bu yüzden
+   * DOSYA küçük görünür ama çözülünce GPU'ya RGBA8 olarak çıkar. Ölçüm
+   * (`witch_shop.glb`): 43 dokunun 31'i 1024×1024 → tek bina **130 MiB**
+   * (~173 MiB mip zinciriyle). Model, yükleme kapısı açılırken caddenin ilk
+   * karesiyle aynı anda yükleniyordu ve Android WebView'in işleyici süreci
+   * bellekten düşüyordu. Sahne ÇİZİLMEDEN ÖNCE dokular cihaz bütçesine
+   * indirilir (mobil 512 → 130 MiB yerine ~43 MiB; masaüstü 1024 → değişmez).
+   */
+  const scene = useMemo(() => {
+    const root = loaded.scene;
+    try {
+      shrinkModelTextures(root);
+    } catch (error) {
+      console.warn(`[bina dokusu] ${url} küçültülemedi:`, error);
+    }
+    return root;
+  }, [loaded.scene, url]);
 
   const placement = useMemo(() => {
     const box = measureBuildingModel(scene as THREE.Object3D);

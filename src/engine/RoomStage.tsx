@@ -69,6 +69,7 @@ import { Grid3x3, Hammer, RotateCw, ShoppingBag } from "lucide-react";
 import { playSound } from "@/lib/sounds";
 import * as THREE from "three";
 import { ROOM_ISO, ROOM_MODEL_URL } from "./constants";
+import { shrinkModelTextures } from "./textureBudget";
 import {
   analyzeRoomSurfaces,
   clampToRoom,
@@ -839,7 +840,21 @@ function RoomInterior({
   /** Odadaki bir eşyaya dokunuldu (seç → tekrar dokun → döndür). */
   onTapPiece: (rowId: string) => void;
 }) {
-  const { scene } = useGLTF(ROOM_MODEL_URL);
+  const roomGltf = useGLTF(ROOM_MODEL_URL);
+  // 📱 DOKU BELLEK BÜTÇESİ — cadı dükkânı modeliyle aynı kök neden: dosya
+  // küçük (meshopt + WebP) ama GPU dokusu büyük. Oda modeli 7 dokusunu
+  // 1024² tutuyor → tek başına ~30 MiB. Oda, cadde kapısı açılırken önceden
+  // indirildiği için bu doku tam çökme penceresinde GPU'ya çıkıyordu.
+  // Küçültme ilk kareden ÖNCE (bu render'da) yapılır.
+  const scene = useMemo(() => {
+    const root = roomGltf.scene;
+    try {
+      shrinkModelTextures(root);
+    } catch (error) {
+      console.warn(`[oda dokusu] ${ROOM_MODEL_URL} küçültülemedi:`, error);
+    }
+    return root;
+  }, [roomGltf.scene]);
   const { gl } = useThree();
   const moveTarget = useRef({ x: 0, z: 0 });
   // SÜRÜKLEME + HAYALET: zemine basınca hayalet eşya parmağı takip eder,

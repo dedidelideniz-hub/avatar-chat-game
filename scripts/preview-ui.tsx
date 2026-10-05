@@ -2342,6 +2342,87 @@ const scenarios: Scenario[] = [
             );
           })(),
         ),
+        // 🧠 GPU DOKU BELLEĞİ — "Hay aksi!" (Aw, Snap) çökmesinin ASIL nedeni.
+        //    Modeller meshopt + WebP olduğu için DOSYA küçük görünür, ama
+        //    dokular çözülünce RGBA8 olarak GPU'ya çıkar: ölçülen
+        //    `witch_shop.glb` tek başına 130 MiB (43 dokunun 31'i 1024²).
+        //    Doku, caddenin ilk karesi/yükleme kapısıyla aynı anda yüklenip
+        //    Android WebView'in işleyici sürecini bellekten düşürüyordu.
+        //    Çözüm: dokular sahneye girmeden cihaz bütçesine indirilir.
+        check(
+          "doku bütçesi: aşırı büyük GLTF dokuları GPU'ya ÇIKMADAN küçültülüyor",
+          (() => {
+            const budget = read("../src/engine/textureBudget.ts");
+            return (
+              budget.includes("export function shrinkModelTextures") &&
+              budget.includes("export const MOBILE_TEXTURE_MAX = 512") &&
+              budget.includes("export function defaultTextureMax") &&
+              budget.includes('canvas.getContext("2d")') &&
+              /ctx\.drawImage\(image as CanvasImageSource, 0, 0, w, h\)/.test(
+                budget,
+              ) &&
+              // Eski doku BIRAKILIR — yoksa bellek iki katına çıkardı.
+              budget.includes("texture.dispose()") &&
+              // Küçültme ilk kareden ÖNCE (render sırasında, `useMemo`):
+              /useMemo\(\(\) => \{[\s\S]{0,320}?shrinkModelTextures\(/.test(
+                read("../src/engine/GlbBuilding.tsx"),
+              ) &&
+              /useMemo\(\(\) => \{[\s\S]{0,360}?shrinkModelTextures\(/.test(
+                read("../src/engine/RoomStage.tsx"),
+              )
+            );
+          })(),
+        ),
+        // 🔬 ÖLÇÜM (kaynak metni kontrolü yetmez): model DOSYASI okunup WebP
+        //    dokularının gerçek piksel boyutları toplanır ve iki cihaz
+        //    bütçesindeki GPU bellek zirvesi karşılaştırılır.
+        (() => {
+          const webpSize = (b: Buffer): { w: number; h: number } | null => {
+            const tag = b.toString("latin1", 12, 16);
+            if (tag === "VP8 ")
+              return {
+                w: b.readUInt16LE(26) & 0x3fff,
+                h: b.readUInt16LE(28) & 0x3fff,
+              };
+            if (tag === "VP8L") {
+              const n = b.readUInt32LE(21);
+              return { w: (n & 0x3fff) + 1, h: ((n >> 14) & 0x3fff) + 1 };
+            }
+            if (tag === "VP8X")
+              return {
+                w: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)),
+                h: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)),
+              };
+            return null;
+          };
+          const gltf = JSON.parse(read("../public/models/witch_shop.glb"));
+          const bin = Buffer.from(
+            (gltf.buffers[0].uri as string).split(",")[1],
+            "base64",
+          );
+          let before = 0;
+          let after = 0;
+          for (const img of gltf.images ?? []) {
+            const view = gltf.bufferViews[img.bufferView];
+            if (!view) continue;
+            const start = view.byteOffset ?? 0;
+            const size = webpSize(bin.subarray(start, start + view.byteLength));
+            if (!size) continue;
+            before += size.w * size.h * 4;
+            const scale = 512 / Math.max(size.w, size.h);
+            after +=
+              (size.w > 512 ? Math.max(1, Math.round(size.w * scale)) : size.w) *
+              (size.h > 512 ? Math.max(1, Math.round(size.h * scale)) : size.h) *
+              4;
+          }
+          const beforeMiB = before / 1048576;
+          const afterMiB = after / 1048576;
+          return check(
+            "ölçüm: cadı dükkânı dokusu 512'ye inince GPU bellek zirvesi ~%67 azalıyor",
+            beforeMiB > 100 && afterMiB < 50 && afterMiB < beforeMiB / 2.5,
+            `${beforeMiB.toFixed(0)} MiB → ${afterMiB.toFixed(0)} MiB`,
+          );
+        })(),
         check(
           "Auth sayfası: e-posta, kod ve misafir girişlerinin ÜÇÜ de zaman aşımıyla korunuyor",
           (authPageSrc.match(/withTimeout\(/g) ?? []).length >= 3 &&
