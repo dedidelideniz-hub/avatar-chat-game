@@ -2290,11 +2290,57 @@ const scenarios: Scenario[] = [
             requireAuthSrc.includes("if (!ok) window.location.reload();"),
         ),
         check(
-          "cadde kapısı: 'Kimlik doğrulanıyor' 8 sn'de çözülmezse sonraki adıma geçer",
-          world.includes("const GATE_AUTH_STEP_MS = 8000") &&
+          "cadde kapısı: 'Kimlik doğrulanıyor' 2 sn'de çözülmezse sonraki adıma geçer",
+          world.includes("const GATE_AUTH_STEP_MS = 2000") &&
             world.includes("const [gateAuthStepDone, setGateAuthStepDone]") &&
             /Math\.max\(gateAuthStepDone \? 1 : 0, pctStepIndex\)/.test(world) &&
             world.includes('authSignIn("anonymous")'),
+        ),
+        check(
+          "cadde kapısı: hesap sorgusu takılırsa 'Yeniden Dene' katmanı çıkar (sonsuz spinner YOK)",
+          world.includes("const PROFILE_STALL_MS = 6000") &&
+            world.includes("const [profileStalled, setProfileStalled]") &&
+            /profileStalled && [\s\S]{0,700}?Yeniden Dene/.test(world),
+        ),
+        // 🧠 `/world` açılırken arena haritası (5,5 MB) ÖNDEN inmemeli: savaş
+        //    sahneleri tembel yüklenir, ağır arena kodu yalnızca maç başlarken
+        //    gelir. Statik ithal geri gelirse cadde yüklemesi yeniden iki kat
+        //    bant/bellek harcar.
+        check(
+          "savaş sahneleri TEMBEL yükleniyor (arena haritası cadde yüklemesini yemesin)",
+          /const LazyBattleScene = lazy\(\(\) => import\("@\/components\/world\/BattleScene"\)\)/.test(
+            world,
+          ) &&
+            /const LazyPvpBattleScene = lazy\(/.test(world) &&
+            !/^import BattleScene from/m.test(world) &&
+            !/^import PvpBattleScene from/m.test(world) &&
+            world.includes("<Suspense fallback={null}>"),
+        ),
+        // 📱 Mobil çökme ("Hay aksi!") karşı önlemleri: çok büyük tamponlar ve
+        //    modül kurulumunda yarışan zırh indirmeleri ortadan kalktı.
+        check(
+          "mobil bellek: cadde canvas'ı 1.25 dpr + kapalı MSAA",
+          read("../src/engine/GameEngine3D.tsx").includes(
+            "dpr={[1, isMobile ? 1.25 : 2]}",
+          ) &&
+            /antialias: !isMobile/.test(
+              read("../src/engine/GameEngine3D.tsx"),
+            ),
+        ),
+        check(
+          "ekipman zırh modelleri modül kurulumunda DEĞİL, sonra ısıtılıyor",
+          (() => {
+            const equipSrc = read("../src/engine/EquipmentBuilders.ts");
+            return (
+              equipSrc.includes("EQUIPMENT_WARMUP_DELAY_MS") &&
+              /window\.setTimeout\(\(\) => \{[\s\S]{0,220}?loadEquipmentGlbCached\("\/models\/savasci-zirh\.glb"\)/.test(
+                equipSrc,
+              ) &&
+              !/^loadEquipmentGlbCached\("\/models\/sovalye-zirh\.glb"\);/m.test(
+                equipSrc,
+              )
+            );
+          })(),
         ),
         check(
           "Auth sayfası: e-posta, kod ve misafir girişlerinin ÜÇÜ de zaman aşımıyla korunuyor",

@@ -1456,13 +1456,21 @@ export function GameEngine3D({
     >
       <Canvas
         key={attempt}
-        dpr={[1, isMobile ? 1.5 : 2]}
+        // 📱 MOBİL BELLEK: telefonlarda piksel oranı 1.25 ile sınırlı ve çok
+        // örneklemeli kenar yumuşatma (MSAA) KAPALI. 1.5 dpr + MSAA, Android
+        // WebView/Chrome'da renk+derinlik tamponlarını şişiriyor ve ağır cadde
+        // modelleriyle birlikte süreci çökertiyordu ("Hay aksi!"). Piksel
+        // sayısı ~%40 azaldı: aynı sahne, çok daha düşük bellek zirvesi.
+        dpr={[1, isMobile ? 1.25 : 2]}
         shadows={!isMobile ? "soft" : false}
         frameloop={paused ? "never" : "always"}
         // R3F varsayılanı `high-performance`: kapı `default` ile geçtiyse
         // `high-performance` reddedilebilir ve `configure()` düşer. Denemenin
         // doğruladığı ayarı kullan.
-        gl={{ powerPreference: verifiedPowerPreference() }}
+        gl={{
+          powerPreference: verifiedPowerPreference(),
+          antialias: !isMobile,
+        }}
         camera={{
           position: [sX(SPAWN_SVG.x), initCamY, sZ(SPAWN_SVG.y) + initCamZ],
           fov: 70,

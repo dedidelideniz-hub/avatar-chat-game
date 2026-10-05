@@ -51,8 +51,6 @@ import { EquippedItems } from "@/components/avatar/EquippedItems";
 import { EntryLoader } from "@/components/entry/EntryLoader";
 import { Button } from "@/components/ui/button";
 import { BagSheet, ShopSheet, VipSheet } from "@/components/world/ShopSheets";
-import BattleScene from "@/components/world/BattleScene";
-import PvpBattleScene from "@/components/world/PvpBattleScene";
 import { ChatPanel, type ChatMessage } from "@/components/world/ChatPanel";
 import {
   HousePreview,
@@ -127,7 +125,16 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
@@ -137,6 +144,37 @@ import {
   STREET_BUILDING_MODELS,
   STREET_TIPS,
 } from "@/engine/streetPreload";
+
+/* ── ⚡ DÜELLO SAHNELERİ TEMBEL YÜKLENİR ────────────────────────────────
+   `BattleScene` / `PvpBattleScene` eskiden STATİK ithal ediliyordu. Bu iki
+   modül kurulum anında arena haritasını (`5v5_game_map.glb`, 5,5 MB)
+   `useGLTF.preload` ile ÖNDEN indiriyordu; yani `/world` açılır açılmaz
+   harita caddenin kendi modelleriyle YARIŞARAK iniyor, belleği şişiriyor ve
+   ilk kareler yavaşlıyordu. Telefon tarayıcısı/WebView'ı bu zirvede süreci
+   öldürüyor ("Hay aksi! Bu web sayfasını görüntülerken bir hata oluştu.") ve
+   yükleme ekranı donmuş kalıyordu. Arena kodu + haritası artık YALNIZCA maç
+   gerçekten başlarken indirilir: cadde kapısı açılırken bellek ve bant
+   genişliği tamamen caddeye kalır. */
+const LazyBattleScene = lazy(() => import("@/components/world/BattleScene"));
+const LazyPvpBattleScene = lazy(
+  () => import("@/components/world/PvpBattleScene"),
+);
+
+/** Tembel düello sahnesi: parça inerken hiçbir şey çizilmez (kapı durur). */
+function BattleScene(props: ComponentProps<typeof LazyBattleScene>) {
+  return (
+    <Suspense fallback={null}>
+      <LazyBattleScene {...props} />
+    </Suspense>
+  );
+}
+function PvpBattleScene(props: ComponentProps<typeof LazyPvpBattleScene>) {
+  return (
+    <Suspense fallback={null}>
+      <LazyPvpBattleScene {...props} />
+    </Suspense>
+  );
+}
 
 // Harita px katmanı: 1 dünya birimi = `S` px (bkz. `engine/constants`).
 // Boyutlar artık elle yazılmıyor — dünya büyüyünce kendiliğinden ölçeklenir.
@@ -1230,11 +1268,14 @@ const STREET_LOAD_STEPS = [
  *   · emniyet supabı SABİT bir zaman damgasına bağlıdır; yeniden montaj onu
  *     baştan başlatamaz.
  */
-const GATE_VALVE_MS = 8000;
+const GATE_VALVE_MS = 6500;
 /** "Kimlik doğrulanıyor" adımı bu süre içinde çözülmezse süreç kilitlenmez:
  *  adım TAMAMLANMIŞ sayılır, oturum yoksa anonim (konuk) oturuma düşülür ve
  *  yükleme bir sonraki adımdan ("Cadde verileri alınıyor") devam eder. */
-const GATE_AUTH_STEP_MS = 8000;
+const GATE_AUTH_STEP_MS = 2000;
+/** Hesap sorgusu (`profiles.getMyProfile`) bu süre içinde sonuçlanmazsa
+ *  sonsuz spinner yerine "Yeniden Dene" katmanı gösterilir. */
+const PROFILE_STALL_MS = 6000;
 const gateSession: { startMs: number | null; opened: boolean } = {
   startMs: null,
   opened: false,
@@ -1751,9 +1792,10 @@ export default function World() {
   // 🛡️ KİMLİK ADIMI BEKÇİSİ (APK'da "%18 · Kimlik doğrulanıyor" takılması).
   //
   // Kapının ilk adımı kimlik verisinin gelmesini bekler. Mobil WebView'da bu
-  // veri HİÇ gelmeyebiliyor (ölü soket) ve ekran kilitleniyordu. Bekçi, 8 sn
-  // sonunda adımı TAMAMLANMIŞ sayar; oturum da yoksa anonim (konuk) oturuma
-  // düşer. Böylece akış bir sonraki adımdan devam eder, süreç kilitli kalmaz.
+  // veri HİÇ gelmeyebiliyor (ölü soket) ve ekran kilitleniyordu. Bekçi, kısa
+  // bir süre (2 sn) sonunda adımı TAMAMLANMIŞ sayar; oturum da yoksa anonim
+  // (konuk) oturuma düşer. Böylece akış bir sonraki adımdan devam eder,
+  // süreç kilitli kalmaz — yükleme ekranı hiçbir koşulda donmuş görünmez.
   const [gateAuthStepDone, setGateAuthStepDone] = useState(false);
   const gateGuestTried = useRef(false);
   useEffect(() => {
@@ -1780,6 +1822,23 @@ export default function World() {
       console.warn("[Vaelos] kapıda konuk girişi başarısız:", error);
     });
   }, [gateAuthStepDone, isAuthenticated, authSignIn]);
+
+  // 🧯 PROFİL SORGUSU TAKILMASI: `profiles.getMyProfile` bazı mobil
+  // WebView'larda HİÇ sonuçlanmıyor (ölü soket). Eskiden ekranda sonsuza
+  // kadar dönen bir halka kalıyordu ve oyuncunun hiçbir çıkışı yoktu. Artık
+  // bu süre sonunda dürüst bir "Yeniden Dene" katmanı gösterilir.
+  const [profileStalled, setProfileStalled] = useState(false);
+  useEffect(() => {
+    if (profile !== undefined) {
+      setProfileStalled(false);
+      return;
+    }
+    const id = window.setTimeout(
+      () => setProfileStalled(true),
+      PROFILE_STALL_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [profile]);
 
   // Kapı yalnızca hesap hazır olduğunda çizilir: profil yoksa/banlıysa zaten
   // kendi bilgi katmanı görünür (aşağıdaki `profile === null` blokları).
@@ -4986,8 +5045,22 @@ export default function World() {
 
       {/* loading / no-profile overlays */}
       {profile === undefined && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/70 px-6 text-center backdrop-blur-sm">
           <div className="size-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+          {profileStalled && (
+            <>
+              <p className="max-w-xs text-sm font-semibold leading-6 text-muted-foreground">
+                Hesap bilgilerine ulaşılamadı. Bağlantın zayıf olabilir —
+                yeniden denemek genellikle çözer.
+              </p>
+              <Button
+                className="rounded-full"
+                onClick={() => window.location.reload()}
+              >
+                Yeniden Dene
+              </Button>
+            </>
+          )}
         </div>
       )}
       {profile !== undefined && profile !== null && profile.banned && (

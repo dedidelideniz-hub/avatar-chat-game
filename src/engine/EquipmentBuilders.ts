@@ -107,9 +107,20 @@ export function getCachedEquipmentGlb(url: string): THREE.Group | undefined {
   return _equipmentGlbCache.get(url);
 }
 
-// Equipment GLB preloads — triggered at module init.
-loadEquipmentGlbCached("/models/savasci-zirh.glb");
-loadEquipmentGlbCached("/models/sovalye-zirh.glb");
+/* ── EKİPMAN ÖN YÜKLEMESİ (ERTELENMİŞ) ──────────────────────────────
+ * Eskiden zırh modelleri (≈2,3 MB) MODÜL KURULUMUNDA hemen indiriliyordu:
+ * `/world` açıldığı anda bu indirme caddenin kendi modelleriyle yarışıyor,
+ * "Cadde verileri alınıyor" adımını uzatıyor ve mobil bellek zirvesini
+ * şişiriyordu. Artık cadde kapısı açıldıktan SONRA (boşta kalan zamanda)
+ * ısıtılır. Ekipman bu süreden önce gerekiyorsa `loadEquipmentGlbCached`
+ * zaten kendisi indirir — davranış değişmez, yalnızca sıra değişir. */
+const EQUIPMENT_WARMUP_DELAY_MS = 9000;
+if (typeof window !== "undefined") {
+  window.setTimeout(() => {
+    loadEquipmentGlbCached("/models/savasci-zirh.glb");
+    loadEquipmentGlbCached("/models/sovalye-zirh.glb");
+  }, EQUIPMENT_WARMUP_DELAY_MS);
+}
 
 /* ── Builders ─────────────────────────────────────────────────── */
 
