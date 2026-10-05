@@ -14,6 +14,7 @@ import {
   RuneHalo,
 } from "@/components/entry/GameChrome";
 import { useAuth } from "@/hooks/use-auth";
+import { AUTH_TIMEOUT_MS, isTimeoutError, withTimeout } from "@/lib/withTimeout";
 import {
   ArrowLeft,
   ArrowRight,
@@ -102,6 +103,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Zaman aşımı görüldüyse düğme "YENİDEN DENE"ye döner: kullanıcı ne
+  // yapacağını tahmin etmek zorunda kalmaz.
+  const [timedOut, setTimedOut] = useState(false);
 
   // MİSAFİR (anonim) oyuncu bu ekranı KULLANABİLİR: e-postasını ekleyerek
   // hesabını kalıcı hâle getirir. Bu yüzden otomatik yönlendirme yalnızca
@@ -120,15 +124,23 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
+      // ⏱️ Zaman aşımı: mobil WebView'da istek HİÇ sonuçlanmayabiliyor;
+      //    ekranda sonsuza kadar dönmek yerine hata + tekrar dene gösterilir.
+      await withTimeout(
+        signIn("email-otp", formData),
+        AUTH_TIMEOUT_MS,
+        "Kod gönderimi",
+      );
       setStep({ email: formData.get("email") as string });
       setIsLoading(false);
     } catch (error) {
       console.error("Email sign-in error:", error);
       setError(
-        error instanceof Error
-          ? error.message
-          : "Doğrulama kodu gönderilemedi. Lütfen tekrar dene.",
+        isTimeoutError(error)
+          ? "Sunucu yanıt vermedi. Bağlantını kontrol edip yeniden dene."
+          : error instanceof Error
+            ? error.message
+            : "Doğrulama kodu gönderilemedi. Lütfen tekrar dene.",
       );
       setIsLoading(false);
     }
@@ -140,13 +152,21 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setError(null);
     try {
       const formData = new FormData(event.currentTarget);
-      await signIn("email-otp", formData);
+      await withTimeout(
+        signIn("email-otp", formData),
+        AUTH_TIMEOUT_MS,
+        "Kod doğrulama",
+      );
 
       navigate(redirect);
     } catch (error) {
       console.error("OTP verification error:", error);
 
-      setError("Girdiğin doğrulama kodu yanlış.");
+      setError(
+        isTimeoutError(error)
+          ? "Sunucu yanıt vermedi. Bağlantını kontrol edip yeniden dene."
+          : "Girdiğin doğrulama kodu yanlış.",
+      );
       setIsLoading(false);
 
       setOtp("");
@@ -157,14 +177,19 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      await signIn("anonymous");
+      // ⏱️ Misafir girişi APK/WebView'da takılırsa uygulama çökmesin:
+      //    zaman aşımıyla kesilir ve kullanıcıya yeniden dene fırsatı kalır.
+      await withTimeout(signIn("anonymous"), AUTH_TIMEOUT_MS, "Misafir girişi");
       navigate(redirect);
     } catch (error) {
       console.error("Guest login error:", error);
+      setTimedOut(isTimeoutError(error));
       setError(
-        error instanceof Error
-          ? `Misafir girişi başarısız: ${error.message}`
-          : "Misafir girişi başarısız. Lütfen tekrar dene.",
+        isTimeoutError(error)
+          ? "Misafir girişi zaman aşımına uğradı. Lütfen yeniden dene."
+          : error instanceof Error
+            ? `Misafir girişi başarısız: ${error.message}`
+            : "Misafir girişi başarısız. Lütfen tekrar dene.",
       );
       setIsLoading(false);
     }
@@ -303,7 +328,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                   className={GHOST_BUTTON}
                 >
                   <UserX className="size-4" />
-                  MİSAFİR OLARAK OYNA
+                  {timedOut ? "YENİDEN DENE" : "MİSAFİR OLARAK OYNA"}
                 </Button>
                 <p className="mt-2 text-center text-[10px] font-bold leading-4 text-white/35">
                   Misafir hesaplar bu cihaza bağlıdır · ilerlemeni korumak için

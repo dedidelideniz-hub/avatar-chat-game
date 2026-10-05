@@ -72,6 +72,7 @@ import {
   type PresenceEntry,
 } from "@/hooks/use-presence";
 import { DEFAULT_AVATAR, type AvatarConfig } from "@/lib/avatar";
+import { AUTH_TIMEOUT_MS, withTimeout } from "@/lib/withTimeout";
 import {
   ABILITIES,
   abilityOf,
@@ -105,7 +106,8 @@ import {
 } from "@/lib/shop";
 import { findPath } from "@/lib/pathfinding";
 import { isMuted, playSound, toggleMuted, unlockAudio } from "@/lib/sounds";
-import { useMutation, useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -1229,6 +1231,10 @@ const STREET_LOAD_STEPS = [
  *     baştan başlatamaz.
  */
 const GATE_VALVE_MS = 8000;
+/** "Kimlik doğrulanıyor" adımı bu süre içinde çözülmezse süreç kilitlenmez:
+ *  adım TAMAMLANMIŞ sayılır, oturum yoksa anonim (konuk) oturuma düşülür ve
+ *  yükleme bir sonraki adımdan ("Cadde verileri alınıyor") devam eder. */
+const GATE_AUTH_STEP_MS = 8000;
 const gateSession: { startMs: number | null; opened: boolean } = {
   startMs: null,
   opened: false,
@@ -1238,6 +1244,10 @@ export default function World() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const profile = useQuery(api.profiles.getMyProfile);
+  // 🛡️ Kapının "Kimlik doğrulanıyor" bekçisi için: oturum durumu ve konuk
+  // girişi. (Korunmuş rota olsa da mobil ağ kopmalarında oturum gerileyebilir.)
+  const { isAuthenticated } = useConvexAuth();
+  const { signIn: authSignIn } = useAuthActions();
   const claimDaily = useMutation(api.profiles.claimDailyBonus);
   const setBubbleColor = useMutation(api.profiles.setBubbleColor);
   const buyAbility = useMutation(api.profiles.buyAbility);
@@ -1738,12 +1748,48 @@ export default function World() {
     if (gateOpen) gateSession.opened = true;
   }, [gateOpen]);
 
+  // 🛡️ KİMLİK ADIMI BEKÇİSİ (APK'da "%18 · Kimlik doğrulanıyor" takılması).
+  //
+  // Kapının ilk adımı kimlik verisinin gelmesini bekler. Mobil WebView'da bu
+  // veri HİÇ gelmeyebiliyor (ölü soket) ve ekran kilitleniyordu. Bekçi, 8 sn
+  // sonunda adımı TAMAMLANMIŞ sayar; oturum da yoksa anonim (konuk) oturuma
+  // düşer. Böylece akış bir sonraki adımdan devam eder, süreç kilitli kalmaz.
+  const [gateAuthStepDone, setGateAuthStepDone] = useState(false);
+  const gateGuestTried = useRef(false);
+  useEffect(() => {
+    if (profile !== undefined) {
+      setGateAuthStepDone(true);
+      return;
+    }
+    const id = window.setTimeout(
+      () => setGateAuthStepDone(true),
+      GATE_AUTH_STEP_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [profile]);
+
+  useEffect(() => {
+    if (!gateAuthStepDone || gateGuestTried.current || isAuthenticated) return;
+    gateGuestTried.current = true;
+    // Zaman aşımı şart: `signIn` bazı WebView'larda hiç sonuçlanmıyor.
+    void withTimeout(
+      authSignIn("anonymous"),
+      AUTH_TIMEOUT_MS,
+      "Misafir girişi",
+    ).catch((error: unknown) => {
+      console.warn("[Vaelos] kapıda konuk girişi başarısız:", error);
+    });
+  }, [gateAuthStepDone, isAuthenticated, authSignIn]);
+
   // Kapı yalnızca hesap hazır olduğunda çizilir: profil yoksa/banlıysa zaten
   // kendi bilgi katmanı görünür (aşağıdaki `profile === null` blokları).
   const gateVisible =
     !gateOpen && profile !== undefined && profile !== null && !profile.banned;
-  const gateStepIndex =
+  const pctStepIndex =
     gatePct < 20 ? 0 : gatePct < 40 ? 1 : gatePct < 62 ? 2 : gatePct < 84 ? 3 : 4;
+  // Kimlik adımı bekçisi tamamlandıysa ilk adımda TAKILI kalma: en az
+  // "Cadde verileri alınıyor" adımından devam et.
+  const gateStepIndex = Math.max(gateAuthStepDone ? 1 : 0, pctStepIndex);
 
   // Kapı açılana kadar sahne "hazır" sayılmaz: kapı kapanmadan yürümeye
   // başlamayalım (jest/klavye girdisi kapı açıldıktan sonra işlenir).

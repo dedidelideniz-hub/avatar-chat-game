@@ -359,10 +359,29 @@ async function mockAppLayer() {
     ConvexProvider: ({ children }: { children: React.ReactNode }) => children,
     ConvexReactClient: class {},
   }));
+  // 🔐 `@convex-dev/auth/react` GERÇEKTEN yüklenirse `convex/react`'ten
+  // `ConvexProviderWithAuth` bekler; yukarıdaki `convex/react` taklidi onu
+  // sağlamadığı için paket çözülemez ve senaryolar düşer. Bu yüzden auth
+  // kancaları da taklit edilir (World kapının kimlik bekçisi için kullanıyor).
+  mock.module("@convex-dev/auth/react", () => ({
+    useAuthActions: () => ({
+      signIn: async () => ({ signingIn: true }),
+      signOut: async () => {},
+    }),
+    useAuthToken: () => null,
+    ConvexAuthProvider: ({ children }: { children: React.ReactNode }) =>
+      children,
+  }));
   mock.module("@/hooks/use-auth", () => ({
     useAuth: () => ({
       signOut: async () => {},
       user: { isAnonymous: false, name: "Dkdkdkk" },
+      isLoading: false,
+      isAuthenticated: true,
+      stalled: false,
+      guestFallbackDue: false,
+      signIn: async () => ({ signingIn: true }),
+      signInAsGuest: async () => ({ signingIn: true }),
     }),
     AuthProvider: ({ children }: { children: React.ReactNode }) => children,
   }));
@@ -2143,6 +2162,149 @@ const scenarios: Scenario[] = [
             main,
           ) &&
             !/isChunkLoadError[\s\S]{0,400}?\|Failed to fetch\/i/.test(main),
+        ),
+      );
+
+      // ── 6e) APK/WebView KİMLİK DAYANIKLILIĞI: Convex adresi yedeği, güvenli
+      //        token depolaması, zaman aşımları ve konuk (misafir) düşüşü.
+      //        Bir kısmı GERÇEKTEN çalıştırılarak doğrulanır: adres çözümleme,
+      //        depolama turu ve zaman aşımı davranışı kaynak metninden okunamaz.
+      const { FALLBACK_CONVEX_URL, createConvexClient, resolveConvexUrl } =
+        await import("../src/lib/convexClient.ts");
+      const {
+        safeGetItem,
+        safeRemoveItem,
+        safeSetItem,
+        authTokenStorage,
+        storagePersistent,
+      } = await import("../src/lib/safeStorage.ts");
+      const {
+        TimeoutError,
+        withTimeout,
+        AUTH_TIMEOUT_MS,
+        AUTH_GUEST_FALLBACK_MS,
+      } = await import("../src/lib/withTimeout.ts");
+      const useAuthSrc = read("../src/hooks/use-auth.ts");
+      const requireAuthSrc = read("../src/components/RequireAuth.tsx");
+      const authPageSrc = read("../src/pages/Auth.tsx");
+      const safeStorageSrc = read("../src/lib/safeStorage.ts");
+
+      // — gerçek davranış ölçümleri —
+      safeSetItem("__vaelos_probe__", "ok");
+      const storageWrote = safeGetItem("__vaelos_probe__") === "ok";
+      safeRemoveItem("__vaelos_probe__");
+      const storageCleared = safeGetItem("__vaelos_probe__") === null;
+
+      let timeoutError: unknown = null;
+      try {
+        await withTimeout(new Promise(() => {}), 25, "deneme");
+      } catch (error) {
+        timeoutError = error;
+      }
+      const timeoutRejects = timeoutError instanceof TimeoutError;
+      const timeoutPassesThrough =
+        (await withTimeout(Promise.resolve(7), 1000)) === 7;
+
+      let factoryThrew = false;
+      try {
+        createConvexClient(undefined);
+        createConvexClient("");
+        createConvexClient("   ");
+      } catch {
+        factoryThrew = true;
+      }
+
+      checks.push(
+        check(
+          "Convex adresi yedeğe düşüyor: boş/undefined URL istemci kurulumunu çökertmiyor",
+          resolveConvexUrl(undefined) === FALLBACK_CONVEX_URL &&
+            resolveConvexUrl(null) === FALLBACK_CONVEX_URL &&
+            resolveConvexUrl("") === FALLBACK_CONVEX_URL &&
+            resolveConvexUrl("   ") === FALLBACK_CONVEX_URL &&
+            resolveConvexUrl("bu-bir-adres-degil") === FALLBACK_CONVEX_URL &&
+            !factoryThrew,
+          FALLBACK_CONVEX_URL,
+        ),
+        check(
+          "geçerli Convex adresi KORUNUR (sondaki eğik çizgiler temizlenir)",
+          resolveConvexUrl("https://ornek-1.convex.cloud/") ===
+            "https://ornek-1.convex.cloud" &&
+            resolveConvexUrl("  https://ornek-2.convex.cloud  ") ===
+              "https://ornek-2.convex.cloud",
+        ),
+        check(
+          "güvenli depolama turu çalışıyor (yaz → oku → sil) — WebView'da atsa bile düşmez",
+          storageWrote && storageCleared,
+          storagePersistent ? "kalıcı depolama açık" : "bellek yedeği",
+        ),
+        check(
+          "timeout yardımcısı GERÇEKTEN reddediyor, geçen sözü bozmuyor",
+          timeoutRejects && timeoutPassesThrough,
+        ),
+        check(
+          "kimlik zaman aşımları: 5 sn istek, 8 sn konuk düşüşü",
+          AUTH_TIMEOUT_MS === 5000 && AUTH_GUEST_FALLBACK_MS === 8000,
+          `${AUTH_TIMEOUT_MS}ms / ${AUTH_GUEST_FALLBACK_MS}ms`,
+        ),
+        check(
+          "token deposu Convex Auth'a ADAPTÖR olarak veriliyor (mobil uyum)",
+          typeof authTokenStorage.getItem === "function" &&
+            typeof authTokenStorage.setItem === "function" &&
+            typeof authTokenStorage.removeItem === "function",
+        ),
+        check(
+          "depolama erişimi try/catch ile sarılı (localStorage istisnası uygulamayı çökertmez)",
+          safeStorageSrc.includes("function openBrowserStorage") &&
+            safeStorageSrc.includes("catch {") &&
+            safeStorageSrc.includes("const memory = new Map"),
+        ),
+        check(
+          "main.tsx: Convex istemcisi try/catch + yedek adresle kuruluyor (çıplak `new` YOK)",
+          /try \{\s*convex = createConvexClient\(/.test(main) &&
+            /catch \(error\) \{\s*convexInitError/.test(main) &&
+            !/new ConvexReactClient\(/.test(main),
+        ),
+        check(
+          "main.tsx: ConvexAuthProvider güvenli token deposunu kullanıyor",
+          main.includes("storage={authTokenStorage}"),
+        ),
+        check(
+          "main.tsx: istemci kurulamazsa 'Yeniden Dene' ekranı çıkıyor (boş sayfa YOK)",
+          main.includes("<BootFailure message={convexInitError} />") &&
+            main.includes("Yeniden Dene") &&
+            main.includes("function BootFailure"),
+        ),
+        check(
+          "useAuth: 5 sn takılma dedektörü + 8 sn konuk düşüşü + zaman aşımlı misafir girişi",
+          useAuthSrc.includes("export const AUTH_STALL_MS = 5000") &&
+            useAuthSrc.includes("const [stalled, setStalled] = useState(false)") &&
+            useAuthSrc.includes("const [guestFallbackDue, setGuestFallbackDue]") &&
+            /signInAsGuest[\s\S]{0,220}withTimeout\(/.test(useAuthSrc) &&
+            useAuthSrc.includes('signIn("anonymous")'),
+        ),
+        check(
+          "RequireAuth: uzayan yüklemede 'Yeniden Dene' + 8 sn sonra anonim oturuma düşer",
+          requireAuthSrc.includes("Yeniden Dene") &&
+            requireAuthSrc.includes("guestFallbackDue") &&
+            /void tryGuestSession\(\);/.test(requireAuthSrc) &&
+            requireAuthSrc.includes("if (!ok) window.location.reload();"),
+        ),
+        check(
+          "cadde kapısı: 'Kimlik doğrulanıyor' 8 sn'de çözülmezse sonraki adıma geçer",
+          world.includes("const GATE_AUTH_STEP_MS = 8000") &&
+            world.includes("const [gateAuthStepDone, setGateAuthStepDone]") &&
+            /Math\.max\(gateAuthStepDone \? 1 : 0, pctStepIndex\)/.test(world) &&
+            world.includes('authSignIn("anonymous")'),
+        ),
+        check(
+          "Auth sayfası: e-posta, kod ve misafir girişlerinin ÜÇÜ de zaman aşımıyla korunuyor",
+          (authPageSrc.match(/withTimeout\(/g) ?? []).length >= 3 &&
+            authPageSrc.includes("isTimeoutError(error)") &&
+            // Zaman aşımında düğme "YENİDEN DENE"ye döner (istek: yeniden dene).
+            authPageSrc.includes(
+              'timedOut ? "YENİDEN DENE" : "MİSAFİR OLARAK OYNA"',
+            ),
+          `${(authPageSrc.match(/withTimeout\(/g) ?? []).length} çağrı`,
         ),
       );
 
