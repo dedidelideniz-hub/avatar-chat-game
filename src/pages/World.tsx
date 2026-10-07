@@ -141,6 +141,16 @@ import { levelFromWins, rankFromLevel, WINS_PER_LEVEL } from "@/lib/levels";
 import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
 // 📡 APK/logcat işaretleri (madde 3): "hangi adımda öldü?" — bkz. androidProbe.
 import { stageMark } from "@/engine/androidProbe";
+// 🔍 Yükleme teşhisi: "yüzde neden ilerlemiyor?" — nabız + montaj + model testi.
+import {
+  heartbeat,
+  installLoadDiagnostics,
+  mountInfo,
+  noteMount,
+  reportLoadStall,
+  type LoadSnapshot,
+} from "@/engine/loadDiag";
+import { LoadingDiagnostics } from "@/components/world/LoadingDiagnostics";
 // 🧪 3D İZOLASYON TEŞHİSİ (APK çökmesini bölerek bulmak için) — bkz. bu
 // dosyadaki `stageMode` dalları ve `engine/worldDebug`.
 import {
@@ -1285,6 +1295,8 @@ const STREET_LOAD_STEPS = [
  *     baştan başlatamaz.
  */
 const GATE_VALVE_MS = 6500;
+/** Kapı bu süre içinde açılmazsa OTOMATİK teşhis raporu üretilir (bkz. loadDiag). */
+const GATE_STALL_REPORT_MS = 8000;
 /** "Kimlik doğrulanıyor" adımı bu süre içinde çözülmezse süreç kilitlenmez:
  *  adım TAMAMLANMIŞ sayılır, oturum yoksa anonim (konuk) oturuma düşülür ve
  *  yükleme bir sonraki adımdan ("Cadde verileri alınıyor") devam eder. */
@@ -1680,6 +1692,12 @@ export default function World() {
   const [gateSceneReady, setGateSceneReady] = useState(false);
   const [gateForced, setGateForced] = useState(false);
   const [gatePct, setGatePct] = useState(0);
+  // 🔍 Teşhis: hata/nabız kaydı + montaj sayacı. Kapı "yeniden yeniden
+  // kuruluyor" (sayaç 14'e dönüyor) ise bu sayı bunu ele verir.
+  useEffect(() => {
+    installLoadDiagnostics();
+    noteMount("World");
+  }, []);
   // Kapı oturum boyunca bir kez açılır; yeniden montajda tekrar gösterilmez.
   // İZOLASYON MODUNDA kapı HİÇ beklemez: aşamanın kendi sonda paneli zaten
   // ne olduğunu söyler; kapı bekleseydi "Cadde verileri alınıyor" ekranının
@@ -1821,6 +1839,7 @@ export default function World() {
     if (gateForced) setGatePct((p) => (p < 100 ? 100 : p));
   }, [gateForced]);
 
+
   useEffect(() => {
     if (gateOpen) return;
     const id = window.setInterval(
@@ -1908,11 +1927,49 @@ export default function World() {
     profile !== undefined &&
     profile !== null &&
     !profile.banned;
+
+  /* 🔍 YÜKLEME TEŞHİSİ (canlı anlık görüntü + OTOMATİK TAKILMA RAPORU).
+
+     Kapı bu süre içinde açılmazsa rapor KENDİLİĞİNDEN üretilir (model erişim
+     testi dâhil) ve konsola/logcat'e + kalıcı ize düşer: kullanıcı panele
+     dokunamasa bile kanıt oluşur. Ekrandaki panel (aşağıdaki JSX) aynı nesneyi
+     canlı okur; ikisi de tek kaynaktan beslenir.
+
+     ⚠️ Bağımlılık listesi bilinçli olarak SADECE `gateVisible`: `gatePct` her
+     60 ms değişiyor; ona bağlanırsa zamanlayıcı hiç ateşlemez. Canlı değerler
+     ref üzerinden okunur. */
+  const gateSnapshotRef = useRef<LoadSnapshot | null>(null);
+  const stallReported = useRef(false);
+  useEffect(() => {
+    if (!gateVisible || stallReported.current) return;
+    const id = window.setTimeout(() => {
+      if (stallReported.current) return;
+      const snapshot = gateSnapshotRef.current;
+      if (!snapshot) return;
+      stallReported.current = true;
+      void reportLoadStall(snapshot);
+    }, GATE_STALL_REPORT_MS);
+    return () => window.clearTimeout(id);
+  }, [gateVisible]);
   const pctStepIndex =
     gatePct < 20 ? 0 : gatePct < 40 ? 1 : gatePct < 62 ? 2 : gatePct < 84 ? 3 : 4;
   // Kimlik adımı bekçisi tamamlandıysa ilk adımda TAKILI kalma: en az
   // "Cadde verileri alınıyor" adımından devam et.
   const gateStepIndex = Math.max(gateAuthStepDone ? 1 : 0, pctStepIndex);
+
+  // 🔍 Teşhis panelinin ve takılma raporunun OKUDUĞU canlı anlık görüntü
+  // (her render'da tazelenir; `gateStepIndex`ten SONRA kurulmalı).
+  gateSnapshotRef.current = {
+    pct: gatePct,
+    target: gateTarget,
+    forced: gateForced,
+    sceneReady: gateSceneReady,
+    step: STREET_LOAD_STEPS[gateStepIndex] ?? "?",
+    stepIndex: gateStepIndex,
+    elapsedMs: Date.now() - (gateSession.startMs ?? Date.now()),
+    stageMode,
+    glbTest: glbTestParam,
+  };
 
   // Kapı açılana kadar sahne "hazır" sayılmaz: kapı kapanmadan yürümeye
   // başlamayalım (jest/klavye girdisi kapı açıldıktan sonra işlenir).
@@ -5214,6 +5271,13 @@ export default function World() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 🔍 YÜKLEME TEŞHİSİ — yükleme ekranı görünürken KOŞULSUZ erişilir.
+          Mobilde konsol yok; "neden ilerlemiyor?" sorusunun cevabı tek
+          dokunuşla alınabilsin diye burada duruyor (bkz. LoadingDiagnostics). */}
+      {gateVisible && gateSnapshotRef.current && (
+        <LoadingDiagnostics snapshot={gateSnapshotRef.current} />
+      )}
 
       {/* Visual Debug — always-visible DEV button + conditional panel */}
       <button

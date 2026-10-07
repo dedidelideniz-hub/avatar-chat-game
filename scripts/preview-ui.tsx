@@ -2151,6 +2151,107 @@ const scenarios: Scenario[] = [
             /export function unlockBackgroundAssets/.test(queueSrc) &&
             /export function markAssetReady/.test(queueSrc),
         ),
+        // 🔍 YÜKLEME TEŞHİSİ: mobilde konsol yok → yükleme ekranında KOŞULSUZ
+        // erişilebilen bir panel + otomatik takılma raporu olmalı.
+        check(
+          "yükleme teşhisi: yükleme ekranında bayraksız erişilir + otomatik takılma raporu",
+          (() => {
+            const panel = read("../src/components/world/LoadingDiagnostics.tsx");
+            const diag = read("../src/engine/loadDiag.ts");
+            return (
+              world.includes("<LoadingDiagnostics snapshot={gateSnapshotRef.current} />") &&
+              world.includes("GATE_STALL_REPORT_MS") &&
+              world.includes("void reportLoadStall(snapshot)") &&
+              world.includes('noteMount("World")') &&
+              world.includes("installLoadDiagnostics()") &&
+              // Panel bayrak/kabuk ŞARTI ARAMAZ (tam da "hiçbir şey çalışmıyor"
+              // durumunda gerekiyor); düğme metni kullanıcıya görünür.
+              panel.includes("🔍 Yükleme teşhisi") &&
+              panel.includes("Model erişimini test et") &&
+              panel.includes("navigator.clipboard.writeText") &&
+              !/worldDiagnosticsEnabled|isAppShell/.test(panel) &&
+              // Ölçüm çekirdeği: nabız + montaj + model probe + rapor.
+              /export function installLoadDiagnostics/.test(diag) &&
+              /export function heartbeat/.test(diag) &&
+              /export function noteMount/.test(diag) &&
+              /export async function probeModelUrls\(/.test(diag) &&
+              /export function buildLoadReport/.test(diag) &&
+              /export async function reportLoadStall/.test(diag) &&
+              /ANA İŞ PARÇACIĞI DONDU/.test(diag) &&
+              /YENİDEN MONTAJ DÖNGÜSÜ/.test(diag) &&
+              /MODEL ERİŞİM TESTİ/.test(diag) &&
+              diag.includes("VITE_ANDROID_NO_STREET_ASSETS") === false
+            );
+          })(),
+        ),
+        // 📡 Probe'un istediği yollar GERÇEK model sabitleriyle aynı olmalı,
+        // yoksa teşhis yanlış dosyayı test eder. Canlı: fetch sahtelenip
+        // ✘/✔ ayrımı ve başlık okuma doğrulanır (gerçek ağa ÇIKILMAZ).
+        check(
+          "canlı: model probe doğru yolu ister, ✓/✘ ayrımı ve boyut okuması çalışır",
+          await (async () => {
+            const diag = await import("../src/engine/loadDiag");
+            const urls = diag.MODEL_PROBE_LIST.map((item) => item.url);
+            const real = read("../src/engine/constants.ts");
+            const pathsOk =
+              urls.includes("/models/grass_ground.glb") &&
+              urls.includes("/models/character.glb") &&
+              urls.includes("/models/maple_tree.glb") &&
+              urls.includes("/models/witch_shop.glb") &&
+              real.includes('WITCH_SHOP_MODEL_URL = "/models/witch_shop.glb"');
+
+            const realFetch = globalThis.fetch;
+            const calls: string[] = [];
+            globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+              const url = String(input);
+              calls.push(`${init?.method ?? "GET"} ${url}`);
+              const broken = url.includes("witch_shop");
+              return {
+                ok: !broken,
+                status: broken ? 502 : 200,
+                headers: {
+                  get: (name: string) =>
+                    name === "content-length" ? "217870" : null,
+                },
+              } as unknown as Response;
+            }) as typeof fetch;
+            let results: Awaited<ReturnType<typeof diag.probeModelUrls>> = [];
+            try {
+              results = await diag.probeModelUrls(urls.map((url) => ({ label: url, url })));
+            } finally {
+              globalThis.fetch = realFetch;
+            }
+            const okRow = results.find((row) => row.url.includes("grass_ground"));
+            const badRow = results.find((row) => row.url.includes("witch_shop"));
+            const report = diag.buildLoadReport(
+              {
+                pct: 16,
+                target: 14,
+                forced: false,
+                sceneReady: false,
+                step: "Cadde verileri alınıyor",
+                stepIndex: 1,
+                elapsedMs: 4200,
+                stageMode: false,
+                glbTest: false,
+                trace: "boot #3 · son adım: model:start:ground",
+              },
+              results,
+            );
+            return (
+              pathsOk &&
+              calls.every((call) => call.startsWith("HEAD ")) &&
+              okRow?.ok === true &&
+              okRow?.bytes === 217870 &&
+              badRow?.ok === false &&
+              badRow?.status === 502 &&
+              /YÜKLEME TEŞHİSİ/.test(report) &&
+              /MODEL ERİŞİM TESTİ/.test(report) &&
+              /ANA İŞ PARÇACIĞI|nabız/.test(report) &&
+              report.includes("model:start:ground")
+            );
+          })(),
+        ),
         // ⚠️ Pencere 400→900: görev artık hem senkron hatayı hem de DÖNEN
         // promise'in reddini karşılamalı (jeton: iptal edilmiş bir GLB indirmesi
         // `TypeError: Failed to fetch` verir; yakalanmazsa geliştirme katmanı
