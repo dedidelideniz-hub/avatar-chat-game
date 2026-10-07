@@ -2374,8 +2374,13 @@ const scenarios: Scenario[] = [
           })(),
         ),
         // 🔬 ÖLÇÜM (kaynak metni kontrolü yetmez): model DOSYASI okunup WebP
-        //    dokularının gerçek piksel boyutları toplanır ve iki cihaz
-        //    bütçesindeki GPU bellek zirvesi karşılaştırılır.
+        //    dokularının gerçek piksel boyutları toplanır. Dosya artık KAYNAKTA
+        //    küçültüldü (scripts/shrink-glb-textures.mjs): kontrol şudur —
+        //    depodaki dosya 130 MiB (1024²'ler) DEĞİL, tampon 512²'lerin
+        //    GPU zirvesiyle gelir; çalışma-zamanı bütçesi (`textureBudget`)
+        //    yalnızca BÜYÜTÜLMÜŞ GPU zirvelerini kırpabilir (desktop 1024).
+        //    Ayrıca meshopt erişimleri SONUNA KADAR çözerek dosyanın SAĞLAM
+        //    olduğu da burada bir kez doğrulanır.
         (() => {
           const webpSize = (b: Buffer): { w: number; h: number } | null => {
             const tag = b.toString("latin1", 12, 16);
@@ -2401,7 +2406,8 @@ const scenarios: Scenario[] = [
             "base64",
           );
           let before = 0;
-          let after = 0;
+          let after = 0; // 1024²'lerin KAÇ tanesi kaldı (küçültülmüş dosyada 0 olmalı)
+          let over512 = 0;
           for (const img of gltf.images ?? []) {
             const view = gltf.bufferViews[img.bufferView];
             if (!view) continue;
@@ -2409,18 +2415,51 @@ const scenarios: Scenario[] = [
             const size = webpSize(bin.subarray(start, start + view.byteLength));
             if (!size) continue;
             before += size.w * size.h * 4;
-            const scale = 512 / Math.max(size.w, size.h);
+            const scale = 1024 / Math.max(size.w, size.h);
             after +=
-              (size.w > 512 ? Math.max(1, Math.round(size.w * scale)) : size.w) *
-              (size.h > 512 ? Math.max(1, Math.round(size.h * scale)) : size.h) *
-              4;
+              Math.max(size.w, size.h) > 1024
+                ? Math.max(1, Math.round(size.w * scale)) *
+                  Math.max(1, Math.round(size.h * scale)) *
+                  4
+                : size.w * size.h * 4;
+            if (Math.max(size.w, size.h) > 512) over512 += 1;
           }
-          const beforeMiB = before / 1048576;
-          const afterMiB = after / 1048576;
+          const gpuMiB = before / 1048576;
+          // Masaüstü bütçesi (1024) — dosyanın küçültmeden ÖNCEKİ zirvesi.
+          const gpuDesktopMiB = after / 1048576;
           return check(
-            "ölçüm: cadı dükkânı dokusu 512'ye inince GPU bellek zirvesi ~%67 azalıyor",
-            beforeMiB > 100 && afterMiB < 50 && afterMiB < beforeMiB / 2.5,
-            `${beforeMiB.toFixed(0)} MiB → ${afterMiB.toFixed(0)} MiB`,
+            "ölçüm: cadı dükkânı dokusu dosyada sabitlenmiş — GPU zirvesi 130 → ~43 MiB",
+            // Dosyadaki zirve artık 512²'lerin zirvesi (~43 MiB) — 1024²'lerin
+            // zirvesi DEĞİL; && 0 dokusunun uzun kenarı 512'yi aşmıyor.
+            over512 === 0 &&
+              gpuDesktopMiB < gpuMiB + 1 &&
+              gpuMiB > 30 &&
+              gpuMiB < 55 &&
+              // BUDA ağır oda modeli aynı gün küçültüldü (~9 MiB).
+              (() => {
+                const room = JSON.parse(
+                  read("../public/models/empty_office_space.glb"),
+                );
+                const roomBin = Buffer.from(
+                  (room.buffers[0].uri as string).split(",")[1],
+                  "base64",
+                );
+                let roomGpu = 0;
+                for (const img of room.images ?? []) {
+                  const view = room.bufferViews[img.bufferView];
+                  if (!view) continue;
+                  const size = webpSize(
+                    roomBin.subarray(
+                      view.byteOffset ?? 0,
+                      (view.byteOffset ?? 0) + view.byteLength,
+                    ),
+                  );
+                  if (!size) continue;
+                  roomGpu += size.w * size.h * 4;
+                }
+                return roomGpu > 6 * 1048576 && roomGpu < 12 * 1048576;
+              })(),
+            `witch_shop ${gpuMiB.toFixed(0)} MiB (desktop/1024: ${gpuDesktopMiB.toFixed(0)}) • oda ~9 MiB`,
           );
         })(),
         check(
