@@ -24,7 +24,7 @@
  * saf fonksiyon olarak durur.
  */
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
-import { useGLTF } from "@react-three/drei";
+import { useProbedGltf } from "./probedGltf";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { tickFoliageSway } from "./foliageSway";
@@ -85,7 +85,7 @@ const span = (rnd: () => number, min: number, max: number): number =>
 /* ═══════════════════════════════════════════════════════════ */
 
 function useModelParts(cfg: VegModelConfig): ModelPart[] {
-  const { scene } = useGLTF(cfg.url);
+  const { scene } = useProbedGltf(cfg.url, cfg.url);
   const prepared = useMemo(() => prepareVegetationModel(scene, cfg), [scene, cfg]);
   const { parts, owned, report } = prepared;
 

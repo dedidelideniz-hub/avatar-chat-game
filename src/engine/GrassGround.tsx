@@ -23,10 +23,11 @@ import {
   prepareGrassGround,
 } from "./grassGroundPrep";
 import { assetPreloadingSuppressed } from "./worldDebug";
+import { useProbedGltf } from "./probedGltf";
 
 /** Model/döşeme hazırlığı — `useGLTF` önbelleği asla değiştirilmez (klonlanır). */
 function useGrassGroundTile() {
-  const { scene } = useGLTF(GRASS_GROUND_URL);
+  const { scene } = useProbedGltf(GRASS_GROUND_URL, "ground");
   const tile = useMemo(() => prepareGrassGround(scene), [scene]);
 
   useEffect(

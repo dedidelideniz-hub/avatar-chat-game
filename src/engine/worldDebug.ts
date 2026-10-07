@@ -132,6 +132,8 @@ export function stageInfo(stage: number): WorldStageInfo {
 const STAGE_KEY = "vaelos:worldStage";
 const DEBUG_KEY = "vaelos:worldDebug";
 const DPR_KEY = "vaelos:worldDpr";
+const NO_STREET_KEY = "vaelos:noStreetAssets";
+const ASSET_PICK_KEY = "vaelos:stageAssets";
 
 function parseStage(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined || raw.trim() === "") return null;
@@ -174,10 +176,87 @@ function envStage(): number | null {
   }
 }
 
+/* ── 2b) "SOKAK VARLIKLARINI ATLA" BAYRAĞI (özellikle APK için) ─────────
+ *
+ * `VITE_ANDROID_NO_STREET_ASSETS=true` (veya `?noStreetAssets` /
+ * `localStorage: vaеlos:noStreetAssets=1`) verildiğinde hiçbir sokak GLB'si
+ * yüklenmez: ağaç/çim/çim öbeği/bina/cadı dükkânı/skin/zırh/park — hiçbiri.
+ * Sahne yalnızca canvas + kamera + ışık olur (boş canvas = aşama 2).
+ *
+ * Tek amaç: "APK bu hâlde açılıyor mu?" sorusunu KESİN yanıtlamak.
+ * Açılıyorsa sorun varlık zincirindedir; yine kapanıyorsa GLB'leri suçlamayı
+ * bırakıp WebView/WebGL/native tarafa geçmek gerekir.
+ */
+function envTruthy(name: string): boolean {
+  try {
+    const env = import.meta.env as unknown as Record<string, string | undefined>;
+    const raw = env[name];
+    return raw === "1" || raw === "true" || raw === "yes";
+  } catch {
+    return false;
+  }
+}
+
+export function noStreetAssetsEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (new URLSearchParams(window.location.search).has("noStreetAssets")) {
+      return true;
+    }
+  } catch {
+    /* sorgu okunamadı */
+  }
+  if (safeGetItem(NO_STREET_KEY) === "1") return true;
+  return envTruthy("VITE_ANDROID_NO_STREET_ASSETS");
+}
+
+export function setNoStreetAssets(on: boolean): void {
+  if (on) safeSetItem(NO_STREET_KEY, "1");
+  else safeRemoveItem(NO_STREET_KEY);
+}
+
+/**
+ * TEK TEK MODEL SEÇİMİ (madde 7): `?stageAssets=ground,tree` ya da
+ * `localStorage: vaеlos:stageAssets`. Aşamanın kendi listesini GEÇERSİZ kılar,
+ * böylece "zemin + ağaç" gibi aradaki kombinasyonlar da tek değişkenli ölçülür
+ * (kümülatif aşamalar C→D→E→F→G sırasını verir; bu seçim aradakileri verir).
+ */
+export function stageAssetOverride(): readonly StageAssetId[] | null {
+  if (typeof window === "undefined") return null;
+  let raw: string | null = null;
+  try {
+    raw = new URLSearchParams(window.location.search).get("stageAssets");
+  } catch {
+    raw = null;
+  }
+  if (raw === null) raw = safeGetItem(ASSET_PICK_KEY);
+  if (raw === null) return null;
+  const ids = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value): value is StageAssetId =>
+      (["ground", "character", "tree", "grass", "witchShop", "skin"] as const).includes(
+        value as StageAssetId,
+      ),
+    );
+  return ids.length > 0 ? ids : null;
+}
+
+/** Bu aşamada yüklenecek GERÇEK varlık listesi (seçim varsa o). */
+export function stageAssets(stage: number): readonly StageAssetId[] {
+  const override = stageAssetOverride();
+  return override ?? stageInfo(stage).assets;
+}
+
+export function setStageAssets(ids: readonly StageAssetId[]): void {
+  if (ids.length === 0) safeRemoveItem(ASSET_PICK_KEY);
+  else safeSetItem(ASSET_PICK_KEY, ids.join(","));
+}
+
 let stageCache: number | null = null;
 let stageCacheSource: StageSource = "default";
 
-export type StageSource = "url" | "stored" | "env" | "auto" | "default";
+export type StageSource = "url" | "stored" | "env" | "noStreet" | "auto" | "default";
 
 /** Aşamanın nereden geldiği (panelde gösterilir: "bunu kim seçti?"). */
 export function stageSource(): StageSource {
@@ -226,6 +305,11 @@ export function worldStage(): number {
   } else if (fromEnv !== null) {
     stageCache = fromEnv;
     stageCacheSource = "env";
+  } else if (noStreetAssetsEnabled()) {
+    // "Tüm sokak varlıklarını atla" → boş canvas (aşama 2). Seçim yapılmadıysa
+    // devreye girer: URL/localStorage her zaman bu bayrağı EZER.
+    stageCache = 2;
+    stageCacheSource = "noStreet";
   } else {
     const auto = autoSafeStage();
     stageCache = auto.stage;
@@ -455,7 +539,10 @@ export function clearDiagnostics(): void {
   safeRemoveItem(BOOTS_KEY);
   safeRemoveItem(CRASH_KEY);
   safeRemoveItem(STAGE_KEY);
+  safeRemoveItem(NO_STREET_KEY);
+  safeRemoveItem(ASSET_PICK_KEY);
   sessionCrashes = 0;
+  contextLostTotal = 0;
 }
 
 /* ── 5) WEBGL / BELLEK ÖLÇÜMÜ ─────────────────────────────────────────── */
@@ -521,6 +608,8 @@ export interface RuntimeDiagnostics {
   trace: string;
   boots: number;
   crashes: number;
+  /** Kaç kez `webglcontextlost` geldi (renderer/işleyici ölümünün imzası). */
+  contextLost: number;
   webgl: string;
   memory: string;
   storage: string;
@@ -542,6 +631,7 @@ export function runtimeDiagnostics(): RuntimeDiagnostics {
     trace: describeTrace(),
     boots: bootCount(),
     crashes: crashCount(),
+    contextLost: contextLostCount(),
     webgl: webglInfo(),
     memory: memory ?? "performance.memory yok",
     storage: storagePersistent ? "kalıcı" : "bellek yedeği (localStorage kapalı)",
@@ -554,31 +644,62 @@ export function runtimeDiagnostics(): RuntimeDiagnostics {
 /* ── 6) ÖLÇÜM SONUCU PANOSU (APK için tek çıktı) ──────────────────────── */
 
 /**
- * Kullanıcının doldurması gereken tablo: her aşamanın APK sonucu.
- * Panodan kopyalanıp paylaşılabilir — konsol gerektirmez.
+ * Kullanıcının doldurması gereken TEK ÇIKTI (madde 12).
+ *
+ * TEST A–G satırları istenen matrisin birebir karşılığıdır:
+ *   A No 3D → B Boş canvas → C Zemin → D Zemin+Karakter → E Zemin+Ağaç →
+ *   F Zemin+Çim → G Zemin+Cadı dükkânı
+ *
+ * Logcat alanlarının bir kısmı OTOMATİK doldurulur: `WEBGL_CONTEXT_LOST`
+ * sayısını uygulama kendi ölçer (bağlam kaybı olayı). Android tarafındaki
+ * alanlar (`WEBVIEW_RENDERER_CRASH`, `SIGSEGV`, `FATAL_EXCEPTION`, gerçek
+ * `OUT_OF_MEMORY`) logcat'ten okunur — panel bunları yazmak için yer bırakır.
  */
 export function diagnosticsReport(): string {
   const diag = runtimeDiagnostics();
   const lines: string[] = [];
-  lines.push("VAELOS — 3D İZOLASYON RAPORU");
-  lines.push(`aşama: ${diag.stage} (${diag.stageLabel})`);
+  lines.push("VAELOS — APK ÇÖKME RAPORU");
+  lines.push(`aşama: ${diag.stage} (${diag.stageLabel}, kaynak: ${stageSource()})`);
+  lines.push(`sokak varlıkları: ${noStreetAssetsEnabled() ? "ATLANDI (boş canvas)" : "açık"}`);
   lines.push(`izin: ${diag.trace}`);
-  lines.push(`açılış: ${diag.boots} · çöküş: ${diag.crashes}`);
+  lines.push(`açılış: ${diag.boots} · çöküş: ${diag.crashes} · bağlam kaybı: ${diag.contextLost}`);
   lines.push(`ekran: ${diag.screen} · dpr: ${diag.dpr}`);
   lines.push(`webgl: ${diag.webgl}`);
   lines.push(`bellek: ${diag.memory}`);
   lines.push(`depolama: ${diag.storage}`);
   lines.push(`ua: ${diag.ua}`);
   lines.push("");
-  lines.push("Test | İçerik | APK sonucu");
-  for (const info of WORLD_STAGES) {
-    if (info.stage === 0) continue;
-    lines.push(`${info.stage} | ${info.content} | ?`);
-  }
+  lines.push("TEST | İçerik | APK sonucu");
+  lines.push("A | No 3D (aşama 1) | ?");
+  lines.push("B | Empty Canvas (aşama 2) | ?");
+  lines.push("C | Ground (aşama 3) | ?");
+  lines.push("D | Ground + Character (aşama 4) | ?");
+  lines.push("E | Ground + Tree (aşama 5) | ?");
+  lines.push("F | Ground + Grass (aşama 6) | ?");
+  lines.push("G | Ground + Witch (aşama 7) | ?");
+  lines.push("H | + Skin (aşama 8) | ?");
+  lines.push("");
+  lines.push("LOGCAT (adb logcat | grep -E 'VAELOS|chromium|crash')");
+  lines.push(`WEBGL_CONTEXT_LOST = ${diag.contextLost > 0 ? "YES" : "NO"}`);
+  lines.push("WEBVIEW_RENDERER_CRASH = ?    (RenderProcessGone / onRenderProcessGone)");
+  lines.push("OUT_OF_MEMORY = ?             (FATAL EXCEPTION / OutOfMemoryError)");
+  lines.push("SIGSEGV = ?                   (native crash)");
+  lines.push("FATAL_EXCEPTION = ?");
+  lines.push("GPU_OPENGL_EGL = ?            (OpenGL/EGL/GLES hataları)");
   return lines.join("\n");
 }
 
 /* ── 7) BAĞLAM KAYBI TEŞHİSİ ──────────────────────────────────────────── */
+
+/**
+ * Bu oturumda kaç kez bağlam kaybedildi? (Raporda `WEBGL_CONTEXT_LOST` alanı.)
+ * Not: bağlam kaybı, işleyici ölürken JS hatası ÇIKMADAN görülen tek izdir.
+ */
+let contextLostTotal = 0;
+
+export function contextLostCount(): number {
+  return contextLostTotal;
+}
 
 /**
  * `webglcontextlost / webglcontextrestored` olaylarını bağlar.
@@ -597,11 +718,10 @@ export function attachContextDiagnostics(
     (target as HTMLCanvasElement);
   if (!element || typeof element.addEventListener !== "function") return () => {};
 
-  let lostCount = 0;
   const onLost = () => {
-    lostCount += 1;
-    traceStep("webgl:context-lost", `${label} — ${lostCount}. kez`);
-    console.warn(`[WEBGL] CONTEXT LOST — ${label} (${lostCount}. kez)`);
+    contextLostTotal += 1;
+    traceStep("webgl:context-lost", `${label} — ${contextLostTotal}. kez`);
+    console.warn(`[WEBGL] CONTEXT LOST — ${label} (${contextLostTotal}. kez)`);
   };
   const onRestored = () => {
     traceStep("webgl:context-restored", label);

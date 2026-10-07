@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { equipMat, registerEquipmentBatch } from "./EquipmentRegistry";
 import { equipDebug } from "./EquipmentDebug";
+import { modelError, modelOk, modelStart } from "./androidProbe";
 
 /* ── Procedural equipment builders ────────────────────────────── */
 /* Lightweight procedural meshes for every shop item. All sizes are
@@ -42,6 +43,8 @@ export function loadEquipmentGlbCached(url: string): THREE.Object3D {
   if (!loading) {
     const attempt = (_equipmentGlbAttempts.get(url) ?? 0) + 1;
     _equipmentGlbAttempts.set(url, attempt);
+    // 📡 Logcat: zırh indirmesi başladı (9 sn sonra, arka planda).
+    modelStart(url, url);
     loading = new Promise<THREE.Group>((resolve, reject) => {
       new GLTFLoaderShim().load(
         url,
@@ -83,10 +86,14 @@ export function loadEquipmentGlbCached(url: string): THREE.Object3D {
           scene.userData._equipmentSize = new THREE.Vector3(size.x * nf, size.y * nf, size.z * nf);
           _equipmentGlbCache.set(url, scene);
           equipDebug.glbCached(url, size, scene.userData._equipmentSize as THREE.Vector3);
+          modelOk(url, url);
           resolve(scene);
         },
         undefined,
-        (err) => reject(err),
+        (err) => {
+          modelError(url, url, err);
+          reject(err);
+        },
       );
     });
     _equipmentGlbLoading.set(url, loading);

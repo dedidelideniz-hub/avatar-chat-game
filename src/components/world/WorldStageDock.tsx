@@ -22,20 +22,38 @@ import {
   crashCount,
   describeTrace,
   diagnosticsReport,
+  noStreetAssetsEnabled,
   runtimeDiagnostics,
+  setNoStreetAssets,
+  setStageAssets,
   setStageDpr,
   setWorldStage,
+  stageAssetOverride,
   stageDpr,
   stageInfo,
   stageSource,
   worldStage,
+  type StageAssetId,
 } from "@/engine/worldDebug";
+
+/** "Tek tek model" seçici (madde 7): kümülatif aşamalar + aradaki kombinasyonlar. */
+const ASSET_CHOICES: ReadonlyArray<{ id: StageAssetId; label: string }> = [
+  { id: "ground", label: "zemin" },
+  { id: "character", label: "karakter" },
+  { id: "tree", label: "ağaç" },
+  { id: "grass", label: "çim" },
+  { id: "witchShop", label: "cadı" },
+  { id: "skin", label: "skin" },
+];
 
 export function WorldStageDock() {
   const stage = worldStage();
   const [open, setOpen] = useState(false);
   const [report, setReport] = useState<string | null>(null);
   const [dpr, setDpr] = useState<number | "device">(() => stageDpr());
+  const [picked, setPicked] = useState<readonly StageAssetId[]>(
+    () => stageAssetOverride() ?? [],
+  );
   const diag = useMemo(() => (open ? runtimeDiagnostics() : null), [open]);
   const current = useMemo(() => stageInfo(stage), [stage]);
 
@@ -54,6 +72,26 @@ export function WorldStageDock() {
   const chooseDpr = useCallback((value: number | "device") => {
     setStageDpr(value);
     setDpr(value);
+    if (typeof window !== "undefined") window.location.reload();
+  }, []);
+
+  const toggleAsset = useCallback((id: StageAssetId) => {
+    const next = picked.includes(id)
+      ? picked.filter((value) => value !== id)
+      : [...picked, id];
+    setPicked(next);
+    setStageAssets(next);
+    // Boş canvas (aşama 2) seçiliyse ilk model seçildiğinde aşama 3'e geç:
+    // aksi halde seçim hiçbir şey çizmez (sonda yalnızca 2–8'de çalışır).
+    if (next.length > 0 && worldStage() < 2) setWorldStage(3, false);
+    if (typeof window !== "undefined") window.location.reload();
+  }, [picked]);
+
+  const toggleNoStreet = useCallback(() => {
+    const on = !noStreetAssetsEnabled();
+    setNoStreetAssets(on);
+    // Bayrak açıkken sahne BOŞ canvas olmalı: aşama seçimini temizle.
+    if (on) setWorldStage(2, false);
     if (typeof window !== "undefined") window.location.reload();
   }, []);
 
@@ -135,6 +173,42 @@ export function WorldStageDock() {
               </button>
             );
           })}
+        </div>
+
+        <div className="mt-3 rounded-xl bg-black/40 p-2">
+          <div className="text-[10px] font-black uppercase tracking-wide text-white/50">
+            Tek tek model (aşama 2–8) — TEST C→D→E→F→G
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {ASSET_CHOICES.map((choice) => {
+              const on = picked.includes(choice.id);
+              return (
+                <button
+                  key={choice.id}
+                  type="button"
+                  onClick={() => toggleAsset(choice.id)}
+                  className={`rounded-lg px-2 py-1.5 text-[11px] font-bold active:scale-95 ${
+                    on ? "bg-amber-300 text-[#22160a]" : "bg-white/10 text-white/70"
+                  }`}
+                >
+                  {choice.label}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={toggleNoStreet}
+            className={`mt-1.5 w-full rounded-lg px-2 py-1.5 text-[11px] font-black active:scale-95 ${
+              noStreetAssetsEnabled()
+                ? "bg-rose-400 text-[#22160a]"
+                : "bg-white/10 text-white/70"
+            }`}
+          >
+            {noStreetAssetsEnabled()
+              ? "DEBUG WORLD açık — tüm sokak GLB'leri atlanıyor"
+              : "DEBUG WORLD: tüm sokak GLB'lerini atla (boş canvas)"}
+          </button>
         </div>
 
         <div className="mt-3 rounded-xl bg-black/40 p-2">

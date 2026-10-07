@@ -35,6 +35,8 @@ import {
  * core avatar needs to drive the pooled effects from its own frame
  * loop, plus the `isWarriorSkin` flag. */
 
+import { modelError, modelOk, modelStart } from "./androidProbe";
+
 const ROYAL_SKIN_URLS = new Set([
   "/models/moda-savasci.glb", // legacy royal path
   "/models/skin-savasci.glb", // royal warrior
@@ -244,14 +246,18 @@ function useRoyalGear(
           // Instant structural sword — never an empty hand.
           attachSwordModel(buildStructuralSword());
           if (!royalSwordLoading.has(url)) {
+            // 📡 Logcat: kral kılıcı indirmesi (cadde içinde, satın alınca).
+            modelStart(`royal:${url}`, url);
             const promise = royalSwordLoader.loadAsync(url)
               .then((gltf) => {
                 royalSwordCache.set(url, gltf.scene);
                 royalSwordLoading.delete(url);
+                modelOk(`royal:${url}`, url);
                 onSwordReady(); // re-run the gear effect → swap to the GLB
               })
               .catch((e) => {
                 console.warn("[Royal] sword GLB load failed:", url, e);
+                modelError(`royal:${url}`, url, e);
                 royalSwordLoading.delete(url);
               });
             royalSwordLoading.set(url, promise);

@@ -29,6 +29,9 @@ import { PROTECTED_PRIORITY, verifiedPowerPreference } from "./webglSupport";
 // 🧪 İz/teşhis: adımlar ve bağlam kaybı `localStorage`a yazılır. APK'da konsol
 // olmadığı için çökmenin YERİ ancak bu kayıtla kanıtlanabilir (bkz. `WorldStageDock`).
 import { attachContextDiagnostics, traceStep } from "./worldDebug";
+// 📡 APK/logcat işaretleri + işaretli GLTF yükleyicisi (madde 3).
+import { stageMark } from "./androidProbe";
+import { useProbedGltf } from "./probedGltf";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -1284,10 +1287,11 @@ function SceneReadyPing({
  * `GlbBuilding`) — Android/WebView bellek zirvesinin asıl sebebi buydu.
  */
 function StreetAssetsProbe({ onReady }: { onReady: () => void }) {
-  useGLTF(STREET_MODELS.ground);
-  useGLTF(STREET_MODELS.character);
+  useProbedGltf(STREET_MODELS.ground, "ground");
+  useProbedGltf(STREET_MODELS.character, "character");
 
   React.useEffect(() => {
+    stageMark("STREET_PROBE_START");
     onReady();
   }, [onReady]);
 
@@ -1296,7 +1300,7 @@ function StreetAssetsProbe({ onReady }: { onReady: () => void }) {
 
 /** Tek bir ek modeli yalnızca BEKLER (önbelleği ısıtır, sahneye bir şey eklemez). */
 function ModelProbe({ url }: { url: string }) {
-  useGLTF(url);
+  useProbedGltf(url, `gate:${url}`);
   return null;
 }
 
@@ -1419,11 +1423,13 @@ export function GameEngine3D({
   const [assetsReady, setAssetsReady] = useState(false);
   const handleAssetsReady = useCallback(() => {
     traceStep("engine:assets-ready");
+    stageMark("FIRST_MODEL_READY");
     setAssetsReady(true);
   }, []);
   /** İlk kareler çizildi: SAĞLIKLI adım (bkz. `wireDebug` → HEALTHY_STEPS). */
   const handleFirstFrame = useCallback(() => {
     traceStep("engine:first-frame");
+    stageMark("SCENE_READY");
     onSceneReady?.();
   }, [onSceneReady]);
   const remoteSelect = useCallback((entry: PresenceEntry<StreetPresence>) => {
@@ -1446,6 +1452,11 @@ export function GameEngine3D({
 
   // Bağlam yuvası gerçekten tükendi: boş/donmuş bir sahne yerine dürüst bir
   // bilgi katmanı göster (oyunun geri kalanı — HUD, giriş akışı — çalışır).
+  // 📡 `CANVAS_BEFORE`: canvas kurulmadan HEMEN önceki son satır. Çökme
+  // "CANVAS_BEFORE var, CANVAS_MOUNTED yok" ise sorun canvas/WebGL
+  // kurulumundadır — modeller hiç devreye girmemiştir (madde 5/6).
+  stageMark("CANVAS_BEFORE", `dpr ${isMobile ? "1.25" : "2"}`);
+
   if (exhausted || stageFailed) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#78c8e8] via-[#bfe4f5] to-[#dff0c9]">
@@ -1492,6 +1503,7 @@ export function GameEngine3D({
         className="absolute inset-0"
         style={{ pointerEvents: "none" }}
         onCreated={({ gl }) => {
+          stageMark("CANVAS_MOUNTED");
           // Mobile browsers evict the OLDEST WebGL context when a new one is
           // created (e.g. the profile-card canvas). Without preventDefault the
           // main canvas never restores and shows a large corrupted/blank

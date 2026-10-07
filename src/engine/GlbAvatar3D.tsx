@@ -9,7 +9,8 @@ import {
 import type { ReactNode } from "react";
 import * as THREE from "three";
 import { SkeletonUtils } from "three-stdlib";
-import { useGLTF, useAnimations } from "@react-three/drei";
+import { useAnimations } from "@react-three/drei";
+import { useProbedGltf } from "./probedGltf";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
   PLAYER_3D_HEIGHT,
@@ -626,7 +627,7 @@ function GlbAvatarCore({
   // so they face their movement direction.
   const yawOffset = MODEL_YAW_OFFSET[effectiveUrl] ?? 0;
 
-  const { scene, animations } = useGLTF(effectiveUrl);
+  const { scene, animations } = useProbedGltf(effectiveUrl, "character");
 
   // Ensure all world matrices are computed before cloning or measuring.
   useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
@@ -1247,7 +1248,7 @@ function GlbPortraitCore({
 }: PortraitCoreProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
-  const { scene, animations } = useGLTF(skinUrl || url);
+  const { scene, animations } = useProbedGltf(skinUrl || url, "skin");
   useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   // Face -Z-forward rigs (e.g. Soldier.glb) toward the camera like +Z rigs.
@@ -1430,7 +1431,7 @@ interface ProfileModelProps {
 function GlbProfileModel({ url, equipped, height, tint }: ProfileModelProps) {
   const groupRef = useRef<THREE.Group>(null);
   const skinUrl = useMemo(() => resolveSkinUrl(equipped), [equipped]);
-  const { scene, animations } = useGLTF(skinUrl || url);
+  const { scene, animations } = useProbedGltf(skinUrl || url, "skin");
   useMemo(() => { scene.updateMatrixWorld(true); }, [scene]);
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   // Face -Z-forward rigs (e.g. Soldier.glb) toward the camera like +Z rigs.

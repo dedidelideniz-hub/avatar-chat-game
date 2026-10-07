@@ -33,7 +33,6 @@ import {
   type ReactNode,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
 import { CanvasGuard, WebglContextKeeper } from "./WebglCanvas";
 import { WITCH_SHOP_MODEL_URL } from "./constants";
 import { CHARACTER_MODEL_URL, FALLBACK_MODEL_URL } from "./GlbAvatar3D";
@@ -42,12 +41,16 @@ import { GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL } from "./vegModelPrep";
 import {
   attachContextDiagnostics,
   memorySnapshot,
+  noStreetAssetsEnabled,
+  stageAssets,
   stageDpr,
   stageInfo,
   stageSource,
   traceStep,
   type StageAssetId,
 } from "./worldDebug";
+import { stageMark } from "./androidProbe";
+import { useProbedGltf } from "./probedGltf";
 
 /** Sonda varlık kimliği → gerçek GLB yolu. */
 export const STAGE_ASSET_URLS: Record<StageAssetId, string> = {
@@ -156,7 +159,7 @@ function StageAssetModel({
   onState: (id: StageAssetId, state: StageAssetState) => void;
   onSettled: () => void;
 }) {
-  const { scene } = useGLTF(url);
+  const { scene } = useProbedGltf(url, id);
   const frames = useRef(0);
   const settled = useRef(false);
 
@@ -234,6 +237,9 @@ export function WorldStageProbe({
   isMobile: boolean;
 }) {
   const info = useMemo(() => stageInfo(stage), [stage]);
+  // 🎯 TEK TEK MODEL SEÇİMİ: aşamanın kendi listesi ya da `?stageAssets=` /
+  // panelden yapılan seçim (madde 7 matrisi — "zemin + ağaç" gibi aradakiler).
+  const assets = useMemo(() => stageAssets(stage), [stage]);
   const [states, setStates] = useState<Partial<Record<StageAssetId, StageAssetState>>>({});
   const [elapsed, setElapsed] = useState(0);
   const startedAt = useRef(Date.now());
@@ -256,7 +262,7 @@ export function WorldStageProbe({
     return () => window.clearInterval(id);
   }, []);
 
-  const assetRows = info.assets.map((id) => ({
+  const assetRows = assets.map((id) => ({
     id,
     label: STAGE_ASSET_LABELS[id],
     state: states[id] ?? "bekliyor",
@@ -297,6 +303,7 @@ export function WorldStageProbe({
           className="absolute inset-0"
           style={{ pointerEvents: "none" }}
           onCreated={({ gl }) => {
+            stageMark("CANVAS_MOUNTED", `sonda · aşama ${stage} · dpr ${stageDpr()}`);
             // Bağlam kaybı = "renderer/işleyici öldü" imzası. APK'da kesin kanıt.
             attachContextDiagnostics(gl.domElement, `sonda-aşama-${stage}`);
             traceStep("stage:canvas-created", `aşama ${stage} · ${isMobile ? "mobil" : "masaüstü"}`);
@@ -310,7 +317,7 @@ export function WorldStageProbe({
           <color attach="background" args={["#0f1b30"]} />
           <ambientLight intensity={1.15} />
           <directionalLight position={[5, 9, 6]} intensity={1.5} />
-          <StageAssetChain ids={info.assets} onState={onState} />
+          <StageAssetChain ids={assets} onState={onState} />
         </Canvas>
       </CanvasGuard>
 
@@ -322,7 +329,7 @@ export function WorldStageProbe({
         <div className="w-full max-w-md rounded-2xl border border-white/15 bg-black/70 p-3 text-white shadow-xl backdrop-blur-sm">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] font-extrabold uppercase tracking-[0.24em] text-amber-300">
-              Aşama {stage} · {info.label}
+              {noStreetAssetsEnabled() ? "DEBUG WORLD · " : ""}Aşama {stage} · {info.label}
             </span>
             <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold">
               {seconds} sn
@@ -331,6 +338,13 @@ export function WorldStageProbe({
           <p className="mt-1 text-[11px] font-semibold leading-4 text-white/70">
             {info.content}
           </p>
+          {noStreetAssetsEnabled() && (
+            <p className="mt-1 rounded-lg bg-amber-300/15 px-2 py-1 text-[10px] font-bold leading-4 text-amber-200">
+              DEBUG WORLD — `VITE_ANDROID_NO_STREET_ASSETS` açık: ağaç, çim,
+              bina, cadı dükkânı, skin ve zırh YÜKLENMEZ. Yalnızca canvas +
+              kamera + ışık. APK bu hâlde açılıyorsa sorun varlık zincirindedir.
+            </p>
+          )}
 
           <div className="mt-2 flex items-center gap-2">
             <span
@@ -348,7 +362,7 @@ export function WorldStageProbe({
                   ? "TAMAM ✔"
                   : "ÇALIŞIYOR…"}
             </span>
-            {info.assets.length === 0 && (
+            {assets.length === 0 && (
               <span className="text-[10px] font-bold text-white/50">
                 {stage === 2 ? "GLB yok — yalnızca WebGL kurulumu" : "3D motor kapalı"}
               </span>

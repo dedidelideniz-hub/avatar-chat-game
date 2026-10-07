@@ -64,6 +64,7 @@ import {
   type ThreeEvent,
 } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
+import { useProbedGltf } from "./probedGltf";
 import { AnimatePresence, motion } from "framer-motion";
 import { Grid3x3, Hammer, RotateCw, ShoppingBag } from "lucide-react";
 import { playSound } from "@/lib/sounds";
@@ -840,7 +841,7 @@ function RoomInterior({
   /** Odadaki bir eşyaya dokunuldu (seç → tekrar dokun → döndür). */
   onTapPiece: (rowId: string) => void;
 }) {
-  const roomGltf = useGLTF(ROOM_MODEL_URL);
+  const roomGltf = useProbedGltf(ROOM_MODEL_URL, "room");
   // 📱 DOKU BELLEK BÜTÇESİ — cadı dükkânı modeliyle aynı kök neden: dosya
   // küçük (meshopt + WebP) ama GPU dokusu büyük. Oda modeli 7 dokusunu
   // 1024² tutuyor → tek başına ~30 MiB. Oda, cadde kapısı açılırken önceden

@@ -27,7 +27,7 @@ import {
   type ReactNode,
 } from "react";
 import { useFrame } from "@react-three/fiber";
-import { useGLTF } from "@react-three/drei";
+import { useProbedGltf } from "./probedGltf";
 import * as THREE from "three";
 import {
   S,
@@ -64,7 +64,7 @@ function GlbBuildingModel({
   fade: boolean;
 }) {
   const url = def.modelUrl as string;
-  const loaded = useGLTF(url);
+  const loaded = useProbedGltf(url, url);
   const groupRef = useRef<THREE.Group>(null);
 
   /**

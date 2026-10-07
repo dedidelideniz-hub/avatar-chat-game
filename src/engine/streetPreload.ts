@@ -4,6 +4,7 @@ import { CHARACTER_MODEL_URL } from "./GlbAvatar3D";
 import { GRASS_GROUND_URL } from "./grassGroundPrep";
 import { GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL } from "./vegModelPrep";
 import { assetPreloadingSuppressed } from "./worldDebug";
+import { modelStart } from "./androidProbe";
 
 /**
  * ANA CADDE ÖN YÜKLEMESİ
@@ -83,6 +84,8 @@ export function preloadStreetModels(extra: readonly string[] = []): void {
   for (const url of urls) {
     if (!url || started.has(url)) continue;
     started.add(url);
+    // 📡 Logcat: ön yükleme başladı (ağa çıkan ilk satır).
+    modelStart(`preload:${url}`, url);
     useGLTF.preload(url);
   }
 }

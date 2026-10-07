@@ -2113,10 +2113,13 @@ const scenarios: Scenario[] = [
           ) &&
             !/gateModelUrls[\s\S]{0,400}STREET_BUILDING_MODELS/.test(world) &&
             world.includes("readyModelUrls={gateModelUrls}") &&
-            /StreetAssetsProbe[\s\S]{0,700}?useGLTF\(STREET_MODELS\.character\)/.test(
+            /StreetAssetsProbe[\s\S]{0,800}?useProbedGltf\(STREET_MODELS\.ground/.test(
               engineSrc,
             ) &&
-            !/StreetAssetsProbe[\s\S]{0,700}?useGLTF\(STREET_MODELS\.tree\)/.test(
+            /StreetAssetsProbe[\s\S]{0,800}?useProbedGltf\(STREET_MODELS\.character/.test(
+              engineSrc,
+            ) &&
+            !/StreetAssetsProbe[\s\S]{0,800}?useProbedGltf\(STREET_MODELS\.(tree|grass)/.test(
               engineSrc,
             ),
         ),
@@ -4270,6 +4273,84 @@ const scenarios: Scenario[] = [
         ),
 
         /* ── 5) SONDA: TEK DEĞİŞKEN, SIRALI YÜKLEME, MİNİMUM AYAR ── */
+        // 📡 ANDROID LOGCAT İŞARETLERİ (madde 3): APK'da konsol yok; işaretler
+        // hem konsola (WebChromeClient → logcat) hem KALICI ize yazılır ve
+        // masaüstü tarayıcıda SUSAR (üretim gürültüsü olmasın).
+        check(
+          "APK işaretleri: [VAELOS_STAGE]/[VAELOS_MODEL_*] kabukta açık, masaüstünde sessiz (madde 3)",
+          (() => {
+            const trail = read("../src/engine/androidProbe.ts");
+            const gltfHook = read("../src/engine/probedGltf.ts");
+            const veg = read("../src/engine/VegetationModels.tsx");
+            const building = read("../src/engine/GlbBuilding.tsx");
+            const avatar = read("../src/engine/GlbAvatar3D.tsx");
+            const room = read("../src/engine/RoomStage.tsx");
+            const equip = read("../src/engine/EquipmentBuilders.ts");
+            return (
+              trail.includes("[VAELOS_STAGE]") &&
+              trail.includes("[VAELOS_MODEL_START]") &&
+              trail.includes("[VAELOS_MODEL_OK]") &&
+              trail.includes("[VAELOS_MODEL_ERROR]") &&
+              trail.includes("return isAppShell();") &&
+              trail.includes("if (!androidProbeEnabled()) return;") &&
+              trail.includes("stageMarks.has(name)") &&
+              /export function model(Start|Ok|Error)\(/.test(trail) &&
+              /useGLTF\(url\)/.test(gltfHook) &&
+              gltfHook.includes("modelStart(") &&
+              gltfHook.includes("modelOk(") &&
+              // Aşama işaretleri gerçek motorda BAĞLI mi?
+              world.includes('stageMark("WORLD_MOUNT"') &&
+              world.includes('stageMark("STREET_PRELOAD_START"') &&
+              world.includes('stageMark("SCENE_READY"') &&
+              engine.includes('stageMark("CANVAS_BEFORE"') &&
+              engine.includes('stageMark("CANVAS_MOUNTED"') &&
+              engine.includes('stageMark("STREET_PROBE_START"') &&
+              engine.includes('stageMark("FIRST_MODEL_READY"') &&
+              // Model işaretleri her ağır varlıkta: ground/karakter/ağaç/çim/
+              // bina/cadı dükkânı/skin/oda/zırh/ön yükleme.
+              preload.includes("modelStart(`preload:") &&
+              grass.includes('useProbedGltf(GRASS_GROUND_URL, "ground")') &&
+              avatar.includes('useProbedGltf(effectiveUrl, "character")') &&
+              avatar.includes('useProbedGltf(skinUrl || url, "skin")') &&
+              veg.includes("useProbedGltf(cfg.url") &&
+              building.includes("useProbedGltf(url") &&
+              room.includes('useProbedGltf(ROOM_MODEL_URL, "room")') &&
+              equip.includes("modelStart(url, url)") &&
+              equip.includes("modelOk(url, url)") &&
+              equip.includes("modelError(url, url, err)")
+            );
+          })(),
+        ),
+        // 🧯 "SOKAK VARLIKLARINI ATLA" (madde 4) + tek tek model seçimi (madde 7):
+        // bayrak açıkken sahne yalnızca canvas + kamera + ışık olur.
+        check(
+          "DEBUG WORLD bayrağı boş canvas aşamasına düşürür; tek tek model seçimi okunuyor (madde 4/7)",
+          await (async () => {
+            const flagSource =
+              /export function noStreetAssetsEnabled/.test(debug) &&
+              debug.includes("VITE_ANDROID_NO_STREET_ASSETS") &&
+              /noStreetAssetsEnabled\(\)\) \{[\s\S]{0,260}?stageCache = 2;/.test(
+                debug,
+              ) &&
+              debug.includes('stageCacheSource = "noStreet"') &&
+              probe.includes("noStreetAssetsEnabled()") &&
+              probe.includes("DEBUG WORLD") &&
+              dock.includes("DEBUG WORLD") &&
+              /export function stageAssets/.test(debug);
+            stages.setNoStreetAssets(true);
+            const flagOn = stages.noStreetAssetsEnabled() === true;
+            stages.setStageAssets(["ground", "tree"]);
+            const picked =
+              JSON.stringify(stages.stageAssets(3)) ===
+              JSON.stringify(["ground", "tree"]);
+            stages.setStageAssets([]);
+            const fallback =
+              JSON.stringify(stages.stageAssets(3)) ===
+              JSON.stringify(["ground"]);
+            stages.setNoStreetAssets(false);
+            return flagSource && flagOn && picked && fallback;
+          })(),
+        ),
         check(
           "sonda varlıkları SIRAYLA yükler (aynı anda tek GLB — eşzamanlılık ölçümü kirletmez)",
           /function StageAssetChain/.test(probe) &&
@@ -4313,7 +4394,13 @@ const scenarios: Scenario[] = [
               debug,
             ) &&
             /export function describeTrace/.test(debug) &&
-            /Test \| İçerik \| APK sonucu/.test(debug),
+            // ⚠️ Rapor başlığı istek üzerine büyütüldü (madde 12): tablo artık
+            // TEST A–G + logcat alanlarını da içeriyor. İddia zayıflamadı.
+            /TEST \| İçerik \| APK sonucu/.test(debug) &&
+            /A \| No 3D[\s\S]{0,400}?G \| Ground \+ Witch/.test(debug) &&
+            /WEBGL_CONTEXT_LOST/.test(debug) &&
+            /WEBVIEW_RENDERER_CRASH/.test(debug) &&
+            /export function contextLostCount/.test(debug),
         ),
         check(
           "motor izleri: canvas kuruldu → varlıklar hazır → İLK KARE (sağlıklı adım)",

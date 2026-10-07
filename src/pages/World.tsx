@@ -139,6 +139,8 @@ import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
 import { levelFromWins, rankFromLevel, WINS_PER_LEVEL } from "@/lib/levels";
 import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
+// 📡 APK/logcat işaretleri (madde 3): "hangi adımda öldü?" — bkz. androidProbe.
+import { stageMark } from "@/engine/androidProbe";
 // 🧪 3D İZOLASYON TEŞHİSİ (APK çökmesini bölerek bulmak için) — bkz. bu
 // dosyadaki `stageMode` dalları ve `engine/worldDebug`.
 import {
@@ -1687,6 +1689,7 @@ export default function World() {
 
   const handleSceneReady = useCallback(() => {
     traceStep("world:scene-ready");
+    stageMark("SCENE_READY");
     setGateSceneReady(true);
   }, []);
 
@@ -1696,6 +1699,7 @@ export default function World() {
   // kayıtla yanıtlanır (bkz. `engine/worldDebug` → `traceStep`).
   useEffect(() => {
     traceStep("world:mounted", `aşama ${stage}`);
+    stageMark("WORLD_MOUNT", `aşama ${stage}`);
   }, [stage]);
   useEffect(() => {
     if (gateOpen) traceStep("world:gate-open");
@@ -1739,6 +1743,7 @@ export default function World() {
   // girmeli, yoksa ölçüm kirlenir (bkz. `worldDebug` → `assetPreloadingSuppressed`).
   useEffect(() => {
     if (stageMode) return;
+    stageMark("STREET_PRELOAD_START");
     preloadStreetModels();
   }, [stageMode]);
 
