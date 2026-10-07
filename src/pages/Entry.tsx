@@ -67,6 +67,27 @@ export default function Entry() {
   // sonsuza kadar %55'te kalmasın — bir süre sonra oyun açılır.
   const [modelStalled, setModelStalled] = useState(false);
 
+  /**
+   * 📶 HESAP SORGUSU BEKÇİSİ — Android'deki "yükleyicide kalma" sorunu.
+   *
+   * Convex sorguları WebSocket ile taşınır; mobil ağlarda (zayıf Wi-Fi,
+   * operatör proxy'si, arka planda dondurulmuş sekme) bu bağlantı SIFIR
+   * kurulamayabiliyor — o zaman `profile` sonsuza kadar `undefined` kalır ve
+   * yükleme adımlarından biri ("Lig verileri alınıyor") DÖNERKEN takılır.
+   * Sunucu tarafı sağlıklı (canlı sorgu doğrulandı); sorun bağlantı
+   * kurulumunda. World kapısındaki desenin aynısı: kısa bir süre sonra
+   * "Yeniden Dene" katmanı çıkar — yenileme, WebSocket'i baştan kurar.
+   */
+  const [profileStalled, setProfileStalled] = useState(false);
+  useEffect(() => {
+    if (profile !== undefined) {
+      setProfileStalled(false);
+      return;
+    }
+    const id = window.setTimeout(() => setProfileStalled(true), 6000);
+    return () => window.clearTimeout(id);
+  }, [profile]);
+
   const hasProfile = profile !== null && profile !== undefined;
 
   // Profil yoksa önce karakter oluşturulmalı (Stüdyo).
@@ -196,24 +217,43 @@ export default function Entry() {
 
   if (phase === "boot") {
     return (
-      <EntryLoader
-        pct={pct}
-        stepIndex={stepIndex}
-        tip={TIPS[tip]}
-        stage={stage}
-        player={
-          profile
-            ? {
-                name: profile.username,
-                rankName: rank.name,
-                rankIcon: rank.icon,
-                rankGradient: rank.gradient,
-                vip: profile.vip,
-                level: profile.level,
-              }
-            : null
-        }
-      />
+      <div className="relative">
+        <EntryLoader
+          pct={pct}
+          stepIndex={stepIndex}
+          tip={TIPS[tip]}
+          stage={stage}
+          player={
+            profile
+              ? {
+                  name: profile.username,
+                  rankName: rank.name,
+                  rankIcon: rank.icon,
+                  rankGradient: rank.gradient,
+                  vip: profile.vip,
+                  level: profile.level,
+                }
+              : null
+          }
+        />
+        {/* Hesap verisi 6 sn'de gelmediyse sonsuz spinner yerine dürüst bir
+            kurtarma katmanı: yenileme, Convex WebSocket'ini baştan kurar. */}
+        {profileStalled && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[#05070f]/85 px-6 text-center backdrop-blur-sm">
+            <p className="max-w-xs rounded-2xl border border-white/10 bg-black/60 px-4 py-3 text-xs font-bold leading-5 text-white">
+              Hesap verilerine ulaşılamadı. Bağlantın zayıf olabilir —
+              yeniden denemek genellikle çözer.
+            </p>
+            <Button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="h-12 rounded-2xl bg-gradient-to-r from-amber-300 via-amber-400 to-orange-500 px-8 text-sm font-black tracking-wide text-[#22160a] hover:from-amber-200 hover:to-orange-400"
+            >
+              Yeniden Dene
+            </Button>
+          </div>
+        )}
+      </div>
     );
   }
 

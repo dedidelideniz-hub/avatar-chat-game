@@ -2302,6 +2302,29 @@ const scenarios: Scenario[] = [
             world.includes("const [profileStalled, setProfileStalled]") &&
             /profileStalled && [\s\S]{0,700}?Yeniden Dene/.test(world),
         ),
+        // 📶 GİRİŞ EKRANI: oyun girişindeki yükleyici ('Lig verileri alınıyor'
+        //    adımı) Convex bağlantısı hiç kurulamazsa SONSUZ dönüyordu —
+        //    World kapısında olan kurtarma katmanı Entry'de yoktu. Sunucu
+        //    sağlıklı (canlı sorgu doğrulandı); takılma cihaz bağlantısında.
+        check(
+          "oyun girişi: hesap verisi 6 sn'de gelmezse 'Yeniden Dene' çıkar (sonsuz spinner YOK)",
+          (() => {
+            const entry = read("../src/pages/Entry.tsx");
+            return (
+              entry.includes("const [profileStalled, setProfileStalled]") &&
+              /profile !== undefined\) \{[\s\S]{0,80}?setProfileStalled\(false\)/.test(
+                entry,
+              ) &&
+              /window\.setTimeout\(\(\) => setProfileStalled\(true\), 6000\)/.test(
+                entry,
+              ) &&
+              /profileStalled && [\s\S]{0,800}?Yeniden Dene/.test(entry) &&
+              /profileStalled && [\s\S]{0,800}?window\.location\.reload\(\)/.test(
+                entry,
+              )
+            );
+          })(),
+        ),
         // 🧠 `/world` açılırken arena haritası (5,5 MB) ÖNDEN inmemeli: savaş
         //    sahneleri tembel yüklenir, ağır arena kodu yalnızca maç başlarken
         //    gelir. Statik ithal geri gelirse cadde yüklemesi yeniden iki kat
