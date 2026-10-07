@@ -1268,19 +1268,20 @@ function SceneReadyPing({
 }
 
 /**
- * Cadde varlıkları kapısı — `streetPreload.STREET_MODELS` listesindeki
- * modelleri SAHNENİN KULLANDIĞI `useGLTF` önbelleğiyle bekler. Hepsi çözülene
- * kadar (suspense) alt bileşenler bağlanmaz; bu yüzden `SceneReadyPing` bu
- * bileşenle aynı suspense sınırında durur ve ilk kareler ancak modeller
- * hazırken sayılır.
+ * Cadde varlıkları kapısı — YALNIZCA KRİTİK modelleri bekler:
+ * `STREET_MODELS.ground` (caddenin zemini) + `STREET_MODELS.character`
+ * (oyuncu/botlar). Hepsi çözülene kadar (suspense) alt bileşenler bağlanmaz;
+ * bu yüzden `SceneReadyPing` bu bileşenle aynı suspense sınırında durur ve
+ * ilk kareler ancak modeller hazırken sayılır.
  *
- * Ek modeller (ör. oyuncunun kuşandığı karakter skini) `ModelProbe` ile
- * eklenir; aynı sınırda bekledikleri için "itibar sırası" yoktur.
+ * ⚠️ Ağaç ve çim öbekleri BİLİNÇLİ olarak buradan ÇIKARILDI: cadde açılırken
+ * aynı anda çözülen GLB sayısı 4'ten 2'ye indi. Ağaç (2,3 MB, 449 mesh) ve
+ * binalar (cadı dükkânı 43 MiB GPU dokusu) artık `engine/assetQueue` sırasıyla,
+ * cadde AÇILDIKTAN sonra TEK TEK yüklenir (bkz. `VegetationModels`,
+ * `GlbBuilding`) — Android/WebView bellek zirvesinin asıl sebebi buydu.
  */
 function StreetAssetsProbe({ onReady }: { onReady: () => void }) {
   useGLTF(STREET_MODELS.ground);
-  useGLTF(STREET_MODELS.tree);
-  useGLTF(STREET_MODELS.grass);
   useGLTF(STREET_MODELS.character);
 
   React.useEffect(() => {

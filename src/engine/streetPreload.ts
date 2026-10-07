@@ -40,31 +40,41 @@ export const STREET_MODELS = {
 /**
  * CADDE BİNALARININ MODELLERİ (`constants.BUILDING_MODEL_URLS`).
  *
- * `STREET_MODELS`ten AYRI tutulur ama ön yüklemeye o da dahildir:
- *   · İndirme GİRİŞ ekranında başlar (`Entry` → `preloadStreetModels`), yani
- *     oyuncu caddeye girmeden çok önce ağ trafiği başlar.
- *   · `World` bu listeyi yükleme kapısına verir (`readyModelUrls`), yani
- *     cadde AÇILDIĞINDA binalar yerinde olur — eskiden model cadde
- *     kurulduktan SONRA inmeye başlıyordu ve oyuncu boş arsaya bakıyordu
- *     ("ev gelmemiş").
- *   · `STREET_MODELS`ten ayrı olmasının sebebi: `StreetAssetsProbe` yalnızca
- *     onu bekler, yani acil olmayan ağır modeller sahne kurulumunu geciktirmez.
+ * `STREET_MODELS`ten AYRI tutulur ve artık ÖN YÜKLENMEZ: bina modelleri
+ * ağırdır (cadı dükkânı 43 MiB GPU dokusu) ve cadde açılırken diğer
+ * varlıklarla aynı anda çözülürse Android WebView'in işleyici sürecini
+ * bellekten düşürüyordu. Binalar `engine/assetQueue` sırasıyla, cadde
+ * AÇILDIKTAN sonra tek tek yüklenir (bkz. `GlbBuilding`).
  */
 export const STREET_BUILDING_MODELS: readonly string[] = BUILDING_MODEL_URLS;
+
+/**
+ * CADDEYİ ÇİZMEK İÇİN ŞART olan KRİTİK modeller.
+ *
+ * Yükleme kapısı (`World`) ve sahne sondası (`GameEngine3D` →
+ * `StreetAssetsProbe`) YALNIZCA bunları bekler: çim zemin ve karakter.
+ * Ağaç/çim öbekleri/binalar/skin/oda/zırh bu listede DEĞİLDİR — onlar arka
+ * plan kuyruğunda, cadde açıldıktan sonra sırayla yüklenir.
+ */
+export const STREET_CRITICAL_MODELS: readonly string[] = [
+  STREET_MODELS.ground,
+  STREET_MODELS.character,
+];
 
 /** Ön yüklemesi başlatılmış URL'ler — tekrar tetiklemeyi engeller. */
 const started = new Set<string>();
 
 /**
- * Cadde modellerini indirmeye başlar. `extra` ile oyuncuya özel varlıklar
- * (kuşanılmış karakter skini gibi) da kuyruğa eklenebilir.
+ * KRİTİK cadde modellerini (çim zemin + karakter) indirmeye başlar.
+ *
+ * AĞIR/ÇEVRESEL varlıklar burada ön yüklenmez (eski davranış: ağaç + çim
+ * öbekleri + bina + skin aynı anda → Android'de eşzamanlı decode zirvesi).
+ * Onlar `assetQueue` sırasına bırakılır: cadde açılır, sonra TEK TEK gelir.
+ *
+ * `extra` ile oyuncuya özel KRİTİK varlıklar eklenebilir.
  */
 export function preloadStreetModels(extra: readonly string[] = []): void {
-  const urls = [
-    ...Object.values(STREET_MODELS),
-    ...STREET_BUILDING_MODELS,
-    ...extra,
-  ];
+  const urls = [...STREET_CRITICAL_MODELS, ...extra];
   for (const url of urls) {
     if (!url || started.has(url)) continue;
     started.add(url);

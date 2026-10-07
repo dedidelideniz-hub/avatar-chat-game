@@ -88,6 +88,7 @@ export function loadEquipmentGlbCached(url: string): THREE.Object3D {
 
 // Imported lazily to keep this module free of heavy top-level deps.
 import { GLTFLoader, MeshoptDecoder, SkeletonUtils } from "three-stdlib";
+import { ASSET_ORDER, enqueueIdleTask } from "./assetQueue";
 function SkeletonUtilsClone(scene: THREE.Group) {
   return SkeletonUtils.clone(scene);
 }
@@ -117,8 +118,17 @@ export function getCachedEquipmentGlb(url: string): THREE.Group | undefined {
 const EQUIPMENT_WARMUP_DELAY_MS = 9000;
 if (typeof window !== "undefined") {
   window.setTimeout(() => {
-    loadEquipmentGlbCached("/models/savasci-zirh.glb");
-    loadEquipmentGlbCached("/models/sovalye-zirh.glb");
+    // 🚦 AĞIR VARLIK SIRASI (kök neden düzeltmesi): zırh modelleri
+    // (`sovalye-zirh` tek başına ~29 MiB GPU dokusu) eskiden cadde/oda
+    // modelleriyle AYNI ANDA parse ediliyordu. Artık kuyruk BOŞTA olduğunda,
+    // aralarında `IDLE_TASK_GAP_MS` bırakılarak TEK TEK yüklenirler
+    // (bkz. `engine/assetQueue`).
+    enqueueIdleTask(ASSET_ORDER.equipment, "zırh: savaşçı", () =>
+      loadEquipmentGlbCached("/models/savasci-zirh.glb"),
+    );
+    enqueueIdleTask(ASSET_ORDER.equipment + 1, "zırh: şövalye", () =>
+      loadEquipmentGlbCached("/models/sovalye-zirh.glb"),
+    );
   }, EQUIPMENT_WARMUP_DELAY_MS);
 }
 

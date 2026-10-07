@@ -28,6 +28,7 @@ import { useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { tickFoliageSway } from "./foliageSway";
+import { ASSET_ORDER, AssetReadySignal, useAssetSlot } from "./assetQueue";
 import {
   GRASS_CLUMP_ZONES,
   GRASS_GROUND_Y,
@@ -189,9 +190,15 @@ function InstancedModel({
   receiveShadow?: boolean;
 }) {
   const parts = useModelParts(cfg);
-  if (placements.length === 0 || parts.length === 0) return null;
+  // 🚦 SIRA SERBEST SİNYALİ: `useModelParts` modeli suspense ile beklediği
+  // için bu bileşen ancak GLB ÇÖZÜLDÜKTEN sonra monte olur → sıra bu anda
+  // bırakılır ve kuyruk bir sonraki ağır varlığa geçer (bkz. `assetQueue`).
+  // Erken `return` durumunda da monte edilir ki kuyruk KİLİTLENMESİN.
+  const readySignal = <AssetReadySignal url={cfg.url} />;
+  if (placements.length === 0 || parts.length === 0) return readySignal;
   return (
     <>
+      {readySignal}
       {parts.map((part) => (
         <PartInstances
           key={part.key}
@@ -289,6 +296,12 @@ export function StreetTrees() {
   // Salınım saati (sahnedeki tüm sallanan materyaller bu tek değeri okur).
   useFrame((state) => tickFoliageSway(state.clock.elapsedTime));
 
+  // 🌳 AĞIR VARLIK SIRASI: akçaağaç modeli (2,3 MB, 449 mesh) cadde açılırken
+  // diğer modellerle AYNI ANDA çözülmesin. Sıra gelene kadar hiçbir şey
+  // çizilmez; ağaçlar cadde açıldıktan sonra kuyruktan gelir (tek tek).
+  const granted = useAssetSlot(TREE_MODEL_URL, ASSET_ORDER.tree);
+  if (!granted) return null;
+
   return (
     <GlbInstancedModel
       cfg={TREE_MODEL_CONFIG}
@@ -329,6 +342,10 @@ export function StreetGrassClumps() {
     return out;
   }, []);
 
+  // 🌿 AĞIR VARLIK SIRASI: çim öbekleri ağaçtan SONRA gelir (kuyruk sırası).
+  const granted = useAssetSlot(GRASS_CLUMP_MODEL_URL, ASSET_ORDER.grass);
+  if (!granted) return null;
+
   return (
     <GlbInstancedModel
       cfg={GRASS_MODEL_CONFIG}
@@ -341,6 +358,11 @@ export function StreetGrassClumps() {
   );
 }
 
-/* İndirme, sahne kurulmadan önce başlasın (cadde ilk karede yeşilsiz kalmasın). */
-useGLTF.preload(TREE_MODEL_URL);
-useGLTF.preload(GRASS_CLUMP_MODEL_URL);
+/*
+ * ⚠️ Modül kurulumundaki ön yüklemeler KALDIRILDI (ağaç + çim öbekleri).
+ * Eskiden bu iki `useGLTF.preload` cadde chunk'ı yüklenir yüklenmez
+ * indirmeyi başlatıyordu ve 2,3 MB'lık akçaağaç modeli, cadı dükkânı + oda +
+ * zırh modelleriyle AYNI ANDA parse/decode ediliyordu — Android WebView'in
+ * işleyici sürecini bellekten düşüren zirve buydu. Artık ikisi de
+ * `assetQueue` sırasıyla, birer birer yüklenir.
+ */

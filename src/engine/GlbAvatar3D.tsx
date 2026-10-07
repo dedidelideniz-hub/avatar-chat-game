@@ -1205,8 +1205,15 @@ export function GlbAvatar3D({ url, ...props }: GlbAvatar3DProps & { url?: string
   );
 }
 
-// Warm the cache for the fallback so the retry is instant.
-useGLTF.preload(FALLBACK_MODEL_URL);
+/*
+ * ⚠️ `useGLTF.preload(FALLBACK_MODEL_URL)` KALDIRILDI.
+ *
+ * Yedek model (`skin-savasci.glb`) yalnızca ASIL model yüklenemezse devreye
+ * girer; her açılışta önden indirmek, cadde açılırken gereksiz bir doku
+ * decode'u (≈2 MiB GPU) ve ağ trafiği ekliyordu. Şimdi yedek, gerçekten
+ * gerekirse (hata sınırı içinde) anında yüklenir — davranış aynı, başlangıç
+ * bellek zirvesi daha düşük.
+ */
 
 /* ── Character portrait (Studio / selection screens) ──────────── */
 

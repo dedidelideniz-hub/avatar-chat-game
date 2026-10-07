@@ -97,7 +97,6 @@ import {
   VIP_VENDOR_ID,
   WALKABLE_ZONES,
   WORLD_BOUNDS,
-  wornCharacterSkin,
   type AbilityId,
   type Rect,
   type Vendor,
@@ -139,11 +138,12 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
 import { levelFromWins, rankFromLevel, WINS_PER_LEVEL } from "@/lib/levels";
+import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
 import {
-  preloadStreetModels,
-  STREET_BUILDING_MODELS,
-  STREET_TIPS,
-} from "@/engine/streetPreload";
+  ASSET_ORDER,
+  enqueueIdleTask,
+  unlockBackgroundAssets,
+} from "@/engine/assetQueue";
 
 /* ── ⚡ DÜELLO SAHNELERİ TEMBEL YÜKLENİR ────────────────────────────────
    `BattleScene` / `PvpBattleScene` eskiden STATİK ithal ediliyordu. Bu iki
@@ -1675,28 +1675,38 @@ export default function World() {
    */
   useEffect(() => {
     if (!gateSceneReady) return;
-    const timer = window.setTimeout(() => preloadRoomModel(), 1500);
+    // 🚦 ODA MODELİ KUYRUK SONUNDA: eskiden sahne hazır olduktan 1,5 sn sonra
+    // KOŞULSUZ indiriliyordu — tam da ağaç/bina/zırh yüklemeleriyle aynı anda.
+    // Artık kuyruk BOŞTA olduğunda (ağır varlıklar bittikten sonra) çalışır.
+    const timer = window.setTimeout(
+      () => enqueueIdleTask(ASSET_ORDER.room, "oda modeli", preloadRoomModel),
+      1500,
+    );
     return () => window.clearTimeout(timer);
   }, [gateSceneReady]);
 
-  // Kapının beklediği EK modeller: oyuncuya özel karakter skini (varsa) +
-  // CADDE BİNALARININ modelleri. Bina modelleri ağır olabilir (ör.
-  // `witch_shop.glb` ~26 MB); kapı onları beklemezse oyuncu caddeyi açar ve
-  // arsa BOŞ görünür ("ev gelmemiş"). Emniyet supabı (12 sn) yine devrede:
-  // ağ takılırsa oyun yine de başlar, model arkadan gelir.
-  const gateModelUrls = useMemo<readonly string[]>(() => {
-    const skin = wornCharacterSkin(equipped);
-    return [
-      ...STREET_BUILDING_MODELS,
-      ...(skin?.skinUrl ? [skin.skinUrl] : []),
-    ];
-  }, [equipped]);
+  // Kapının beklediği EK modeller: YOK.
+  //
+  // Kök neden düzeltmesi: kapı artık YALNIZCA kritik varlıkları bekler
+  // (çim zemin + karakter — bkz. `GameEngine3D` → `StreetAssetsProbe`).
+  // Ağır binalar (cadı dükkânı 43 MiB GPU dokusu) ve oyuncu skini kapıyı
+  // geciktirmez; cadde açıldıktan sonra `engine/assetQueue` sırasıyla TEK TEK
+  // yüklenir ve model hazır olduğunda arsaya oturur. Böylece "caddeyi açmak"
+  // için gereken eşzamanlı GLB sayısı 6'dan 2'ye iner.
+  const gateModelUrls = useMemo<readonly string[]>(() => [], []);
 
-  // Cadde modellerini mümkün olan en erken anda indirmeye başla (kapı açılmadan
-  // önce önbelleğe alınır; ikinci girişte kapı neredeyse anında biter).
+  // KRİTİK cadde modellerini (zemin + karakter) hemen indirmeye başla.
+  // Ağır/çevresel modeller BURADA ön yüklenmez (bkz. `preloadStreetModels`).
   useEffect(() => {
-    preloadStreetModels(gateModelUrls);
-  }, [gateModelUrls]);
+    preloadStreetModels();
+  }, []);
+
+  // 🔓 CADDE AÇILDI: arka plan yükleme sırası ANCAK bundan sonra akar
+  // (ağaç → çim öbekleri → bina → skin → oda → zırh, tek tek). Kapı kapanmadan
+  // hiçbir ağır model parse edilmez; böylece başlangıç bellek zirvesi düşer.
+  useEffect(() => {
+    if (gateOpen) unlockBackgroundAssets();
+  }, [gateOpen]);
 
   // İlerleme hedefi — ZAMANA bağlı (model sayacına DEĞİL).
   //

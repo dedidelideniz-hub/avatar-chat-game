@@ -45,6 +45,7 @@ import {
 } from "./buildingOcclusion";
 import { measureBuildingModel, planBuildingPlacement } from "./buildingModelPrep";
 import { shrinkModelTextures } from "./textureBudget";
+import { ASSET_ORDER, AssetReadySignal, useAssetSlot } from "./assetQueue";
 
 /**
  * Oyuncu binanın merkezinden bu kadar (dünya birimi) uzaktayken ışın testi
@@ -147,6 +148,9 @@ function GlbBuildingModel({
 
   return (
     <group ref={groupRef} position={[def.x, 0, def.frontZ]} userData={BUILDING_USER_DATA}>
+      {/* 🚦 SIRA SERBEST SİNYALİ: bu bileşen ancak GLB çözüldükten sonra monte
+          olur → kuyruk bir sonraki ağır varlığa geçer (bkz. `assetQueue`). */}
+      <AssetReadySignal url={url} />
       {/* Ölçekli model: tabanı zemine (y 0), cephesi `frontZ`e, merkezi X'e
           hizalı — offset ÖLÇÜLEN kutuya göre hesaplanır. */}
       <group
@@ -196,9 +200,18 @@ export function GlbBuilding({
    */
   fade?: boolean;
 }) {
-  if (!def.modelUrl) return null;
+  const url = def.modelUrl;
+  // 🏗️ AĞIR VARLIK SIRASI (kök neden düzeltmesi): cadı dükkânı modeli tek
+  // başına 43 MiB GPU dokusu tutuyor. Eskiden cadde açılırken çim/ağaç/oda
+  // modelleriyle AYNI ANDA indirilip çözülüyordu → Android WebView işleyici
+  // süreci bellekten düşüyordu ("Hay aksi"). Artık bu model `assetQueue`
+  // sırasında TEK BAŞINA yüklenir: sıra gelene kadar göz boş kalır, model
+  // hazır olduğunda arsaya oturur. Yükleme kapısı bunu BEKLEMEZ.
+  const granted = useAssetSlot(url ?? "", ASSET_ORDER.building);
+  if (!url) return null;
+  if (!granted) return null;
   return (
-    <GlbBuildingBoundary url={def.modelUrl}>
+    <GlbBuildingBoundary url={url}>
       <Suspense fallback={null}>
         <GlbBuildingModel def={def} playerPosRef={playerPosRef} fade={fade} />
       </Suspense>

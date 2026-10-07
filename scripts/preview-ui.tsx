@@ -463,8 +463,43 @@ async function mockAppLayer() {
     preloadStreetModels: () => {},
     STREET_MODELS: {},
     STREET_BUILDING_MODELS: [],
+    STREET_CRITICAL_MODELS: [],
     STREET_TIPS: ["Önizleme"],
     StreetAssetsProbe: () => null,
+  }));
+
+  // 🚦 Varlık kuyruğu: önizlemede sıra HEMEN verilir (`useAssetSlot: () => true`)
+  // — aksi halde ağaçlar/binalar "sıra bekliyor" diye hiç çizilmezdi ve
+  // sahne dökümü bozulurdu. Kuyruğun KENDİSİ kaynak metni kontrolleriyle
+  // doğrulanır (bkz. "varlık kuyruğu" kontrolleri).
+  mock.module("@/engine/assetQueue", () => ({
+    ASSET_ORDER: {
+      tree: 10,
+      grass: 11,
+      building: 12,
+      skin: 13,
+      room: 14,
+      equipment: 15,
+    },
+    MOBILE_ASSET_LIMIT: 1,
+    DESKTOP_ASSET_LIMIT: 2,
+    ASSET_DEBUG: false,
+    assetConcurrencyLimit: () => 1,
+    isLowMemoryAssetDevice: () => true,
+    useAssetSlot: () => true,
+    AssetReadySignal: () => null,
+    unlockBackgroundAssets: () => {},
+    requestAssetSlot: () => {},
+    markAssetReady: () => {},
+    cancelAssetSlot: () => {},
+    enqueueIdleTask: (_order: number, _label: string, run: () => void) => run(),
+    assetQueueSnapshot: () => ({
+      active: 0,
+      pending: 0,
+      granted: 0,
+      unlocked: true,
+      limit: 1,
+    }),
   }));
 }
 
@@ -2041,23 +2076,105 @@ const scenarios: Scenario[] = [
         })(),
       );
 
-      // ── 6b) MODEL ÖN YÜKLEME + YÜKLEME KAPISI: bina modeli ağır olduğu için
-      //        cadde açıldıktan SONRA inmeye başlarsa oyuncu boş arsaya bakar.
-      //        İndirme giriş ekranında başlamalı ve kapı onu beklemeli.
+      // ── 6b) AŞAMALI VARLIK YÜKLEME (Android/WebView bellek zirvesi) ───────
+      //    ÖNCEKİ KURAL (artık YANLIŞ): "bina modeli ön yüklemeye dahil +
+      //    kapı onu bekler". Kök neden: cadı dükkânı (43 MiB GPU dokusu) hem
+      //    kapıyı geciktiriyordu hem de cadde açılırken çim/ağaç/oda/zırh
+      //    modelleriyle AYNI ANDA parse/decode ediliyordu → Android WebView'in
+      //    işleyici süreci bellekten düşüyordu ("Hay aksi / Yeniden Yükle").
+      //    YENİ KURAL: KRİTİK (zemin + karakter) yüklenir → cadde AÇILIR →
+      //    ağır varlıklar `assetQueue` sırasında TEK TEK gelir.
       const preload = read("../src/engine/streetPreload.ts");
       const world = read("../src/pages/World.tsx");
+      const queueSrc = read("../src/engine/assetQueue.ts");
+      const vegSrc = read("../src/engine/VegetationModels.tsx");
+      const buildingSrc = read("../src/engine/GlbBuilding.tsx");
+      const avatarSrc = read("../src/engine/GlbAvatar3D.tsx");
+      const grassSrc = read("../src/engine/GrassGround.tsx");
+      const equipSrc0 = read("../src/engine/EquipmentBuilders.ts");
+      const engineSrc = read("../src/engine/GameEngine3D.tsx");
       checks.push(
         check(
-          "bina modelleri ön yüklemeye dahil (indirme giriş ekranında başlar)",
-          preload.includes("STREET_BUILDING_MODELS") &&
-            preload.includes("...STREET_BUILDING_MODELS") &&
+          "kritik ön yükleme YALNIZCA zemin + karakter (ağır modeller değil)",
+          preload.includes("STREET_CRITICAL_MODELS") &&
+            /STREET_CRITICAL_MODELS[\s\S]{0,240}?STREET_MODELS\.ground/.test(
+              preload,
+            ) &&
+            /STREET_CRITICAL_MODELS[\s\S]{0,240}?STREET_MODELS\.character/.test(
+              preload,
+            ) &&
+            !/\.\.\.STREET_BUILDING_MODELS/.test(preload) &&
             read("../src/pages/Entry.tsx").includes("preloadStreetModels()"),
         ),
         check(
-          "yükleme kapısı bina modelini bekliyor (cadde boş açılmasın)",
-          world.includes("STREET_BUILDING_MODELS") &&
-            /gateModelUrls[\s\S]{0,400}STREET_BUILDING_MODELS/.test(world) &&
-            world.includes("readyModelUrls={gateModelUrls}"),
+          "cadde kapısı bina/skin BEKLEMİYOR (kapı yalnızca kritik varlıkları bekler)",
+          /const gateModelUrls = useMemo<readonly string\[\]>\(\(\) => \[\]/.test(
+            world,
+          ) &&
+            !/gateModelUrls[\s\S]{0,400}STREET_BUILDING_MODELS/.test(world) &&
+            world.includes("readyModelUrls={gateModelUrls}") &&
+            /StreetAssetsProbe[\s\S]{0,700}?useGLTF\(STREET_MODELS\.character\)/.test(
+              engineSrc,
+            ) &&
+            !/StreetAssetsProbe[\s\S]{0,700}?useGLTF\(STREET_MODELS\.tree\)/.test(
+              engineSrc,
+            ),
+        ),
+        check(
+          "varlık kuyruğu: Android/WebView'de 1, masaüstünde 2 eşzamanlı ağır varlık",
+          queueSrc.includes("export const MOBILE_ASSET_LIMIT = 1") &&
+            queueSrc.includes("export const DESKTOP_ASSET_LIMIT = 2") &&
+            /export function assetConcurrencyLimit/.test(queueSrc) &&
+            /Android\|iPhone\|iPad\|iPod\|Mobile\|WebView/.test(queueSrc) &&
+            queueSrc.includes("useSyncExternalStore"),
+        ),
+        check(
+          "ağır varlıklar KUYRUĞA bağlı: ağaç → çim öbekleri → bina (tek tek)",
+          /useAssetSlot\(TREE_MODEL_URL, ASSET_ORDER\.tree\)/.test(vegSrc) &&
+            /useAssetSlot\(GRASS_CLUMP_MODEL_URL, ASSET_ORDER\.grass\)/.test(
+              vegSrc,
+            ) &&
+            /useAssetSlot\(url \?\? "", ASSET_ORDER\.building\)/.test(
+              buildingSrc,
+            ) &&
+            vegSrc.includes("<AssetReadySignal url={cfg.url} />") &&
+            buildingSrc.includes("<AssetReadySignal url={url} />"),
+        ),
+        check(
+          "kuyruk cadde AÇILDIKTAN sonra başlar + kilitlenmeye karşı supap var",
+          /if \(gateOpen\) unlockBackgroundAssets\(\)/.test(world) &&
+            queueSrc.includes("AUTO_UNLOCK_MS") &&
+            queueSrc.includes("SLOT_TIMEOUT_MS") &&
+            /export function unlockBackgroundAssets/.test(queueSrc) &&
+            /export function markAssetReady/.test(queueSrc),
+        ),
+        check(
+          "arka plan varlığı yüklenemezse oyun DEVAM eder (hata izolasyonu)",
+          /task\.run\(\)[\s\S]{0,400}?catch \(error\)/.test(queueSrc) &&
+            queueSrc.includes("[ASSET] task başarısız") &&
+            !/\bthrow\b/.test(queueSrc),
+        ),
+        check(
+          "asset debug logları yalnızca bayrakla (?assetDebug)",
+          queueSrc.includes("assetDebug") &&
+            queueSrc.includes("export const ASSET_DEBUG = debugEnabled()") &&
+            queueSrc.includes("[ASSET] start") &&
+            queueSrc.includes("[MEMORY]"),
+        ),
+        check(
+          "modül kurulumundaki gereksiz AĞIR ön yüklemeler kaldırıldı",
+          !/^useGLTF\.preload\(TREE_MODEL_URL\);/m.test(vegSrc) &&
+            !/^useGLTF\.preload\(GRASS_CLUMP_MODEL_URL\);/m.test(vegSrc) &&
+            !/^useGLTF\.preload\(FALLBACK_MODEL_URL\);/m.test(avatarSrc) &&
+            /^useGLTF\.preload\(GRASS_GROUND_URL\);/m.test(grassSrc),
+        ),
+        check(
+          "oda + zırh ön yüklemeleri kuyruk SONUNDA (boşta) çalışır",
+          world.includes(
+            'enqueueIdleTask(ASSET_ORDER.room, "oda modeli", preloadRoomModel)',
+          ) &&
+            /enqueueIdleTask\(ASSET_ORDER\.equipment/.test(equipSrc0) &&
+            /export function enqueueIdleTask/.test(queueSrc),
         ),
         check(
           "ön yükleme listesi gerçekten cadı dükkânı modelini içeriyor",
@@ -2356,9 +2473,13 @@ const scenarios: Scenario[] = [
             const equipSrc = read("../src/engine/EquipmentBuilders.ts");
             return (
               equipSrc.includes("EQUIPMENT_WARMUP_DELAY_MS") &&
-              /window\.setTimeout\(\(\) => \{[\s\S]{0,220}?loadEquipmentGlbCached\("\/models\/savasci-zirh\.glb"\)/.test(
+              // ⚠️ Pencere 220→560: ısıtma artık `assetQueue` görevine sarıldı
+              // (araya açıklama + `enqueueIdleTask` girdi). İddia AYNI, hatta
+              // daha güçlü: modül kurulumunda DEĞİL, kuyrukta ve tek tek.
+              /window\.setTimeout\(\(\) => \{[\s\S]{0,560}?loadEquipmentGlbCached\("\/models\/savasci-zirh\.glb"\)/.test(
                 equipSrc,
               ) &&
+              /enqueueIdleTask\(ASSET_ORDER\.equipment/.test(equipSrc) &&
               !/^loadEquipmentGlbCached\("\/models\/sovalye-zirh\.glb"\);/m.test(
                 equipSrc,
               )
@@ -3978,9 +4099,13 @@ const scenarios: Scenario[] = [
             (world.match(/preloadRoomModel\(\)/g) ?? []).length >= 2,
         ),
         check(
-          "oda modeli cadde HAZIR OLUR OLMAZ önceden iniyor (oda açılırken bekleme yok)",
+          "oda modeli cadde hazır olunca KUYRUĞA girer (boşta kalınca iner)",
           /if \(!gateSceneReady\) return;/.test(world) &&
-            world.includes("window.setTimeout(() => preloadRoomModel()"),
+            world.includes(
+              'enqueueIdleTask(ASSET_ORDER.room, "oda modeli", preloadRoomModel)',
+            ) &&
+            // Kapıya yaklaşınca/tıklayınca yine anında tetiklenir (bekleme yok).
+            (world.match(/preloadRoomModel\(\)/g) ?? []).length >= 2,
         ),
         check(
           "oda modeli cadde ön yüklemesine EKLENMEDİ (ağır iç mekân caddeyi geciktirmez)",
