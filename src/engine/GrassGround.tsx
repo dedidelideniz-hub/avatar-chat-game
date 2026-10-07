@@ -22,6 +22,7 @@ import {
   buildGrassGroundPlacements,
   prepareGrassGround,
 } from "./grassGroundPrep";
+import { renderMark } from "./loadDiag";
 import { assetPreloadingSuppressed } from "./worldDebug";
 import { useProbedGltf } from "./probedGltf";
 
@@ -54,6 +55,7 @@ function useGrassGroundTile() {
 }
 
 function GrassGroundMesh() {
+  renderMark("GrassGroundMesh");
   const tile = useGrassGroundTile();
   const ref = useRef<THREE.InstancedMesh>(null);
 

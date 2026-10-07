@@ -16,8 +16,16 @@
  *
  * Hafiftir: three/drei/Convex içe aktarmaz, yalnızca tarayıcı API'leri +
  * kalıcı iz (`worldDebug.traceStep`).
+ *
+ * ⏱ TAKILMA ANI KALICI OLARAK YAZILIR (bkz. `persistSnapshot`): telefonda
+ * yükleme ekranı DONDUĞUNDA kullanıcı panele DOKUNAMAZ — bu yüzden kanıtın
+ * dokunmaya değil diske bağlı olması gerekir. Kapı görünürken canlı değerler
+ * (yüzde, adım, nabız, montaj) periyodik olarak diske yazılır; donma anında
+ * yazım da durur ve dosyada DONMA ANININ satırları kalır. Bir sonraki açılışta
+ * yükleme ekranı bu satırları kendiliğinden (tek dokunuş istemeden) gösterir.
  */
-import { traceStep } from "./worldDebug";
+import { safeGetItem, safeRemoveItem, safeSetItem } from "@/lib/safeStorage";
+import { bootCount, describeTrace, traceStep } from "./worldDebug";
 
 /* ── 1) HATA TOPLAMA + NABIZ ──────────────────────────────────────────── */
 
@@ -348,12 +356,138 @@ export function buildLoadReport(
   return lines.join("\n");
 }
 
+/* ── 6) TAKILMA ANININ KALICI KAYDI ───────────────────────────────────── */
+
+/** Kaydın anahtarı — test/araç kodunun da okuduğu tek kaynak. */
+export const PERSIST_KEY = "vaelos:loadingDiag";
+
+/** Donma anında diskte kalan kayıt — bir sonraki açılışta okunur. */
+export interface PersistedSnapshot {
+  /** Yazıldığı an (epoch ms). */
+  wall: number;
+  /** Yazının ait olduğu sayfa açılışı (`worldDebug.bootCount`) — aynı açılışta
+   *  yazılan kayıt "önceki oturum" sayılmaz (React StrictMode çift montajı). */
+  boot: number;
+  snapshot: LoadSnapshot;
+  heartbeat: { beats: number; lastGap: number; maxGap: number };
+  mounts: number;
+  probes: ProbeResult[] | null;
+  errors: DiagError[];
+}
+
+/** En son probe sonuçları — her yazımda diske taşınır (probe sonda gelir). */
+let rememberedProbes: ProbeResult[] | null = null;
+
+export function rememberProbes(probes: readonly ProbeResult[] | null): void {
+  rememberedProbes = probes ? [...probes] : null;
+}
+
+/**
+ * Canlı anlık görüntüyü diske yaz (kapı görünürken periyodik çağrılır).
+ * Donma anından SONRA hiçbir şey yazılamadığı için dosyada kalan son satır
+ * tam olarak "nerede donduk" sorusunun cevabıdır.
+ */
+export function persistSnapshot(snapshot: LoadSnapshot): PersistedSnapshot {
+  const record: PersistedSnapshot = {
+    wall: Date.now(),
+    boot: bootCount(),
+    // İz HER yazımda canlı kaynaktan alınır: donmadan önce diske yazılmış son
+    // "iz" satırı (ör. `son adım: render:Ground`) donma noktasının kanıtıdır.
+    snapshot: { ...snapshot, trace: describeTrace() },
+    heartbeat: heartbeat(),
+    mounts: mountInfo("World").count,
+    probes: rememberedProbes,
+    errors: errors.slice(-8),
+  };
+  try {
+    safeSetItem(PERSIST_KEY, JSON.stringify(record));
+  } catch {
+    /* depolama kapalı: kayıt tutulamaz, teşhis yine de ekranda yaşar */
+  }
+  return record;
+}
+
+/** Diskte kalan takılma kaydı (yoksa null). */
+export function readPersistedSnapshot(): PersistedSnapshot | null {
+  const raw = safeGetItem(PERSIST_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedSnapshot>;
+    if (!parsed?.snapshot || typeof parsed.wall !== "number") return null;
+    return {
+      wall: parsed.wall,
+      boot: Number(parsed.boot) || 0,
+      snapshot: parsed.snapshot as LoadSnapshot,
+      heartbeat: parsed.heartbeat ?? { beats: 0, lastGap: 0, maxGap: 0 },
+      mounts: Number(parsed.mounts) || 0,
+      probes: parsed.probes ?? null,
+      errors: parsed.errors ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Kaydı sil: kapı AÇILDIĞINDA çağrılır. Böylece dosyanın VARLIĞI tek başına
+ * "önceki oturum yükleme ekranını geçemedi" demektir (yanlış alarm olmaz).
+ */
+export function clearPersistedSnapshot(): void {
+  rememberedProbes = null;
+  safeRemoveItem(PERSIST_KEY);
+}
+
+/** Kaybolan oturumun KENDİLİĞİNDEN gösterilen satırları (dokunuş gerekmez). */
+export function describePersisted(record: PersistedSnapshot): string[] {
+  const s = record.snapshot;
+  const age = Math.max(0, Math.round((Date.now() - record.wall) / 60000));
+  const lines = [
+    `son an: %${s.pct.toFixed(0)} · adım ${s.stepIndex}/4 (${s.step}) · ${(s.elapsedMs / 1000).toFixed(1)} sn`,
+    `nabız: en uzun bloke ${record.heartbeat.maxGap} ms` +
+      (record.heartbeat.maxGap > 1000 ? " ⚠️ ana iş parçacığı dondu" : ""),
+    `World montajı: ${record.mounts} kez` +
+      (record.mounts > 2 ? " ⚠️ YENİDEN MONTAJ DÖNGÜSÜ" : "") +
+      ` · hedef %${s.target.toFixed(0)} · sahne hazır=${s.sceneReady}`,
+  ];
+  if (record.probes) {
+    const ok = record.probes.filter((p) => p.ok).length;
+    lines.push(
+      `model erişimi: ${ok}/${record.probes.length} geliyor` +
+        (ok < record.probes.length
+          ? ` · ✘ ${record.probes.filter((p) => !p.ok).map((p) => p.url).join(" ")}`
+          : ""),
+    );
+  }
+  if (record.errors.length > 0) {
+    lines.push(`hatalar: ${record.errors.slice(-2).map((e) => e.detail).join(" | ")}`);
+  }
+  lines.push(`iz: ${s.trace ?? "?"} · ${age} dk önce`);
+  return lines;
+}
+
+/* ── 7) İLK RENDER İŞARETİ (donma noktasını daraltır) ─────────────────── */
+
+const renderMarks = new Set<string>();
+
+/**
+ * Bir sahne bileşeninin İLK render'ı başlarken çağrılır (oturumda bir kez,
+ * kalıcı iz). Donma sırasında diske yazılmış SON işaret, donmanın hangi
+ * bileşenin kurulumunda olduğunu doğrudan gösterir.
+ */
+export function renderMark(name: string): void {
+  if (renderMarks.has(name)) return;
+  renderMarks.add(name);
+  traceStep(`render:${name}`);
+}
+
 /**
  * KAPI TAKILDI: probe'u kendiliğinden çalıştır, raporu konsola (APK'da
  * logcat'e) ve kalıcı ize bas. Kullanıcı panele dokunamasa da kanıt oluşur.
  */
 export async function reportLoadStall(snapshot: LoadSnapshot): Promise<string> {
   const results = await probeModelUrls();
+  rememberProbes(results);
+  persistSnapshot(snapshot);
   const report = buildLoadReport(snapshot, results);
   const summary =
     `kapı %${snapshot.pct.toFixed(1)} · adım ${snapshot.stepIndex} (${snapshot.step}) · ` +

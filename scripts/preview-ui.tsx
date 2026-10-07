@@ -4670,6 +4670,203 @@ const scenarios: Scenario[] = [
       return checks;
     },
   },
+  // ⏱ TAKILMA KAYDI — DOKUNUŞ GEREKTİRMEYEN kanıt.
+  //
+  // Telefonda yükleme ekranı donduğunda panele DOKUNULAMIYOR (ana iş parçacığı
+  // bloke) ve 8 sn'lik otomatik rapor da zamanlayıcı çalışmadığı için
+  // üretilemiyor. Bu yüzden kanıtın diske yazılması ve bir sonraki açılışta
+  // KENDİLİĞİNDEN gösterilmesi gerekir; bu senaryo tam olarak bunu doğrular.
+  {
+    id: "yukleme-takilma-kaydi",
+    title:
+      "⏱ YÜKLEME TAKILMA KAYDI · donan oturum diske yazılır, sonraki açılışta DOKUNMADAN gösterilir",
+    handles:
+      "src/engine/loadDiag.ts + src/components/world/LoadingDiagnostics.tsx + src/pages/World.tsx",
+    run: async (p) => {
+      const { readFileSync } = await import("node:fs");
+      const read = (path: string) =>
+        readFileSync(new URL(path, import.meta.url), "utf8");
+      const diag = await import("../src/engine/loadDiag");
+      const { bootCount } = await import("../src/engine/worldDebug");
+      const checks: Check[] = [];
+
+      const diagSrc = read("../src/engine/loadDiag.ts");
+      const worldSrc = read("../src/pages/World.tsx");
+      const panelSrc = read("../src/components/world/LoadingDiagnostics.tsx");
+
+      // ── 1) Kablolama: kapı görünürken diske yaz, açılınca sil.
+      checks.push(
+        check(
+          "kapı görünürken canlı değerler yazılır (İLK kayıt render'da, sonra periyodik), kapı AÇILINCA silinir",
+          // İlk kayıt RENDER'da: donma efekt sırası gelmeden başlarsa bile
+          // kanıt diskte olur.
+          worldSrc.includes("if (gateVisible && !firstPersistRef.current)") &&
+          /if \(!gateVisible\) return;/.test(worldSrc) &&
+            worldSrc.includes("persistSnapshot(snapshot)") &&
+            /window\.setInterval\(write, 250\)/.test(worldSrc) &&
+            worldSrc.includes("if (gateOpen) clearPersistedSnapshot();") &&
+            // Şerit DOKUNUŞ engellemez (yükleme ekranını kapatmasın).
+            panelSrc.includes("pointer-events-none fixed inset-x-0 top-0") &&
+            panelSrc.includes("describePersisted(persisted)"),
+        ),
+      );
+      checks.push(
+        check(
+          "takılma kaydı + 'önceki oturum' satırları + render işaretleri teşhis modülünde",
+          /export function persistSnapshot/.test(diagSrc) &&
+            /export function readPersistedSnapshot/.test(diagSrc) &&
+            /export function clearPersistedSnapshot/.test(diagSrc) &&
+            /export function describePersisted/.test(diagSrc) &&
+            /export function renderMark/.test(diagSrc),
+        ),
+      );
+      // Donma noktasını daraltan işaretler sahnenin kurulum adımlarında olmalı.
+      const sceneSrcs = [
+        "../src/engine/GameEngine3D.tsx",
+        "../src/engine/GrassGround.tsx",
+        "../src/engine/VegetationModels.tsx",
+        "../src/engine/StreetDetail.tsx",
+        "../src/engine/WitchShop.tsx",
+      ]
+        .map(read)
+        .join("\n");
+      const marks = [
+        "Ground",
+        "GrassGroundMesh",
+        "StreetTrees",
+        "StreetGrassClumps",
+        "StreetFences",
+        "StreetTrashCans",
+        "StreetBusStops",
+        "StreetDirectionSigns",
+        "WitchShopWalkway",
+        "PlayerAvatar3D",
+      ];
+      checks.push(
+        check(
+          "sahne kurulumu adım adım işaretli (donma noktası daraltılır)",
+          marks.every((name) => sceneSrcs.includes(`renderMark("${name}")`)),
+          marks
+            .filter((name) => !sceneSrcs.includes(`renderMark("${name}")`))
+            .join(", ") || "10/10 işaret",
+        ),
+      );
+
+      // ── 2) CANLI: yaz → oku → satırlara çevir → sil (gerçek modüller).
+      const snapshot: diag.LoadSnapshot = {
+        pct: 16,
+        target: 16,
+        forced: false,
+        sceneReady: false,
+        step: "Cadde verileri alınıyor",
+        stepIndex: 1,
+        elapsedMs: 320,
+        stageMode: false,
+        glbTest: false,
+        trace: "render:Ground",
+      };
+      // Donma "yerini" belli eden iz: gerçek `traceStep` ile yazılır.
+      const { traceStep } = await import("../src/engine/worldDebug");
+      traceStep("render:Ground");
+      diag.clearPersistedSnapshot();
+      const beforeClear = diag.readPersistedSnapshot();
+      diag.persistSnapshot(snapshot);
+      const written = diag.readPersistedSnapshot();
+      diag.rememberProbes([
+        {
+          label: "zemin (kritik)",
+          url: "/models/grass_ground.glb",
+          ok: false,
+          status: null,
+          ms: 8000,
+          bytes: null,
+          note: "8000 ms zaman aşımı",
+        },
+      ]);
+      diag.persistSnapshot(snapshot);
+      const withProbes = diag.readPersistedSnapshot();
+      const lines = withProbes ? diag.describePersisted(withProbes) : [];
+      const described = withProbes?.snapshot.trace ?? "";
+      diag.clearPersistedSnapshot();
+      const afterClear = diag.readPersistedSnapshot();
+      checks.push(
+        check(
+          "canlı: %16 takılma diske yazılır, model testiyle birlikte okunur, kapı açılınca silinir",
+          beforeClear === null &&
+            written?.snapshot.pct === 16 &&
+            written?.mounts === diag.mountInfo("World").count &&
+            withProbes?.probes?.[0]?.url === "/models/grass_ground.glb" &&
+            lines.some((line) => line.includes("%16")) &&
+            lines.some(
+              (line) =>
+                line.includes("0/1") &&
+                line.includes("✘ /models/grass_ground.glb"),
+            ) &&
+            // İz satırı HER yazımda canlı kaynaktan eklenir (donmadan önceki
+            // "son adım" kanıtı) — kayıtta bulunması şart.
+            lines.some((line) => /^iz: boot #/.test(line)) &&
+            described.includes("son adım: render:Ground") &&
+            afterClear === null,
+          lines.join(" / "),
+        ),
+      );
+
+      // ── 3) CANLI RENDER (DOKUNUŞ YOK): önceki oturumun kaydı diske konur ve
+      //       yükleme ekranı onu kendiliğinden gösterir.
+      const stale = {
+        ...(withProbes as NonNullable<typeof withProbes>),
+        boot: bootCount() - 1,
+        // İz satırını test için sabitliyoruz: hem "son adım" hem "çöküş"
+        // satırı şeritte görünmeli.
+        snapshot: { ...withProbes.snapshot, trace: "boot #2 · son adım: render:Ground (+320 ms) · çöküş: 2" },
+        heartbeat: { beats: 4, lastGap: 250, maxGap: 4200 },
+        errors: [
+          { kind: "runtime" as const, detail: "test: ana iş parçacığı bloke", at: 300 },
+        ],
+      };
+      p.window.localStorage.setItem(diag.PERSIST_KEY, JSON.stringify(stale));
+      const { LoadingDiagnostics } = await import(
+        "../src/components/world/LoadingDiagnostics"
+      );
+      await p.render(<LoadingDiagnostics snapshot={snapshot} />);
+      const stripText = p.snapshot().text;
+      checks.push(
+        check(
+          "DOKUNMADAN: 'önceki oturum yükleme ekranını geçemedi' şeridi %16 · nabız · montaj ile görünür",
+          stripText.includes("ÖNCEKİ OTURUM YÜKLEMEYİ GEÇEMEDİ") &&
+            stripText.includes("%16") &&
+            stripText.includes("Cadde verileri alınıyor") &&
+            stripText.includes("en uzun bloke 4200 ms") &&
+            stripText.includes("ana iş parçacığı dondu") &&
+            stripText.includes("model erişimi: 0/1") &&
+            stripText.includes("son adım: render:Ground (+320 ms) · çöküş: 2") &&
+            stripText.includes("dokunmaya gerek yok") &&
+            // Panel düğmesi de yerinde kalır (şerit onun yerini almaz).
+            stripText.includes("🔍 Yükleme teşhisi"),
+          stripText.slice(0, 200),
+        ),
+      );
+
+      // ── 4) AYNI açılışta yazılmış kayıt "önceki oturum" SAYILMAZ
+      //       (StrictMode çift montajı yanlış alarm üretmesin).
+      p.window.localStorage.setItem(
+        diag.PERSIST_KEY,
+        JSON.stringify({ ...stale, boot: bootCount() }),
+      );
+      await p.render(<LoadingDiagnostics snapshot={snapshot} />);
+      const sameBootText = p.snapshot().text;
+      checks.push(
+        check(
+          "aynı açılışta yazılan kayıt 'önceki oturum' diye gösterilmez (yanlış alarm yok)",
+          !sameBootText.includes("ÖNCEKİ OTURUM YÜKLEMEYİ GEÇEMEDİ") &&
+            sameBootText.includes("🔍 Yükleme teşhisi"),
+        ),
+      );
+
+      p.window.localStorage.removeItem(diag.PERSIST_KEY);
+      return checks;
+    },
+  },
 ];
 
 /* ─────────────────────────────────── Çalıştır ────────────────────────────── */

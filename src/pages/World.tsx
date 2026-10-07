@@ -143,10 +143,12 @@ import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
 import { stageMark } from "@/engine/androidProbe";
 // 🔍 Yükleme teşhisi: "yüzde neden ilerlemiyor?" — nabız + montaj + model testi.
 import {
+  clearPersistedSnapshot,
   heartbeat,
   installLoadDiagnostics,
   mountInfo,
   noteMount,
+  persistSnapshot,
   reportLoadStall,
   type LoadSnapshot,
 } from "@/engine/loadDiag";
@@ -1939,6 +1941,7 @@ export default function World() {
      60 ms değişiyor; ona bağlanırsa zamanlayıcı hiç ateşlemez. Canlı değerler
      ref üzerinden okunur. */
   const gateSnapshotRef = useRef<LoadSnapshot | null>(null);
+  const firstPersistRef = useRef(false);
   const stallReported = useRef(false);
   useEffect(() => {
     if (!gateVisible || stallReported.current) return;
@@ -1951,6 +1954,32 @@ export default function World() {
     }, GATE_STALL_REPORT_MS);
     return () => window.clearTimeout(id);
   }, [gateVisible]);
+
+  /* ⏱ TAKILMA ANI DİSKE YAZILIR (dokunuş GEREKTİRMEZ).
+
+     Telefonda yükleme ekranı donduğunda kullanıcı panele dokunamıyor (ana iş
+     parçacığı bloke) ve 8 sn'lik otomatik rapor da zamanlayıcı çalışmadığı
+     için üretilemiyor. O yüzden canlı değerler kapı görünürken PERİYODİK
+     olarak diske yazılır: donma anında yazım da durur, dosyada o anın satırları
+     kalır ve bir sonraki açılışta yükleme ekranı bunları kendiliğinden gösterir
+     (bkz. `loadDiag.persistSnapshot` / `LoadingDiagnostics`). */
+  useEffect(() => {
+    if (!gateVisible) return;
+    const write = () => {
+      const snapshot = gateSnapshotRef.current;
+      if (snapshot) persistSnapshot(snapshot);
+    };
+    write();
+    const id = window.setInterval(write, 250);
+    return () => window.clearInterval(id);
+  }, [gateVisible]);
+
+  // Kapı AÇILDI: takılma kaydı silinir. Böylece dosyanın varlığı tek başına
+  // "önceki oturum yüklemeyi geçemedi" demektir (yanlış alarm olmaz).
+  useEffect(() => {
+    if (gateOpen) clearPersistedSnapshot();
+  }, [gateOpen]);
+
   const pctStepIndex =
     gatePct < 20 ? 0 : gatePct < 40 ? 1 : gatePct < 62 ? 2 : gatePct < 84 ? 3 : 4;
   // Kimlik adımı bekçisi tamamlandıysa ilk adımda TAKILI kalma: en az
@@ -1970,6 +1999,14 @@ export default function World() {
     stageMode,
     glbTest: glbTestParam,
   };
+
+  // 🔒 İLK KAYIT RENDER'DA yazılır (pasif efektleri BEKLEMEZ): ana iş parçacığı
+  // kapı göründükten hemen sonra kilitlenirse efekt sırası hiç gelmeyebilir —
+  // oysa tanı kaydının VARLIĞI her şeyden önce gelir. Montaj başına bir kez.
+  if (gateVisible && !firstPersistRef.current) {
+    firstPersistRef.current = true;
+    persistSnapshot(gateSnapshotRef.current);
+  }
 
   // Kapı açılana kadar sahne "hazır" sayılmaz: kapı kapanmadan yürümeye
   // başlamayalım (jest/klavye girdisi kapı açıldıktan sonra işlenir).

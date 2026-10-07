@@ -24,6 +24,7 @@
  * saf fonksiyon olarak durur.
  */
 import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { renderMark } from "./loadDiag";
 import { useProbedGltf } from "./probedGltf";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -273,6 +274,8 @@ function onSideStreet(x: number, margin = 0): boolean {
  * artınca CPU maliyeti artmaz, ek draw call açılmaz.
  */
 export function StreetTrees() {
+  // 🔍 Donma noktasını daralt: bu bileşenin kurulumu başladığı an diske yazılır.
+  renderMark("StreetTrees");
   const placements = useMemo<VegPlacement[]>(() => {
     const out: VegPlacement[] = [];
     TREE_ROWS.forEach((row, rowIndex) => {
@@ -318,6 +321,7 @@ export function StreetTrees() {
  * katlanmasın); zemin gölgesini karo dokusu ve ağaç/çalılar taşır.
  */
 export function StreetGrassClumps() {
+  renderMark("StreetGrassClumps");
   const placements = useMemo<VegPlacement[]>(() => {
     const out: VegPlacement[] = [];
     const inset = 0.14; // kaldırım bordürüne taşmasın

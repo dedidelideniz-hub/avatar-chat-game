@@ -11,18 +11,21 @@
  * (Diğer teşhis panelleri bayrak/kabuk şartı arar; bu ekran tam da "hiçbir şey
  * çalışmıyor" durumunda gerektiği için koşulsuzdur.)
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MODEL_PROBE_LIST,
   buildLoadReport,
+  describePersisted,
   diagErrors,
   heartbeat,
   mountInfo,
   probeModelUrls,
+  readPersistedSnapshot,
+  rememberProbes,
   type LoadSnapshot,
   type ProbeResult,
 } from "@/engine/loadDiag";
-import { describeTrace } from "@/engine/worldDebug";
+import { bootCount, describeTrace } from "@/engine/worldDebug";
 
 function mib(bytes: number | null): string {
   return bytes === null ? "?" : `${(bytes / 1048576).toFixed(2)} MiB`;
@@ -33,13 +36,38 @@ export function LoadingDiagnostics({ snapshot }: { snapshot: LoadSnapshot }) {
   const [probes, setProbes] = useState<ProbeResult[] | null>(null);
   const [testing, setTesting] = useState(false);
 
+  // ⏱ ÖNCEKİ OTURUMUN TAKILMA KAYDI — BİR KEZ, İLK render'da okunur.
+  //
+  // Neden ilk render'da: bu oturumun periyodik yazımı (World, 250 ms) aynı
+  // anahtarı EZER; kaydı sonra okuyan "bu oturumun" verisini "önceki oturum"
+  // diye gösterirdi. Aynı sayfa açılışında yazılmış kayıt da (StrictMode çift
+  // montajı) `boot` numarası eşleştiği için elenir.
+  const [persisted] = useState(() => {
+    const record = readPersistedSnapshot();
+    return record && record.boot < bootCount() ? record : null;
+  });
+
   const runProbe = useCallback(async () => {
     setTesting(true);
     try {
-      setProbes(await probeModelUrls(MODEL_PROBE_LIST));
+      const results = await probeModelUrls(MODEL_PROBE_LIST);
+      rememberProbes(results);
+      setProbes(results);
     } finally {
       setTesting(false);
     }
+  }, []);
+
+  // 📡 OTOMATİK MODEL TESTİ: kullanıcı dokunamasa bile "/models/*.glb geliyor
+  // mu?" sorusunun cevabı kayda geçsin (sonuç bir sonraki yazımla diske gider).
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      void probeModelUrls(MODEL_PROBE_LIST).then((results) => {
+        rememberProbes(results);
+        setProbes(results);
+      });
+    }, 2500);
+    return () => window.clearTimeout(id);
   }, []);
 
   // ⚠️ Bilinçli olarak memo YOK: panel yalnızca açıkken çizilir ve rapor bir
@@ -61,8 +89,28 @@ export function LoadingDiagnostics({ snapshot }: { snapshot: LoadSnapshot }) {
   const mount = mountInfo("World");
   const errors = diagErrors();
 
+  /* Dokunuş GEREKTİRMEYEN ŞERİT: önceki oturum yükleme ekranını geçemediyse
+     (dondu/çöktü), kanıt zaten diskte duruyor ve burada kendiliğinden gösterilir
+     — kullanıcı yalnızca ekran görüntüsü alır. Düğmenin/panelin yerini almaz:
+     yükleme ekranı görünürken ikisi bir arada durur. */
+  const stallStrip = persisted ? (
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-[131] bg-black/85 px-3 pb-2 pt-3 text-[10px] font-semibold leading-4 text-white shadow-lg backdrop-blur">
+      <div className="text-[11px] font-black tracking-wide text-rose-300">
+        ⏱ ÖNCEKİ OTURUM YÜKLEMEYİ GEÇEMEDİ
+      </div>
+      {describePersisted(persisted).map((line) => (
+        <div key={line} className="text-white/80">
+          {line}
+        </div>
+      ))}
+      <div className="text-white/50">ekran görüntüsü yeterli — dokunmaya gerek yok</div>
+    </div>
+  ) : null;
+
   if (!open) {
     return (
+      <>
+      {stallStrip}
       <button
         type="button"
         onPointerDown={(event) => event.stopPropagation()}
@@ -76,10 +124,13 @@ export function LoadingDiagnostics({ snapshot }: { snapshot: LoadSnapshot }) {
         🔍 Yükleme teşhisi
         <span className="text-[10px] font-bold text-white/60">%{snapshot.pct.toFixed(0)}</span>
       </button>
+      </>
     );
   }
 
   return (
+    <>
+    {stallStrip}
     <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/70 p-2 backdrop-blur-sm">
       <div
         className="max-h-[86vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-[#0d1526] p-3 text-white shadow-2xl"
@@ -176,5 +227,6 @@ export function LoadingDiagnostics({ snapshot }: { snapshot: LoadSnapshot }) {
         />
       </div>
     </div>
+    </>
   );
 }

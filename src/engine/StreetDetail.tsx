@@ -14,6 +14,7 @@
  */
 import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { renderMark } from "./loadDiag";
 import {
   BUS_STOPS,
   CROSSWALKS,
@@ -189,6 +190,7 @@ function TrashCan3D({ x, z, recycling }: { x: number; z: number; recycling: bool
 }
 
 export function StreetTrashCans() {
+  renderMark("StreetTrashCans");
   return (
     <>
       {TRASH_CANS.map((t, i) => (
@@ -275,6 +277,7 @@ function BusStop3D({ def }: { def: BusStopDef }) {
 }
 
 export function StreetBusStops() {
+  renderMark("StreetBusStops");
   return (
     <>
       {BUS_STOPS.map((def) => (
@@ -338,6 +341,7 @@ function DirectionSign3D({ def }: { def: DirectionSignDef }) {
 }
 
 export function StreetDirectionSigns() {
+  renderMark("StreetDirectionSigns");
   return (
     <>
       {DIRECTION_SIGNS.map((def) => (
@@ -368,6 +372,7 @@ export function mulberry32(seed: number): () => number {
 /* ═══════════════════════════════════════════════════════════ */
 
 export function StreetFences() {
+  renderMark("StreetFences");
   const slatRef = useRef<THREE.InstancedMesh>(null);
   const railRef = useRef<THREE.InstancedMesh>(null);
 

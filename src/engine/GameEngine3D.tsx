@@ -31,6 +31,7 @@ import { PROTECTED_PRIORITY, verifiedPowerPreference } from "./webglSupport";
 import { attachContextDiagnostics, traceStep } from "./worldDebug";
 // 📡 APK/logcat işaretleri + işaretli GLTF yükleyicisi (madde 3).
 import { stageMark } from "./androidProbe";
+import { renderMark } from "./loadDiag";
 import { useProbedGltf } from "./probedGltf";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
@@ -215,6 +216,8 @@ function FollowCamera({ posRef }: { posRef: React.RefObject<{ x: number; y: numb
 /* ═══════════════════════════════════════════════════════════ */
 
 function Ground() {
+  // 🔍 Donma noktasını daralt: zemin/bina/oyuncu kurulumu ayrı ayrı işaretlenir.
+  renderMark("Ground");
   const roadMid = (ZONE.roadTop + ZONE.roadBot) / 2;
   const roadW = ZONE.roadBot - ZONE.roadTop;
 
@@ -895,6 +898,7 @@ function PlayerAvatar3D({
   /** Baloncuk rengi (`BUBBLE_COLORS` id'si). */
   speechColorId?: string;
 }) {
+  renderMark("PlayerAvatar3D");
   if (SVG_DEBUG_MODE) {
     return <SvgPlayerAvatar3D posRef={posRef} config={config} equipped={equipped} facingRef={facingRef} />;
   }

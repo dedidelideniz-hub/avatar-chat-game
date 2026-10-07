@@ -14,6 +14,7 @@
  * düğmesiyle evine girer (bkz. `constants.HOUSE_*`).
  */
 import { WITCH_SHOP_WALKWAY } from "./constants";
+import { renderMark } from "./loadDiag";
 
 /** Yolun zemin seviyesi — çim (0) ile asfalt (0.008) arasında okunur bir taş. */
 const WALKWAY_Y = 0.013;
@@ -58,6 +59,7 @@ function Plane({
  * türer: oyuncunun yürüdüğü yer ile gördüğü yol ayrışmaz.
  */
 export function WitchShopWalkway() {
+  renderMark("WitchShopWalkway");
   const { x, pathHalfW, foreHalfW, pathSouthZ, pathNorthZ, frontZ } =
     WITCH_SHOP_WALKWAY;
 
