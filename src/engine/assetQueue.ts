@@ -25,7 +25,9 @@
  *   · `unlockBackgroundAssets()` çağrılmazsa `AUTO_UNLOCK_MS` sonra kendini açar,
  *   · bir slot `SLOT_TIMEOUT_MS` içinde "bitti" demezse serbest bırakılır
  *     (yüklemeyi yapan bileşen yine de devam eder; yalnızca sıra ilerler),
- *   · hiçbir hata yukarı fırlatılmaz: başarısız varlık atlanır, oyun devam eder.
+ *   · hiçbir hata yukarı fırlatılmaz: başarısız varlık atlanır, oyun devam eder;
+ *     bir görev reddedilen bir promise dönerse o da BURADA karşılanır
+ *     (yakalanmayan bir reddi geliştirme katmanı "Build Error" gösterir).
  */
 import { useEffect, useSyncExternalStore } from "react";
 import { assetPreloadingSuppressed } from "./worldDebug";
@@ -121,7 +123,7 @@ interface IdleTask {
   label: string;
   order: number;
   seq: number;
-  run: () => void;
+  run: () => void | Promise<unknown>;
 }
 
 const pending: PendingRequest[] = [];
@@ -189,7 +191,17 @@ function runIdleTasks(): void {
   idleGapUntil = Date.now() + IDLE_TASK_GAP_MS;
   try {
     if (ASSET_DEBUG) console.log(`[ASSET] task start ${task.label}`);
-    task.run();
+    const result = task.run();
+    // Görev hem senkron hem async olabilir. Dönen promise reddedilirse ve
+    // yakalanmazsa "unhandled rejection" olur: geliştirme katmanı bunu tam
+    // ekran "Build Error" olarak gösterir (ör. iptal edilmiş bir GLB indirmesi
+    // `TypeError: Failed to fetch` verir). Arka plan görevi kritik DEĞİLDİR —
+    // burada karşılanır, oyun aynen devam eder.
+    if (result && typeof (result as Promise<unknown>).catch === "function") {
+      void (result as Promise<unknown>).catch((error: unknown) => {
+        console.warn(`[ASSET] task reddedildi: ${task.label}`, error);
+      });
+    }
   } catch (error) {
     // Kritik OLMAYAN iş: başarısız olursa oyun devam eder.
     console.warn(`[ASSET] task başarısız: ${task.label}`, error);

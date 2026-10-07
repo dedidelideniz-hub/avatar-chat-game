@@ -19,6 +19,16 @@ export const equipDebug = {
     );
   },
 
+  /** Zırh GLB'si indirilemedi/çözülemedi — kritik DEĞİL, prosedürel yedek var. */
+  glbFailed(url: string, attempt: number, error: unknown) {
+    console.warn(
+      `${P} ⚠️ zırh GLB yüklenemedi (deneme ${attempt}) — prosedürel yedek kullanılıyor:`,
+      url,
+      "|",
+      error,
+    );
+  },
+
   attachStart(count: number, modelHeight: number) {
     console.log(`${P} attachEquippedToModel — equipped:`, count, "items, modelHeight:", modelHeight.toFixed(2));
   },

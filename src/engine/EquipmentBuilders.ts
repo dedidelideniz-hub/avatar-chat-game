@@ -18,6 +18,16 @@ const mat = (color: string, opts?: Partial<THREE.MeshStandardMaterialParameters>
 
 const _equipmentGlbCache = new Map<string, THREE.Group>();
 const _equipmentGlbLoading = new Map<string, Promise<THREE.Group>>();
+/** URL başına deneme sayısı — sınırlı yeniden deneme için. */
+const _equipmentGlbAttempts = new Map<string, number>();
+
+/* ⚠️ Ağ hatası GEÇİCİ olabilir: WebView ağ değiştirirken, dev sunucusu yeniden
+ * başlarken ya da sayfa yenilenirken uçuştaki `fetch` iptal edilir ve
+ * `TypeError: Failed to fetch` üretir. Bu yüzden SINIRLI (tek) yeniden deneme
+ * yapılır; kalıcı 404'te ikinci deneme de başarısız olur ve zırh sessizce
+ * prosedürel yedeğinde kalır. */
+const EQUIPMENT_GLB_MAX_ATTEMPTS = 2;
+const EQUIPMENT_GLB_RETRY_MS = 4000;
 
 /**
  * Loads an equipment GLB and returns a clone ready for bone attachment.
@@ -30,6 +40,8 @@ export function loadEquipmentGlbCached(url: string): THREE.Object3D {
 
   let loading = _equipmentGlbLoading.get(url);
   if (!loading) {
+    const attempt = (_equipmentGlbAttempts.get(url) ?? 0) + 1;
+    _equipmentGlbAttempts.set(url, attempt);
     loading = new Promise<THREE.Group>((resolve, reject) => {
       new GLTFLoaderShim().load(
         url,
@@ -78,6 +90,20 @@ export function loadEquipmentGlbCached(url: string): THREE.Object3D {
       );
     });
     _equipmentGlbLoading.set(url, loading);
+
+    // 🛡️ Bu promise'i BEKLEYEN YOK: yer tutucu senkron döner, gerçek model
+    // arkada gelir. Reddedilirse "unhandled rejection" doğar — geliştirme
+    // katmanı bunu tam ekran "Build Error" olarak gösterir, oysa oyun hiçbir
+    // şey bozulmamış gibi devam eder (prosedürel zırh yedeği zaten var).
+    // Bu yüzden red BURADA karşılanır: sıra kilitlenmez, oyun düşmez.
+    void loading.catch((error: unknown) => {
+      // Başarısız promise önbellekte KALIRSA geçici bir ağ hatası kalıcılaşırdı.
+      _equipmentGlbLoading.delete(url);
+      equipDebug.glbFailed(url, attempt, error);
+      if (attempt < EQUIPMENT_GLB_MAX_ATTEMPTS && typeof window !== "undefined") {
+        window.setTimeout(() => loadEquipmentGlbCached(url), EQUIPMENT_GLB_RETRY_MS);
+      }
+    });
   }
   // Synchronously return a placeholder — the real model loads async.
   // attachEquippedToModel will re-attach once loaded.

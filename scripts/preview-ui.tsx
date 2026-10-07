@@ -2148,11 +2148,26 @@ const scenarios: Scenario[] = [
             /export function unlockBackgroundAssets/.test(queueSrc) &&
             /export function markAssetReady/.test(queueSrc),
         ),
+        // ⚠️ Pencere 400→900: görev artık hem senkron hatayı hem de DÖNEN
+        // promise'in reddini karşılamalı (jeton: iptal edilmiş bir GLB indirmesi
+        // `TypeError: Failed to fetch` verir; yakalanmazsa geliştirme katmanı
+        // bunu tam ekran "Build Error" gösteriyordu). İddia AYNI, hatta daha
+        // güçlü: senkron `throw` kadar reddedilen promise de yutulur.
         check(
-          "arka plan varlığı yüklenemezse oyun DEVAM eder (hata izolasyonu)",
-          /task\.run\(\)[\s\S]{0,400}?catch \(error\)/.test(queueSrc) &&
+          "arka plan varlığı yüklenemezse oyun DEVAM eder (senkron hata + reddedilen promise)",
+          /task\.run\(\)[\s\S]{0,900}?catch \(error\)/.test(queueSrc) &&
             queueSrc.includes("[ASSET] task başarısız") &&
+            queueSrc.includes("[ASSET] task reddedildi") &&
+            /void \(result as Promise<unknown>\)\.catch/.test(queueSrc) &&
             !/\bthrow\b/.test(queueSrc),
+        ),
+        check(
+          "zırh GLB indirmesi başarısız olursa 'unhandled rejection' doğmaz (sınırlı yeniden deneme)",
+          /void loading\.catch\(/.test(equipSrc0) &&
+            equipSrc0.includes("EQUIPMENT_GLB_MAX_ATTEMPTS") &&
+            /attempt < EQUIPMENT_GLB_MAX_ATTEMPTS/.test(equipSrc0) &&
+            /_equipmentGlbLoading\.delete\(url\)/.test(equipSrc0) &&
+            equipSrc0.includes("glbFailed"),
         ),
         check(
           "asset debug logları yalnızca bayrakla (?assetDebug)",
