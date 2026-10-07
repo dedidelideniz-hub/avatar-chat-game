@@ -139,6 +139,20 @@ import { toast } from "sonner";
 import { VisualDebug } from "@/components/debug/VisualDebug";
 import { levelFromWins, rankFromLevel, WINS_PER_LEVEL } from "@/lib/levels";
 import { preloadStreetModels, STREET_TIPS } from "@/engine/streetPreload";
+// 🧪 3D İZOLASYON TEŞHİSİ (APK çökmesini bölerek bulmak için) — bkz. bu
+// dosyadaki `stageMode` dalları ve `engine/worldDebug`.
+import {
+  StageDomOnly,
+  WorldStageProbe,
+} from "@/engine/WorldStageProbe";
+import { WorldStageDock } from "@/components/world/WorldStageDock";
+import {
+  isStageIsolation,
+  traceStep,
+  usesStageCanvas,
+  worldDiagnosticsEnabled,
+  worldStage,
+} from "@/engine/worldDebug";
 import {
   ASSET_ORDER,
   enqueueIdleTask,
@@ -1284,6 +1298,13 @@ const gateSession: { startMs: number | null; opened: boolean } = {
 export default function World() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  // 🧪 İZOLASYON AŞAMASI: 0 = normal oyun. 1–8 = gerçek 3D motoru devreden
+  // çıkar ve yerine `WorldStageProbe` (tek değişkenli ölçüm) geçer. Bu mod
+  // YALNIZCA teşhis içindir; aşama 0'da davranış eskisiyle BİREBİR aynıdır
+  // (aşağıdaki bütün `stageMode` dalları kapalı kalır).
+  const stage = worldStage();
+  const stageMode = isStageIsolation();
+  const showDock = worldDiagnosticsEnabled();
   const profile = useQuery(api.profiles.getMyProfile);
   // 🛡️ Kapının "Kimlik doğrulanıyor" bekçisi için: oturum durumu ve konuk
   // girişi. (Korunmuş rota olsa da mobil ağ kopmalarında oturum gerileyebilir.)
@@ -1658,10 +1679,27 @@ export default function World() {
   const [gateForced, setGateForced] = useState(false);
   const [gatePct, setGatePct] = useState(0);
   // Kapı oturum boyunca bir kez açılır; yeniden montajda tekrar gösterilmez.
-  const [gateOpen, setGateOpen] = useState(gateSession.opened);
+  // İZOLASYON MODUNDA kapı HİÇ beklemez: aşamanın kendi sonda paneli zaten
+  // ne olduğunu söyler; kapı bekleseydi "Cadde verileri alınıyor" ekranının
+  // arkasında hangi aşamanın çöktüğünü ayırt edemezdik.
+  const [gateOpen, setGateOpen] = useState(gateSession.opened || stageMode);
   const [gateTipIndex, setGateTipIndex] = useState(0);
 
-  const handleSceneReady = useCallback(() => setGateSceneReady(true), []);
+  const handleSceneReady = useCallback(() => {
+    traceStep("world:scene-ready");
+    setGateSceneReady(true);
+  }, []);
+
+  // 🧪 İZ: hangi aşamada olduğumuz ve kapının açıldığı an KALICI olarak
+  // yazılır. APK çökerse bir sonraki açılışta teşhis paneli bu son adımı
+  // gösterir — "ne kadar sonra ve nerede öldü?" sorusu tahminle değil
+  // kayıtla yanıtlanır (bkz. `engine/worldDebug` → `traceStep`).
+  useEffect(() => {
+    traceStep("world:mounted", `aşama ${stage}`);
+  }, [stage]);
+  useEffect(() => {
+    if (gateOpen) traceStep("world:gate-open");
+  }, [gateOpen]);
 
   /**
    * 🏠 ODA MODELİNİ ERKEN İNDİR — odaya giriş ANINDA açılsın.
@@ -1674,7 +1712,7 @@ export default function World() {
    * modelleriyle/ilk kareleriyle yarışmasın.
    */
   useEffect(() => {
-    if (!gateSceneReady) return;
+    if (!gateSceneReady || stageMode) return;
     // 🚦 ODA MODELİ KUYRUK SONUNDA: eskiden sahne hazır olduktan 1,5 sn sonra
     // KOŞULSUZ indiriliyordu — tam da ağaç/bina/zırh yüklemeleriyle aynı anda.
     // Artık kuyruk BOŞTA olduğunda (ağır varlıklar bittikten sonra) çalışır.
@@ -1683,7 +1721,7 @@ export default function World() {
       1500,
     );
     return () => window.clearTimeout(timer);
-  }, [gateSceneReady]);
+  }, [gateSceneReady, stageMode]);
 
   // Kapının beklediği EK modeller: YOK.
   //
@@ -1697,16 +1735,23 @@ export default function World() {
 
   // KRİTİK cadde modellerini (zemin + karakter) hemen indirmeye başla.
   // Ağır/çevresel modeller BURADA ön yüklenmez (bkz. `preloadStreetModels`).
+  // ⚠️ İZOLASYON MODUNDA ön yükleme YOK: aşamaya yalnızca o aşamanın varlıkları
+  // girmeli, yoksa ölçüm kirlenir (bkz. `worldDebug` → `assetPreloadingSuppressed`).
   useEffect(() => {
+    if (stageMode) return;
     preloadStreetModels();
-  }, []);
+  }, [stageMode]);
 
   // 🔓 CADDE AÇILDI: arka plan yükleme sırası ANCAK bundan sonra akar
   // (ağaç → çim öbekleri → bina → skin → oda → zırh, tek tek). Kapı kapanmadan
   // hiçbir ağır model parse edilmez; böylece başlangıç bellek zirvesi düşer.
   useEffect(() => {
+    // İzolasyon modunda arka plan sırası (ağaç → çim → bina → skin → oda →
+    // zırh) KAPALI kalır: "aşama 3 = zemin" derken ağacın da inmesi ölçümü
+    // anlamsız kılardı. Sonda kendi varlıklarını tek tek yükler.
+    if (stageMode) return;
     if (gateOpen) unlockBackgroundAssets();
-  }, [gateOpen]);
+  }, [gateOpen, stageMode]);
 
   // İlerleme hedefi — ZAMANA bağlı (model sayacına DEĞİL).
   //
@@ -1853,7 +1898,11 @@ export default function World() {
   // Kapı yalnızca hesap hazır olduğunda çizilir: profil yoksa/banlıysa zaten
   // kendi bilgi katmanı görünür (aşağıdaki `profile === null` blokları).
   const gateVisible =
-    !gateOpen && profile !== undefined && profile !== null && !profile.banned;
+    !stageMode &&
+    !gateOpen &&
+    profile !== undefined &&
+    profile !== null &&
+    !profile.banned;
   const pctStepIndex =
     gatePct < 20 ? 0 : gatePct < 40 ? 1 : gatePct < 62 ? 2 : gatePct < 84 ? 3 : 4;
   // Kimlik adımı bekçisi tamamlandıysa ilk adımda TAKILI kalma: en az
@@ -4272,6 +4321,18 @@ export default function World() {
               kalmasın. Prop dolu olduğunda avatar onu kullanır, boşken depoya
               düşer; böylece "Otur" → oturma zincirinde sessiz bir kopukluk
               olamaz. */}
+          {/* 🧪 İZOLASYON AŞAMASI (1–8): gerçek motor BURADA ÇİZİLMEZ.
+              Aşama 1 canvas'sız DOM ekranıdır (3D tamamen kapalı), 2–8 ise
+              tek değişkenli ölçüm yapan minimal sonda canvas'ıdır (boş →
+              zemin → karakter → ağaç → çim → bina → skin). Aşama 0/9'da ise
+              aşağıdaki gerçek motor eskisiyle BİREBİR aynı çalışır. */}
+          {stageMode ? (
+            usesStageCanvas() ? (
+              <WorldStageProbe stage={stage} isMobile={isMobile} />
+            ) : (
+              <StageDomOnly />
+            )
+          ) : (
           <GameEngine3D
             playerPosRef={posRef}
             playerConfig={config}
@@ -4305,6 +4366,7 @@ export default function World() {
             speechColorId={bubbleColorId}
             botSpeech={botBubbles}
           />
+          )}
 
           {/* character profile card — tapping a character opens it here */}
           <AnimatePresence>
@@ -5168,6 +5230,11 @@ export default function World() {
           onClose={() => setDebugOpen(false)}
         />
       )}
+
+      {/* 🐞 3D İZOLASYON PANELİ — APK'da aşama seçmenin TEK yolu (bkz.
+          `WorldStageDock`). Aşama 0'da yalnızca `?worldDebug` / APK kabuğu /
+          `vaelos:worldDebug=1` bayrağıyla görünür; aşama 1–8'de her zaman. */}
+      {showDock && <WorldStageDock />}
     </div>
   );
 }

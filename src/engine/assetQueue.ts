@@ -28,6 +28,7 @@
  *   · hiçbir hata yukarı fırlatılmaz: başarısız varlık atlanır, oyun devam eder.
  */
 import { useEffect, useSyncExternalStore } from "react";
+import { assetPreloadingSuppressed } from "./worldDebug";
 
 /**
  * ARKA PLAN sırası — küçük sayı önce yüklenir. Sıra kullanıcı isteğiyle aynı:
@@ -232,6 +233,10 @@ export function unlockBackgroundAssets(): void {
 /** Bir URL için sıra isteği (aynı URL için tekrar çağrılırsa yinelenmez). */
 export function requestAssetSlot(url: string, order: number): void {
   if (!url || typeof window === "undefined") return;
+  // 🧪 İZOLASYON MODU: arka plan yüklemesi TAMAMEN kapalı. Aksi halde kuyruğun
+  // kendi otomatik açılması (`AUTO_UNLOCK_MS`), "boş canvas" aşamasında bile
+  // ağaç/bina indirmeye başlar ve ölçümü kirletirdi.
+  if (assetPreloadingSuppressed()) return;
   if (granted.has(url)) return;
   if (pending.some((request) => request.url === url)) return;
   pending.push({ url, order, seq: seq++ });
@@ -277,6 +282,8 @@ export function enqueueIdleTask(
   label: string,
   run: () => void,
 ): void {
+  // 🧪 İzolasyon modunda (aşama 1–8) hiçbir arka plan yüklemesi kuyruğa girmez.
+  if (assetPreloadingSuppressed()) return;
   idleTasks.push({ order, label, seq: seq++, run });
   idleTasks.sort((a, b) => a.order - b.order || a.seq - b.seq);
   ensureAutoUnlock();

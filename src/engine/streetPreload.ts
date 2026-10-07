@@ -3,6 +3,7 @@ import { BUILDING_MODEL_URLS } from "./constants";
 import { CHARACTER_MODEL_URL } from "./GlbAvatar3D";
 import { GRASS_GROUND_URL } from "./grassGroundPrep";
 import { GRASS_CLUMP_MODEL_URL, TREE_MODEL_URL } from "./vegModelPrep";
+import { assetPreloadingSuppressed } from "./worldDebug";
 
 /**
  * ANA CADDE ÖN YÜKLEMESİ
@@ -74,6 +75,10 @@ const started = new Set<string>();
  * `extra` ile oyuncuya özel KRİTİK varlıklar eklenebilir.
  */
 export function preloadStreetModels(extra: readonly string[] = []): void {
+  // 🧪 İZOLASYON MODU (aşama 1–8): ön yükleme kapalı. Zemin/karakter bir
+  // aşamanın parçasıysa o aşama onları KENDİ sondasıyla, sırayla indirir;
+  // burada ön yüklemek "boş canvas" aşamasını kirletir (bkz. `worldDebug`).
+  if (assetPreloadingSuppressed()) return;
   const urls = [...STREET_CRITICAL_MODELS, ...extra];
   for (const url of urls) {
     if (!url || started.has(url)) continue;

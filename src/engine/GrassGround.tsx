@@ -22,6 +22,7 @@ import {
   buildGrassGroundPlacements,
   prepareGrassGround,
 } from "./grassGroundPrep";
+import { assetPreloadingSuppressed } from "./worldDebug";
 
 /** Model/döşeme hazırlığı — `useGLTF` önbelleği asla değiştirilmez (klonlanır). */
 function useGrassGroundTile() {
@@ -120,4 +121,8 @@ export function GrassGround() {
 }
 
 /* İndirme, sahne kurulmadan önce başlasın (cadde zeminsiz görünmesin). */
-useGLTF.preload(GRASS_GROUND_URL);
+// ⚠️ MODÜL DÜZEYİ ön yükleme: `World` bu dosyayı (motor üzerinden) statik
+// olarak içe aktardığı için bu satır, izolasyon aşamalarında ("3D YOK", "boş
+// canvas") MOTOR HİÇ ÇİZİLMEDEN zemini indirirdi — o zaman "boş canvas
+// çöküyor mu?" testi anlamsız olurdu. İzolasyon modunda kapalıdır.
+if (!assetPreloadingSuppressed()) useGLTF.preload(GRASS_GROUND_URL);

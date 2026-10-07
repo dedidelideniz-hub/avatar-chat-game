@@ -2166,7 +2166,12 @@ const scenarios: Scenario[] = [
           !/^useGLTF\.preload\(TREE_MODEL_URL\);/m.test(vegSrc) &&
             !/^useGLTF\.preload\(GRASS_CLUMP_MODEL_URL\);/m.test(vegSrc) &&
             !/^useGLTF\.preload\(FALLBACK_MODEL_URL\);/m.test(avatarSrc) &&
-            /^useGLTF\.preload\(GRASS_GROUND_URL\);/m.test(grassSrc),
+            // Zemin ön yüklemesi hâlâ VAR ama artık KOŞULLU: izolasyon
+            // aşamalarında (1–8) kapanır, yoksa "boş canvas" testi zemini
+            // indirip ölçümü kirletirdi (bkz. `WorldStageProbe`).
+            grassSrc.includes(
+              "if (!assetPreloadingSuppressed()) useGLTF.preload(GRASS_GROUND_URL)",
+            ),
         ),
         check(
           "oda + zırh ön yüklemeleri kuyruk SONUNDA (boşta) çalışır",
@@ -2215,7 +2220,9 @@ const scenarios: Scenario[] = [
         check(
           "cadde kapısı oturum boyunca BİR KEZ açılır (yeniden montajda ikinci kez gösterilmez)",
           world.includes("gateSession.opened = true") &&
-            world.includes("useState(gateSession.opened)"),
+            // İzolasyon modunda kapı hiç bekletilmez (aşamayı panel söyler);
+            // üretimde (aşama 0) davranış aynı: modül düzeyi oturum hafızası.
+            world.includes("useState(gateSession.opened || stageMode)"),
         ),
         check(
           "RequireAuth kısa süreli `undefined` sorgusunda sayfayı SÖKMÜYOR (yeniden montaj döngüsü yok)",
@@ -4100,7 +4107,7 @@ const scenarios: Scenario[] = [
         ),
         check(
           "oda modeli cadde hazır olunca KUYRUĞA girer (boşta kalınca iner)",
-          /if \(!gateSceneReady\) return;/.test(world) &&
+          /if \(!gateSceneReady \|\| stageMode\) return;/.test(world) &&
             world.includes(
               'enqueueIdleTask(ASSET_ORDER.room, "oda modeli", preloadRoomModel)',
             ) &&
@@ -4112,6 +4119,350 @@ const scenarios: Scenario[] = [
           !K.BUILDING_MODEL_URLS.includes(K.ROOM_MODEL_URL),
         ),
       );
+
+      return checks;
+    },
+  },
+
+  /* ────────────────────────────────────────────────────────────────────────
+     🧪 3D İZOLASYON · APK çökmesini BÖLEREK bulma
+     ────────────────────────────────────────────────────────────────────────
+     Daha önceki bütün optimizasyonlar (doku küçültme, ön yükleme azaltma,
+     kritik/arka plan ayrımı, sıralı kuyruk) uygulandı ve APK HÂLÂ
+     "Cadde verileri alınıyor" adımında kapanıyor. Bu adımda amaç düzeltme
+     değil AYIRMA: 3D yok → boş canvas → zemin → karakter → ağaç → çim → cadı
+     dükkânı → skin sırasıyla tek tek denenip çökmenin SINIRI bulunur. Bu
+     senaryo, izolasyon altyapısının gerçekten var olduğunu ve tek değişkenli
+     kaldığını doğrular (kaynak kontrolleri + `worldDebug` modülünün CANLI
+     davranışı: aşama çözümleme, kalıcı iz, çöküş sayacı, bağlam kaybı). */
+  {
+    id: "izolasyon",
+    title:
+      "🧪 3D İZOLASYON · aşamalar (3D YOK → boş canvas → zemin → karakter → ağaç → çim → cadı → skin) + kalıcı çökme izi",
+    handles:
+      "src/engine/worldDebug.ts + src/engine/WorldStageProbe.tsx + src/components/world/WorldStageDock.tsx + src/pages/World.tsx + src/engine/GameEngine3D.tsx + src/engine/assetQueue.ts + src/engine/GrassGround.tsx",
+    run: async (p) => {
+      const { readFileSync } = await import("node:fs");
+      const read = (path: string) =>
+        readFileSync(new URL(path, import.meta.url), "utf8");
+      const world = read("../src/pages/World.tsx");
+      const debug = read("../src/engine/worldDebug.ts");
+      const probe = read("../src/engine/WorldStageProbe.tsx");
+      const dock = read("../src/components/world/WorldStageDock.tsx");
+      const engine = read("../src/engine/GameEngine3D.tsx");
+      const queue = read("../src/engine/assetQueue.ts");
+      const grass = read("../src/engine/GrassGround.tsx");
+      const preload = read("../src/engine/streetPreload.ts");
+
+      const checks: Check[] = [];
+
+      /* ── 1) AŞAMA TABLOSU: 0–9, istenen içeriklerle ── */
+      const stages = await import("../src/engine/worldDebug");
+      checks.push(
+        check(
+          "10 aşama tanımlı (0 normal · 1 3D yok · 2 boş canvas · 3–8 varlık · 9 tam dünya)",
+          stages.WORLD_STAGES.length === 10 &&
+            stages.WORLD_STAGES.every((info, index) => info.stage === index) &&
+            stages.stageInfo(1).assets.length === 0 &&
+            stages.stageInfo(2).assets.length === 0 &&
+            stages.stageInfo(2).content.includes("Canvas") &&
+            stages.stageInfo(3).assets.length === 1 &&
+            JSON.stringify(stages.stageInfo(5).assets) ===
+              JSON.stringify(["ground", "character", "tree"]) &&
+            JSON.stringify(stages.stageInfo(8).assets) ===
+              JSON.stringify(["ground", "character", "skin"]) &&
+            stages.stageInfo(7).assets.includes("witchShop"),
+          `aşamalar: ${stages.WORLD_STAGES.map((info) => info.label).join(" → ")}`,
+        ),
+        check(
+          "sonda varlık kimlikleri gerçek GLB yollarına bağlı (cadı dükkânı + skin dahil)",
+          /witchShop: WITCH_SHOP_MODEL_URL/.test(probe) &&
+            /skin: FALLBACK_MODEL_URL/.test(probe) &&
+            /ground: GRASS_GROUND_URL/.test(probe) &&
+            /character: CHARACTER_MODEL_URL/.test(probe) &&
+            read("../src/engine/constants.ts").includes(
+              'WITCH_SHOP_MODEL_URL = "/models/witch_shop.glb"',
+            ),
+        ),
+
+        /* ── 2) AŞAMA SEÇİMİ: YENİDEN DERLEME GEREKMEZ ── */
+        check(
+          "aşama kaynakları: URL → localStorage → VITE_DEBUG_WORLD_STAGE → otomatik → 0",
+          /export function worldStage/.test(debug) &&
+            debug.includes('params.get("worldStage")') &&
+            debug.includes("parseStage(safeGetItem(STAGE_KEY))") &&
+            debug.includes("VITE_DEBUG_WORLD_STAGE") &&
+            debug.includes("VITE_DEBUG_STAGE") &&
+            /stageCacheSource = "url"/.test(debug) &&
+            /stageCacheSource = "stored"/.test(debug) &&
+            /stageCacheSource = "env"/.test(debug),
+        ),
+
+        check(
+          "çökme DÖNGÜSÜNDE APK kendiliğinden 3D'siz açılır (seçim yapmaya vakit gerekmez)",
+          /function autoSafeStage/.test(debug) &&
+            /!isAppShell\(\) \|\| crashCount\(\) < 2/.test(debug) &&
+            /return \{ stage: 1, source: "auto" \}/.test(debug) &&
+            // Kabuk şartı olmadan (masaüstü web) ASLA devreye girmez.
+            debug.includes("if (typeof window === \"undefined\") return { stage: 0, source: \"default\" }") &&
+            // Aşamanın kaynağı panelde dürüstçe gösterilir.
+            /export function stageSource/.test(debug) &&
+            probe.includes('stageSource() === "auto"') &&
+            dock.includes("kaynak: {stageSource()}"),
+        ),
+
+        /* ── 3) AŞAMA 1–8'DE GERÇEK MOTOR DEVREDEN ÇIKAR ── */
+        check(
+          "aşama 1–8'de GERÇEK motor çizilmez (yerine sonda / 3D-kapalı ekran)",
+          world.includes("const stage = worldStage()") &&
+            world.includes("const stageMode = isStageIsolation()") &&
+            /\{stageMode \? \([\s\S]{0,220}?usesStageCanvas\(\)[\s\S]{0,220}?<WorldStageProbe stage=\{stage\} isMobile=\{isMobile\} \/>[\s\S]{0,120}?<StageDomOnly \/>/.test(
+              world,
+            ) &&
+            /\) : \(\s*<GameEngine3D/.test(world) &&
+            /export function isStageIsolation[\s\S]{0,200}?stage >= 1 && stage <= 8/.test(
+              debug,
+            ),
+        ),
+        check(
+          "izolasyon modunda cadde kapısı BEKLEMEZ (aşamayı panel söyler)",
+          world.includes("useState(gateSession.opened || stageMode)") &&
+            /const gateVisible =\s*!stageMode &&/.test(world),
+        ),
+
+        /* ── 4) ÖLÇÜM TEMİZ: ÖN YÜKLEME VE ARKA PLAN KUYRUĞU KAPALI ── */
+        check(
+          "izolasyonda HİÇBİR ön yükleme/arka plan yüklemesi çalışmaz (tek değişkenli ölçüm)",
+          /export function assetPreloadingSuppressed[\s\S]{0,260}?isStageIsolation\(\)/.test(
+            debug,
+          ) &&
+            grass.includes(
+              "if (!assetPreloadingSuppressed()) useGLTF.preload(GRASS_GROUND_URL)",
+            ) &&
+            /export function preloadStreetModels[\s\S]{0,600}?if \(assetPreloadingSuppressed\(\)\) return;/.test(
+              preload,
+            ) &&
+            /export function requestAssetSlot[\s\S]{0,420}?if \(assetPreloadingSuppressed\(\)\) return;/.test(
+              queue,
+            ) &&
+            /export function enqueueIdleTask[\s\S]{0,520}?if \(assetPreloadingSuppressed\(\)\) return;/.test(
+              queue,
+            ) &&
+            /if \(!gateSceneReady \|\| stageMode\) return;/.test(world) &&
+            /if \(stageMode\) return;\s*if \(gateOpen\) unlockBackgroundAssets\(\)/.test(
+              world,
+            ),
+        ),
+
+        /* ── 5) SONDA: TEK DEĞİŞKEN, SIRALI YÜKLEME, MİNİMUM AYAR ── */
+        check(
+          "sonda varlıkları SIRAYLA yükler (aynı anda tek GLB — eşzamanlılık ölçümü kirletmez)",
+          /function StageAssetChain/.test(probe) &&
+            /setIndex\(\(value\) => value \+ 1\)/.test(probe) &&
+            // Sıra YALNIZCA "hazır/hata" bildiriminden sonra ilerler.
+            /onState\(id, "hazır"\)[\s\S]{0,120}?onSettled\(\)/.test(probe) &&
+            /componentDidCatch[\s\S]{0,520}?onSettled\(\)/.test(probe) &&
+            // Sondada ön yükleme YOK (yalnızca kendi sırası).
+            !/useGLTF\.preload/.test(probe),
+        ),
+        check(
+          "sonda ayarları MİNİMUM: dpr sınırlı, MSAA kapalı, gölge yok, post-processing yok",
+          probe.includes("dpr={stageDpr()}") &&
+            probe.includes("antialias: false") &&
+            probe.includes("shadows={false}") &&
+            probe.includes('powerPreference: "low-power"') &&
+            !/Environment|EffectComposer|ContactShadows|Sparkles|Reflector/.test(
+              probe,
+            ) &&
+            /\[1, 1\.5, "device"\]/.test(dock) &&
+            /export function stageDpr/.test(debug),
+        ),
+        check(
+          "varlık yüklenemezse OYUN DEVAM EDER: sonda varlığı atlar, sıra ilerler",
+          /class StageAssetBoundary/.test(probe) &&
+            /static getDerivedStateFromError\(\) \{\s*return \{ failed: true \};/.test(
+              probe,
+            ) &&
+            probe.includes('this.props.onState(this.props.id, "hata")') &&
+            probe.includes("this.props.onSettled()") &&
+            probe.includes("[STAGE] varlık yüklenemedi"),
+        ),
+
+        /* ── 6) KALICI İZ + ÇÖKÜŞ SAYACI (APK'da konsol yok) ── */
+        check(
+          "her adım KALICI ize yazılır; çöküş sayacı sağlıksız kapanışta otomatik artar",
+          /export function traceStep/.test(debug) &&
+            debug.includes("safeSetItem(TRACE_KEY") &&
+            /HEALTHY_STEPS[\s\S]{0,200}?"world:gate-open"/.test(debug) &&
+            /if \(previous && !HEALTHY_STEPS\.has\(previous\.step\)\)[\s\S]{0,160}?crashes \+= 1/.test(
+              debug,
+            ) &&
+            /export function describeTrace/.test(debug) &&
+            /Test \| İçerik \| APK sonucu/.test(debug),
+        ),
+        check(
+          "motor izleri: canvas kuruldu → varlıklar hazır → İLK KARE (sağlıklı adım)",
+          engine.includes('traceStep("engine:canvas-created")') &&
+            engine.includes('traceStep("engine:assets-ready")') &&
+            engine.includes('traceStep("engine:first-frame")') &&
+            /const handleFirstFrame[\s\S]{0,200}?onSceneReady\?\.\(\)/.test(
+              engine,
+            ) &&
+            engine.includes("onReady={handleFirstFrame}") &&
+            world.includes('traceStep("world:mounted"') &&
+            world.includes('traceStep("world:gate-open")') &&
+            world.includes('traceStep("world:scene-ready")'),
+        ),
+        check(
+          "canlı davranış: iz yazılıyor, aşama çözümleniyor, kısıtlar doğru",
+          await (async () => {
+            stages.clearDiagnostics();
+            stages.traceStep("test:probe-step");
+            const traceOk = stages.lastTrace()?.step === "test:probe-step";
+            const described = stages.describeTrace().includes("test:probe-step");
+            stages.setWorldStage(4, false);
+            const stage4 = stages.worldStage() === 4;
+            const suppressed = stages.assetPreloadingSuppressed() === true;
+            stages.setWorldStage(0, false);
+            const backToNormal =
+              stages.worldStage() === 0 &&
+              stages.assetPreloadingSuppressed() === false &&
+              stages.isStageIsolation() === false &&
+              stages.usesStageCanvas() === false;
+            stages.setWorldStage(2, false);
+            const canvasStage =
+              stages.usesStageCanvas() === true &&
+              stages.assetPreloadingSuppressed() === true;
+            stages.setWorldStage(0, false);
+            stages.clearDiagnostics();
+            return (
+              traceOk &&
+              described &&
+              stage4 &&
+              suppressed &&
+              backToNormal &&
+              canvasStage &&
+              stages.HEALTHY_STEPS.has("world:gate-open") &&
+              !stages.HEALTHY_STEPS.has("webgl:context-lost")
+            );
+          })(),
+        ),
+
+        /* ── 7) BAĞLAM KAYBI: ÇÖKMENİN RENDERER İMZASI ── */
+        check(
+          "webglcontextlost/restored bağlanıyor ve iz bırakıyor (motor + sonda)",
+          /export function attachContextDiagnostics/.test(debug) &&
+            debug.includes('addEventListener("webglcontextlost"') &&
+            debug.includes('addEventListener("webglcontextrestored"') &&
+            debug.includes("webgl:context-lost") &&
+            engine.includes('attachContextDiagnostics(gl.domElement, "cadde")') &&
+            probe.includes("attachContextDiagnostics(gl.domElement"),
+        ),
+        check(
+          "canlı davranış: bağlam kaybı olayı kalıcı ize düşüyor",
+          await (async () => {
+            stages.clearDiagnostics();
+            const element = document.createElement(
+              "canvas",
+            ) as unknown as HTMLCanvasElement;
+            const detach = stages.attachContextDiagnostics(element, "test");
+            element.dispatchEvent(new Event("webglcontextlost"));
+            const logged = stages.lastTrace()?.step === "webgl:context-lost";
+            const note = stages.lastTrace()?.note ?? "";
+            detach();
+            stages.clearDiagnostics();
+            return logged && note.includes("test");
+          })(),
+        ),
+
+        /* ── 8) APK'DA ERİŞİM: PANEL + AŞAMA 0 BOZULMADI ── */
+        check(
+          "teşhis paneli APK'da erişilebilir (URL/konsol GEREKMEZ)",
+          /export function isAppShell/.test(debug) &&
+            debug.includes("Capacitor") &&
+            debug.includes("; wv") &&
+            /display-mode: standalone/.test(debug) &&
+            /export function worldDiagnosticsEnabled[\s\S]{0,240}?worldStage\(\) !== 0[\s\S]{0,160}?isAppShell\(\)/.test(
+              debug,
+            ) &&
+            dock.includes("WORLD_STAGES.map") &&
+            dock.includes("setWorldStage(info.stage)") &&
+            dock.includes("diagnosticsReport()") &&
+            world.includes("{showDock && <WorldStageDock />}"),
+        ),
+        check(
+          "aşama 0 (üretim) davranışı DEĞİŞMEDİ: gerçek motor + kapı + kuyruk eskisi gibi",            world.includes("readyModelUrls={gateModelUrls}") &&
+            world.includes("onSceneReady={handleSceneReady}") &&
+            world.includes("<GameEngine3D") &&
+            world.includes("<EntryLoader") &&
+            // Motor yalnızca izolasyon DALININ dışında (else) çizilir.
+            /\) : \(\s*<GameEngine3D/.test(world) &&
+            // Aşama 0'da supap/kapı mantığı aynen duruyor.
+            world.includes("GATE_VALVE_MS") &&
+            world.includes("GATE_AUTH_STEP_MS") &&
+            world.includes("PROFILE_STALL_MS"),
+        ),
+      );
+
+      /* ── 9) CANLI ÇİZİM: aşama 1 gerçekten "3D YOK" ekranını çiziyor mu? ──
+         Kaynak kontrolü yetmez: World'ün GERÇEKTEN çizildiğini ve 3D olmadan
+         cadde kapısının bekletmediğini görmek gerekir. Bu, harness'ın gerçek
+         React render'ıyla yapılır (arena senaryolarıyla aynı desen). */
+      profileStub = defaultProfile({ colorChosen: true, vip: false });
+      await mockAppLayer();
+      const React = await import("react");
+      const { default: WorldPage } = await import("../src/pages/World");
+
+      const settle = async () => {
+        for (let i = 0; i < 3; i++) {
+          await React.act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 700));
+          });
+        }
+      };
+
+      let stage1Text = "";
+      let stage1Error = "";
+      try {
+        stages.setWorldStage(1, false);
+        await p.render(<WorldPage />);
+        await settle();
+        stage1Text = p.snapshot().text;
+      } catch (error) {
+        stage1Error = String(error instanceof Error ? error.message : error);
+      }
+      const stage1Snap = p.snapshot();
+      checks.push(
+        check(
+          "aşama 1 CANLI çizim: World DOM ayakta, 3D kapalı, cadde kapısı BEKLEMİYOR",
+          stage1Text.includes("3D TEST BAŞARILI") &&
+            !stage1Text.includes("Cadde verileri alınıyor"),
+          stage1Error || stage1Text.slice(0, 90),
+        ),
+        check(
+          "aşama 1'de 🐞 izolasyon paneli erişilebilir (APK'da tek yol)",
+          stage1Snap.inventory.some((label) => label.includes("izolasyon")),
+        ),
+      );
+
+      let stage0Text = "";
+      let stage0Error = "";
+      try {
+        stages.setWorldStage(0, false);
+        await p.render(<WorldPage />);
+        await settle();
+        stage0Text = p.snapshot().text;
+      } catch (error) {
+        stage0Error = String(error instanceof Error ? error.message : error);
+      }
+      checks.push(
+        check(
+          "aşama 0'a dönünce izolasyon ekranı KAYBOLUYOR (üretim yolu bozulmadı)",
+          stage0Text.length > 0 && !stage0Text.includes("3D TEST BAŞARILI"),
+          stage0Error,
+        ),
+      );
+      stages.clearDiagnostics();
 
       return checks;
     },

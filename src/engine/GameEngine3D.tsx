@@ -26,6 +26,9 @@ import {
   useWebglRetry,
 } from "./WebglCanvas";
 import { PROTECTED_PRIORITY, verifiedPowerPreference } from "./webglSupport";
+// 🧪 İz/teşhis: adımlar ve bağlam kaybı `localStorage`a yazılır. APK'da konsol
+// olmadığı için çökmenin YERİ ancak bu kayıtla kanıtlanabilir (bkz. `WorldStageDock`).
+import { attachContextDiagnostics, traceStep } from "./worldDebug";
 import { hasCharacterSkin } from "./EquipmentRegistry";
 import type { AvatarConfig } from "@/lib/avatar";
 import { usePresenceOthers, type PresenceEntry } from "@/hooks/use-presence";
@@ -1414,7 +1417,15 @@ export function GameEngine3D({
   // Yükleme kapısı için: cadde varlıkları çözüldü mü? (`onSceneReady`
   // verilmediyse hiç kullanılmaz — durum makinesi boşta durur.)
   const [assetsReady, setAssetsReady] = useState(false);
-  const handleAssetsReady = useCallback(() => setAssetsReady(true), []);
+  const handleAssetsReady = useCallback(() => {
+    traceStep("engine:assets-ready");
+    setAssetsReady(true);
+  }, []);
+  /** İlk kareler çizildi: SAĞLIKLI adım (bkz. `wireDebug` → HEALTHY_STEPS). */
+  const handleFirstFrame = useCallback(() => {
+    traceStep("engine:first-frame");
+    onSceneReady?.();
+  }, [onSceneReady]);
   const remoteSelect = useCallback((entry: PresenceEntry<StreetPresence>) => {
     onRemotePlayerSelect?.(entry);
   }, [onRemotePlayerSelect]);
@@ -1489,6 +1500,11 @@ export function GameEngine3D({
           gl.domElement.addEventListener("webglcontextlost", (e) => {
             e.preventDefault();
           });
+          // 🧪 Bağlam kaybı/kurtarma KALICI ize yazılır: Android WebView bellek
+          // tükenmesinde çoğu zaman JS hatası VERMEZ, önce bağlamı düşürür.
+          // Bu kayıt "çökme renderer tarafında mı?" sorusunun somut kanıtıdır.
+          attachContextDiagnostics(gl.domElement, "cadde");
+          traceStep("engine:canvas-created");
         }}
       >
         {/* Bağlamı kayıt defterine yazar (korunmuş öncelik), sökülünce
@@ -1512,7 +1528,7 @@ export function GameEngine3D({
               ))}
             </React.Suspense>
           </StreetAssetBoundary>
-          <SceneReadyPing armed={assetsReady} onReady={onSceneReady} />
+          <SceneReadyPing armed={assetsReady} onReady={handleFirstFrame} />
         </>
       )}
 
