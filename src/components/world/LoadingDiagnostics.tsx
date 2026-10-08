@@ -11,7 +11,7 @@
  * (Diğer teşhis panelleri bayrak/kabuk şartı arar; bu ekran tam da "hiçbir şey
  * çalışmıyor" durumunda gerektiği için koşulsuzdur.)
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   MODEL_PROBE_LIST,
   buildLoadReport,
@@ -26,6 +26,7 @@ import {
   type ProbeResult,
 } from "@/engine/loadDiag";
 import { bootCount, describeTrace } from "@/engine/worldDebug";
+import { isLowMemoryAssetDevice } from "@/engine/assetQueue";
 
 function mib(bytes: number | null): string {
   return bytes === null ? "?" : `${(bytes / 1048576).toFixed(2)} MiB`;
@@ -58,17 +59,30 @@ export function LoadingDiagnostics({ snapshot }: { snapshot: LoadSnapshot }) {
     }
   }, []);
 
-  // 📡 OTOMATİK MODEL TESTİ: kullanıcı dokunamasa bile "/models/*.glb geliyor
-  // mu?" sorusunun cevabı kayda geçsin (sonuç bir sonraki yazımla diske gider).
+  /* 📡 OTOMATİK MODEL TESTİ — telefonda YALNIZCA KRİTİK İKİ DOSYA.
+
+     Soru şu: "/models/*.glb sunucudan geliyor mu?". Sekiz dosyanın hepsini
+     (~14 MB: harita 5,3 + ağaç 2,3 + zırh 1,9 + dükkân 1,4 MB) yükleme ekranı
+     AÇIKKEN paralel indirmek, kapının beklediği iki kritik modelle (zemin +
+     karakter) bant genişliği ve belleği PAYLAŞIR — yani teşhisin kendisi
+     takılmayı büyütür. Bu yüzden kendiliğinden çalışan test telefonda yalnızca
+     iki kritik dosyayı sorar; tam liste yalnızca panel ELLE açıldığında iner
+     (o anda kullanıcı zaten beklemeyi göze almıştır). */
+  const autoProbeList = useMemo(
+    () =>
+      isLowMemoryAssetDevice() ? MODEL_PROBE_LIST.slice(0, 2) : MODEL_PROBE_LIST,
+    [],
+  );
+
   useEffect(() => {
     const id = window.setTimeout(() => {
-      void probeModelUrls(MODEL_PROBE_LIST).then((results) => {
+      void probeModelUrls(autoProbeList).then((results) => {
         rememberProbes(results);
         setProbes(results);
       });
     }, 2500);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [autoProbeList]);
 
   // ⚠️ Bilinçli olarak memo YOK: panel yalnızca açıkken çizilir ve rapor bir
   // metin kurulumudur (~50 µs). `useMemo` + her tıkta yeni kimlik alan

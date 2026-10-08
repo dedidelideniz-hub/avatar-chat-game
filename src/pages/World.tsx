@@ -170,6 +170,7 @@ import {
 import {
   ASSET_ORDER,
   enqueueIdleTask,
+  isLowMemoryAssetDevice,
   unlockBackgroundAssets,
 } from "@/engine/assetQueue";
 
@@ -1789,6 +1790,17 @@ export default function World() {
   // %100 olur. Böylece çubuk her zaman akar, ekran asla donmuş görünmez ve
   // yükleme hiçbir zaman üçüncü parti bir sayaçın keyfine bağlı kalmaz.
   const [gateTarget, setGateTarget] = useState(14);
+  /* 📱 TELEFONDA DAHA SEYREK TİK (kök neden: kendi kendine yüklenen çizim).
+
+     Kapı yüzdesi `World`ün state'inde duruyor; her tik bu ~5 000 satırlık
+     bileşeni BAŞTAN çizer. Masaüstünde 60 ms zararsız, telefonda saniyede
+     ~16 tam çizim TAM DA sahne kurulurken (shader/geometri derlemesi) ana iş
+     parçacığını doldurup ekranı "donmuş" gösteriyordu — üstelik kapının
+     emniyet supabı (6,5 sn) bile bu yüzden geç ateşliyor. Tik aralığı artık
+     cihaza göre: telefonda 200 ms, adımlar da aralıkla ÖLÇEKLENİR, yani çubuk
+     aynı hızda ilerler ama ana iş parçacığına ~3 kat az iş bindirir. */
+  const gateTickMs = isLowMemoryAssetDevice() ? 200 : 60;
+  const gateTickScale = gateTickMs / 60;
   useEffect(() => {
     if (gateForced || gateSceneReady) {
       setGateTarget(100);
@@ -1807,11 +1819,15 @@ export default function World() {
     const cap = gateTarget >= 99.5 ? 100 : 92;
     const id = window.setInterval(() => {
       setGatePct((p) =>
-        Math.min(cap, gateTarget, p + (p < 60 ? 4.5 : p < 88 ? 2 : 0.9)),
+        Math.min(
+          cap,
+          gateTarget,
+          p + (p < 60 ? 4.5 : p < 88 ? 2 : 0.9) * gateTickScale,
+        ),
       );
-    }, 60);
+    }, gateTickMs);
     return () => window.clearInterval(id);
-  }, [gateOpen, gateTarget]);
+  }, [gateOpen, gateTarget, gateTickMs, gateTickScale]);
 
   // Emniyet supabı: ağ takılırsa (ya da modeller bu cihazda hiç inmezse)
   // yükleme ekranı SONSUZA kadar kalmasın.
