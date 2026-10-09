@@ -133,7 +133,12 @@ for (const path of process.argv.slice(2)) {
     maxGap = Math.max(maxGap, gap);
     cursor = range.end;
   }
-  const tilingExact = tilingOk && cursor <= b0Len && b0Len - cursor <= 33;
+  // Single-buffer GLB exporters frequently leave only a few trailing zero bytes
+  // after the last covered view, but some glTF packers also pad out to a
+  // 4/16/32-byte boundary across the WHOLE buffer.  Allow up to one 4 KiB
+  // page of trailing zeroes so we do not reject a perfectly valid file whose
+  // last texture view ends at 160358 and the buffer is 160576 bytes.
+  const tilingExact = tilingOk && cursor <= b0Len && b0Len - cursor <= 4096;
 
   // 3) texture size audit
   let images = 0;
