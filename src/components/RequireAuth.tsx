@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2, RefreshCw, Swords } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
+import { guestProfile, isGuestMode } from "@/lib/guestProfile";
 
 /**
  * Korumalı rota sarmalayıcısı.
@@ -30,6 +31,11 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [guestError, setGuestError] = useState<string | null>(null);
   const guestAttempted = useRef(false);
+
+  // 🧯 FAIL-SAFE GEÇİŞ: "Çevrimdışı / Misafir Olarak Başlat" yazılmışsa
+  //      kimlik akışı HİÇ beklenmez — mock profil pas geçilir ve sayfa çizilir.
+  // Auth/Convex ZORUNLU DEĞİL: sunucu yanıt vermese bile oyun açılır.
+  const [offlineGuest] = useState(() => isGuestMode());
 
   // ⚠️ Korunmuş sayfa BİR KEZ çözüldükten sonra, hesap sorgusu kısa süreliğine
   // `undefined`'a dönse bile (Convex yeniden bağlanırken veya WebView arka
@@ -71,6 +77,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       if (!ok) window.location.reload();
     });
   }, [tryGuestSession]);
+
+  if (offlineGuest && isLoading) {
+    // Misafir-çevrimdışı mod: kimlik bekLEYENEK değil; giriş katmanı olmadan
+    // alt içeriği direkt çiz. `World` kendi yerel mock profiliyle geçer.
+    return <>{children}</>;
+  }
 
   if (isLoading && !settled.current) {
     return (

@@ -66,8 +66,24 @@ export function safeRemoveItem(key: string): void {
 }
 
 /**
+ * 📱 WEVIEW/CAPACITOR GÜVENLİĞİ (fail-safe madde 3):
+ *
+ * Capacitor/WebView ortamında `localStorage` erişimi ENGELLENDİĞİNDE
+ * (gizli mod, kısıtlı köken, güvenlik kısıtlaması) bu sarmalayıcı otomatik
+ * in-memory (bellek içi) yedeğe DÜŞER. Yani:
+ *
+ *   · `openBrowserStorage()` bir kez deneme yazması yapar ("yazma izni de
+ *     dene": bazı WebView'larda nesne vardır ama `setItem` atar).
+ *   · Erişilemezse `backing = null` — tüm oku/yaz/sil işlemleri `memory`
+ *     Map'ine döner. Uygulama ASLA istisna fırlatmaz, KAPANMAZ; oturum
+ *     token'ları ve profil, uygulama açık kaldığı sürece bellekte yaşar
+ *     (APK Einsatzda yeterli; tekrar açılışta yeniden oturum istenir).
+ *
+ * `authTokenStorage` ConvexAuthProvider'a `storage` olarak verilir: token
+ * yazamayan cihazda kimlik akışı çökmez, sessizce bellek yedeğine geçer.
+ *
  * `@convex-dev/auth` için TokenStorage: oturum token'ları mobil WebView'da da
- * güvenle okunup yazılabilsin. `ConvexAuthProvider`'a `storage` olarak verilir.
+ * güvenle okunup yazılabilsin. `ConvexAuthProvider`a `storage` olarak verilir.
  */
 export const authTokenStorage: TokenStorage = {
   getItem: (key) => safeGetItem(key),

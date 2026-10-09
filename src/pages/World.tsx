@@ -153,6 +153,13 @@ import {
   type LoadSnapshot,
 } from "@/engine/loadDiag";
 import { LoadingDiagnostics } from "@/components/world/LoadingDiagnostics";
+// 🧯 FAIL-SAFE: catch-all çerçeve + çevrimdışı/misafir başlatma + 3 sn geçis.
+import {
+  GateErrorBoundary,
+  CrashShield,
+  useCrashShield,
+} from "@/components/world/LoadingFailSafe";
+import { guestProfile, isGuestMode } from "@/lib/guestProfile";
 // 🧪 3D İZOLASYON TEŞHİSİ (APK çökmesini bölerek bulmak için) — bkz. bu
 // dosyadaki `stageMode` dalları ve `engine/worldDebug`.
 import {
@@ -1302,8 +1309,10 @@ const GATE_VALVE_MS = 6500;
 const GATE_STALL_REPORT_MS = 8000;
 /** "Kimlik doğrulanıyor" adımı bu süre içinde çözülmezse süreç kilitlenmez:
  *  adım TAMAMLANMIŞ sayılır, oturum yoksa anonim (konuk) oturuma düşülür ve
- *  yükleme bir sonraki adımdan ("Cadde verileri alınıyor") devam eder. */
-const GATE_AUTH_STEP_MS = 2000;
+ *  yükleme bir sonraki adımdan ("Cadde verileri alınıyor") devam eder.
+ *  ⛔ 3000 ms HARD BYPASS: 3 sn dolarsa veya hata atarsa hiçbir koşulda
+ *  beklenmez — yerel Guest_Mobile mock profiliyle direkt adım 1'e geçilir. */
+const GATE_AUTH_STEP_MS = 3000;
 /** Hesap sorgusu (`profiles.getMyProfile`) bu süre içinde sonuçlanmazsa
  *  sonsuz spinner yerine "Yeniden Dene" katmanı gösterilir. */
 const PROFILE_STALL_MS = 6000;
@@ -1323,6 +1332,16 @@ export default function World() {
   const stageMode = isStageIsolation();
   const showDock = worldDiagnosticsEnabled();
   const profile = useQuery(api.profiles.getMyProfile);
+  // 🧯 FAIL-SAFE misafir profili: Auth/Convex ZORUNLU DEĞİL.
+  //
+  // 3 sn bekçi profili getirmezse ya da sorgu hata verirse yüklemeyi
+  // UYGULAMAYI ÇÖKERTMEDEN adım 0'ı ("Kimlik doğrulanıyor") PAS GEÇERİZ:
+  // yerel bir Guest_Mobile mock profili döndürülür ve yükleme doğrudan
+  // "Cadde verileri alınıyor" ile devam eder. Sunucu dönecekse profil
+  // beklendiği gibi konur; dönmeyeceksse oyun kullanıcıyı engellemez.
+  const guestMode = isGuestMode();
+  const guestFallsBack = guestMode && profile === undefined;
+  const safeProfile = guestFallsBack ? guestProfile() : profile;
   // 🛡️ Kapının "Kimlik doğrulanıyor" bekçisi için: oturum durumu ve konuk
   // girişi. (Korunmuş rota olsa da mobil ağ kopmalarında oturum gerileyebilir.)
   const { isAuthenticated } = useConvexAuth();
@@ -1347,9 +1366,16 @@ export default function World() {
   // Kapı düğmesi (3D) "eve girilebilir mi" bilgisini buradan okur.
   useEffect(() => {
     // Sorgular yüklenene kadar yazma (düğme yanlışlıkla "Ev yok" görünmesin).
-    if (profile === undefined || myHouseView === undefined) return;
+    // Misafir yedeğinde ev sunucudan gelmeyecektir: düğmeyi kapat (arka plan 3D
+    // sahnesinin yedek odası açılır; sunucu gelince gerçek oda devreye girer).
+    if (profile === undefined && !guestFallsBack) return;
+    if (profile === undefined) {
+      setHouseOwned(false);
+      return;
+    }
+    if (myHouseView === undefined) return;
     setHouseOwned(!(houseLost && myHouseView === null));
-  }, [profile, myHouseView, houseLost]);
+  }, [profile, myHouseView, houseLost, guestFallsBack]);
   // 📸 Kendi evimin gerçek fotoğrafı (odaya girdiğimde yakalanır).
   const myRoomShot = useRoomShot(myHouseView?.roomId);
   // 🛋️ MOBİLYA EKONOMİSİ (bkz. `convex/furniture.ts`): oyuncu eşyaları
@@ -1668,19 +1694,19 @@ export default function World() {
     };
   }, []);
 
-  const coins = profile?.coins ?? 0;
-  const items = profile?.items ?? [];
-  const equipped = profile?.equipped ?? [];
-  const abilities = profile?.abilities ?? [DEFAULT_ABILITY];
-  const equippedAbility = profile?.equippedAbility ?? DEFAULT_ABILITY;
-  const username = profile?.username ?? "Misafir";
-  const config = profile?.avatar ?? DEFAULT_AVATAR;
-  const isVip = profile?.vip ?? false;
-  const battleWins = profile?.battleWins ?? 0;
-  const level = profile?.level ?? levelFromWins(battleWins);
+  const coins = safeProfile?.coins ?? 0;
+  const items = safeProfile?.items ?? [];
+  const equipped = safeProfile?.equipped ?? [];
+  const abilities = safeProfile?.abilities ?? [DEFAULT_ABILITY];
+  const equippedAbility = safeProfile?.equippedAbility ?? DEFAULT_ABILITY;
+  const username = safeProfile?.username ?? "Guest_Mobile";
+  const config = safeProfile?.avatar ?? DEFAULT_AVATAR;
+  const isVip = safeProfile?.vip ?? false;
+  const battleWins = safeProfile?.battleWins ?? 0;
+  const level = safeProfile?.level ?? levelFromWins(battleWins);
   const nextLevelWins = level >= 10 ? null : level * WINS_PER_LEVEL;
-  const vipUntil = profile?.vipUntil ?? 0;
-  const bubbleColorId = profile?.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
+  const vipUntil = safeProfile?.vipUntil ?? 0;
+  const bubbleColorId = safeProfile?.bubbleColor ?? DEFAULT_BUBBLE_COLOR;
   const giftClaimed =
     profile !== undefined &&
     (profile?.lastDailyClaim ?? 0) > Date.now() - DAILY_BONUS_MS;
@@ -1896,6 +1922,8 @@ export default function World() {
   const [gateAuthStepDone, setGateAuthStepDone] = useState(false);
   const gateGuestTried = useRef(false);
   useEffect(() => {
+    // 🧯 HARD BYPASS (3 sn): profil GELMEDİĞİ için değil, 3 sn'yi geçtiği
+    // için de adım tamamlanır — yani bekçi çökmeyi asla bekletmez.
     if (profile !== undefined) {
       setGateAuthStepDone(true);
       return;
@@ -1926,6 +1954,8 @@ export default function World() {
   // bu süre sonunda dürüst bir "Yeniden Dene" katmanı gösterilir.
   const [profileStalled, setProfileStalled] = useState(false);
   useEffect(() => {
+    // Misafir modunda bekçi yok: takılma katmanı hiç görünmesin.
+    if (guestFallsBack) return;
     if (profile !== undefined) {
       setProfileStalled(false);
       return;
@@ -1935,16 +1965,18 @@ export default function World() {
       PROFILE_STALL_MS,
     );
     return () => window.clearTimeout(id);
-  }, [profile]);
+  }, [profile, guestFallsBack]);
 
   // Kapı yalnızca hesap hazır olduğunda çizilir: profil yoksa/banlıysa zaten
   // kendi bilgi katmanı görünür (aşağıdaki `profile === null` blokları).
+  // ⛔ HARD BYPASS: misafir yedeği devredeyken kapı HEMEN çizilir — kimlik
+  // adımı PAS GEÇİLİR, yükleme direkt "Cadde verileri alınıyor" ile başlar.
   const gateVisible =
     !stageMode &&
     !gateOpen &&
-    profile !== undefined &&
-    profile !== null &&
-    !profile.banned;
+    safeProfile !== null &&
+    safeProfile !== undefined &&
+    !safeProfile.banned;
 
   /* 🔍 YÜKLEME TEŞHİSİ (canlı anlık görüntü + OTOMATİK TAKILMA RAPORU).
 
@@ -3367,7 +3399,7 @@ export default function World() {
         from: m.senderName,
         text: m.text,
         color: m.color,
-        isMe: m.senderId === profile.userId,
+        isMe: m.senderId === profile?.userId,
       });
     }
   }, [serverMessages, appendMessage, profile]);
@@ -4378,6 +4410,8 @@ export default function World() {
     ],
   );
 
+  const crashShieldMessage = useCrashShield();
+
   return (
     <div className="fixed inset-x-0 top-0 h-dvh flex items-center justify-center overflow-hidden bg-[#e9dcc0] text-foreground select-none">
       {/* Framed game window: dark top bar, the street, beige control bar. */}
@@ -5307,42 +5341,43 @@ export default function World() {
           Oyun girişindeki ekranın (EntryLoader) AYNISI: sahne arkada kurulur,
           varlıklar + ilk kareler hazır olunca ekran yumuşakça açılır. Cadde
           hazır olmadan oyuncu sahneyi görmez. */}
-      <AnimatePresence>
-        {gateVisible && (
-          <motion.div
-            key="street-gate"
-            className="fixed inset-0 z-[80]"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-          >
-            <EntryLoader
-              pct={gatePct}
-              stepIndex={gateStepIndex}
-              tip={STREET_TIPS[gateTipIndex]}
-              subtitle="Ana caddeye bağlanılıyor"
-              crestLabel="Cadde kuruluyor"
-              pendingLabel="Cadde hazırlanıyor"
-              steps={STREET_LOAD_STEPS}
-              player={{
-                name: username,
-                rankName: rank.name,
-                rankIcon: rank.icon,
-                rankGradient: rank.gradient,
-                vip: isVip,
-                level,
-              }}
-            />
-          </motion.div>
+      <GateErrorBoundary>
+        <AnimatePresence>
+          {gateVisible && (
+            <motion.div
+              key="street-gate"
+              className="fixed inset-0 z-[80]"
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <EntryLoader
+                pct={gatePct}
+                stepIndex={gateStepIndex}
+                tip={STREET_TIPS[gateTipIndex]}
+                subtitle="Ana caddeye bağlanılıyor"
+                crestLabel="Cadde kuruluyor"
+                pendingLabel="Cadde hazırlanıyor"
+                steps={STREET_LOAD_STEPS}
+                player={{
+                  name: username,
+                  rankName: rank.name,
+                  rankIcon: rank.icon,
+                  rankGradient: rank.gradient,
+                  vip: isVip,
+                  level,
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {gateVisible && gateSnapshotRef.current && (
+          <LoadingDiagnostics snapshot={gateSnapshotRef.current} />
         )}
-      </AnimatePresence>
+      </GateErrorBoundary>
+      <CrashShield message={crashShieldMessage} />
 
-      {/* 🔍 YÜKLEME TEŞHİSİ — yükleme ekranı görünürken KOŞULSUZ erişilir.
-          Mobilde konsol yok; "neden ilerlemiyor?" sorusunun cevabı tek
-          dokunuşla alınabilsin diye burada duruyor (bkz. LoadingDiagnostics). */}
-      {gateVisible && gateSnapshotRef.current && (
-        <LoadingDiagnostics snapshot={gateSnapshotRef.current} />
-      )}
+      {/* 🔍 YÜKLEME TEŞHİSİ — GateErrorBoundary içine taşındı (bkz. yukarı). */}
 
       {/* Visual Debug — always-visible DEV button + conditional panel */}
       <button

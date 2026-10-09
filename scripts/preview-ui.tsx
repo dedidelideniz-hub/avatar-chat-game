@@ -2533,11 +2533,15 @@ const scenarios: Scenario[] = [
             requireAuthSrc.includes("if (!ok) window.location.reload();"),
         ),
         check(
-          "cadde kapısı: 'Kimlik doğrulanıyor' 2 sn'de çözülmezse sonraki adıma geçer",
-          world.includes("const GATE_AUTH_STEP_MS = 2000") &&
+          "cadde kapısı: 'Kimlik doğrulanıyor' 3 sn'de çözülmezse sonraki adıma geçer (hard bypass + misafir yedeği)",
+          world.includes("const GATE_AUTH_STEP_MS = 3000") &&
             world.includes("const [gateAuthStepDone, setGateAuthStepDone]") &&
             /Math\.max\(gateAuthStepDone \? 1 : 0, pctStepIndex\)/.test(world) &&
-            world.includes('authSignIn("anonymous")'),
+            world.includes('authSignIn("anonymous")') &&
+            // 🧯 Fail-safe: profil gelmezse yerel Guest_Mobile mock profili
+            // devreye girer, kapı kimlik beklemeyi bırakır.
+            world.includes("guestProfile()") &&
+            world.includes("safeProfile"),
         ),
         check(
           "cadde kapısı: hesap sorgusu takılırsa 'Yeniden Dene' katmanı çıkar (sonsuz spinner YOK)",
