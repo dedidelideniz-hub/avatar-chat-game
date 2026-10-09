@@ -1986,7 +1986,18 @@ export default function World() {
       if (snapshot) persistSnapshot(snapshot);
     };
     write();
-    const id = window.setInterval(write, 250);
+    // 🐌 YAZIM SIKLIĞI (kök neden düzeltmesi): 250 ms → 1 gn.
+    //
+    // `persistSnapshot` her çağrıda `bootCount()` + `heartbeat()` + `mountInfo()`
+    // okur ve `localStorage.setItem` ile senkron diske yazar; mobil WebView'da
+    // bu istisna board'a asıl bekleme noktasıdır. Saniyede 4 kez yazmak, tam
+    // da sahne kurulumunun (canvas + zemin birleştirme + doku küçültme)
+    // yarıştığı sırada ana iş parçacığını 4 kez durduruyordu. 1 sn aralık,
+    // kapı çizim döngüsünü artık ~16×/sn'ten ~4×/sn'te sabitler: kayıt hâlâ
+    // saniyelik doğrulukla "nerede donuldu"yu saklar ama yarışma biter.
+    // İlk yazım hâlâ render sırasında yapılır (aşağıda) — kaydın varlığı
+    // garanti kalır.
+    const id = window.setInterval(write, 1000);
     return () => window.clearInterval(id);
   }, [gateVisible]);
 
@@ -2021,6 +2032,7 @@ export default function World() {
   // oysa tanı kaydının VARLIĞI her şeyden önce gelir. Montaj başına bir kez.
   if (gateVisible && !firstPersistRef.current) {
     firstPersistRef.current = true;
+    traceStep("render:StreetGate");
     persistSnapshot(gateSnapshotRef.current);
   }
 

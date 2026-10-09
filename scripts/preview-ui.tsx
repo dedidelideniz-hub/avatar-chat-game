@@ -4703,7 +4703,9 @@ const scenarios: Scenario[] = [
           worldSrc.includes("if (gateVisible && !firstPersistRef.current)") &&
           /if \(!gateVisible\) return;/.test(worldSrc) &&
             worldSrc.includes("persistSnapshot(snapshot)") &&
-            /window\.setInterval\(write, 250\)/.test(worldSrc) &&
+            // Saniyede 4 kez senkron localStorage yazımı, tam da sahne kurulumu
+            // yarışırken ana iş parçacığını 4 kez durdurordu → 1000 ms.
+            /window\.setInterval\(write, 1000\)/.test(worldSrc) &&
             worldSrc.includes("if (gateOpen) clearPersistedSnapshot();") &&
             // Şerit DOKUNUŞ engellemez (yükleme ekranını kapatmasın).
             panelSrc.includes("pointer-events-none fixed inset-x-0 top-0") &&
