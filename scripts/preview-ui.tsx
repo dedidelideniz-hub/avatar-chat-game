@@ -2536,12 +2536,18 @@ const scenarios: Scenario[] = [
           "cadde kapısı: 'Kimlik doğrulanıyor' 3 sn'de çözülmezse sonraki adıma geçer (hard bypass + misafir yedeği)",
           world.includes("const GATE_AUTH_STEP_MS = 3000") &&
             world.includes("const [gateAuthStepDone, setGateAuthStepDone]") &&
-            /Math\.max\(gateAuthStepDone \? 1 : 0, pctStepIndex\)/.test(world) &&
+            // ⛔ Cadde verisi bekçisi + kimlik adımı artık TEK stepFloor'da:
+            // `Math.max(stepFloor, pctStepIndex)` (3 sn kuralı birleşik).
+            /Math\.max\(stepFloor, pctStepIndex\)/.test(world) &&
             world.includes('authSignIn("anonymous")') &&
             // 🧯 Fail-safe: profil gelmezse yerel Guest_Mobile mock profili
             // devreye girer, kapı kimlik beklemeyi bırakır.
             world.includes("guestProfile()") &&
-            world.includes("safeProfile"),
+            world.includes("safeProfile") &&
+            // 🧯 Cadde verisi 3 sn takılırsa %35'e zıpla (adım 2), mock cadde
+            // verisiyle akış sürer (sonlu döngü + timeout+kuralı).
+            world.includes("streetDataFetchedRef") &&
+            world.includes("setGateStreetStalled"),
         ),
         check(
           "cadde kapısı: hesap sorgusu takılırsa 'Yeniden Dene' katmanı çıkar (sonsuz spinner YOK)",

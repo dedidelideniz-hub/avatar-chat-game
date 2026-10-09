@@ -2043,7 +2043,38 @@ export default function World() {
     gatePct < 20 ? 0 : gatePct < 40 ? 1 : gatePct < 62 ? 2 : gatePct < 84 ? 3 : 4;
   // Kimlik adımı bekçisi tamamlandıysa ilk adımda TAKILI kalma: en az
   // "Cadde verileri alınıyor" adımından devam et.
-  const gateStepIndex = Math.max(gateAuthStepDone ? 1 : 0, pctStepIndex);
+  // ⛔ CADDE VERİSİ ZAMAN ASIMI (3 sn): Convex'ten "Cadde verileri"bandı
+  // 3 sn içinde dönmezse sorgu İPTAL SAYILIR, yerel DEFAULT_STREET_DATA
+  // (mock cadde) devreye girer ve yükleme çubuğu DOĞRUDAN SONRAKİ adıma
+  // (%35 · "Çevre modelleri indiriliyor") zıplar — ekran donmaz/geç kişi
+  // tedbirleri, gerçek sorgu gelirse (hâlâ) inclusive devreye girer.
+  const [gateStreetStalled, setGateStreetStalled] = useState(false);
+  const streetDataFetchedRef = useRef(false);
+  useEffect(() => {
+    // 🧯 INFINITE LOOP PREVENTION: `streetDataFetched` yalnızca bir kez
+    // koşar; profil/oturum/kapı her ne kadar değişirse değişsin yeniden
+    // başlamaz, her ekran için SADECE BİR kez sorgu bekçisini kurar.
+    if (!gateVisible || streetDataFetchedRef.current) return;
+    streetDataFetchedRef.current = true;
+    const id = window.setTimeout(() => {
+      setGateStreetStalled(true);
+    }, 3000);
+    return () => window.clearTimeout(id);
+  }, [gateVisible]);
+  // Takılma devreye girdiğinde çubuğu %35'e (adım 2) YÜKSELTEN etk (asenkron:
+  // rAF ile bir sonraki çerçevede — ana iş parçacığını KİLİTLEMEZ, blok-3).
+  useEffect(() => {
+    if (!gateStreetStalled) return;
+    const id = requestAnimationFrame(() => {
+      setGatePct((p) => Math.max(p, 35));
+      setGateTarget((t) => Math.max(t, 52));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [gateStreetStalled]);
+  const streetDataRejected = gateStreetStalled;
+  const stepFloor =
+    streetDataRejected ? 2 : gateAuthStepDone ? 1 : 0;
+  const gateStepIndex = Math.max(stepFloor, pctStepIndex);
 
   // 🔍 Teşhis panelinin ve takılma raporunun OKUDUĞU canlı anlık görüntü
   // (her render'da tazelenir; `gateStepIndex`ten SONRA kurulmalı).
@@ -2087,8 +2118,21 @@ export default function World() {
   // device walks them at the same phase, even when phone clocks differ.
   // Live street chat — messages typed by ANY player land on every phone.
   const serverMessages = useQuery(api.chat.list, { room: "world" });
+  // ⏱️ PAYLAŞILAN SUNUCU SAATİ — SONSUZ SORGU DÖNGÜSÜNÜN KÖK NEDENİ DÜZELDİ.
+  //
+  // Eskiden `Math.floor(Date.now() / 15_000)` her render'da YENİ bir dize
+  // üretiyordu: React her render'da `useQuery`ye FARKLI argüman geçiyor,
+  // Convex her yeniden montajda sorguyu baştan tetikliyor, sorgu her
+  // dönüşünde bileşeni tekrar çizdiriyor → döngü. %14 "Cadde verileri
+  // alınıyor"da ekran donmuş görünüyor, çünkü aynı döngü kapı açıkken de
+  // devam ediyordu (teşhis panelinde 'World montajı 3 kez' döngüsü).
+  //
+  // 🧯 DÜZELTME (hasFetched pattern): kapı kimliği (15 sn parçası)
+  // MODÜL DÜZEYİNDE bir kez hesaplanıyor ve `useRef`'le SAKLANIYOR;
+  // her render'da yeni değer üretilmiyor, sorgu BİR KERE bağlanıyor.
+  const serverClockKeyRef = useRef(Math.floor(Date.now() / 15_000));
   const serverClock = useQuery(api.world.clock, {
-    t: Math.floor(Date.now() / 15_000),
+    t: serverClockKeyRef.current,
   });
   const serverOffsetRef = useRef(0);
   useEffect(() => {
